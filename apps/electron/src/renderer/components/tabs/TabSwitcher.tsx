@@ -237,14 +237,13 @@ export function TabSwitcher(): React.ReactElement | null {
                     : 'text-muted-foreground',
                 )}
               >
-                {/* 状态指示点（前置，与左侧列表保持一致） */}
-                <span
-                  className={cn(
-                    'size-1.5 rounded-full shrink-0',
-                    indicatorColor ?? 'bg-transparent',
-                  )}
-                  aria-hidden="true"
-                />
+                {/* 状态指示点（不占固定空间，存在时向后挤压 title） */}
+                {indicatorColor && (
+                  <span
+                    className={cn('size-1.5 rounded-full shrink-0', indicatorColor)}
+                    aria-hidden="true"
+                  />
+                )}
                 {tab.type === 'agent' ? (
                   <Bot className="w-4 h-4 shrink-0 opacity-60" />
                 ) : (
