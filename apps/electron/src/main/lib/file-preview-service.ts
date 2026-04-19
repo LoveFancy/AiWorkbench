@@ -919,10 +919,17 @@ function markdownPreviewHtml(filePath: string, filename: string, textContent: st
 /** 生成代码/文本预览 HTML（支持编辑） */
 function codePreviewHtml(filePath: string, filename: string, textContent: string, ext: string): string {
   const langMap: Record<string, string> = {
-    '.json': 'json',
-    '.xml': 'xml',
-    '.html': 'html',
-    '.htm': 'html',
+    '.json': 'json', '.xml': 'xml', '.html': 'xml', '.htm': 'xml',
+    '.yaml': 'yaml', '.yml': 'yaml', '.toml': 'ini', '.ini': 'ini', '.env': 'bash',
+    '.ts': 'typescript', '.tsx': 'typescript',
+    '.js': 'javascript', '.jsx': 'javascript', '.mjs': 'javascript', '.cjs': 'javascript',
+    '.py': 'python', '.go': 'go', '.rs': 'rust',
+    '.java': 'java', '.kt': 'kotlin', '.swift': 'swift',
+    '.c': 'c', '.h': 'c', '.cpp': 'cpp', '.hpp': 'cpp', '.cs': 'csharp',
+    '.sh': 'bash', '.bash': 'bash', '.zsh': 'bash',
+    '.css': 'css', '.scss': 'scss', '.less': 'less',
+    '.sql': 'sql', '.rb': 'ruby', '.php': 'php',
+    '.txt': 'plaintext', '.log': 'plaintext', '.csv': 'plaintext',
   }
   const lang = langMap[ext] || 'plaintext'
   const isDark = nativeTheme.shouldUseDarkColors
