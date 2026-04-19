@@ -1010,20 +1010,35 @@ function codePreviewHtml(filePath: string, filename: string, textContent: string
   <script src="https://cdn.jsdelivr.net/npm/highlight.js@11/highlight.min.js"></script>
   <script>
     (async function () {
-      if (typeof hljs === 'undefined') return;
-      const lang = ${JSON.stringify(lang)};
       const codeEl = document.getElementById('code-content');
-      // 主包未带的语言，从 CDN 动态注册子包
-      if (lang !== 'plaintext' && !hljs.getLanguage(lang)) {
+      if (typeof hljs === 'undefined' || !codeEl) return;
+      const lang = ${JSON.stringify(lang)};
+      function applyHighlight() {
+        try {
+          const text = codeEl.textContent || '';
+          const result = hljs.highlight(text, { language: lang, ignoreIllegals: true });
+          codeEl.innerHTML = result.value;
+          codeEl.classList.add('hljs');
+        } catch (e) {
+          // 兜底：自动检测
+          try { hljs.highlightElement(codeEl); } catch (_) { /* ignore */ }
+        }
+      }
+      if (lang === 'plaintext') {
+        codeEl.classList.add('hljs');
+        return;
+      }
+      if (!hljs.getLanguage(lang)) {
+        // 主包未带的语言 → 从 cdn-release 拉子包注册
         await new Promise((resolve) => {
           const s = document.createElement('script');
           s.src = 'https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/languages/' + lang + '.min.js';
           s.onload = resolve;
-          s.onerror = resolve; // 失败也降级到无高亮
+          s.onerror = resolve;
           document.head.appendChild(s);
         });
       }
-      hljs.highlightElement(codeEl);
+      applyHighlight();
     })();
   </script>
   ${toolbarScript()}
