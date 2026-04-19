@@ -39,33 +39,69 @@ const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mov'])
 
 /** 支持代码/纯文本预览（含编辑）的扩展名 */
 const CODE_EXTENSIONS = new Set([
-  '.json', '.xml', '.html', '.htm',
+  '.json', '.jsonc', '.json5',
+  '.xml', '.html', '.htm', '.svg',
   '.txt', '.log', '.csv',
-  '.yaml', '.yml', '.toml', '.ini', '.env',
+  '.yaml', '.yml', '.toml', '.ini', '.env', '.lock',
   '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
   '.py', '.go', '.rs', '.java', '.kt', '.swift',
   '.c', '.h', '.cpp', '.hpp', '.cs',
-  '.sh', '.bash', '.zsh',
+  '.sh', '.bash', '.zsh', '.fish',
   '.css', '.scss', '.less',
   '.sql', '.rb', '.php',
+  '.diff', '.patch',
 ])
 
 /** 支持 Markdown 渲染预览的扩展名 */
 const MARKDOWN_EXTENSIONS = new Set(['.md', '.markdown'])
 
-/** 扩展名 → Monaco language ID 映射 */
-const MONACO_LANG_MAP: Record<string, string> = {
+/**
+ * 特殊文件名（无扩展名或扩展名不能代表语言）→ 高亮语言映射
+ * 同时用于 highlight.js 和 Monaco（两者命名基本一致）
+ */
+const SPECIAL_FILENAME_LANG: Record<string, string> = {
+  '.gitignore': 'bash',
+  '.dockerignore': 'bash',
+  '.npmignore': 'bash',
+  '.eslintignore': 'bash',
+  '.prettierignore': 'bash',
+  '.gitattributes': 'bash',
+  '.gitconfig': 'ini',
+  '.editorconfig': 'ini',
+  '.npmrc': 'ini',
+  '.yarnrc': 'ini',
+  'dockerfile': 'dockerfile',
+  'makefile': 'makefile',
+  'bun.lock': 'yaml',
+  'pnpm-lock.yaml': 'yaml',
+  'cargo.lock': 'ini',
+  'gemfile': 'ruby',
+  'rakefile': 'ruby',
+  'procfile': 'yaml',
+}
+
+/** 扩展名 → Monaco / highlight.js 语言 ID 映射 */
+const EXT_LANG_MAP: Record<string, string> = {
   '.md': 'markdown', '.markdown': 'markdown',
-  '.json': 'json', '.xml': 'xml', '.html': 'html', '.htm': 'html',
-  '.yaml': 'yaml', '.yml': 'yaml', '.toml': 'ini', '.ini': 'ini', '.env': 'shell',
+  '.json': 'json', '.jsonc': 'json', '.json5': 'json',
+  '.xml': 'xml', '.html': 'html', '.htm': 'html', '.svg': 'xml',
+  '.yaml': 'yaml', '.yml': 'yaml', '.toml': 'ini', '.ini': 'ini', '.env': 'bash', '.lock': 'yaml',
   '.ts': 'typescript', '.tsx': 'typescript', '.js': 'javascript', '.jsx': 'javascript',
   '.mjs': 'javascript', '.cjs': 'javascript',
   '.py': 'python', '.go': 'go', '.rs': 'rust', '.java': 'java', '.kt': 'kotlin', '.swift': 'swift',
   '.c': 'c', '.h': 'c', '.cpp': 'cpp', '.hpp': 'cpp', '.cs': 'csharp',
-  '.sh': 'shell', '.bash': 'shell', '.zsh': 'shell',
+  '.sh': 'shell', '.bash': 'shell', '.zsh': 'shell', '.fish': 'shell',
   '.css': 'css', '.scss': 'scss', '.less': 'less',
   '.sql': 'sql', '.rb': 'ruby', '.php': 'php',
+  '.diff': 'diff', '.patch': 'diff',
   '.txt': 'plaintext', '.log': 'plaintext', '.csv': 'plaintext',
+}
+
+/** 高亮库语言名映射（处理 highlight.js 与 Monaco 的命名差异） */
+const HLJS_LANG_OVERRIDES: Record<string, string> = {
+  shell: 'bash',
+  html: 'xml',
+  plaintext: 'plaintext',
 }
 
 /** 是否为可编辑文本类型 */
@@ -73,9 +109,17 @@ function isEditableType(previewType: string): boolean {
   return previewType === 'markdown' || previewType === 'code'
 }
 
-/** 获取 Monaco 语言 ID */
-function getMonacoLanguage(ext: string): string {
-  return MONACO_LANG_MAP[ext] || 'plaintext'
+/** 通用语言 ID（用于 Monaco） */
+function detectLanguage(filePath: string, ext: string): string {
+  const base = basename(filePath).toLowerCase()
+  if (SPECIAL_FILENAME_LANG[base]) return SPECIAL_FILENAME_LANG[base]
+  return EXT_LANG_MAP[ext] || 'plaintext'
+}
+
+/** highlight.js 用的语言 ID（处理与 Monaco 的差异） */
+function detectHljsLanguage(filePath: string, ext: string): string {
+  const lang = detectLanguage(filePath, ext)
+  return HLJS_LANG_OVERRIDES[lang] || lang
 }
 
 /** 预览窗口运行时状态 */
@@ -179,13 +223,15 @@ const PDF_EXTENSIONS = new Set(['.pdf'])
 const DOCX_EXTENSIONS = new Set(['.docx'])
 
 /** 获取预览类型 */
-function getPreviewType(ext: string): 'image' | 'video' | 'markdown' | 'code' | 'pdf' | 'docx' | 'unsupported' {
+function getPreviewType(filePath: string, ext: string): 'image' | 'video' | 'markdown' | 'code' | 'pdf' | 'docx' | 'unsupported' {
   if (IMAGE_EXTENSIONS.has(ext)) return 'image'
   if (VIDEO_EXTENSIONS.has(ext)) return 'video'
   if (MARKDOWN_EXTENSIONS.has(ext)) return 'markdown'
   if (CODE_EXTENSIONS.has(ext)) return 'code'
   if (PDF_EXTENSIONS.has(ext)) return 'pdf'
   if (DOCX_EXTENSIONS.has(ext)) return 'docx'
+  // 无扩展名 / 不识别 → 检查特殊文件名（.gitignore、Dockerfile、bun.lock 等）
+  if (SPECIAL_FILENAME_LANG[basename(filePath).toLowerCase()]) return 'code'
   return 'unsupported'
 }
 
@@ -918,20 +964,7 @@ function markdownPreviewHtml(filePath: string, filename: string, textContent: st
 
 /** 生成代码/文本预览 HTML（支持编辑） */
 function codePreviewHtml(filePath: string, filename: string, textContent: string, ext: string): string {
-  const langMap: Record<string, string> = {
-    '.json': 'json', '.xml': 'xml', '.html': 'xml', '.htm': 'xml',
-    '.yaml': 'yaml', '.yml': 'yaml', '.toml': 'ini', '.ini': 'ini', '.env': 'bash',
-    '.ts': 'typescript', '.tsx': 'typescript',
-    '.js': 'javascript', '.jsx': 'javascript', '.mjs': 'javascript', '.cjs': 'javascript',
-    '.py': 'python', '.go': 'go', '.rs': 'rust',
-    '.java': 'java', '.kt': 'kotlin', '.swift': 'swift',
-    '.c': 'c', '.h': 'c', '.cpp': 'cpp', '.hpp': 'cpp', '.cs': 'csharp',
-    '.sh': 'bash', '.bash': 'bash', '.zsh': 'bash',
-    '.css': 'css', '.scss': 'scss', '.less': 'less',
-    '.sql': 'sql', '.rb': 'ruby', '.php': 'php',
-    '.txt': 'plaintext', '.log': 'plaintext', '.csv': 'plaintext',
-  }
-  const lang = langMap[ext] || 'plaintext'
+  const lang = detectHljsLanguage(filePath, ext)
   const isDark = nativeTheme.shouldUseDarkColors
 
   return `<!DOCTYPE html>
@@ -1270,7 +1303,7 @@ export function openFilePreview(filePath: string): void {
   const safePath = resolve(filePath)
   const filename = basename(safePath)
   const ext = extname(safePath).toLowerCase()
-  const previewType = getPreviewType(ext)
+  const previewType = getPreviewType(safePath, ext)
 
   // 不支持的类型，直接用系统默认应用打开
   if (previewType === 'unsupported') {
@@ -1316,7 +1349,7 @@ export function openFilePreview(filePath: string): void {
     filePath: safePath,
     filename,
     type: previewType,
-    language: getMonacoLanguage(ext),
+    language: detectLanguage(safePath, ext),
     initialContent,
     isDirty: false,
     selfWriteAt: 0,
