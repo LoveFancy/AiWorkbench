@@ -623,7 +623,7 @@ function FileTreeItem({
         {recentlyModifiedSet.has(entry.path) && (
           <span
             aria-label="最近被 Agent 修改"
-            className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r bg-primary/70"
+            className="absolute left-1 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-primary/80"
           />
         )}
         {/* 展开/收起图标 */}
