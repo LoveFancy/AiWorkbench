@@ -101,7 +101,7 @@ export function TabBarItem({
 
   return (
     <div
-      className="relative flex-1 min-w-[48px] max-w-[200px]"
+      className="relative flex-1 min-w-[48px] max-w-[200px] titlebar-no-drag"
       onMouseEnter={onHoverEnter}
       onMouseLeave={onHoverLeave}
     >
@@ -214,7 +214,7 @@ function TabPreviewDropdown({
 
   return createPortal(
     <div
-      className="fixed z-[9999] pt-1"
+      className="fixed z-[9999] pt-1 titlebar-no-drag"
       style={{ top: pos.top, left: pos.left }}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
