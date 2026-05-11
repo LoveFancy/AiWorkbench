@@ -25,7 +25,7 @@ jobs:
 
       - name: Build Windows installer
         working-directory: apps/electron
-        run: bun run dist:win
+        run: bun run dist:win -- --publish never
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
