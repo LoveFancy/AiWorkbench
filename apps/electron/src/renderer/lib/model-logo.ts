@@ -237,6 +237,8 @@ const PROVIDER_LOGO_MAP: Record<ProviderType, string> = {
   'kimi-coding': KimiLogo,
   zhipu: ZhipuLogo,
   minimax: MiniMaxLogo,
+  'huatai-anthropic': DefaultLogo,
+  'huatai-openai': DefaultLogo,
   doubao: DoubaoLogo,
   qwen: QwenLogo,
   custom: DefaultLogo,

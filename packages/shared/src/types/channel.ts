@@ -17,6 +17,8 @@ export type ProviderType =
   | 'kimi-coding'
   | 'zhipu'
   | 'minimax'
+  | 'huatai-anthropic'
+  | 'huatai-openai'
   | 'doubao'
   | 'qwen'
   | 'custom'
@@ -33,6 +35,8 @@ export const PROVIDER_DEFAULT_URLS: Record<ProviderType, string> = {
   'kimi-coding': 'https://api.kimi.com/coding/v1',
   zhipu: 'https://open.bigmodel.cn/api/paas/v4',
   minimax: 'https://api.minimaxi.com/anthropic',
+  'huatai-anthropic': 'http://168.63.65.40:8090/llm-service',
+  'huatai-openai': 'http://168.63.65.40:8090/llm-service/v1',
   doubao: 'https://ark.cn-beijing.volces.com/api/v3',
   qwen: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
   custom: '',
@@ -50,6 +54,8 @@ export const PROVIDER_LABELS: Record<ProviderType, string> = {
   'kimi-coding': 'Kimi Coding Plan',
   zhipu: '智谱 AI',
   minimax: 'MiniMax (API&编程包)',
+  'huatai-anthropic': '华泰（Anthropic 格式）',
+  'huatai-openai': '华泰（OpenAI 格式）',
   doubao: '豆包',
   qwen: '通义千问',
   custom: 'OpenAI 兼容格式',
@@ -67,6 +73,7 @@ export const AGENT_COMPATIBLE_PROVIDERS: ReadonlySet<ProviderType> = new Set<Pro
   'kimi-api',
   'kimi-coding',
   'minimax',
+  'huatai-anthropic',
 ])
 
 /**

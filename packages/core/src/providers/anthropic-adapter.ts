@@ -266,6 +266,10 @@ export class AnthropicAdapter implements ProviderAdapter {
     if (this.providerType === 'minimax') {
       return normalizeVersionedAnthropicBaseUrl(baseUrl)
     }
+    // 华泰：按 Claude Code/CC Switch 的 Anthropic Base URL 语义配置，SDK/Chat 请求走 /v1/messages。
+    if (this.providerType === 'huatai-anthropic') {
+      return normalizeAnthropicBaseUrl(baseUrl)
+    }
     // DeepSeek / Kimi：baseUrl 本身已含非版本路径（如 /anthropic、/coding/v1），不追加 /v1
     if (
       this.providerType === 'deepseek' ||

@@ -70,7 +70,7 @@ interface ChannelFormProps {
 }
 
 /** 所有可选供应商 */
-const PROVIDER_OPTIONS: ProviderType[] = ['anthropic', 'openai', 'deepseek', 'google', 'kimi-api', 'kimi-coding', 'zhipu', 'minimax', 'doubao', 'qwen', 'custom']
+const PROVIDER_OPTIONS: ProviderType[] = ['anthropic', 'openai', 'huatai-anthropic', 'huatai-openai', 'deepseek', 'google', 'kimi-api', 'kimi-coding', 'zhipu', 'minimax', 'doubao', 'qwen', 'custom']
 
 /** 供应商选项（用于 SettingsSelect） */
 const PROVIDER_SELECT_OPTIONS = PROVIDER_OPTIONS.map((p) => ({
@@ -88,6 +88,8 @@ const PROVIDER_CHAT_PATHS: Record<ProviderType, string> = {
   'kimi-coding': '/messages',
   zhipu: '/chat/completions',
   minimax: '/v1/messages',
+  'huatai-anthropic': '/v1/messages',
+  'huatai-openai': '/chat/completions',
   doubao: '/chat/completions',
   qwen: '/chat/completions',
   custom: '/chat/completions',
@@ -101,7 +103,7 @@ const PROVIDER_CHAT_PATHS: Record<ProviderType, string> = {
 function buildPreviewUrl(baseUrl: string, provider: ProviderType): string {
   let trimmed = baseUrl.trim().replace(/\/+$/, '')
 
-  if (provider === 'anthropic' || provider === 'deepseek' || provider === 'kimi-api' || provider === 'kimi-coding' || provider === 'minimax') {
+  if (provider === 'anthropic' || provider === 'huatai-anthropic' || provider === 'deepseek' || provider === 'kimi-api' || provider === 'kimi-coding' || provider === 'minimax') {
     // 去除用户误填的 /messages 后缀，与 normalizeAnthropicBaseUrl 保持一致
     trimmed = trimmed.replace(/\/messages$/, '')
     // MiniMax 的 Anthropic 协议根路径为 /anthropic，实际 API 位于 /v1/messages
@@ -280,6 +282,16 @@ export function ChannelForm({ channel, onSaved, onAgentEligibilityChange, onCanc
       } else if (p === 'minimax') {
         setModels([
           { id: 'MiniMax-M2.7', name: 'MiniMax-M2.7', enabled: true },
+        ])
+      } else if (p === 'huatai-anthropic') {
+        setModels([
+          { id: 'saas-kimi-k25', name: 'saas-kimi-k25', enabled: true },
+        ])
+      } else if (p === 'huatai-openai') {
+        setModels([
+          { id: 'local-deepseek-v32', name: 'local-deepseek-v32', enabled: true },
+          { id: 'saas-kimi-k25', name: 'saas-kimi-k25', enabled: true },
+          { id: 'saas-doubao-seed-20-pro', name: 'saas-doubao-seed-20-pro', enabled: true },
         ])
       }
     }
