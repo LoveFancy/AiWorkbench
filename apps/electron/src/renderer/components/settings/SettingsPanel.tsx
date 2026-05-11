@@ -108,6 +108,14 @@ const TAIL_TABS: TabItem[] = [
   { id: "about", label: "关于/更新", icon: <Info size={16} /> },
 ];
 
+const HIDDEN_SETTINGS_TABS = new Set<SettingsTab>([
+  "prompts",
+  "bots",
+  "tutorial",
+  "appearance",
+  "about",
+]);
+
 /** 根据标签页 id 渲染对应内容 */
 function renderTabContent(tab: SettingsTab): React.ReactElement {
   switch (tab) {
@@ -204,28 +212,35 @@ export function SettingsPanel({
 
   // Agent 模式时在渠道后插入 Agent Tab，工具 tab 两种模式都显示
   const tabs = React.useMemo(() => {
-    if (appMode === "agent") {
-      return [
-        ...BASE_TABS,
-        AGENT_TAB,
-        TOOLS_TAB,
-        VOICE_INPUT_TAB,
-        BOTS_TAB,
-        TUTORIAL_TAB,
-        SHORTCUTS_TAB,
-        ...TAIL_TABS,
-      ];
-    }
-    return [
-      ...BASE_TABS,
-      TOOLS_TAB,
-      VOICE_INPUT_TAB,
-      BOTS_TAB,
-      TUTORIAL_TAB,
-      SHORTCUTS_TAB,
-      ...TAIL_TABS,
-    ];
+    const allTabs = appMode === "agent"
+      ? [
+          ...BASE_TABS,
+          AGENT_TAB,
+          TOOLS_TAB,
+          VOICE_INPUT_TAB,
+          BOTS_TAB,
+          TUTORIAL_TAB,
+          SHORTCUTS_TAB,
+          ...TAIL_TABS,
+        ]
+      : [
+          ...BASE_TABS,
+          TOOLS_TAB,
+          VOICE_INPUT_TAB,
+          BOTS_TAB,
+          TUTORIAL_TAB,
+          SHORTCUTS_TAB,
+          ...TAIL_TABS,
+        ];
+
+    return allTabs.filter((tab) => !HIDDEN_SETTINGS_TABS.has(tab.id));
   }, [appMode]);
+
+  React.useEffect(() => {
+    if (!tabs.some((tab) => tab.id === activeTab)) {
+      setActiveTab("channels");
+    }
+  }, [activeTab, setActiveTab, tabs]);
 
   // 当前 tab 标题
   const activeTabLabel = tabs.find((t) => t.id === activeTab)?.label ?? "设置";
