@@ -1,7 +1,7 @@
 /**
  * 文本输出服务
  *
- * 语音输入完成后优先写入 Proma 输入框，否则尝试写入当前光标位置。
+ * 语音输入完成后优先写入 HtAiDevAssist 输入框，否则尝试写入当前光标位置。
  */
 
 import { BrowserWindow, clipboard } from 'electron'
@@ -40,7 +40,7 @@ export async function commitVoiceDictationText(
 
   if (shouldWriteProma && mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(VOICE_DICTATION_IPC_CHANNELS.INSERT_TEXT, { text: trimmed })
-    return { mode: 'proma-input', success: true, message: '已写入 Proma 输入框' }
+    return { mode: 'proma-input', success: true, message: '已写入 HtAiDevAssist 输入框' }
   }
 
   if (settings.outputMode === 'auto') {

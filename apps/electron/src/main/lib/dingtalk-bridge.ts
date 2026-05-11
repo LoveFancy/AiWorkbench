@@ -410,7 +410,7 @@ class DingTalkBridge {
 
     const binding = this.commandHandler.ensureBinding(chatId)
     if (!binding) {
-      await this.replyTextViaWebhook(data.sessionWebhook, '请先在 Proma 设置中选择 Agent 渠道。')
+      await this.replyTextViaWebhook(data.sessionWebhook, '请先在 HtAiDevAssist 设置中选择 Agent 渠道。')
       return
     }
     const workspace = getAgentWorkspace(binding.workspaceId)

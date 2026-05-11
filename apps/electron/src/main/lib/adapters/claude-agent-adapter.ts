@@ -187,7 +187,7 @@ export interface ClaudeAgentQueryOptions extends AgentQueryInput {
 const FRIENDLY_ERROR_MESSAGES: Array<{ pattern: RegExp; message: string }> = [
   {
     pattern: /not logged in|please run \/login/i,
-    message: '请检查是否选择了正确的 Proma 供应渠道和模型',
+    message: '请检查是否选择了正确的 HtAiDevAssist 供应渠道和模型',
   },
 ]
 

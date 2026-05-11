@@ -2798,7 +2798,7 @@ export function registerIpcHandlers(): void {
     const result = await dialog.showOpenDialog({
       title: '选择迁移文件',
       filters: [
-        { name: 'Proma 迁移文件', extensions: ['proma-backup', 'proma-share'] },
+        { name: 'HtAiDevAssist 迁移文件', extensions: ['proma-backup', 'proma-share'] },
         { name: '所有文件', extensions: ['*'] },
       ],
       properties: ['openFile'],
@@ -2814,7 +2814,7 @@ export function registerIpcHandlers(): void {
       title: '保存迁移文件',
       defaultPath: defaultName,
       filters: [
-        { name: mode === 'personal' ? 'Proma 个人备份' : 'Proma 分享包', extensions: [ext] },
+        { name: mode === 'personal' ? 'HtAiDevAssist 个人备份' : 'HtAiDevAssist 分享包', extensions: [ext] },
       ],
     })
     return result.canceled ? null : result.filePath

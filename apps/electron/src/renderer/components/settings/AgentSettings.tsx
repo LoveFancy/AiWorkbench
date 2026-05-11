@@ -455,7 +455,7 @@ ${skillList}
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom" className="max-w-xs text-xs">
-                    Proma Agent 内置 Skills Finder，你可以在 Agent 模式下要求 Proma 帮你联网查找某类 Skills 并安装到当前的工作区使用；也可以跟 Proma Agent 一起探讨，利用 Proma Agent 内置的 Skills Creator 来一起创建高质量可复用的 Skills 到当前的工作区
+                    HtAiDevAssist Agent 内置 Skills Finder，你可以在 Agent 模式下要求 HtAiDevAssist 帮你联网查找某类 Skills 并安装到当前的工作区使用；也可以跟 HtAiDevAssist Agent 一起探讨，利用 HtAiDevAssist Agent 内置的 Skills Creator 来一起创建高质量可复用的 Skills 到当前的工作区
                   </TooltipContent>
                 </Tooltip>
                 <Button size="sm" variant="outline" onClick={() => setShowImportDialog(true)}>
@@ -528,7 +528,7 @@ ${skillList}
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom" className="max-w-xs text-xs">
-                    Proma Agent 可以帮助你联网查找公开的 MCP 并配置到当前工作区，你可以在 Agent 模式下用自然语言表达你想要的 MCP 并要求安装到当前工作区即可；也可以跟 Proma Agent 一起探讨创建你的专属 MCP 到当前工作区
+                    HtAiDevAssist Agent 可以帮助你联网查找公开的 MCP 并配置到当前工作区，你可以在 Agent 模式下用自然语言表达你想要的 MCP 并要求安装到当前工作区即可；也可以跟 HtAiDevAssist Agent 一起探讨创建你的专属 MCP 到当前工作区
                   </TooltipContent>
                 </Tooltip>
                 <Button size="sm" variant="outline" onClick={() => { setActiveTab('mcp'); setViewMode('create') }}>

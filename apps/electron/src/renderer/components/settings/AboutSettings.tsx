@@ -416,7 +416,7 @@ function ShellEnvironmentCard(): React.ReactElement | null {
 export function AboutSettings(): React.ReactElement {
   return (
     <SettingsSection
-      title="关于 Proma"
+      title="关于 HtAiDevAssist"
       description="集成通用 AI Agent 的下一代人工智能软件"
     >
       <SettingsCard>
@@ -439,7 +439,7 @@ export function AboutSettings(): React.ReactElement {
             rel="noopener noreferrer"
             className="text-sm text-primary hover:underline"
           >
-            github.com/ErlichLiu/Proma
+            Proma 官方仓库
           </a>
         </SettingsRow>
       </SettingsCard>

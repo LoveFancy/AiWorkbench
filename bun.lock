@@ -20,7 +20,7 @@
     },
     "apps/electron": {
       "name": "@proma/electron",
-      "version": "0.9.21",
+      "version": "0.9.26",
       "dependencies": {
         "@anthropic-ai/claude-agent-sdk": "0.2.129",
         "adm-zip": "^0.5.17",
@@ -113,7 +113,7 @@
     },
     "packages/core": {
       "name": "@proma/core",
-      "version": "0.2.9",
+      "version": "0.2.10",
       "dependencies": {
         "@proma/shared": "workspace:*",
         "shiki": "^3.22.0",
@@ -130,7 +130,7 @@
     },
     "packages/shared": {
       "name": "@proma/shared",
-      "version": "0.1.19",
+      "version": "0.1.20",
       "devDependencies": {
         "typescript": "^5.0.0",
       },
