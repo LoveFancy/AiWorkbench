@@ -27,8 +27,17 @@ jobs:
         working-directory: apps/electron
         run: bun run dist:win -- msi --x64 --publish never
 
+      - name: Rename MSI artifact
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem -Path apps/electron/out -Filter '*.msi' | Select-Object -First 1
+          if (-not $msi) {
+            throw '未找到 MSI 构建产物'
+          }
+          Move-Item -Path $msi.FullName -Destination 'apps/electron/out/HtAiDevAssist.msi' -Force
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: HtDevAssist-windows
-          path: apps/electron/out/**
+          name: HtAiDevAssist-windows-msi
+          path: apps/electron/out/HtAiDevAssist.msi
