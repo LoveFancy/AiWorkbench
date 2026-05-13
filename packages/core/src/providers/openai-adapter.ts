@@ -20,7 +20,7 @@ import type {
   ToolDefinition,
   ContinuationMessage,
 } from './types.ts'
-import { normalizeBaseUrl } from './url-utils.ts'
+import { resolveOpenAIChatCompletionsUrl } from './url-utils.ts'
 
 // ===== OpenAI 特有类型 =====
 
@@ -188,7 +188,6 @@ export class OpenAIAdapter implements ProviderAdapter {
   readonly providerType = 'openai' as const
 
   buildStreamRequest(input: StreamRequestInput): ProviderRequest {
-    const url = normalizeBaseUrl(input.baseUrl)
     const messages = toOpenAIMessages(input)
 
     const bodyObj: Record<string, unknown> = {
@@ -208,7 +207,7 @@ export class OpenAIAdapter implements ProviderAdapter {
     }
 
     return {
-      url: `${url}/chat/completions`,
+      url: resolveOpenAIChatCompletionsUrl(input.baseUrl),
       headers: {
         'Authorization': `Bearer ${input.apiKey}`,
         'content-type': 'application/json',
@@ -267,10 +266,8 @@ export class OpenAIAdapter implements ProviderAdapter {
   }
 
   buildTitleRequest(input: TitleRequestInput): ProviderRequest {
-    const url = normalizeBaseUrl(input.baseUrl)
-
     return {
-      url: `${url}/chat/completions`,
+      url: resolveOpenAIChatCompletionsUrl(input.baseUrl),
       headers: {
         'Authorization': `Bearer ${input.apiKey}`,
         'content-type': 'application/json',

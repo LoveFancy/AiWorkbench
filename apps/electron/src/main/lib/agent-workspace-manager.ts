@@ -316,11 +316,20 @@ export function upgradeDefaultSkillsInWorkspaces(): void {
     ]
 
     for (const dir of dirs) {
-      if (!existsSync(dir)) continue
+      const isActiveDir = dir === dirs[0]
+      if (!existsSync(dir)) {
+        if (!isActiveDir) continue
+        mkdirSync(dir, { recursive: true })
+      }
 
       for (const [slug, info] of defaultSkills) {
         const targetPath = join(dir, slug)
-        if (!existsSync(targetPath)) continue
+        if (!existsSync(targetPath)) {
+          if (!isActiveDir) continue
+          cpSync(info.sourcePath, targetPath, { recursive: true })
+          console.log(`[Agent 工作区] 已补充默认 Skill: ${workspace.slug}/${slug}`)
+          continue
+        }
 
         const currentVer = parseSkillVersion(targetPath)
         if (compareSemver(info.version, currentVer) > 0) {

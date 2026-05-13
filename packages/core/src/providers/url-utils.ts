@@ -82,3 +82,31 @@ export function normalizeAnthropicBaseUrlForSdk(baseUrl: string): string {
 export function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.trim().replace(/\/+$/, '')
 }
+
+/**
+ * 解析 OpenAI 兼容 Chat Completions 调用地址。
+ *
+ * 兼容两种配置方式：
+ * - base URL: https://api.example.com/v1
+ * - 完整调用地址: https://api.example.com/v1/chat/completions
+ */
+export function resolveOpenAIChatCompletionsUrl(baseUrl: string): string {
+  const url = normalizeBaseUrl(baseUrl)
+  if (url.endsWith('/chat/completions')) {
+    return url
+  }
+  return `${url}/chat/completions`
+}
+
+/**
+ * 解析 OpenAI 兼容模型列表地址。
+ *
+ * 当用户配置的是完整 Chat Completions 地址时，模型列表地址回退到同级 /models。
+ */
+export function resolveOpenAIModelsUrl(baseUrl: string): string {
+  const url = normalizeBaseUrl(baseUrl)
+  if (url.endsWith('/chat/completions')) {
+    return `${url.slice(0, -'/chat/completions'.length)}/models`
+  }
+  return `${url}/models`
+}

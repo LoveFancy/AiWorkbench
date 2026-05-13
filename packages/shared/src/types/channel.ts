@@ -35,11 +35,38 @@ export const PROVIDER_DEFAULT_URLS: Record<ProviderType, string> = {
   'kimi-coding': 'https://api.kimi.com/coding/v1',
   zhipu: 'https://open.bigmodel.cn/api/paas/v4',
   minimax: 'https://api.minimaxi.com/anthropic',
-  'huatai-anthropic': 'http://168.63.65.40:8090/llm-service',
-  'huatai-openai': 'http://168.63.65.40:8090/llm-service/v1',
+  'huatai-anthropic': 'http://168.63.65.40:8090/llm-service/v1/messages',
+  'huatai-openai': 'http://168.63.65.40:8090/llm-service/v1/chat/completions',
   doubao: 'https://ark.cn-beijing.volces.com/api/v3',
   qwen: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
   custom: '',
+}
+
+/**
+ * 各供应商的默认模型列表
+ */
+export const PROVIDER_DEFAULT_MODELS: Partial<Record<ProviderType, ChannelModel[]>> = {
+  deepseek: [
+    { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro', enabled: true },
+    { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', enabled: true },
+  ],
+  'kimi-api': [
+    { id: 'kimi-k2.6', name: 'Kimi K2.6', enabled: true },
+  ],
+  'kimi-coding': [
+    { id: 'kimi-for-coding', name: 'Kimi for Coding', enabled: true },
+  ],
+  minimax: [
+    { id: 'MiniMax-M2.7', name: 'MiniMax-M2.7', enabled: true },
+  ],
+  'huatai-anthropic': [
+    { id: 'local-glm-47-flash', name: 'local-glm-47-flash', enabled: true },
+  ],
+  'huatai-openai': [
+    { id: 'local-deepseek-v32', name: 'local-deepseek-v32', enabled: true },
+    { id: 'saas-kimi-k25', name: 'saas-kimi-k25', enabled: true },
+    { id: 'saas-doubao-seed-20-pro', name: 'saas-doubao-seed-20-pro', enabled: true },
+  ],
 }
 
 /**

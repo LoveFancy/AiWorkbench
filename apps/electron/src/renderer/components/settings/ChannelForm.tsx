@@ -30,6 +30,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
+  PROVIDER_DEFAULT_MODELS,
   PROVIDER_DEFAULT_URLS,
   PROVIDER_LABELS,
   isAgentCompatibleProvider,
@@ -266,33 +267,9 @@ export function ChannelForm({ channel, onSaved, onAgentEligibilityChange, onCanc
     setTestResult(null)
     // 预设模型：首次切换到对应 provider 且无模型时自动填充
     if (models.length === 0) {
-      if (p === 'deepseek') {
-        setModels([
-          { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro', enabled: true },
-          { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', enabled: true },
-        ])
-      } else if (p === 'kimi-api') {
-        setModels([
-          { id: 'kimi-k2.6', name: 'Kimi K2.6', enabled: true },
-        ])
-      } else if (p === 'kimi-coding') {
-        setModels([
-          { id: 'kimi-for-coding', name: 'Kimi for Coding', enabled: true },
-        ])
-      } else if (p === 'minimax') {
-        setModels([
-          { id: 'MiniMax-M2.7', name: 'MiniMax-M2.7', enabled: true },
-        ])
-      } else if (p === 'huatai-anthropic') {
-        setModels([
-          { id: 'saas-kimi-k25', name: 'saas-kimi-k25', enabled: true },
-        ])
-      } else if (p === 'huatai-openai') {
-        setModels([
-          { id: 'local-deepseek-v32', name: 'local-deepseek-v32', enabled: true },
-          { id: 'saas-kimi-k25', name: 'saas-kimi-k25', enabled: true },
-          { id: 'saas-doubao-seed-20-pro', name: 'saas-doubao-seed-20-pro', enabled: true },
-        ])
+      const defaultModels = PROVIDER_DEFAULT_MODELS[p]
+      if (defaultModels) {
+        setModels(defaultModels.map((model) => ({ ...model })))
       }
     }
   }

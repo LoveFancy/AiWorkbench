@@ -24,7 +24,12 @@ import type {
 import { PROVIDER_DEFAULT_URLS } from '@proma/shared'
 import { getFetchFn } from './proxy-fetch'
 import { getEffectiveProxyUrl } from './proxy-settings-service'
-import { normalizeAnthropicBaseUrl, normalizeBaseUrl, normalizeVersionedAnthropicBaseUrl } from '@proma/core'
+import {
+  normalizeAnthropicBaseUrl,
+  normalizeBaseUrl,
+  normalizeVersionedAnthropicBaseUrl,
+  resolveOpenAIModelsUrl,
+} from '@proma/core'
 
 /** 当前配置版本 */
 const CONFIG_VERSION = 1
@@ -372,10 +377,9 @@ async function testAnthropicCompatible(
  * 测试 OpenAI 兼容 API 连接（OpenAI / Custom）
  */
 async function testOpenAICompatible(baseUrl: string, apiKey: string, proxyUrl?: string): Promise<ChannelTestResult> {
-  const url = normalizeBaseUrl(baseUrl)
   const fetchFn = getFetchFn(proxyUrl)
 
-  const response = await fetchFn(`${url}/models`, {
+  const response = await fetchFn(resolveOpenAIModelsUrl(baseUrl), {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -582,10 +586,9 @@ interface OpenAIModelItem {
  * 通用 OpenAI 兼容格式，适用于大部分第三方供应商。
  */
 async function fetchOpenAICompatibleModels(baseUrl: string, apiKey: string, proxyUrl?: string): Promise<FetchModelsResult> {
-  const url = normalizeBaseUrl(baseUrl)
   const fetchFn = getFetchFn(proxyUrl)
 
-  const response = await fetchFn(`${url}/models`, {
+  const response = await fetchFn(resolveOpenAIModelsUrl(baseUrl), {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${apiKey}`,
