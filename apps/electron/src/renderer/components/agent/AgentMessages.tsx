@@ -38,6 +38,42 @@ import { groupIntoTurns, MessageGroupRenderer, getGroupId, getGroupPreview, extr
 import type { AgentEventUsage, RetryAttempt, SDKMessage } from '@proma/shared'
 import type { AgentStreamState } from '@/atoms/agent-atoms'
 
+function stableStringify(value: unknown): string {
+  if (value == null || typeof value !== 'object') return JSON.stringify(value) ?? String(value)
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
+  const record = value as Record<string, unknown>
+  return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`).join(',')}}`
+}
+
+function getSDKMessageStableKey(message: SDKMessage): string {
+  const record = message as Record<string, unknown>
+  if (typeof record.uuid === 'string' && record.uuid.length > 0) {
+    return `${message.type}:uuid:${record.uuid}`
+  }
+
+  const parentToolUseId = typeof record.parent_tool_use_id === 'string'
+    ? record.parent_tool_use_id
+    : ''
+  const sessionId = typeof record.session_id === 'string' ? record.session_id : ''
+
+  if (message.type === 'result') {
+    const result = record as { subtype?: unknown; terminal_reason?: unknown; result?: unknown }
+    return `result:${sessionId}:${String(result.subtype ?? '')}:${String(result.terminal_reason ?? '')}:${String(result.result ?? '')}`
+  }
+
+  if (message.type === 'system') {
+    const sys = record as { subtype?: unknown; task_id?: unknown; tool_use_id?: unknown }
+    return `system:${sessionId}:${String(sys.subtype ?? '')}:${String(sys.task_id ?? '')}:${String(sys.tool_use_id ?? '')}:${stableStringify(record)}`
+  }
+
+  if ('message' in record) {
+    const inner = record.message as { content?: unknown } | undefined
+    return `${message.type}:${sessionId}:${parentToolUseId}:${stableStringify(inner?.content)}`
+  }
+
+  return `${message.type}:${sessionId}:${parentToolUseId}:${stableStringify(record)}`
+}
+
 /** AgentMessages 属性接口 */
 interface AgentMessagesProps {
   sessionId: string
@@ -351,12 +387,15 @@ export function AgentMessages({ sessionId, sessionModelId, messagesLoaded, persi
   const channels = useAtomValue(channelsAtom)
   /** 淡入控制：切换会话时先隐藏，等布局完成后再显示。 */
   const [ready, setReady] = React.useState(false)
+  // 空会话无需淡入过渡（无消息则无滚动位置问题）
+  const [skipFadeIn, setSkipFadeIn] = React.useState(false)
   const prevSessionIdRef = React.useRef<string | null>(null)
 
   React.useEffect(() => {
     if (sessionId !== prevSessionIdRef.current) {
       prevSessionIdRef.current = sessionId
       setReady(false)
+      setSkipFadeIn(false)
     }
   }, [sessionId])
 
@@ -373,6 +412,7 @@ export function AgentMessages({ sessionId, sessionModelId, messagesLoaded, persi
     }
 
     if ((!persistedSDKMessages || persistedSDKMessages.length === 0) && !streaming) {
+      setSkipFadeIn(true)
       setReady(true)
       return
     }
@@ -436,9 +476,42 @@ export function AgentMessages({ sessionId, sessionModelId, messagesLoaded, persi
   const allSDKMessages = React.useMemo(() => {
     const persisted = persistedSDKMessages ?? []
     const live = liveMessages ?? []
-    const liveSet = new Set(live)
-    return [...persisted.filter(m => !liveSet.has(m)), ...live]
-  }, [persistedSDKMessages, liveMessages])
+    const stampStableKey = (message: SDKMessage): SDKMessage => {
+      const key = getSDKMessageStableKey(message)
+      ;(message as Record<string, unknown>)._promaStableKey = key
+      return message
+    }
+    const keyOf = (message: SDKMessage): string =>
+      (message as Record<string, unknown>)._promaStableKey as string
+
+    const persistedWithKeys = persisted.map(stampStableKey)
+    const liveWithKeys = live.map(stampStableKey)
+    if (streaming || liveWithKeys.length === 0 || persistedWithKeys.length === 0) {
+      return [...persistedWithKeys, ...liveWithKeys]
+    }
+
+    // 流式结束后的刷新中，持久化消息尾部可能已经包含 live 序列。
+    // 只替换有序尾部重叠，避免按内容全局去重误删历史中的相同问答。
+    let overlap = Math.min(persistedWithKeys.length, liveWithKeys.length)
+    for (; overlap > 0; overlap--) {
+      const persistedStart = persistedWithKeys.length - overlap
+      const liveStart = liveWithKeys.length - overlap
+      let matches = true
+      for (let i = 0; i < overlap; i++) {
+        if (keyOf(persistedWithKeys[persistedStart + i]!) !== keyOf(liveWithKeys[liveStart + i]!)) {
+          matches = false
+          break
+        }
+      }
+      if (matches) break
+    }
+
+    if (overlap === 0) return [...persistedWithKeys, ...liveWithKeys]
+    return [
+      ...persistedWithKeys.slice(0, persistedWithKeys.length - overlap),
+      ...liveWithKeys,
+    ]
+  }, [persistedSDKMessages, liveMessages, streaming])
   const hasContent = allSDKMessages.length > 0
 
   // 压缩流程进行中（含收尾窗口：compact_boundary 已到但 result 未到）
@@ -516,7 +589,7 @@ export function AgentMessages({ sessionId, sessionModelId, messagesLoaded, persi
 
   return (
     <BasePathsProvider basePaths={attachedDirs}>
-    <Conversation resize={ready && !transitioning ? 'smooth' : 'instant'} className={ready ? 'opacity-100 transition-opacity duration-200' : 'opacity-0'}>
+    <Conversation resize={ready && !transitioning ? 'smooth' : 'instant'} className={ready ? (skipFadeIn ? 'opacity-100' : 'opacity-100 transition-opacity duration-200') : 'opacity-0'}>
       <ScrollPositionManager id={sessionId} ready={ready} />
       <ConversationContent>
         {!hasContent && !streaming ? (
@@ -526,6 +599,9 @@ export function AgentMessages({ sessionId, sessionModelId, messagesLoaded, persi
             {/* 统一消息渲染（持久化 + 实时合并为一个列表，确保 system 消息位置正确） */}
             {allGroups.map((group, idx) => {
               const isLive = liveGroupSet.has(group)
+              const isErrorGroup = group.type === 'assistant-turn'
+                && group.assistantMessages.some((m) => !!m.error)
+              const shouldDisableActions = isLive && !isErrorGroup
               // 仅在最后一个 assistant-turn 上显示"已被用户中断" badge
               const isLastAssistantTurn = !streaming && stoppedByUser
                 && group.type === 'assistant-turn'
@@ -536,11 +612,11 @@ export function AgentMessages({ sessionId, sessionModelId, messagesLoaded, persi
                   group={group}
                   allMessages={allSDKMessages}
                   basePath={sessionPath || undefined}
-                  onFork={isLive ? undefined : onFork}
-                  onRewind={isLive ? undefined : onRewind}
-                  onRetry={isLive ? undefined : onRetry}
-                  onRetryInNewSession={isLive ? undefined : onRetryInNewSession}
-                  onCompact={isLive ? undefined : onCompact}
+                  onFork={shouldDisableActions ? undefined : onFork}
+                  onRewind={shouldDisableActions ? undefined : onRewind}
+                  onRetry={shouldDisableActions ? undefined : onRetry}
+                  onRetryInNewSession={shouldDisableActions ? undefined : onRetryInNewSession}
+                  onCompact={shouldDisableActions ? undefined : onCompact}
                   isStreaming={isLive || undefined}
                   stoppedByUser={isLastAssistantTurn || undefined}
                   sessionModelId={sessionModelId}

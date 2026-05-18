@@ -5,7 +5,7 @@
  *
  * 功能：
  * - StarterKit + Placeholder + Underline + Link + CodeBlockLowlight
- * - 可选 Mention 扩展（@ 引用文件、/ 触发 Skill、# 触发 MCP）
+ * - 可选 Mention 扩展（@ 引用文件、/ 触发 Skill、# 触发 MCP、& 引用会话）
  * - htmlToMarkdown 转换
  * - IME composition 处理
  * - Enter 提交 / Shift+Enter 换行
@@ -21,117 +21,16 @@ import Underline from '@tiptap/extension-underline'
 import Link from '@tiptap/extension-link'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import Mention from '@tiptap/extension-mention'
-import { common, createLowlight } from 'lowlight'
 import { ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
+import { lowlight } from '@/lib/lowlight'
+import { htmlToMarkdown } from '@/lib/markdown-rich-text'
 import { createFileMentionSuggestion } from '@/components/file-browser/file-mention-suggestion'
-import { createSkillMentionSuggestion, createMcpMentionSuggestion } from '@/components/agent/mention-suggestions'
+import { createSkillMentionSuggestion, createMcpMentionSuggestion, createSessionMentionSuggestion } from '@/components/agent/mention-suggestions'
 
 const VOICE_DICTATION_INSERT_EVENT = 'proma:insert-voice-dictation-text'
 let lastFocusedRichTextInputId: string | null = null
-
-// 创建 lowlight 实例，使用常见语言
-const lowlight = createLowlight(common)
-
-// ===== HTML → Markdown 转换 =====
-
-/** 将 TipTap 输出的 HTML 转换为 Markdown 格式 */
-function htmlToMarkdown(html: string): string {
-  if (!html || html === '<p></p>') return ''
-
-  const div = document.createElement('div')
-  div.innerHTML = html
-
-  function processNode(node: Node): string {
-    if (node.nodeType === Node.TEXT_NODE) {
-      return node.textContent || ''
-    }
-
-    if (node.nodeType !== Node.ELEMENT_NODE) {
-      return ''
-    }
-
-    const el = node as HTMLElement
-    const tagName = el.tagName.toLowerCase()
-    const children = Array.from(el.childNodes).map(processNode).join('')
-
-    switch (tagName) {
-      case 'p':
-        return children + '\n'
-      case 'br':
-        return '\n'
-      case 'strong':
-      case 'b':
-        return `**${children}**`
-      case 'em':
-      case 'i':
-        return `*${children}*`
-      case 'u':
-        return `<u>${children}</u>`
-      case 's':
-      case 'strike':
-      case 'del':
-        return `~~${children}~~`
-      case 'code':
-        // 检查是否在 pre 内（代码块）
-        if (el.parentElement?.tagName.toLowerCase() === 'pre') {
-          return children
-        }
-        return `\`${children}\``
-      case 'pre': {
-        // 代码块 - 获取语言类型
-        const codeEl = el.querySelector('code')
-        const langClass = codeEl?.className || ''
-        const langMatch = langClass.match(/language-(\w+)/)
-        const lang = langMatch ? langMatch[1] : ''
-        const codeContent = codeEl ? processNode(codeEl) : children
-        return `\`\`\`${lang}\n${codeContent}\n\`\`\`\n`
-      }
-      case 'a': {
-        const href = el.getAttribute('href') || ''
-        return `[${children}](${href})`
-      }
-      case 'ul':
-        return Array.from(el.children)
-          .map((li) => `- ${processNode(li).trim()}`)
-          .join('\n') + '\n'
-      case 'ol':
-        return Array.from(el.children)
-          .map((li, i) => `${i + 1}. ${processNode(li).trim()}`)
-          .join('\n') + '\n'
-      case 'li':
-        return children
-      case 'blockquote':
-        return children
-          .split('\n')
-          .map((line) => `> ${line}`)
-          .join('\n') + '\n'
-      case 'h1': return `# ${children}\n`
-      case 'h2': return `## ${children}\n`
-      case 'h3': return `### ${children}\n`
-      case 'h4': return `#### ${children}\n`
-      case 'h5': return `##### ${children}\n`
-      case 'h6': return `###### ${children}\n`
-      case 'hr': return '---\n'
-      case 'span': {
-        // Mention 节点：根据 data-mention-suggestion-char 区分类型
-        const dataType = el.getAttribute('data-type')
-        const dataId = el.getAttribute('data-id') || ''
-        const suggestionChar = el.getAttribute('data-mention-suggestion-char') || '@'
-        if (dataType === 'mention') {
-          if (suggestionChar === '/') return `/skill:${dataId}`
-          if (suggestionChar === '#') return `#mcp:${dataId}`
-          return `@file:${dataId}`
-        }
-        return children
-      }
-      default: return children
-    }
-  }
-
-  return processNode(div).trim()
-}
 
 // ===== 行数计算 =====
 
@@ -177,6 +76,10 @@ interface RichTextInputProps {
   onSubmit: () => void
   /** 粘贴文件回调（拦截粘贴的文件） */
   onPasteFiles?: (files: File[]) => void
+  /** 粘贴超长文本回调（由调用方决定是否转换为附件） */
+  onPasteLongText?: (text: string) => void
+  /** 触发超长文本粘贴回调的字符数阈值 */
+  longTextPasteThreshold?: number
   /** 占位文字 */
   placeholder?: string
   /** 是否显示建议样式（斜体占位符） */
@@ -187,10 +90,16 @@ interface RichTextInputProps {
   autoFocusTrigger?: string | null
   /** 是否支持手动折叠（内容较长时显示折叠按钮） */
   collapsible?: boolean
+  /** 是否启用 Mention 功能（@ 文件、/ Skill、# MCP、& 会话） */
+  enableMentions?: boolean
   /** 工作区根路径（启用 @ 引用文件功能时需要） */
   workspacePath?: string | null
+  /** 工作区 ID（启用 & 引用 Agent 会话功能时需要） */
+  workspaceId?: string | null
   /** 工作区 slug（启用 / Skill 和 # MCP 功能时需要） */
   workspaceSlug?: string | null
+  /** 当前 Agent 会话 ID（启用 & 引用 Agent 会话功能时用于排除自身） */
+  sessionId?: string | null
   /** 附加目录路径列表（工作区级，@ 引用时标记为工作区文件） */
   attachedDirs?: string[]
   /** 会话级附加目录路径列表（@ 引用时标记为会话文件） */
@@ -215,14 +124,19 @@ export function RichTextInput({
   onChange,
   onSubmit,
   onPasteFiles,
+  onPasteLongText,
+  longTextPasteThreshold,
   placeholder = '有什么可以帮助到你的呢？',
   suggestionActive = false,
   className,
   disabled = false,
   autoFocusTrigger,
   collapsible = false,
+  enableMentions,
   workspacePath,
+  workspaceId,
   workspaceSlug,
+  sessionId,
   attachedDirs = [],
   sessionAttachedDirs = [],
   htmlValue,
@@ -243,6 +157,11 @@ export function RichTextInput({
   // 保持 onPasteFiles 引用最新
   const onPasteFilesRef = useRef(onPasteFiles)
   onPasteFilesRef.current = onPasteFiles
+  // 保持超长文本粘贴配置最新
+  const onPasteLongTextRef = useRef(onPasteLongText)
+  onPasteLongTextRef.current = onPasteLongText
+  const longTextPasteThresholdRef = useRef(longTextPasteThreshold)
+  longTextPasteThresholdRef.current = longTextPasteThreshold
   // 保持 onHtmlChange 引用最新
   const onHtmlChangeRef = useRef(onHtmlChange)
   onHtmlChangeRef.current = onHtmlChange
@@ -256,6 +175,12 @@ export function RichTextInput({
   // 工作区路径引用（给 Suggestion 使用）
   const workspacePathRef = useRef<string | null>(workspacePath ?? null)
   workspacePathRef.current = workspacePath ?? null
+  // 工作区 ID 引用（给会话引用 Suggestion 使用）
+  const workspaceIdRef = useRef<string | null>(workspaceId ?? null)
+  workspaceIdRef.current = workspaceId ?? null
+  // 当前会话 ID 引用（给会话引用 Suggestion 使用）
+  const currentSessionIdRef = useRef<string | null>(sessionId ?? null)
+  currentSessionIdRef.current = sessionId ?? null
   // 工作区级附加目录路径引用（给 Suggestion 使用，标记为 workspace）
   const attachedDirsRef = useRef<string[]>(attachedDirs)
   attachedDirsRef.current = attachedDirs
@@ -266,8 +191,8 @@ export function RichTextInput({
   const workspaceSlugRef = useRef<string | null>(workspaceSlug ?? null)
   workspaceSlugRef.current = workspaceSlug ?? null
 
-  // 是否启用 Mention 功能（需要工作区路径或 slug）
-  const hasMentionSupport = !!(workspacePath || workspaceSlug)
+  // 是否启用 Mention 功能：Agent 首帧可能尚未拿到路径/slug/id，但扩展必须先注册。
+  const hasMentionSupport = enableMentions ?? (workspacePath !== undefined || workspaceSlug !== undefined || workspaceId !== undefined)
 
   // Mention Suggestion 配置（稳定引用，不随 workspacePath 变化重建）
   const mentionSuggestion = useMemo(
@@ -284,6 +209,12 @@ export function RichTextInput({
   // MCP Suggestion 配置（# 触发）
   const mcpSuggestion = useMemo(
     () => createMcpMentionSuggestion(workspaceSlugRef, mentionActiveRef, mentionItemCountRef),
+    [],
+  )
+
+  // Agent 会话引用 Suggestion（& 触发）
+  const sessionSuggestion = useMemo(
+    () => createSessionMentionSuggestion(workspaceIdRef, currentSessionIdRef, mentionActiveRef, mentionItemCountRef),
     [],
   )
 
@@ -315,7 +246,7 @@ export function RichTextInput({
         placeholder,
         emptyEditorClass: 'is-editor-empty',
       }),
-      // Mention 扩展：仅在 Agent 模式（有工作区）时启用
+      // Mention 扩展：启用时注册，路径/slug 后续通过 ref 异步更新
       // @ 引用文件、/ 触发 Skill、# 触发 MCP
       ...(hasMentionSupport ? [
         Mention.extend({
@@ -339,6 +270,7 @@ export function RichTextInput({
             let chipClass = 'mention-chip'
             if (char === '/') chipClass = 'skill-mention-chip'
             else if (char === '#') chipClass = 'mcp-mention-chip'
+            else if (char === '&') chipClass = 'session-mention-chip'
             return [
               'span',
               {
@@ -355,6 +287,7 @@ export function RichTextInput({
             mentionSuggestion,
             skillSuggestion,
             mcpSuggestion,
+            sessionSuggestion,
           ],
         }),
       ] : []),
@@ -407,6 +340,28 @@ export function RichTextInput({
         if (clipboardItems && clipboardItems.length > 0 && onPasteFilesRef.current) {
           event.preventDefault()
           onPasteFilesRef.current(Array.from(clipboardItems))
+          return true
+        }
+
+        const threshold = longTextPasteThresholdRef.current
+        const plainText = event.clipboardData?.getData('text/plain') ?? ''
+        const html = event.clipboardData?.getData('text/html') ?? ''
+        // 预处理 HTML：将 <div> 替换为 <p>，避免 htmlToMarkdown 对 <div> 不分段导致换行丢失
+        const text = html
+          ? (htmlToMarkdown(
+              html
+                .replace(/<div\b[^>]*>/gi, '<p>')
+                .replace(/<\/div>/gi, '</p>')
+            ).trim() || plainText)
+          : plainText
+        if (
+          threshold &&
+          threshold > 0 &&
+          (plainText.length >= threshold || text.length >= threshold) &&
+          onPasteLongTextRef.current
+        ) {
+          event.preventDefault()
+          onPasteLongTextRef.current(text)
           return true
         }
         return false
@@ -742,6 +697,30 @@ export function RichTextInput({
           height: 12px;
           background-color: currentColor;
           mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='20' height='8' x='2' y='2' rx='2' ry='2'/%3E%3Crect width='20' height='8' x='2' y='14' rx='2' ry='2'/%3E%3Cline x1='6' x2='6.01' y1='6' y2='6'/%3E%3Cline x1='6' x2='6.01' y1='18' y2='18'/%3E%3C/svg%3E");
+          mask-size: contain;
+          mask-repeat: no-repeat;
+          flex-shrink: 0;
+        }
+        .session-mention-chip {
+          background-color: hsl(200 80% 50% / 0.14);
+          color: hsl(200 80% 40%);
+          border-radius: 4px;
+          padding: 1px 4px 1px 2px;
+          font-size: 13px;
+          font-weight: 500;
+          white-space: nowrap;
+          display: inline-flex;
+          align-items: center;
+          gap: 2px;
+          vertical-align: baseline;
+        }
+        .session-mention-chip::before {
+          content: '';
+          display: inline-block;
+          width: 12px;
+          height: 12px;
+          background-color: currentColor;
+          mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'/%3E%3Cpath d='M8 9h8'/%3E%3Cpath d='M8 13h6'/%3E%3C/svg%3E");
           mask-size: contain;
           mask-repeat: no-repeat;
           flex-shrink: 0;

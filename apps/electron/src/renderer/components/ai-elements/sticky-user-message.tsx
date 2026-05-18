@@ -116,7 +116,9 @@ export function StickyUserMessage({ userMessages }: StickyUserMessageProps): Rea
     const el = scrollRef.current
     if (!el || !stickyMessage?.id) return
 
-    const target = el.querySelector<HTMLElement>(`[data-message-id="${stickyMessage.id}"]`)
+    const target = Array.from(el.querySelectorAll<HTMLElement>('[data-message-id]')).find(
+      (node) => node.getAttribute('data-message-id') === stickyMessage.id
+    )
     if (!target) return
 
     stopScroll()
@@ -161,9 +163,9 @@ export function StickyUserMessage({ userMessages }: StickyUserMessageProps): Rea
 
             {/* 文本内容：最多两行，支持 Markdown 渲染 */}
             {stickyMessage?.text && (
-              <div className="text-sm text-foreground/80 line-clamp-2 leading-relaxed max-h-[3.25em]">
+              <div className="text-sm text-foreground/80 line-clamp-2 leading-relaxed">
                 <MessageResponse
-                  className="prose-p:my-0 prose-p:inline prose-headings:my-0 prose-headings:text-sm prose-pre:hidden prose-ul:my-0 prose-ol:my-0"
+                  className="prose-p:my-0 prose-p:inline prose-headings:my-0 prose-headings:text-sm prose-pre:hidden prose-ul:my-0 prose-ol:my-0 prose-li:my-0"
                   remarkPlugins={STICKY_REMARK_PLUGINS}
                 >
                   {stripCodeBlocks(stickyMessage.text)}

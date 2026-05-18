@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, nativeTheme, screen, shell } from 'electron'
+import { app, BrowserWindow, Menu, nativeTheme, protocol, screen, shell } from 'electron'
 import { join } from 'path'
 import { existsSync } from 'fs'
 
@@ -20,6 +20,18 @@ app.on('open-file', (event, filePath) => {
   handleMigrationFileOpen(filePath)
 })
 
+// 注册自定义协议方案为"特权"（必须在 app ready 之前）
+// 用于内联预览本地文件（renderer 用 iframe 加载 proma-file:// 资源）
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'proma-file', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } },
+])
+
+// Windows: 禁用 LCD 次像素抗锯齿（ClearType），改用灰度 AA。
+// ClearType 是为浅色背景+深色文字设计的，在深色代码块背景下会产生彩色边缘，导致文字模糊。
+if (process.platform === 'win32') {
+  app.commandLine.appendSwitch('disable-lcd-text')
+}
+
 // Windows 文件关联：当用户双击文件时，新实例的参数会通过 second-instance 传给已有实例
 app.on('second-instance', (_event, argv) => {
   showAndFocusMainWindow()
@@ -29,8 +41,8 @@ app.on('second-instance', (_event, argv) => {
   }
 })
 
-import { getSettings } from './lib/settings-service'
-import { resolveOverlayColors } from './lib/titlebar-overlay'
+import { getSettings, updateSettings } from './lib/settings-service'
+import { handlePromaFileRequest } from './lib/local-file-protocol'
 
 // 处理 EPIPE 错误：当 stdout/stderr 管道被关闭时（如 electronmon 重启），忽略写入错误
 // 这在开发环境热重载时经常发生，不影响应用功能
@@ -207,6 +219,22 @@ function getIconPath(): string {
   }
 }
 
+function saveMainWindowState(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  const isMaximized = mainWindow.isMaximized()
+  // 最大化时用恢复尺寸（unmaximize 后的尺寸），避免记录最大化的全屏 bounds
+  const bounds = isMaximized ? mainWindow.getNormalBounds() : mainWindow.getBounds()
+  updateSettings({
+    mainWindowState: {
+      width: bounds.width,
+      height: bounds.height,
+      x: bounds.x,
+      y: bounds.y,
+      isMaximized,
+    },
+  })
+}
+
 function createWindow(): void {
   const iconPath = getIconPath()
   const iconExists = existsSync(iconPath)
@@ -226,22 +254,16 @@ function createWindow(): void {
         visualEffectState: 'followWindow' as const,
       }
     : isWindows
-      ? (() => {
-          const settings = getSettings()
-          return {
-            titleBarStyle: 'hidden' as const,
-            titleBarOverlay: resolveOverlayColors(
-              settings.themeMode,
-              settings.themeStyle,
-              nativeTheme.shouldUseDarkColors
-            ),
-          }
-        })()
+      ? { titleBarStyle: 'hidden' as const }
       : {}
 
+  const savedState = getSettings().mainWindowState
+  const initialBounds = savedState
+    ? { width: savedState.width, height: savedState.height, x: savedState.x, y: savedState.y }
+    : { width: 1400, height: 900 }
+
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
+    ...initialBounds,
     minWidth: 800,
     minHeight: 600,
     icon: iconExists ? iconPath : undefined,
@@ -264,11 +286,25 @@ function createWindow(): void {
     mainWindow.loadFile(join(__dirname, 'renderer', 'index.html'))
   }
 
-  // 窗口就绪后最大化显示
+  // 窗口就绪后，按保存的状态决定是否最大化
   mainWindow.once('ready-to-show', () => {
-    mainWindow?.maximize()
+    if (savedState?.isMaximized ?? true) {
+      mainWindow?.maximize()
+    }
     mainWindow?.show()
   })
+
+  // 持久化窗口大小和位置（防抖 500ms，避免频繁写入）
+  let windowStateSaveTimer: ReturnType<typeof setTimeout> | null = null
+  const scheduleWindowStateSave = (): void => {
+    if (windowStateSaveTimer) clearTimeout(windowStateSaveTimer)
+    windowStateSaveTimer = setTimeout(() => {
+      windowStateSaveTimer = null
+      saveMainWindowState()
+    }, 500)
+  }
+  mainWindow.on('resize', scheduleWindowStateSave)
+  mainWindow.on('move', scheduleWindowStateSave)
 
   // 拦截页面内导航，外部链接用系统浏览器打开，防止 Electron 窗口被覆盖
   mainWindow.webContents.on('will-navigate', (event, url) => {
@@ -293,6 +329,12 @@ function createWindow(): void {
   if (process.platform === 'darwin') {
     mainWindow.on('close', (event) => {
       if (!getIsQuitting()) {
+        // 隐藏前先刷新挂起的窗口状态保存
+        if (windowStateSaveTimer) {
+          clearTimeout(windowStateSaveTimer)
+          windowStateSaveTimer = null
+        }
+        saveMainWindowState()
         event.preventDefault()
         mainWindow?.hide()
         app.hide()
@@ -325,6 +367,10 @@ function sendToMainWindow(channel: string, data?: unknown): void {
 }
 
 app.whenReady().then(async () => {
+  // 注册自定义协议 proma-file:// 用于内联预览本地文件。
+  // 协议只接受主进程签发的 opaque token，不解析 renderer 提供的绝对路径。
+  protocol.handle('proma-file', handlePromaFileRequest)
+
   // 初始化运行时环境（Shell 环境 + Bun + Git 检测）
   // 必须在其他初始化之前执行，确保环境变量正确加载
   await initializeRuntime()
