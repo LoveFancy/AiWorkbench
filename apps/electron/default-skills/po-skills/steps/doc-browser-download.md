@@ -1,18 +1,23 @@
-# doc-browser-download：通过浏览器下载 EIP/LinkApp 文档并转换
+# doc-browser-download：通过浏览器下载 EIP/LinkApp 文档并转换（Legacy）
 
-**触发场景：** doc-convert 检测到输入 URL 为 EIP 或 LinkApp 格式时自动触发。
+**状态：** Legacy。当前 `doc-convert` / `prd-write` 不再自动触发此步骤。识别到 EIP/LinkApp 云文档 URL 时，应返回 `CLOUD_DOC_MANUAL_DOWNLOAD_REQUIRED`，提示用户手工下载原始 `.doc/.docx/.pdf` 文件后再作为本地文件转换。
+
+**触发场景：** 仅限人工调试或历史兼容。不要在主流程中自动加载。
 
 **职责：** 使用 chrome-devtools MCP 在浏览器中打开文档页面，通过页面菜单触发下载，将下载文件拷贝到项目目录后执行 doc-to-md 转换。
 
 **前置条件：**
-- 用户已提前在浏览器中登录 EIP/LinkApp（chrome-devtools 复用浏览器会话）
-- `npx chrome-devtools-mcp` 已安装（声明在 plugin.json 的 mcpServers 中）
+- 插件中的 `chrome-devtools` MCP 使用独立 `--userDataDir` profile，每次打开独立 Chrome，不复用用户当前 Chrome。
+- `npx chrome-devtools-mcp` 已安装（声明在 plugin.json 的 mcpServers 中）。
+- 因为独立 profile 没有用户日常登录态，此步骤通常无法处理需要登录的 EIP/LinkApp 文档。主流程必须提示用户手工下载。
 
 ---
 
 ## 阶段 A：页面导航与文件名获取
 
 **A0. Chrome DevTools MCP 会话检查与恢复**：
+
+使用插件配置的独立 Chrome profile。不要尝试复用用户当前 Chrome，也不要要求用户配置 `--remote-debugging-port`。
 
 如果调用 chrome-devtools MCP 时出现浏览器实例冲突，例如：
 
@@ -27,14 +32,15 @@
 1. 不要直接要求用户关闭浏览器。
 2. 先尝试复用当前 MCP 会话：调用 `take_snapshot` 或读取当前页面状态；如果能拿到页面快照，直接在该会话中继续执行 A1。
 3. 如果无法复用，尝试通过 chrome-devtools MCP 的页面列表/选择页面能力切换到已有页面，再继续执行 A1。
-4. 如果 MCP 已经返回不可恢复的连接错误，停止自动下载，返回稳定错误码 `MCP_BROWSER_CONFLICT`。
-5. 只有自动恢复失败后，才提示用户手动处理，并给出两种路径：关闭冲突浏览器后重试，或手动下载文件后继续转换。
+4. 如果独立 Chrome 无法启动或连接，停止自动下载，返回稳定错误码 `MCP_BROWSER_NOT_CONNECTED`。
+5. 如果 MCP 已经返回不可恢复的连接错误，停止自动下载，返回稳定错误码 `MCP_BROWSER_CONFLICT`。
+6. 只有自动恢复失败后，才提示用户手工下载文件后继续转换。
 
 错误提示必须包含：
 
 ```text
 MCP_BROWSER_CONFLICT：Chrome DevTools MCP 浏览器会话冲突，已尝试复用/切换现有会话但失败。
-请关闭由 Chrome DevTools MCP 打开的浏览器窗口后重试，或手动下载文件后提供本地文件路径继续转换。
+请手工下载文件后提供本地文件路径继续转换。
 ```
 
 **A1. 导航到目标 URL**：
@@ -166,8 +172,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/scripts/cloud_download_finder.py 
 **C2. 拷贝到项目目录**：
 
 ```bash
-mkdir -p "{REQID}/1.产品设计/references"
-cp "<DOWNLOAD_FILE路径>" "{REQID}/1.产品设计/references/<文件名>"
+cp "<DOWNLOAD_FILE路径>" "{REFERENCES_DIR}/<文件名>"
 ```
 
 ---
@@ -178,8 +183,8 @@ cp "<DOWNLOAD_FILE路径>" "{REQID}/1.产品设计/references/<文件名>"
 
 ```bash
 python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py doc-to-md \
-    --file "{REQID}/1.产品设计/references/<文件名>" \
-    --output-dir "{REQID}/1.产品设计"
+    --file "{REFERENCES_DIR}/<文件名>" \
+    --output-dir "{DESIGN_DIR}"
 ```
 
 后续流程同 doc-to-md：stdout 输出 `OUTPUT_FILE=<路径>`，有图片则自动串联 enhance-content。
@@ -218,13 +223,14 @@ python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py doc-to-md \
 
 | 问题 | 处理 |
 |------|------|
-| Chrome DevTools MCP 浏览器实例冲突 | 先复用/切换已有 MCP 会话；不要直接要求用户关闭浏览器；自动恢复失败后返回 `MCP_BROWSER_CONFLICT`，再提示关闭冲突浏览器或手动下载 |
-| 页面加载超时 | 提示"页面加载超时，请确认已在浏览器中登录 EIP/LinkApp，然后重试" |
+| Chrome DevTools MCP 无法连接独立 Chrome | 返回 `MCP_BROWSER_NOT_CONNECTED`，提示用户手工下载后提供本地文件路径继续转换 |
+| Chrome DevTools MCP 浏览器实例冲突 | 返回 `MCP_BROWSER_CONFLICT`，提示用户手工下载后提供本地文件路径继续转换 |
+| 页面加载超时 | 提示"页面加载超时，请手工下载文件后提供本地文件路径继续转换" |
 | 文件名未找到 | 将文件名设为页面 title（`document.title`），提示用户确认 |
 | 菜单按钮未找到 | 先限定右上工具栏区域按语义查找“更多/菜单”，失败后再回退 `.more-e1267a`；仍失败则提示用户手动点击 |
 | 菜单未展开 | 等待 `.dropdDown-e1267a` 或 `.docs-ant-popover-inner-content`；仍未出现则提示用户手动点击 |
 | 下载菜单项未找到 | 只在下拉菜单容器内查找“下载”，排除图片/附件/模板等非整篇文档下载项；失败则提示用户手动点击 |
 | 下载候选不唯一 | 返回 `DOWNLOAD_AMBIGUOUS` 并列出候选文件，禁止猜测 |
-| 下载超时（60s） | 返回 `DOWNLOAD_TIMEOUT`，提示"下载超时，请手动点击下载并将文件放入 {REQID}/1.产品设计/references/" |
+| 下载超时（60s） | 返回 `DOWNLOAD_TIMEOUT`，提示"下载超时，请手动点击下载并将文件放入 {REFERENCES_DIR}/" |
 | 下载文件格式不支持 | 检查扩展名，只支持 .doc/.docx/.pdf/.xlsx/.xls，不支持则提示 |
 | 关闭页面失败 | 忽略关闭失败，不影响下载与转换成功结果 |

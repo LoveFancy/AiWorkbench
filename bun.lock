@@ -22,7 +22,7 @@
     },
     "apps/electron": {
       "name": "@proma/electron",
-      "version": "0.9.32",
+      "version": "0.9.34",
       "dependencies": {
         "@anthropic-ai/claude-agent-sdk": "0.3.143",
         "@anthropic-ai/sdk": "^0.93.0",
@@ -86,7 +86,7 @@
         "cmdk": "^1.1.1",
         "concurrently": "^9.2.1",
         "dingtalk-stream-sdk-nodejs": "^2.0.4",
-        "electron": "^39.5.1",
+        "electron": "39.5.1",
         "electron-builder": "^25.1.8",
         "electron-updater": "^6.7.3",
         "electronmon": "^2.0.4",
@@ -127,7 +127,7 @@
     },
     "packages/core": {
       "name": "@proma/core",
-      "version": "0.2.11",
+      "version": "0.2.12",
       "dependencies": {
         "@proma/shared": "workspace:*",
         "shiki": "^3.22.0",
@@ -144,7 +144,7 @@
     },
     "packages/shared": {
       "name": "@proma/shared",
-      "version": "0.1.21",
+      "version": "0.1.23",
       "devDependencies": {
         "typescript": "^5.0.0",
       },

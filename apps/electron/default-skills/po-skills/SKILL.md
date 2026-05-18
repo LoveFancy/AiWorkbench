@@ -1,10 +1,9 @@
 ---
 name: po-skill
 description: 产品经理工具集 - 七步将 Wiki 或本地文档转换为结构化 PRD 并自动创建 DPMP Story
-version: 7.0.46
+version: 7.0.97
 triggers:
   - "doc-convert"
-  - "doc-to-md"
   - "pdf转md"
   - "pdf转markdown"
   - "docx转md"
@@ -13,9 +12,17 @@ triggers:
   - "wiki转markdown"
   - "wiki转md"
   - "req-review"
-  - "需求澄清"
+  - "需求评审"
   - "需求审查"
   - "需求质量检查"
+  - "brainstorming"
+  - "头脑风暴"
+  - "需求头脑风暴"
+  - "需求澄清"
+  - "需求梳理"
+  - "产品梳理"
+  - "先梳理"
+  - "先澄清"
   - "story-analyze"
   - "需求分析"
   - "REQ_ANALYSIS_LIST"
@@ -49,6 +56,17 @@ triggers:
   - "编写PRD"
   - "写PRD"
   - "创建PRD"
+  - "image-analyse"
+  - "截图字段表"
+  - "图片转字段表"
+  - "字段表还原"
+  - "界面截图字段"
+  - "newdiagram"
+  - "drawio"
+  - "draw.io"
+  - "流程图"
+  - "画图"
+  - "绘制流程"
 tools:
   - bash
   - read
@@ -105,6 +123,10 @@ tools:
 2. 用户明确说"帮我从头写/起草一版 PRD" → `prd-write`
 3. 主语义不清晰 → 追问：`"你希望我基于已有 [PROD_ORI] 继续整理（prd-convert），还是基于你的文字重新起草首版 PRD（prd-write）？"`
 
+对于同时包含"先梳理 / 先头脑风暴 / 需求澄清"和"写 PRD / 生成 PRD"的复合意图：
+1. 用户明确说"直接写 PRD"、"不用澄清"、"不要追问" → `prd-write`
+2. 否则进入 `prd-write`，由 `prd-write` 在已确认需求空间后执行内部 `brainstorming` 阶段，输出头脑风暴纪要后回到 PRD 起草
+
 #### Rule 5：禁止误路由
 
 **不能**进入 `prd-write`：
@@ -122,7 +144,10 @@ tools:
 根据用户输入判断输入类型。**自然语言类输入按以下优先级互斥判断**：
 
 1. 先检查是否含 DPMP 创建信号（"创建 Story""提一条 Story""快速创建""不用写 PRD"等）→ **自然语言描述（quick-story）**
-2. 否则检查是否为"写完整 PRD"意图（可能含 Wiki URL、文档路径等参考资料）→ **用户文字描述（prd-write）**
+2. 否则检查是否为本地 drawio 绘图请求（"newdiagram""drawio""流程图""画图""绘制流程"等）→ **本地 drawio 绘图需求（newdiagram）**
+3. 否则检查是否为截图字段还原请求（"截图字段表""图片转字段表""字段表还原""界面截图字段"等）→ **界面截图 / 图片字段表需求（image-analyse）**
+4. 否则检查是否为产品头脑风暴或需求澄清请求（"头脑风暴""需求澄清""需求梳理""产品梳理""先梳理""先澄清"等）→ **产品头脑风暴 / 需求澄清请求（brainstorming）**
+5. 否则检查是否为"写完整 PRD"意图（可能含 Wiki URL、文档路径等参考资料）→ **用户文字描述（prd-write）**
 
 其他输入类型：
 - **Wiki URL**（`http://wiki...pageId=...`）
@@ -132,6 +157,9 @@ tools:
 - **本地 [PROD_ORI] 文件路径**（含 `[PROD_ORI]` 前缀的 .md 文件）
 - **本地 [PROD_FORMAT] 文件路径**（含 `[PROD_FORMAT]` 前缀的 .md 文件）
 - **[STORY_PLAN] CSV 路径**
+- **产品头脑风暴 / 需求澄清请求**（头脑风暴、需求澄清、需求梳理、产品梳理）
+- **界面截图 / 图片字段表需求**（截图字段表、图片转字段表、字段表还原、界面截图字段）
+- **本地 drawio 绘图需求**（newdiagram、drawio、流程图、画图、绘制流程）
 
 ### Step 2: 确定目标步骤
 
@@ -140,14 +168,19 @@ tools:
 | 输入类型 | 目标步骤 | 步骤文件 |
 |----------|----------|----------|
 | Wiki URL | doc-convert | `steps/doc-convert.md`（+ `steps/enhance-content.md` 自动串联） |
-| EIP / LinkApp URL | cloud-doc-downloader / doc-browser-download | 默认优先插件 subagent `cloud-doc-downloader`；用户指定 `--no-cloud-subagent`、"不用 subagent"、"同步调试"、"当前会话执行"，或环境变量 `PO_CLOUD_DOC_SUBAGENT=0` / `false` / `off` 时，直接同步执行 `steps/doc-browser-download.md`；不可用时也回退同步执行 |
-| 本地文档（.docx/.pdf） | doc-to-md | `steps/doc-to-md.md`（+ `steps/enhance-content.md` 自动串联） |
+| EIP / LinkApp URL | manual-download-required | 暂不支持自动下载；返回 `CLOUD_DOC_MANUAL_DOWNLOAD_REQUIRED`，提示用户手工下载原始 `.doc/.docx/.pdf` 文件后再用 `/doc-convert <本地文件路径>` 转换 |
+| 本地文档（.doc/.docx/.pdf） | doc-to-md | `steps/doc-to-md.md`（使用 markitdown；+ `steps/enhance-content.md` 自动串联） |
 | [PROD_ORI] 文件 | story-analyze | `steps/story-analyze.md` |
 | story-analyze 确认后 | prd-convert | `steps/prd-convert.md` |
 | prd-convert 完成后 | req-review | `steps/req-review.md` |
 | [STORY_PLAN] CSV | story-create | `steps/story-create.md` |
 | 自然语言描述 | quick-story | `steps/quick-story.md` |
+| 产品头脑风暴 / 需求澄清请求 | brainstorming | `steps/brainstorming.md` |
 | 用户文字描述 + 关联文档（Wiki URL / EIP / LinkApp / 本地文档） | prd-write | `steps/prd-write.md` |
+| 界面截图 / 图片字段表需求 | image-analyse | `steps/image-analyse.md` |
+| 本地 drawio 绘图需求 | newdiagram | `steps/newdiagram.md` |
+
+**文档转换边界：** `doc-convert` 是用户侧统一入口和 Wiki/JSON 实现步骤；本地 `.doc/.docx/.pdf` 文件、以及用户手工下载后的 EIP/LinkApp 本地文件，必须进入 `doc-to-md`，由 markitdown 转换。云文档 URL 暂不支持自动下载，不要为本地 Word/PDF 临时编写解析脚本。
 
 ### Step 2.5: 依赖校验 ⚠️ 加载步骤文件前必须执行
 
@@ -155,16 +188,20 @@ tools:
 
 | 目标步骤 | 依赖检查 | 失败处理 |
 |----------|----------|----------|
-| doc-convert | 无文件依赖。需检查 HTSC_WIKI_TOKEN | 提示配置环境变量、`${CLAUDE_PROJECT_DIR}/.env`、当前工作目录 `.env` 或插件 `.env` |
+| init-workspace | 无依赖 | 初始化 `raw/`、`wiki/`、`newreq/` 和 `newreq/req.index` |
+| newreq | 无依赖；如已有 REQID 直接复用 | 创建或复用 `newreq/<REQID>/`，输出目录上下文 |
+| doc-convert | 需已有工作空间；Wiki URL 需检查 HTSC_WIKI_TOKEN；正式需求输出需已有 `newreq/<REQID>/` | 提示先执行 `init-workspace` 或 `newreq`，并配置环境变量 |
 | wiki-export | 需检查 HTSC_WIKI_TOKEN 和 `confluence-markdown-exporter`/`cme` 可用；输入必须是一个或多个 Wiki URL | 提示配置环境变量、`${CLAUDE_PROJECT_DIR}/.env`、当前工作目录 `.env` 或插件 `.env`，并安装依赖 |
-| cloud-doc-downloader / doc-browser-download | 需用户已登录 EIP/LinkApp + chrome-devtools MCP 可用 | 提示登录后重试 |
-| doc-to-md | 无文件依赖。需确认本地文件存在 | 提示检查文件路径 |
+| manual-download-required | EIP/LinkApp 云文档 URL | 提示暂不支持自动下载，请用户手工下载原始文件后再转换 |
 | story-analyze | 检查 [PROD_ORI] 是否存在 | 不存在 → 自动执行 doc-convert 后继续 |
 | prd-convert | 检查 [PROD_ORI] 末尾是否含"附录：Story 结构分析" | 不含 → 自动执行 story-analyze 后继续 |
 | req-review | 检查 [PROD_FORMAT] 是否存在 | 不存在 → 自动执行 prd-convert 后继续 |
 | story-create | 检查环境变量 / `.env` 配置。输入可为 CSV / [PROD_FORMAT] / [PROD_ORI]，按类型自动提取或生成 CSV | 无文档 → 提示提供文件 |
 | quick-story | 检查环境变量 / `.env` 配置 | 未配置 → 提示配置后重试 |
-| prd-write | 无前置文件依赖。如输入含 Wiki URL 需检查 HTSC_WIKI_TOKEN；如输入含 EIP/LinkApp 需浏览器已登录 | 提示配置环境变量、`${CLAUDE_PROJECT_DIR}/.env`、当前工作目录 `.env` 或插件 `.env`，或登录浏览器后重试 |
+| brainstorming | 无外部依赖；如用户要求保存文件，需确认 REQID 或先执行 `newreq --init-only` | 无需失败处理 |
+| prd-write | 无前置文件依赖。如输入含 Wiki URL 需检查 HTSC_WIKI_TOKEN；如输入含 EIP/LinkApp 云文档 URL，不能自动下载 | 提示配置环境变量、`${CLAUDE_PROJECT_DIR}/.env`、当前工作目录 `.env` 或插件 `.env`；云文档请手工下载后作为本地文件提供 |
+| image-analyse | 需用户提供图片或图片路径 | 未提供 → 提示上传截图或提供本地图片路径 |
+| newdiagram | 无外部依赖；有 REQID 时需先解析需求空间 | 默认创建本地 `.drawio` 文件；不得默认跳转到在线 diagrams.net |
 
 校验失败时的输出模板：
 ```
@@ -174,12 +211,12 @@ tools:
 ### Step 3: 检查上下文修饰符
 
 决定是否加载增强模块：
-- 有 REQID → 直接使用，跳过询问
-- 无 REQID → 先询问用户（doc-convert / doc-to-md 场景）
+- 有 REQID → 先通过 `newreq` 或 `resolve-workspace` 获取目录上下文
+- 无 REQID → 直接执行 `newreq --mock` 创建正式需求空间；临时转换仅在用户明确要求不归属正式需求时使用临时输出：Wiki/JSON 用 `doc-convert --raw`，本地文档用 `doc-to-md --output-dir raw`
 - 需 DPMP → 检查 .env 配置
 - 中间步骤 → 从文件路径推导 WORKDIR
 - ⚠️ 图片相关 reference 延迟加载规则：
-  - 先执行 doc-convert / doc-to-md 脚本
+  - 先执行 doc-convert 脚本（本地文档场景内部会转调 doc-to-md）
   - 脚本完成后，检查输出 Markdown 中是否有图片引用（`![](...)`）
   - 有图片 → 才加载 `steps/enhance-content.md` + `references/image-classify-prompt.md`
   - 无图片 → 跳过 enhance-content，直接进入下一阶段
@@ -198,8 +235,14 @@ tools:
 
 ## 完整工作流概览
 
+`po-skill` 支持两条产品文档生成路径：
+
 ```
-步骤一：确认需求编号 (REQID)
+自由想法 → newreq → prd-write → brainstorming（按需）→ 回到 prd-write → [PROD_FORMAT] → 提示 req-review
+```
+
+```
+步骤一：newreq          创建或复用正式需求空间
 步骤二：doc-convert      Wiki/JSON → 干净 Markdown（[PROD_ORI]）+ 图片分析
 步骤三：story-analyze    [PROD_ORI] → 在 [PROD_ORI] 末尾追加三层结构分析
 步骤四：prd-convert      [PROD_ORI]（含三层结构）→ [PROD_FORMAT] + 独立 Story 文档
@@ -210,7 +253,9 @@ tools:
 
 ```
 任务清单：
-- [ ] 步骤一：确认需求编号 (REQID)
+- [ ] 步骤一 `newreq`：创建或复用正式需求空间
+- [ ] 步骤二 `prd-write`：从自由文字生成首版草稿 PRD
+- [ ] 按需：brainstorming：在 `prd-write` 内部完成需求澄清与方案收敛
 - [ ] 步骤二 `doc-convert`：文档转换 + 图片分析
 - [ ] 步骤三 `story-analyze`：分析 STORY-需求点-MUC 三层结构
 - [ ] 步骤四 `prd-convert`：生成结构化 PRD 与独立 Story 文档
@@ -221,10 +266,14 @@ tools:
 
 另提供独立工具命令：
 ```
-doc-to-md              本地文档（doc/docx/pdf 等）→ 干净的 Markdown
 wiki-export            批量导出 Wiki 页面 / 页面树 / Space 为 Markdown 知识库
+init-workspace         初始化 raw/wiki/newreq 工作空间骨架
+newreq                 创建或复用正式需求空间，并默认自动进入 prd-write
 enhance-content        对 [PROD_ORI] 执行图片内容增强
 story-create           在 DPMP 批量创建 Story，并将真实 ID 回写到所有文件
 quick-story            从自然语言描述直接创建单条 DPMP Story
+brainstorming          独立产品阶段头脑风暴与需求澄清；主链路中由 prd-write 按需调用
 prd-write              从用户自由文字描述 + 可选关联文档合成首版草稿 PRD
+image-analyse        从界面截图还原字段说明表
+newdiagram            创建本地 drawio 图文件；默认输出 diagrams/[DIAGRAM]<标题>.drawio
 ```

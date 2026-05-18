@@ -2,7 +2,7 @@
 
 **触发词：** `prd-convert` 或"需求结构化"或"生成PRD"
 
-**职责：** AI 核心步骤。读取 `[PROD_ORI]` 文件（含末尾三层结构分析和 story_key），生成以 Story 和 Feature 为正文主结构的结构化 PRD。PRD 中使用 story_key（S-01、S-02）作为 Story 标识，并在文末保留 Story-Feature-MUC 三层分析附录。
+**职责：** AI 核心步骤。读取 `[PROD_ORI]` 文件（含末尾三层结构分析和 story_key），生成以 Story 和 Feature 为正文主结构的结构化 PRD。PRD 正文隐藏 `story_key / feature_key / muc_key`，仅在文末保留 Story-Feature-MUC 三层分析附录。
 
 **输入文件确定规则（按优先级）：**
 1. 用户明确指定了文件路径 → 直接使用
@@ -16,7 +16,7 @@
 ### 阶段 A：读取文件
 
 用 `read` 工具依次读取（**不要执行任何 bash 命令**）：
-1. 输入的 `[PROD_ORI]` Markdown 文件（包含末尾的"附录：Story 结构分析"节，获取 story_key 和三层结构）
+1. 输入的 `[PROD_ORI]` Markdown 文件（包含末尾的"附录：Story 结构分析"节，获取三层结构和 key 映射）
 2. `${CLAUDE_PLUGIN_ROOT}/skills/po-skills/references/prd-convert-prompt.md`
 3. `${CLAUDE_PLUGIN_ROOT}/skills/po-skills/references/prd-template.md`
 
@@ -30,18 +30,9 @@
 - 每步完成：`✅ [X/N] 完成，已写入文件`
 - 每完成一步就用 `write` 工具将**当前全部已生成内容**写入输出文件
 
-**PRD 锚点要求**：在每个 Story 章节标题中包含 `story_key`（从 [PROD_ORI] 末尾附录读取）：
-```markdown
-### 3.1 S-01：客户全景
-<!-- STORY_KEY: S-01 -->
-```
+**正文标题要求**：Story 和需求点标题只保留业务标题，不展示 `story_key / feature_key`。
 
-**需求点标题要求**：在每个需求点章节标题中包含 `feature_key`：
-```markdown
-##### 2.1.1 F-01：客户基本信息模块
-```
-
-**MUC 附录要求**：MUC 不参与正文重组，仅在文末附录中输出 Story-Feature-MUC 三层分析表。
+**附录要求**：`story_key / feature_key / muc_key` 不参与正文展示，仅在文末附录中输出 Story-Feature-MUC 三层分析表，作为后续 `story-create`、回写和追踪的唯一 key 来源。
 
 合并 PRD 模板结构见 `references/prd-template.md`，输出现有内容后**不要停顿**，直接进入阶段 C。
 
@@ -59,12 +50,13 @@
 
 | 模板章节 | 内容来源 |
 |----------|----------|
-| 基本信息 | story_key + Story 标题（从分析表）+ 关联 PRD 章节引用 + 变更类型/端侧（从分析表） |
+| 基本信息 | Story 标题（文件名使用 story_key 占位）+ 关联 PRD 章节引用 + 变更类型/端侧（从分析表） |
 | 菜单路径 | PRD 中该 Story 章节的菜单/导航描述 |
 | 核心逻辑 | PRD 中该 Story 的功能说明 + 规则说明 |
-| 流程 | 仅当该 Story 涉及审批/工作流时，从 PRD 提取；否则删除此章节 |
-| 交互设计 | PRD 中该 Story 的交互说明（保留表格和图片引用） |
-| 验收用例 | PRD 中该 Story 的验收用例表 |
+| 流程 | 按需提取。仅当该 Story 涉及多步骤流转、审批/工作流、跨页面跳转、状态变化或异常分支时保留；否则删除此章节 |
+| 交互设计 | 按需提取。仅当 PRD 中存在有实际信息的交互说明、表格或图片时保留；否则删除此章节 |
+
+简单 Story 不要为了套模板强制补流程图、时序图、架构图或占位原型图。只要“核心逻辑 + 验收标准/关联 PRD”能说明清楚，就应保持文档轻量。
 
 **C3. 写入文件**：
 

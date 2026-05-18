@@ -1,8 +1,8 @@
-# 独立工具：doc-to-md（本地文档 → 干净 Markdown）
+# 内部子步骤：doc-to-md（本地文档 → 干净 Markdown）
 
-**触发词：** `doc-to-md` 或"pdf转md"或"docx转md"或"文档转markdown"
+**触发场景：** `doc-convert` 或云文档下载链路内部调用。
 
-**职责：** 纯工具步骤，代码完成，不需要 AI 介入。
+**职责：** 内部实现步骤，代码完成，不作为用户侧独立入口。
 - 读取本地 `doc`、`docx`、`pdf` 等文档
 - 使用微软 `markitdown` Python 包转换为 Markdown
 - 输出干净的 Markdown 文件，文件名前缀 `[PROD_ORI]`
@@ -11,14 +11,20 @@
 ```bash
 python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py doc-to-md --file ./data/spec.pdf
 python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py doc-to-md --file ./data/spec.docx --output-dir ./TAILOR-124/1.产品设计
+python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py doc-to-md --file ./raw/spec.docx --output-dir raw
 python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py doc-to-md --file ./data/spec.docx --enhance-content
 ```
 
 **输出目录规则：**
 - 显式传入 `--output-dir` 时，直接使用
-- 未传入时，自动创建 `./<文档名>/1.产品设计/`
+- 当 `--output-dir raw` 指向工作空间 raw 根目录时，自动输出到 `raw/<源文档名>/`
+- 或通过 `--reqid <REQID>` 输出到 `newreq/<REQID>/1.产品设计/`
+- 未传入上述参数时，直接报错，不再自动创建目录
+- `doc-to-md` 不支持 `--raw`；临时转换本地文档时使用 `--output-dir raw`
 
-**输出：** `./<文档名>/1.产品设计/[PROD_ORI]<文档名>.md`
+**输出：**
+- 正式需求：`newreq/<REQID>/1.产品设计/[PROD_ORI]<文档名>.md`
+- 临时转换：`raw/<文档名>/[PROD_ORI]<文档名>.md`，图片位于 `raw/<文档名>/images/`
 
 步骤执行成功后，stdout 会输出 `OUTPUT_FILE=<路径>` 格式的一行。
 

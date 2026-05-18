@@ -110,7 +110,7 @@ export function openDetachedPreviewWindow(
 
   const isDev = !app.isPackaged
   if (isDev) {
-    win.loadURL(`http://localhost:5173?window=detached-preview&previewId=${encodeURIComponent(id)}`)
+    win.loadURL(`http://127.0.0.1:5173?window=detached-preview&previewId=${encodeURIComponent(id)}`)
   } else {
     win.loadFile(join(__dirname, 'renderer', 'index.html'), {
       query: { window: 'detached-preview', previewId: id },
@@ -129,7 +129,7 @@ export function openDetachedPreviewWindow(
   })
 
   win.webContents.on('will-navigate', (event, url) => {
-    if (isDev && url.startsWith('http://localhost:')) return
+    if (isDev && url.startsWith('http://127.0.0.1:')) return
     event.preventDefault()
     if (url.startsWith('http://') || url.startsWith('https://')) {
       shell.openExternal(url)

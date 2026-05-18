@@ -30,6 +30,7 @@ import {
   normalizeVersionedAnthropicBaseUrl,
   resolveOpenAIModelsUrl,
 } from '@proma/core'
+import { ensurePresetChannels } from './channel-presets.ts'
 
 /** 当前配置版本 */
 const CONFIG_VERSION = 1
@@ -112,35 +113,22 @@ function decryptKey(encryptedKey: string): string {
  * 获取所有渠道
  *
  * 返回的渠道中 apiKey 保持加密状态。
- * 首次调用时，如果没有任何 DeepSeek 渠道，自动创建预设渠道。
+ * 首次调用时，如果没有默认渠道，自动创建预设渠道。
  */
 export function listChannels(): Channel[] {
   const config = readConfig()
 
-  // 首次使用：如果没有 DeepSeek 渠道，自动创建预设
-  const hasDeepSeek = config.channels.some(
-    (c) => c.provider === 'deepseek' || c.baseUrl.includes('api.deepseek.com'),
-  )
-  if (!hasDeepSeek) {
-    const now = Date.now()
-    const presetChannel: Channel = {
-      id: randomUUID(),
-      name: 'DeepSeek',
-      provider: 'deepseek',
-      baseUrl: PROVIDER_DEFAULT_URLS.deepseek,
-      apiKey: encryptApiKey(''),
-      models: [
-        { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro', enabled: true },
-        { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', enabled: true },
-      ],
-      enabled: false,
-      createdAt: now,
-      updatedAt: now,
-    }
-    config.channels.push(presetChannel)
+  const presets = ensurePresetChannels({
+    channels: config.channels,
+    now: Date.now,
+    createId: () => randomUUID(),
+    encryptApiKey,
+  })
+
+  if (presets.changed) {
+    config.channels = presets.channels
     writeConfig(config)
-    console.log('[渠道管理] 已自动创建 DeepSeek 预设渠道')
-    return config.channels
+    console.log(`[渠道管理] 已自动创建预设渠道: ${presets.addedNames.join('、')}`)
   }
 
   return config.channels

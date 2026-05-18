@@ -73,7 +73,8 @@ def load_from_json(json_path: str) -> tuple[str, str, str]:
 
 def save_markdown(content: str, title: str, output_dir: str) -> str:
     """保存为 [PROD_ORI]<title>.md，返回完整输出路径。"""
-    os.makedirs(output_dir, exist_ok=True)
+    if not os.path.isdir(output_dir):
+        raise FileNotFoundError(f"输出目录不存在：{output_dir}")
     filename = f"[PROD_ORI]{title}.md"
     output_path = os.path.join(output_dir, filename)
     with open(output_path, "w", encoding="utf-8") as f:

@@ -2,10 +2,12 @@
 
 **触发词：** `doc-convert` 或"wiki转markdown"或"wiki转md"
 
-**职责：** 接收多种输入类型，自动选择转换策略：
+**职责：** 对外统一的文档转换入口，接收多种输入类型，自动选择转换策略：
 - Wiki URL → API 直接拉取转换
-- EIP / LinkApp URL → 浏览器下载后转换（加载 `steps/doc-browser-download.md`）
-- 本地文档（.docx/.pdf/.doc）→ 直接 doc-to-md 转换
+- EIP / LinkApp URL → 暂不支持自动下载，提示用户手工下载后再转换
+- 本地文档（.docx/.pdf/.doc）→ doc-to-md 转换
+
+**强制边界：** 云文档 URL 暂不支持自动下载；手工下载后的 `.doc/.docx/.pdf` 文件必须调用 `run.py doc-to-md --file`，由 `steps/doc-to-md.md` 使用 markitdown 转换。`run.py doc-convert --file` 只用于 Confluence API JSON，不能拿来处理 Office/PDF 文档；也禁止临时编写 `python-docx`、PDF 解析脚本替代 doc-to-md。
 
 ---
 
@@ -16,60 +18,58 @@
 | URL/文件特征 | 策略 | 步骤文件 |
 |-------------|------|----------|
 | `http://wiki...` 含 `pageId=` | Wiki API 转换 | 本文档后续步骤 |
-| `eip.htsc.com.cn/htscPortalDocs/` | 浏览器下载 | `steps/doc-browser-download.md` |
-| `linkapp.htsc.com.cn/S/` | 浏览器下载 | `steps/doc-browser-download.md` |
-| `.docx` / `.pdf` / `.doc` 本地文件 | doc-to-md | `steps/doc-to-md.md` |
+| `eip.htsc.com.cn/htscPortalDocs/` | 暂不支持自动下载，提示手工下载 | 无 |
+| `linkapp.htsc.com.cn/S/` | 暂不支持自动下载，提示手工下载 | 无 |
+| `.json` 且为 Confluence API 响应 | Wiki JSON 转换 | 本文档后续步骤 |
+| `.docx` / `.pdf` / `.doc` 本地文件 | `run.py doc-to-md --file` | `steps/doc-to-md.md` |
 
-> 进入浏览器下载分支后，默认优先调用插件 subagent `cloud-doc-downloader`，输入 `source_url`、`reqid`、`references_dir`，由 subagent 执行下载和 `doc-to-md` 转换。本命令场景下等待 subagent 返回结果后再进入完成输出流程。
+> 识别到 EIP / LinkApp 云文档 URL 时，直接停止自动转换并返回 `CLOUD_DOC_MANUAL_DOWNLOAD_REQUIRED`。不要派发 `cloud-doc-downloader`，不要加载或同步执行 `steps/doc-browser-download.md`，不要尝试通过 chrome-devtools 点击下载。
 >
-> 调试开关：如果用户输入包含 `--no-cloud-subagent`、"不用 subagent"、"同步调试"、"当前会话执行"，或环境变量 `PO_CLOUD_DOC_SUBAGENT=0` / `false` / `off`，禁止派发 subagent，直接加载 `${CLAUDE_PLUGIN_ROOT}/skills/po-skills/steps/doc-browser-download.md` 并在当前会话同步执行。这个模式便于观察 Chrome DevTools MCP 操作和排查浏览器会话冲突。
+> 提示用户：暂不支持自动下载 EIP/LinkApp 云文档；请先在浏览器中手工下载原始 `.doc/.docx/.pdf` 文件，然后使用 `/doc-convert <本地文件路径>` 继续转换。
 >
-> 若 `cloud-doc-downloader` 不可用，**立即切换**加载 `${CLAUDE_PLUGIN_ROOT}/skills/po-skills/steps/doc-browser-download.md` 并在当前会话同步执行。下载转换完成后回到本文档的完成输出流程。
->
-> 进入本地文档分支后，切换到 `steps/doc-to-md.md`。
+> 进入本地文档分支后，切换到 `steps/doc-to-md.md`，执行 `python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py doc-to-md --file "<本地文档路径>" ...`。
 
 ---
 
 ## Wiki API 转换
 
-**输出目录规则（AI 在执行前自动推导，无需用户指定）：**
+**输出目录规则：**
 
 | 输入方式 | 输出目录 |
 |---|---|
-| `--file`（本地 JSON 转换） | 项目根目录下以文件名命名的新目录，内部固定结构如下 |
-| `--url`（Wiki 页面转换） | 默认输出到 `REQ-<pageId>/1.产品设计/`；若无法提取 `pageId`，则输出到 `REQ-<随机8位>/1.产品设计/` |
-| 后续步骤处理本地已有 `[PROD_ORI]` 文件 | 与该 `[PROD_ORI]` 文件所在的 `1.产品设计/` 目录 |
+| `--reqid <REQID>` | `newreq/<REQID>/1.产品设计/`，要求需求空间已由 `newreq` 创建 |
+| `--raw` | `raw/`，只用于未归属正式需求的临时转换 |
+| `--output-dir` | 兼容/高级参数，调用方自行保证目录已存在 |
+| 后续步骤处理本地已有 `[PROD_ORI]` 文件 | 先执行 `resolve-workspace --from-file <路径>` 推导目录 |
 
 **目录结构（固定）：**
 ```
-<需求ID>/              ← 以需求ID命名，如 TAILOR-124
-  1.产品设计/          ← [PROD_ORI]、[PROD_FORMAT] 文件和 images/ 都放这里
+newreq/<REQID>/
+  1.产品设计/          ← 主需求文档和 images/ 放这里
+    images/
+  references/          ← 参考资料放这里
     images/
 ```
 
-doc-convert 执行时 `--output-dir` 指向 `<需求ID>/1.产品设计/`。
-
-**默认目录命名规则：**
-1. 使用 `--file`（本地 JSON）→ 从 JSON 文件名去掉扩展名作为目录名
-2. 使用 `--url`（Wiki 页面）→ 使用 `REQ-<pageId>`
-3. 无法提取 `pageId` → 使用 `REQ-<随机8位>`
+doc-convert 作为转换工具，不再拥有正式需求目录初始化职责。
 
 **说明：**
-- Windows 环境下推荐 URL 模式使用默认 `REQ-<pageId>` 目录，避免中文路径编码问题
-- 如需自定义目录，可显式传入 `--output-dir`
 - `fetch-title` 可用于确认页面标题或后续文件命名参考，但**不要**再将页面标题直接拼成 URL 模式的默认输出目录
-- URL 模式默认应直接执行 `doc-convert --url ...`，让 `run.py` 自动推导 `REQ-<pageId>/1.产品设计/`
+- `--reqid` 指向的需求空间不存在时，先执行 `newreq --reqid <REQID> --init-only`
+- `--raw` 使用的 `raw/` 不存在时，先执行 `init-workspace`
 
 **执行：**
 ```bash
-python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py doc-convert --file ./data/page.json --output-dir ./考核优化二期需求/1.产品设计
-python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py doc-convert --url "http://wiki.../pages/viewpage.action?pageId=123456"
-python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py doc-convert --url "http://wiki.../pages/viewpage.action?pageId=123456" --output-dir "TAILOR-124/1.产品设计"
+python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py doc-convert --url "http://wiki.../pages/viewpage.action?pageId=123456" --reqid "TAILOR-124"
+python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py doc-convert --file ./data/page.json --raw
+python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py doc-convert --url "http://wiki.../pages/viewpage.action?pageId=123456" --output-dir "newreq/TAILOR-124/1.产品设计"
 ```
 
-> ⚠️ **`--output-dir` 强制规则**：当用户提供了 REQID 时，`--output-dir` 的值**必须是 `<REQID>/1.产品设计`**，而不能只填 `<REQID>`。只填 REQID 会导致文件输出到错误目录，进而导致后续所有步骤全部失败。
+> ⚠️ `doc-convert --file` 示例中的 `page.json` 是 Confluence API JSON，不是 `.doc/.docx/.pdf`。本地文档转换示例见 `steps/doc-to-md.md`。
 
-**输出：** `./REQ-<pageId>/1.产品设计/[PROD_ORI]<页面标题>.md`，图片下载至同目录下的 `images/`
+> ⚠️ **目标目录强制规则**：用户提供了 REQID 时优先使用 `--reqid <REQID>`，不要自行拼 `--output-dir`。只有兼容旧资料或明确高级用法时才使用 `--output-dir`。
+
+**输出：** `newreq/<REQID>/1.产品设计/[PROD_ORI]<页面标题>.md`，图片下载至同目录下的 `images/`
 
 步骤二执行成功后，stdout 会输出：
 

@@ -29,6 +29,7 @@ import os
 import re
 import uuid
 import io
+from datetime import datetime
 from contextlib import redirect_stdout
 
 
@@ -59,15 +60,16 @@ _SKILL_DIR = os.path.dirname(os.path.abspath(__file__))
 def _find_project_root() -> str:
     """确定项目根目录。
 
-    优先级：CLAUDE_PROJECT_DIR > CWD（含 .git）> skill 目录向上查找 .git > skill 目录。
+    优先级：PO_PROJECT_DIR > OPENCODE_PROJECT_DIR > CLAUDE_PROJECT_DIR > CWD（含 .git）> skill 目录向上查找 .git > skill 目录。
     注意：.env 加载会额外优先读取当前工作目录，即使 CWD 不是 git 仓库。
     """
-    # 1) CLAUDE_PROJECT_DIR：Claude Code 部分版本在 Bash 中注入此变量
-    cc_project = os.environ.get("CLAUDE_PROJECT_DIR", "").strip()
-    if cc_project and os.path.isdir(cc_project):
-        return cc_project
+    # 1) 显式项目目录变量：PO_PROJECT_DIR 用于跨平台，后两项兼容具体客户端。
+    for env_name in ("PO_PROJECT_DIR", "OPENCODE_PROJECT_DIR", "CLAUDE_PROJECT_DIR"):
+        project_dir = os.environ.get(env_name, "").strip()
+        if project_dir and os.path.isdir(project_dir):
+            return project_dir
 
-    # 2) 当前工作目录：Claude Code 运行 Bash 时 CWD 通常为项目根
+    # 2) 当前工作目录：AI 客户端运行 Bash 时 CWD 通常为项目根
     cwd = os.getcwd()
     if os.path.isdir(os.path.join(cwd, ".git")):
         return cwd
@@ -113,22 +115,377 @@ def _read_ref(filename: str) -> str:
         return f.read()
 
 
+WORKSPACE_STATUS_VALUES = {"initialized", "archived", "invalid"}
 
-def _derive_doc_convert_output_dir(opts, dc) -> str:
-    """为 doc-convert 推导默认输出目录。"""
+
+def _project_workspace_root() -> str:
+    """Return the user's active project workspace root."""
+    return os.getcwd()
+
+
+def _rel(path: str) -> str:
+    return os.path.relpath(path, _project_workspace_root()).replace(os.sep, "/")
+
+
+def _workspace_paths() -> dict[str, str]:
+    root = _project_workspace_root()
+    return {
+        "raw_dir": os.path.join(root, "raw"),
+        "wiki_dir": os.path.join(root, "wiki"),
+        "newreq_dir": os.path.join(root, "newreq"),
+        "req_index": os.path.join(root, "newreq", "req.index"),
+    }
+
+
+def _resolve_req_layout(reqid: str) -> dict[str, str]:
+    root = _project_workspace_root()
+    req_root = os.path.join(root, "newreq", reqid)
+    design_dir = os.path.join(req_root, "1.产品设计")
+    references_dir = os.path.join(req_root, "references")
+    paths = _workspace_paths()
+    return {
+        "reqid": reqid,
+        "req_root": req_root,
+        "design_dir": design_dir,
+        "images_dir": os.path.join(design_dir, "images"),
+        "references_dir": references_dir,
+        "reference_images_dir": os.path.join(references_dir, "images"),
+        "raw_dir": paths["raw_dir"],
+        "wiki_dir": paths["wiki_dir"],
+        "req_index": paths["req_index"],
+    }
+
+
+def _write_readme_once(path: str, content: str) -> None:
+    if not os.path.exists(path):
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+
+
+def _ensure_req_index(path: str) -> None:
+    if not os.path.exists(path):
+        with open(path, "w", encoding="utf-8", newline="") as f:
+            f.write("# req.index\n\n")
+            f.write("当前记录：暂无正式需求。\n")
+
+
+def _ensure_global_workspace() -> dict[str, str]:
+    paths = _workspace_paths()
+    os.makedirs(paths["raw_dir"], exist_ok=True)
+    os.makedirs(paths["wiki_dir"], exist_ok=True)
+    os.makedirs(paths["newreq_dir"], exist_ok=True)
+    _write_readme_once(
+        os.path.join(paths["raw_dir"], "README.md"),
+        "# raw\n\n未归属正式需求的临时转换结果。\n",
+    )
+    _write_readme_once(
+        os.path.join(paths["wiki_dir"], "README.md"),
+        "# wiki\n\nWiki 导出、Wiki 知识沉淀及未进入正式需求空间的 Wiki 资料。\n",
+    )
+    _write_readme_once(
+        os.path.join(paths["newreq_dir"], "README.md"),
+        "# newreq\n\n正式需求空间根目录。每个需求统一位于 `newreq/<REQID>/`。\n",
+    )
+    _ensure_req_index(paths["req_index"])
+    return paths
+
+
+def _read_req_index(path: str) -> list[dict[str, str]]:
+    _ensure_req_index(path)
+    with open(path, encoding="utf-8") as f:
+        lines = [line.strip() for line in f if line.strip()]
+    if not lines or lines[0] != "# req.index":
+        return []
+    rows: list[dict[str, str]] = []
+    current: dict[str, str] | None = None
+    for line in lines[1:]:
+        if line.startswith("## "):
+            if current and current.get("reqid"):
+                rows.append(current)
+            current = {
+                "reqid": line[3:].strip(),
+                "title": "",
+                "path": "",
+                "status": "",
+                "updated_at": "",
+            }
+            continue
+        if current is None or not line.startswith("- "):
+            continue
+        key, sep, value = line[2:].partition(":")
+        if sep and key.strip() in current:
+            current[key.strip()] = value.strip()
+    if current and current.get("reqid"):
+        rows.append(current)
+    return rows
+
+
+def _write_req_index(path: str, rows: list[dict[str, str]]) -> None:
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        f.write("# req.index\n\n")
+        if not rows:
+            f.write("当前记录：暂无正式需求。\n")
+            return
+        f.write("当前记录：\n\n")
+        for row in rows:
+            f.write(f"## {row['reqid']}\n\n")
+            f.write(f"- reqid: {row['reqid']}\n")
+            f.write(f"- title: {row['title']}\n")
+            f.write(f"- path: {row['path']}\n")
+            f.write(f"- status: {row['status']}\n")
+            f.write(f"- updated_at: {row['updated_at']}\n\n")
+
+
+def _update_req_index(reqid: str, title: str, req_root_rel: str, status: str = "initialized") -> bool:
+    if status not in WORKSPACE_STATUS_VALUES:
+        raise ValueError(f"不支持的 req.index.status：{status}")
+    index_path = _workspace_paths()["req_index"]
+    rows = _read_req_index(index_path)
+    updated_at = datetime.now().astimezone().isoformat(timespec="seconds")
+    next_row = {
+        "reqid": reqid,
+        "title": title,
+        "path": req_root_rel,
+        "status": status,
+        "updated_at": updated_at,
+    }
+    changed = False
+    replaced = False
+    for idx, row in enumerate(rows):
+        if row.get("reqid") == reqid:
+            replaced = True
+            current = {key: row.get(key, "") for key in ("reqid", "title", "path", "status")}
+            desired = {key: next_row[key] for key in ("reqid", "title", "path", "status")}
+            if current != desired:
+                rows[idx] = next_row
+                changed = True
+            break
+    if not replaced:
+        rows.append(next_row)
+        changed = True
+    if changed:
+        _write_req_index(index_path, rows)
+    return changed
+
+
+def _emit_layout(layout: dict[str, str], **extra: str) -> None:
+    ordered = [
+        ("REQID", layout.get("reqid", "")),
+        ("REQ_ROOT", _rel(layout["req_root"]) if "req_root" in layout else ""),
+        ("DESIGN_DIR", _rel(layout["design_dir"]) if "design_dir" in layout else ""),
+        ("REFERENCES_DIR", _rel(layout["references_dir"]) if "references_dir" in layout else ""),
+        (
+            "REFERENCE_IMAGES_DIR",
+            _rel(layout["reference_images_dir"]) if "reference_images_dir" in layout else "",
+        ),
+        ("IMAGES_DIR", _rel(layout["images_dir"]) if "images_dir" in layout else ""),
+        ("RAW_DIR", _rel(layout["raw_dir"])),
+        ("WIKI_DIR", _rel(layout["wiki_dir"])),
+        ("REQ_INDEX", _rel(layout["req_index"])),
+    ]
+    for key, value in ordered:
+        print(f"{key}={value}")
+    for key, value in extra.items():
+        print(f"{key}={value}")
+
+
+def _ensure_req_workspace(reqid: str, title: str = "") -> tuple[dict[str, str], bool, bool]:
+    _ensure_global_workspace()
+    layout = _resolve_req_layout(reqid)
+    existed = os.path.isdir(layout["req_root"])
+    for path in (
+        layout["req_root"],
+        layout["design_dir"],
+        layout["images_dir"],
+        layout["references_dir"],
+        layout["reference_images_dir"],
+    ):
+        os.makedirs(path, exist_ok=True)
+    index_updated = _update_req_index(reqid, title, _rel(layout["req_root"]))
+    return layout, not existed, index_updated
+
+
+def _generate_mock_reqid() -> str:
+    today = datetime.now().strftime("%Y%m%d")
+    newreq_dir = _workspace_paths()["newreq_dir"]
+    max_seq = 0
+    if os.path.isdir(newreq_dir):
+        pattern = re.compile(rf"REQ-{today}-(\d{{3}})$")
+        for name in os.listdir(newreq_dir):
+            match = pattern.match(name)
+            if match:
+                max_seq = max(max_seq, int(match.group(1)))
+    return f"REQ-{today}-{max_seq + 1:03d}"
+
+
+def _require_global_workspace() -> dict[str, str]:
+    paths = _workspace_paths()
+    missing = [
+        _rel(paths[key])
+        for key in ("raw_dir", "wiki_dir", "newreq_dir", "req_index")
+        if not os.path.exists(paths[key])
+    ]
+    if missing:
+        print(
+            "工作空间未初始化，请先执行 init-workspace。缺失："
+            + ", ".join(missing),
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return paths
+
+
+def _resolve_existing_req_by_id(reqid: str) -> dict[str, str]:
+    _require_global_workspace()
+    layout = _resolve_req_layout(reqid)
+    required = [
+        layout["req_root"],
+        layout["design_dir"],
+        layout["references_dir"],
+        layout["images_dir"],
+        layout["reference_images_dir"],
+    ]
+    if not all(os.path.exists(path) for path in required):
+        print(f"需求空间不存在或不完整：newreq/{reqid}。请先执行 newreq。", file=sys.stderr)
+        sys.exit(1)
+    return layout
+
+
+def _resolve_existing_req_from_path(path: str, must_be_file: bool) -> dict[str, str]:
+    abs_path = os.path.abspath(path)
+    if must_be_file and not os.path.isfile(abs_path):
+        print(f"文件不存在：{path}", file=sys.stderr)
+        sys.exit(1)
+    if not must_be_file and not os.path.isdir(abs_path):
+        print(f"目录不存在：{path}", file=sys.stderr)
+        sys.exit(1)
+
+    root = os.path.abspath(_project_workspace_root())
+    try:
+        rel_path = os.path.relpath(abs_path, root)
+    except ValueError:
+        print("路径必须位于当前项目工作空间内。", file=sys.stderr)
+        sys.exit(1)
+    parts = rel_path.split(os.sep)
+    if len(parts) < 2 or parts[0] != "newreq":
+        print(
+            "输入路径必须归属到 newreq/<REQID>/。历史路径请先创建标准需求空间或手工迁移。",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return _resolve_existing_req_by_id(parts[1])
+
+
+def _resolve_doc_convert_output_dir(opts, parser) -> str:
     if opts.output_dir:
         return opts.output_dir
+    if opts.reqid:
+        return _rel(_resolve_existing_req_by_id(opts.reqid)["design_dir"])
+    if opts.raw:
+        _require_global_workspace()
+        raw_dir = _workspace_paths()["raw_dir"]
+        if not os.path.isdir(raw_dir):
+            print("raw/ 不存在，请先执行 init-workspace。", file=sys.stderr)
+            sys.exit(1)
+        return _rel(raw_dir)
+    parser.error("必须指定 --reqid、--raw 或 --output-dir")
 
-    if opts.file:
-        req_name = os.path.splitext(os.path.basename(opts.file))[0]
+
+def _resolve_doc_to_md_output_dir(opts, parser) -> str:
+    if opts.output_dir:
+        output_dir = opts.output_dir
+        root = os.path.abspath(_project_workspace_root())
+        raw_dir = os.path.abspath(_workspace_paths()["raw_dir"])
+        candidate = os.path.abspath(os.path.join(root, output_dir))
+        if candidate == raw_dir:
+            doc_name = os.path.splitext(os.path.basename(opts.file))[0]
+            return _rel(os.path.join(raw_dir, doc_name))
+        return output_dir
+    if opts.reqid:
+        return _rel(_resolve_existing_req_by_id(opts.reqid)["design_dir"])
+    parser.error("必须指定 --reqid 或 --output-dir")
+
+
+def cmd_init_workspace(args):
+    """初始化 po 工作空间全局骨架。"""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="run.py init-workspace",
+        description="初始化 po 工作空间骨架",
+    )
+    parser.add_argument("--force", action="store_true", help="补齐缺失说明文件")
+    opts = parser.parse_args(args)
+    paths = _ensure_global_workspace()
+    if opts.force:
+        _write_readme_once(
+            os.path.join(paths["raw_dir"], "README.md"),
+            "# raw\n\n未归属正式需求的临时转换结果。\n",
+        )
+        _write_readme_once(
+            os.path.join(paths["wiki_dir"], "README.md"),
+            "# wiki\n\nWiki 导出、Wiki 知识沉淀及未进入正式需求空间的 Wiki 资料。\n",
+        )
+        _write_readme_once(
+            os.path.join(paths["newreq_dir"], "README.md"),
+            "# newreq\n\n正式需求空间根目录。每个需求统一位于 `newreq/<REQID>/`。\n",
+        )
+    print(f"RAW_DIR={_rel(paths['raw_dir'])}")
+    print(f"WIKI_DIR={_rel(paths['wiki_dir'])}")
+    print(f"NEWREQ_DIR={_rel(paths['newreq_dir'])}")
+    print(f"REQ_INDEX={_rel(paths['req_index'])}")
+    print("CREATED=true")
+
+
+def cmd_newreq(args):
+    """创建或复用正式需求空间。"""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="run.py newreq",
+        description="创建或复用 newreq/<REQID> 正式需求空间",
+    )
+    parser.add_argument("--reqid", default="", help="手工指定需求编号")
+    parser.add_argument("--title", default="", help="需求标题")
+    parser.add_argument("--mock", action="store_true", help="使用 mock 需求编号")
+    parser.add_argument("--init-only", action="store_true", help="只初始化目录，不串联 prd-write")
+    opts = parser.parse_args(args)
+
+    reqid = opts.reqid.strip()
+    if not reqid:
+        reqid = _generate_mock_reqid()
+    layout, created, index_updated = _ensure_req_workspace(reqid, opts.title.strip())
+    _emit_layout(
+        layout,
+        CREATED=str(created).lower(),
+        REUSED=str(not created).lower(),
+        INDEX_UPDATED=str(index_updated).lower(),
+        NEXT_STEP="" if opts.init_only else "prd-write",
+    )
+
+
+def cmd_resolve_workspace(args):
+    """解析已有正式需求空间的目录上下文。"""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="run.py resolve-workspace",
+        description="根据文件、目录或 REQID 解析已存在的正式需求空间",
+    )
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--from-file", help="需求空间内的已有文件")
+    group.add_argument("--from-dir", help="需求空间内的已有目录")
+    group.add_argument("--reqid", help="需求编号")
+    opts = parser.parse_args(args)
+
+    if opts.reqid:
+        layout = _resolve_existing_req_by_id(opts.reqid)
+    elif opts.from_file:
+        layout = _resolve_existing_req_from_path(opts.from_file, must_be_file=True)
     else:
-        try:
-            page_id = dc.extract_page_id(opts.url)
-            req_name = f"REQ-{page_id}"
-        except Exception:
-            req_name = f"REQ-{uuid.uuid4().hex[:8]}"
+        layout = _resolve_existing_req_from_path(opts.from_dir, must_be_file=False)
+    _emit_layout(layout)
 
-    return os.path.join(req_name, "1.产品设计")
 
 
 def _emit_enhance_marker(enabled: bool, output_file: str) -> None:
@@ -163,8 +520,10 @@ def cmd_doc_convert(args):
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--url", help="Confluence 页面 URL 或纯数字 page_id（需要 HTSC_WIKI_TOKEN）")
     group.add_argument("--file", help="本地 JSON 文件路径（Confluence API 响应格式，无需 Token）")
+    parser.add_argument("--reqid", default=None, help="输出到 newreq/<REQID>/1.产品设计")
+    parser.add_argument("--raw", action="store_true", help="输出到项目根目录 raw/")
     parser.add_argument("--output-dir", default=None,
-                        help="输出目录（默认自动创建 <需求名>/1.产品设计/ 目录结构）")
+                        help="显式输出目录（兼容/高级参数）")
     parser.add_argument(
         "--enhance-content",
         action="store_true",
@@ -172,10 +531,7 @@ def cmd_doc_convert(args):
     )
     opts = parser.parse_args(args)
 
-    output_dir = _derive_doc_convert_output_dir(opts, dc)
-
-    # 创建完整目录结构（只创建 1.产品设计/，不再创建 5.STORYS/）
-    os.makedirs(output_dir, exist_ok=True)
+    output_dir = _resolve_doc_convert_output_dir(opts, parser)
     print(f"输出目录：{output_dir}")
 
     argv = ["doc_convert.py", "--output-dir", output_dir]
@@ -199,10 +555,11 @@ def cmd_doc_to_md(args):
         description="工具：将本地文档转换为干净的 Markdown 文件",
     )
     parser.add_argument("--file", required=True, help="本地文档路径，如 doc/docx/pdf")
+    parser.add_argument("--reqid", default=None, help="输出到 newreq/<REQID>/1.产品设计")
     parser.add_argument(
         "--output-dir",
         default=None,
-        help="输出目录（默认自动创建 <文档名>/1.产品设计/ 目录结构）",
+        help="显式输出目录（兼容/高级参数）",
     )
     parser.add_argument(
         "--enhance-content",
@@ -211,13 +568,7 @@ def cmd_doc_to_md(args):
     )
     opts = parser.parse_args(args)
 
-    if opts.output_dir:
-        output_dir = opts.output_dir
-    else:
-        doc_name = os.path.splitext(os.path.basename(opts.file))[0]
-        output_dir = os.path.join(doc_name, "1.产品设计")
-
-    os.makedirs(output_dir, exist_ok=True)
+    output_dir = _resolve_doc_to_md_output_dir(opts, parser)
     print(f"输出目录：{output_dir}")
 
     sys.argv = ["doc_to_md.py", "--output-dir", output_dir, "--file", opts.file]
@@ -357,7 +708,7 @@ def cmd_init_story(args):
 
     parser = argparse.ArgumentParser(
         prog="run.py init-story",
-        description="从 PRD 文件读取 Story 列表，创建 5.STORYS 目录结构",
+        description="LEGACY：从 PRD 文件读取 Story 列表，创建 5.STORYS 目录结构（不推荐新项目使用）",
     )
     parser.add_argument("--prd", required=True, help="[PRD] 文件路径")
     parser.add_argument(
@@ -423,10 +774,12 @@ def cmd_init_story(args):
 
 
 def _backfill_story_ids(story_plan_path: str) -> dict:
-    """story-create 完成后，将 story_key（S-01）替换为真实    此函数由 `cmd_story_create` 在自动化成功后调用。
+    """story-create 完成后，将临时 story_key（S-01）回写为真实 story_id。
+
+    此函数由 `cmd_story_create` 在自动化成功后调用。
     回写范围：
-    1. [PROD_ORI].md   — 替换末尾附录中 story_key 列的值
-    2. [PROD_FORMAT].md — 替换正文中的 <!-- STORY_KEY: S-XX --> 以及各级标题中的 S-XX
+    1. [PROD_ORI].md    — 替换附录分析表中 story_key 列的值
+    2. [PROD_FORMAT].md — 替换附录分析表中 story_key 列的值
     3. [STORY_FORMAT].md— 重命名文件 [STORY_FORMAT][S-XX]... -> [STORY_FORMAT][真实ID]...
     """
     stats = {
@@ -459,24 +812,65 @@ def _backfill_story_ids(story_plan_path: str) -> dict:
             if name.startswith(prefix) and name.endswith(".md")
         ]
 
-    # ── 1. 回写 [PROD_ORI].md (末尾的附录表格) ──────────────────────────────────
+    def _replace_story_key_column_in_tables(content: str) -> str:
+        lines = content.splitlines()
+        updated_lines = []
+        in_story_table = False
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("| story_key |"):
+                in_story_table = True
+                updated_lines.append(line)
+                continue
+            if in_story_table and stripped.startswith("|---"):
+                updated_lines.append(line)
+                continue
+            if in_story_table and stripped.startswith("|"):
+                parts = line.split("|")
+                if len(parts) >= 3:
+                    story_key = parts[1].strip()
+                    if story_key in id_map:
+                        parts[1] = f" {id_map[story_key]} "
+                        line = "|".join(parts)
+                updated_lines.append(line)
+                continue
+            in_story_table = False
+            updated_lines.append(line)
+        return "\n".join(updated_lines) + ("\n" if content.endswith("\n") else "")
+
+    def _find_unreplaced_story_keys_in_tables(content: str) -> set[str]:
+        leftovers: set[str] = set()
+        lines = content.splitlines()
+        in_story_table = False
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("| story_key |"):
+                in_story_table = True
+                continue
+            if in_story_table and stripped.startswith("|---"):
+                continue
+            if in_story_table and stripped.startswith("|"):
+                parts = line.split("|")
+                if len(parts) >= 3:
+                    story_key = parts[1].strip()
+                    if unreplaced_pattern.fullmatch(story_key):
+                        leftovers.add(story_key)
+                continue
+            in_story_table = False
+        return leftovers
+
+    # ── 1. 回写 [PROD_ORI].md (附录分析表) ──────────────────────────────────────
     for proc_file in _list_files("[PROD_ORI]"):
         content = proc_file.read_text(encoding="utf-8")
-        new_content = content
-        for s_key, true_id in id_map.items():
-            pattern = _re.compile(rf"\b{_re.escape(s_key)}\b")
-            new_content = pattern.sub(str(true_id), new_content)
-        
+        new_content = _replace_story_key_column_in_tables(content)
         if new_content != content:
             proc_file.write_text(new_content, encoding="utf-8")
             stats["process"] += 1
 
-    # ── 2. 回写 [PROD_FORMAT].md ─────────────────────────────────────────────
+    # ── 2. 回写 [PROD_FORMAT].md (附录分析表) ─────────────────────────────────
     for prd_file in _list_files("[PROD_FORMAT]"):
         original = prd_file.read_text(encoding="utf-8")
-        updated = original
-        for old, new in id_map.items():
-            updated = _re.sub(rf'(?<!\w){_re.escape(old)}(?!\w)', new, updated)
+        updated = _replace_story_key_column_in_tables(original)
         if updated != original:
             prd_file.write_text(updated, encoding="utf-8")
             stats["format"] += 1
@@ -491,12 +885,11 @@ def _backfill_story_ids(story_plan_path: str) -> dict:
             story_file.rename(story_file.parent / new_basename)
             stats["story"] += 1
 
-    # ── 4. 回写后检查：是否有遗留的 S-xx 未被替换 ─────────────────────────────────
+    # ── 4. 回写后检查：附录分析表中是否有遗留的 S-xx 未被替换 ────────────────────
     unreplaced_pattern = _re.compile(r'\bS-\d{2,}\b')
     for f_path in _list_files("[PROD_ORI]") + _list_files("[PROD_FORMAT]"):
         content = f_path.read_text(encoding="utf-8")
-        leftovers = set(unreplaced_pattern.findall(content))
-        # 排除可能真的是以 S-xx 命名的真实数据（极少情况），只要匹配出来就提醒
+        leftovers = _find_unreplaced_story_keys_in_tables(content)
         if leftovers:
             stats["warnings"].append(f"文件 {f_path.name} 中疑似有未替换的 Story Key: {', '.join(leftovers)}")
 
@@ -599,6 +992,9 @@ def cmd_quick_story(args):
 # ---------------------------------------------------------------------------
 
 COMMANDS = {
+    "init-workspace": (cmd_init_workspace, "初始化 po 工作空间骨架"),
+    "newreq": (cmd_newreq, "创建或复用正式需求空间"),
+    "resolve-workspace": (cmd_resolve_workspace, "解析已有需求空间目录上下文"),
     "doc-convert":  (cmd_doc_convert,  "步骤一：Wiki/JSON → 干净 Markdown [NL]"),
     "doc-to-md":    (cmd_doc_to_md,    "工具：本地文档 → 干净 Markdown [PROD_ORI]"),
     "wiki-export":  (cmd_wiki_export,  "工具：批量导出 Wiki Markdown 知识库"),
@@ -606,7 +1002,7 @@ COMMANDS = {
     "story-create": (cmd_story_create, "步骤四：[Story规划] → DPMP 批量创建 Story"),
     "quick-story":  (cmd_quick_story,  "工具：从自然语言直接创建单条 DPMP Story"),
     "fetch-title":  (cmd_fetch_title,  "工具：获取 Confluence 页面标题"),
-    "init-story":   (cmd_init_story,   "工具：从 PRD 创建 5.STORYS 目录结构"),
+    "init-story":   (cmd_init_story,   "LEGACY：从 PRD 创建 5.STORYS 目录结构"),
 }
 
 

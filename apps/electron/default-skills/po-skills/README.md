@@ -207,7 +207,7 @@ DPMP_COOKIE=menuversion=2; token=...; accessToken=...; refreshToken=...
 ### 推荐用法
 
 - 从 Wiki 开始：`doc-convert` → `story-analyze` → `prd-convert` → `req-review`
-- 从本地文档开始：`doc-to-md` → `story-analyze` → `prd-convert` → `req-review`
+- 从本地文档开始：`doc-convert` → `story-analyze` → `prd-convert` → `req-review`
 - `story-create` 是可选步骤，通常在 `story-analyze` 之后按需执行
 
 ## 4. 在 Claude Code 中怎么用
@@ -217,7 +217,7 @@ DPMP_COOKIE=menuversion=2; token=...; accessToken=...; refreshToken=...
 | 场景 | 触发词示例 | 作用 |
 |------|-----------|------|
 | Wiki 转原始文档 | `doc-convert`、`wiki转md` | 拉取 Wiki，生成 `[PROD_ORI]` |
-| 本地文档转 Markdown | `doc-to-md`、`pdf转md`、`docx转md` | 把 `doc/docx/pdf` 转成 `[PROD_ORI]` |
+| 本地文档转 Markdown | `doc-convert`、`pdf转md`、`docx转md` | 把 `doc/docx/pdf` 转成 `[PROD_ORI]` |
 | 需求结构分析 | `story-analyze`、`需求分析` | 生成三层结构分析，追加到 `[PROD_ORI]` 末尾 |
 | 生成建单表 | `story-plan`、`story规划` | 从 PRD 提取 Story 生成 `[STORY_PLAN].csv` |
 | 生成 PRD | `prd-convert`、`生成PRD` | 输出 `[PROD_FORMAT]` 和独立 Story 文档 |
@@ -253,7 +253,7 @@ DPMP_COOKIE=menuversion=2; token=...; accessToken=...; refreshToken=...
 ### 从本地 PDF / Word 开始
 
 ```text
-doc-to-md --file "./docs/需求文档.pdf" --enhance-content
+doc-convert ./docs/需求文档.pdf
 ```
 
 典型后续流程：

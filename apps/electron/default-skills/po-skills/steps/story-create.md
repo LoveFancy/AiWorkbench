@@ -12,7 +12,7 @@
 
 1. 用户指定了 CSV 文件 → **跳到阶段 E**（已有 CSV）
 2. 当前目录下存在 `[STORY_PLAN]*.csv` → **跳到阶段 E**
-3. 文件含 `[PROD_FORMAT]` 前缀 **或** 内容含 `<!-- STORY_KEY:` 锚点 → 进入阶段 B（结构化 PRD）
+3. 文件含 `[PROD_FORMAT]` 前缀 → 进入阶段 B（结构化 PRD）
 4. 其余 `.md` 文件（有无 `[PROD_ORI]` 前缀均算）→ 进入阶段 C（确认分析 + 生成 CSV）
 5. 都不存在 → 提示用户提供文档或 CSV 文件
 
@@ -20,13 +20,12 @@
 
 ### 阶段 B：从 [PROD_FORMAT] 提取 Story 清单
 
-`[PROD_FORMAT]` 是已结构化的 PRD，Story 以 `<!-- STORY_KEY: S-xx -->` 锚点标记在章节标题中。
+`[PROD_FORMAT]` 是已结构化的 PRD，Story 清单以文末“附录：Story-Feature-MUC 结构分析”表为唯一来源。
 
-**B1. 扫描文档**：搜索 `<!-- STORY_KEY: S-` 锚点，提取每个 Story：
+**B1. 扫描文档**：读取文末“附录：Story-Feature-MUC 结构分析”表，按 `story_key` 去重提取每个 Story：
 
 ```markdown
-### 3.1 S-01：客户全景
-<!-- STORY_KEY: S-01 -->
+| S-01 | F-01 | MUC-01 | 客户全景 | 基本信息模块 | 字段展示 | ... |
 ```
 
 从中提取 `story_key`（S-01）和 Story 标题（"客户全景"）。
@@ -97,7 +96,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py story-create \
 
 1. **[PROD_ORI].md**：替换末尾附录中 story_key 列的值
 2. **[STORY_PLAN].csv**：写入 story_id 列
-3. **[PROD_FORMAT].md**：替换 `<!-- STORY_KEY: S-01 -->` 锚点和章节标题
+3. **[PROD_FORMAT].md**：仅替换末尾附录分析表中的 story_key 列值
 4. **[STORY_FORMAT] 文件重命名**：`[STORY_FORMAT][S-01]*.md` → `[STORY_FORMAT][真实ID]*.md`
 
 ---
@@ -113,7 +112,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py story-create \
 回写完成：
 - [PROD_ORI]：✅
 - [STORY_PLAN]：✅
-- [PROD_FORMAT]：✅
+- [PROD_FORMAT] 附录分析表：✅
 - [STORY_FORMAT] 文件重命名：N 个 ✅
 
 如有失败，检查错误信息后重新执行（已成功的自动跳过）。
