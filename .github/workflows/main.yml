@@ -23,21 +23,37 @@ jobs:
       - name: Build Electron app
         run: bun run electron:build
 
-      - name: Build Windows installer
+      - name: Build Windows NSIS installer
         working-directory: apps/electron
-        run: bun run dist:win -- msi --x64 --publish never
+        run: bun run dist:win -- --x64 --publish never
 
-      - name: Rename MSI artifact
+      - name: Verify auto-update artifacts
         shell: pwsh
         run: |
-          $msi = Get-ChildItem -Path apps/electron/out -Filter '*.msi' | Select-Object -First 1
-          if (-not $msi) {
-            throw '未找到 MSI 构建产物'
+          $outDir = 'apps/electron/out'
+          $latest = Join-Path $outDir 'latest.yml'
+          $exe = Get-ChildItem -Path $outDir -Filter '*.exe' | Select-Object -First 1
+          $blockmap = Get-ChildItem -Path $outDir -Filter '*.exe.blockmap' | Select-Object -First 1
+
+          if (-not (Test-Path $latest)) {
+            throw '未找到 latest.yml 自动更新元数据'
           }
-          Move-Item -Path $msi.FullName -Destination 'apps/electron/out/HtAiDevAssist.msi' -Force
+          if (-not $exe) {
+            throw '未找到 NSIS exe 安装包'
+          }
+          if (-not $blockmap) {
+            throw '未找到 exe.blockmap 差分更新文件'
+          }
+
+          Write-Host "latest.yml: $latest"
+          Write-Host "exe: $($exe.FullName)"
+          Write-Host "blockmap: $($blockmap.FullName)"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: HtAiDevAssist-windows-msi
-          path: apps/electron/out/HtAiDevAssist.msi
+          name: HtAiDevAssist-windows-auto-update
+          path: |
+            apps/electron/out/latest.yml
+            apps/electron/out/*.exe
+            apps/electron/out/*.exe.blockmap
