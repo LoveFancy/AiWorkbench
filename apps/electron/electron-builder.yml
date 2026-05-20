@@ -127,10 +127,9 @@ nsis:
 
 # ============================================
 # 发布配置
-# 每个平台的 build job 通过 --publish always 直接上传到 GitHub Release。
-# electron-builder 会自动创建/复用 Release，并在多架构并行上传时合并 latest-mac.yml。
+# Windows 自动更新使用内网静态文件源。
+# electron-updater 会在该目录下请求 latest.yml，并按其中的 url 下载 exe/blockmap。
 # ============================================
 publish:
-  provider: github
-  owner: ErlichLiu
-  repo: Proma
+  provider: generic
+  url: http://168.61.12.83:8199/aiworkbench/

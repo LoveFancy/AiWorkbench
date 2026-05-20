@@ -29,7 +29,7 @@ import { VersionHistory } from './VersionHistory'
 declare const __APP_VERSION__: string
 const APP_VERSION = __APP_VERSION__
 
-const GITHUB_RELEASES_URL = 'https://github.com/ErlichLiu/Proma/releases'
+const UPDATE_DOWNLOAD_URL = 'http://168.61.12.83:8199/aiworkbench/'
 
 /** 更新状态卡片 */
 function UpdateCard(): React.ReactElement | null {
@@ -53,7 +53,7 @@ function UpdateCard(): React.ReactElement | null {
   }
 
   const handleGoToDownload = (): void => {
-    const url = release?.html_url || GITHUB_RELEASES_URL
+    const url = release?.html_url || UPDATE_DOWNLOAD_URL
     window.electronAPI.openExternal(url)
   }
 
