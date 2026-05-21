@@ -1,0 +1,41 @@
+{
+  "name": "po-assist",
+  "version": "7.0.99",
+  "description": "产品经理工具集 - 将 Wiki 或本地文档转换为结构化 PRD 并自动创建 DPMP Story。支持文档转换、需求审查、Story 分析与创建等功能。",
+  "author": {
+    "name": "Qinxiao"
+  },
+  "homepage": "https://github.com/qinxiao/po-assist",
+  "repository": "https://github.com/qinxiao/po-assist",
+  "license": "MIT",
+  "keywords": [
+    "product",
+    "prd",
+    "story",
+    "wiki",
+    "workflow",
+    "poskill",
+    "po-skill"
+  ],
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "npx",
+      "env": {
+        "DEBUG": "*"
+      },
+      "args": [
+        "-y",
+        "chrome-devtools-mcp@latest",
+        "--log-file=D:/claude/chrome-devtools-mcp.log",
+        "--userDataDir=D:/claude/chrome-devtools-profile"
+      ]
+    },
+    "drawio": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@drawio/mcp"
+      ]
+    }
+  }
+}

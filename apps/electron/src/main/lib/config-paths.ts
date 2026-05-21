@@ -369,6 +369,23 @@ export function getDefaultSkillsDir(): string {
 }
 
 /**
+ * 获取默认插件模板目录路径
+ *
+ * 新建环境时自动复制此目录的内容到本地插件目录下。
+ *
+ * @returns ~/.proma/default-plugins/
+ */
+export function getDefaultPluginsDir(): string {
+  const dir = join(getConfigDir(), 'default-plugins')
+
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true })
+  }
+
+  return dir
+}
+
+/**
  * 从 SKILL.md 的 YAML frontmatter 中解析 version 字段
  *
  * 无 version 字段时返回 '0.0.0'（确保旧 Skill 会被更新）。
@@ -459,6 +476,47 @@ export function seedDefaultSkills(): void {
     }
   } catch (err) {
     console.warn('[配置] 同步默认 Skills 失败:', err)
+  }
+}
+
+/**
+ * 从 app bundle 同步默认插件到 ~/.proma/default-plugins/
+ *
+ * 打包模式下从 process.resourcesPath/default-plugins 复制。
+ * 开发模式下从源码 bundled-plugins/ 目录复制。
+ */
+export function seedDefaultPlugins(): void {
+  const { app } = require('electron')
+  const bundledDir = app.isPackaged
+    ? join(process.resourcesPath, 'default-plugins')
+    : join(__dirname, '../bundled-plugins')
+
+  if (!existsSync(bundledDir)) {
+    console.log('[配置] 未找到内置 default-plugins 目录，跳过')
+    return
+  }
+
+  const userDir = getDefaultPluginsDir()
+
+  try {
+    const entries = readdirSync(bundledDir, { withFileTypes: true })
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+
+      const source = join(bundledDir, entry.name)
+      const target = join(userDir, entry.name)
+
+      if (!existsSync(target)) {
+        cpSync(source, target, { recursive: true })
+        console.log(`[配置] 已同步默认插件: ${entry.name}`)
+      } else {
+        cpSync(source, target, { recursive: true, force: true })
+        console.log(`[配置] 已刷新默认插件: ${entry.name}`)
+      }
+    }
+  } catch (err) {
+    console.error('[配置] 同步默认插件失败:', err)
   }
 }
 

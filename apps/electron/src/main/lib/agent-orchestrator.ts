@@ -17,7 +17,7 @@
 import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { join, dirname } from 'node:path'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { app } from 'electron'
 import type { AgentSendInput, AgentMessage, AgentGenerateTitleInput, AgentProviderAdapter, AgentSessionMeta, TypedError, RetryAttempt, SDKMessage, SDKAssistantMessage, AgentStreamPayload, RewindSessionResult, SdkBeta, ProviderType } from '@proma/shared'
@@ -40,7 +40,7 @@ import { getFetchFn } from './proxy-fetch'
 import { getEffectiveProxyUrl } from './proxy-settings-service'
 import { appendSDKMessages, updateAgentSessionMeta, getAgentSessionMeta, getAgentSessionMessages, getAgentSessionSDKMessages, truncateSDKMessages, resolveUserUuidFromSDK, rewindFilesFromSnapshot } from './agent-session-manager'
 import { getAgentWorkspace, getWorkspaceMcpConfig, ensurePluginManifest } from './agent-workspace-manager'
-import { getAgentWorkspacePath, getAgentSessionWorkspacePath, getSdkConfigDir, getWorkspaceFilesDir, getConfigDirName } from './config-paths'
+import { getAgentWorkspacePath, getAgentSessionWorkspacePath, getSdkConfigDir, getWorkspaceFilesDir, getConfigDirName, getDefaultPluginsDir } from './config-paths'
 import { getWorkspaceAttachedDirectories, getWorkspaceAttachedFiles } from './agent-workspace-manager'
 import { getRuntimeStatus } from './runtime-init'
 import { getSettings } from './settings-service'
@@ -252,6 +252,33 @@ function resolveSDKCliPath(): string {
   }
 
   return binaryPath
+}
+
+/**
+ * 构建内置插件路径列表
+ *
+ * 读取 ~/.proma/default-plugins/ 下的内置插件，作为 SDK local plugin 注入。
+ */
+function getBuiltinPluginPaths(): Array<{ type: 'local'; path: string }> {
+  const dir = getDefaultPluginsDir()
+  if (!existsSync(dir)) return []
+
+  try {
+    return readdirSync(dir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => ({ type: 'local' as const, path: join(dir, entry.name) }))
+  } catch (err) {
+    console.warn('[Agent 编排] 读取内置插件目录失败:', err)
+    return []
+  }
+}
+
+/** 构建 SDK local plugin 列表：当前工作区插件 + 应用内置插件 */
+function getAgentPluginPaths(workspaceSlug?: string): Array<{ type: 'local'; path: string }> {
+  return [
+    ...(workspaceSlug ? [{ type: 'local' as const, path: getAgentWorkspacePath(workspaceSlug) }] : []),
+    ...getBuiltinPluginPaths(),
+  ]
 }
 
 /** 最大回填消息条数 */
@@ -1439,7 +1466,10 @@ export class AgentOrchestrator {
         // 回退后 resume：从指定消息处继续（SDK 在同一 JSONL 内创建分支）
         ...(rewindResumeAt && { resumeSessionAt: rewindResumeAt }),
         ...(Object.keys(mcpServers).length > 0 && { mcpServers }),
-        ...(workspaceSlug && { plugins: [{ type: 'local' as const, path: getAgentWorkspacePath(workspaceSlug) }] }),
+        ...(() => {
+          const plugins = getAgentPluginPaths(workspaceSlug)
+          return plugins.length > 0 ? { plugins } : {}
+        })(),
         // 合并附加目录：用户当次输入 + 会话级 + 工作区级（详见 collectAttachedDirectories）
         ...(() => {
           const allDirs = collectAttachedDirectories({

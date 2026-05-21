@@ -2,8 +2,8 @@
 # 文档: https://www.electron.build/configuration/configuration
 
 appId: com.proma.app
-productName: HtAiDevAssist
-copyright: Copyright © 2024-2025 HtAiDevAssist
+productName: HtAiWorkBench
+copyright: Copyright © 2024-2025 HtAiWorkBench
 
 # Electron 版本（CI 环境 bun workspace 下无法自动检测，需显式指定）
 electronVersion: 39.5.1
@@ -53,6 +53,11 @@ extraResources:
     to: default-skills
     filter:
       - "**/*"
+  # 默认 Claude Code 插件（启动时同步到 ~/.proma/default-plugins/）
+  - from: bundled-plugins
+    to: default-plugins
+    filter:
+      - "**/*"
   # 教程文件（教程查看器 + 欢迎对话使用）
   - from: ../../tutorial/tutorial.md
     to: tutorial.md
@@ -73,13 +78,13 @@ mac:
   entitlements: resources/entitlements.mac.plist
   entitlementsInherit: resources/entitlements.mac.plist
   extendInfo:
-    NSMicrophoneUsageDescription: "HtAiDevAssist 需要访问麦克风，用于将你的语音实时转写为文本。"
+    NSMicrophoneUsageDescription: "HtAiWorkBench 需要访问麦克风，用于将你的语音实时转写为文本。"
   fileAssociations:
     - ext: proma-backup
-      name: HtAiDevAssist Personal Backup
+      name: HtAiWorkBench Personal Backup
       role: Editor
     - ext: proma-share
-      name: HtAiDevAssist Share Package
+      name: HtAiWorkBench Share Package
       role: Editor
   # 架构由 CLI 参数控制（CI 矩阵分别传 --arm64 / --x64），
   # 每个 runner 只构建其宿主架构对应的产物，与 bun 按 os/cpu 装好的
@@ -108,10 +113,10 @@ win:
   icon: resources/icon.ico
   fileAssociations:
     - ext: proma-backup
-      name: HtAiDevAssist Personal Backup
+      name: HtAiWorkBench Personal Backup
       icon: resources/icon.ico
     - ext: proma-share
-      name: HtAiDevAssist Share Package
+      name: HtAiWorkBench Share Package
       icon: resources/icon.ico
   target:
     - target: nsis

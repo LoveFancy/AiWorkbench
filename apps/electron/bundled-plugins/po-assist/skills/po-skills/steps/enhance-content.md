@@ -1,0 +1,129 @@
+# 独立工具：enhance-content（图片分析）
+
+**触发词：** `enhance-content` 或"内容增强"或"图片分析"
+
+> 正常流程中，enhance-content 在 doc-convert 完成后**自动执行**，无需单独触发。
+> 仅当需要对已有 `[PROD_ORI]` 文件单独重新执行图片分析时，才显式触发本工具。
+
+**职责：** AI 主导步骤，脚本只负责最终文件操作。
+
+1. AI 读取 `image-classify-prompt.md` 作为判断规则上下文
+2. AI 读取完整 `[PROD_ORI]` 文档，识别所有图片
+3. AI 结合章节上下文 + 按需读取图片本身，判断每张图的类型和语义
+4. AI 用 `write` 工具直接更新 `[PROD_ORI]`（将图片链接替换为语义化名称）
+5. AI 构造 `--rename` 参数调用脚本，脚本直接执行重命名 + 生成过程记录
+
+**执行：**
+
+> ⚠️ **严禁直接执行以下命令**（不带 `--rename`/`--keep` 参数会触发旧的映射文件模式并报错）：
+> ```bash
+> # ❌ 错误：直接调用会因找不到映射文件而失败
+> python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py enhance-content --input "..."
+> ```
+>
+> **✅ 正确做法**：必须先完成阶段 A（读规则）和阶段 B（逐图分析），再在阶段 C 构造带有 `--rename`/`--keep` 参数的命令执行。示例见阶段 C。
+
+**AI 执行流程：**
+
+### 阶段 A：读取规则和文档
+
+用 `read` 工具依次读取：
+1. `${CLAUDE_PLUGIN_ROOT}/skills/po-skills/references/image-classify-prompt.md`（判断规则、命名规则、输出格式）
+2. 输入的 `[PROD_ORI]` Markdown 文件（完整内容）
+
+### 阶段 B：逐图判断
+
+> ⚠️ **强制约束：先完成全部图片的上下文分析，再决定是否读图。禁止直接跳到读图。**
+
+**B1. 对文档中每张图片，先仅凭上下文得出初步判断：**
+- 可用信息：章节标题、图片所在表格的列头、附近文本（前后 2~3 行）、alt 文本
+- 这些信息已包含在已读取的 `[PROD_ORI]` 文档中，**不需要再执行任何 read 命令**
+- 对每张图输出初步结论：能判断 → 记录 `category/title/decision=renamed`；不能判断 → 标记「待读图」
+
+**B2. 只有满足以下条件的图片，才补充读取图片本身（例外，非常规）：**
+- 上下文只有弱描述（如「如下图」「见下图」），无法定位具体页面或流程
+- 同一章节有多张相似图片，仅靠上下文无法区分
+- 无法稳定判断图片类型或标题
+
+> 🚫 **禁止行为**：不得在没有先完成上下文判断的情况下就读取图片；不得以「先读图确认类型」为由读图；不得逐张默认读取所有图片。
+
+**B3. 补充读图后仍无法可靠判断 → 标记 `KEEP`，不强行命名。**
+
+### 阶段 C：构造命令并执行脚本
+
+AI 已在阶段 B 分析得到完整映射，直接构造 `--rename` / `--keep` 参数，**无需用 `write` 工具修改 [PROD_ORI]，脚本会自动更新图片链接**。
+
+**分批调用规则（当 rename 总条数 > 20 时强制分批）：**
+
+> ✨ **这是防止命令行过长导致脚本执行失败的核心机制。必须严格执行。**
+
+- rename 条数 ≤ 20：一次性构造并执行，正常流程
+- rename 条数 > 20：分批调用，每批不超过 **15 条**，自动连续调用直到全部完成
+
+**小于 20 条时（正常流程）：**
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py enhance-content \
+    --input "<PROD_ORI路径>" \
+    --rename "./images/image2025-9-22_10-5-45.png" "./images/[原型图]客户列表页面-01.png" \
+    --rename "./images/image2025-9-22_10-18-22.png" "./images/[原型图]客户信息编辑页-01.png" \
+    --keep "./images/image2025-10-10_14-27-25.png"
+```
+
+**超过 20 条时（分批执行）：**
+
+```bash
+# 第 1 批：#1~#15
+python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py enhance-content \
+    --input "<PROD_ORI路径>" \
+    --rename "./images/old1.png" "./images/new1.png" \
+    ... 共 15 条
+
+# 第 2 批：#16~#30
+python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py enhance-content \
+    --input "<PROD_ORI路径>" \
+    --rename "./images/old16.png" "./images/new16.png" \
+    ... 剩余条目
+```
+
+> ⚠️ **分批注意**：每批命令都使用同一个 `--input`。脚本有幂等性，已完成的批次重复执行时会自动跳过已重命名的文件。
+
+**脚本一次性完成两件事：**
+1. `images/` 目录下图片物理重命名
+2. `[PROD_ORI].md` 中的图片链接同步更新（旧路径 → 新路径）
+
+**输出：**
+- 更新后的 `[PROD_ORI]` 文件（图片链接已替换）
+
+**完成时推荐输出：**
+```text
+✅ enhance-content 完成！
+文件：<路径>
+
+处理结果：
+- 共处理：X 张图片
+- 已重命名：Y 张
+- 保留原名：Z 张
+- 处理失败：N 张
+```
+
+**降级规则：**
+- 文档没有图片：直接跳过，不报错
+- 无法判断某张图：`KEEP`，保留原文件名和原链接
+- 某张图重命名失败：不中断整个步骤，在过程记录中标记 `处理失败`
+
+完成后输出：
+```
+✅ enhance-content 完成！
+文件：<路径>
+
+处理结果：
+- 共处理：X 张图片
+- 已重命名：Y 张
+- 保留原名：Z 张
+- 处理失败：N 张
+```
+
+> ⚡ 接下来进入步骤三 story-analyze（Story 分析与规划）。
+> **⚠️ 注意**：story-analyze 是纯 AI 步骤，`run.py` 中没有此命令，**严禁调用 bash**。
+> 直接用 `read` 工具读取 `[PROD_ORI]` 文件 + `prd-convert-prompt.md`，输出三层结构分析表后等待用户确认。
