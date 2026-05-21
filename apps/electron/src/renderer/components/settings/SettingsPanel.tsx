@@ -9,28 +9,12 @@ import * as React from "react";
 import { useAtom, useAtomValue } from "jotai";
 import { cn } from "@/lib/utils";
 import {
-  Settings,
-  Radio,
-  Palette,
-  Info,
-  Plug,
-  Globe,
-  BookOpen,
-  Wrench,
-  Bot,
-  GraduationCap,
   X,
-  Keyboard,
-  Mic,
-  HardDriveDownload,
-  HardDrive,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { settingsTabAtom, channelFormDirtyAtom, settingsCloseRequestedAtom } from "@/atoms/settings-tab";
 import type { SettingsTab } from "@/atoms/settings-tab";
 import { appModeAtom } from "@/atoms/app-mode";
-import { hasUpdateAtom } from "@/atoms/updater";
-import { hasEnvironmentIssuesAtom } from "@/atoms/environment";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -48,76 +32,11 @@ import { AppearanceSettings } from "./AppearanceSettings";
 import { AboutSettings } from "./AboutSettings";
 import { AgentSettings } from "./AgentSettings";
 import { PromptSettings } from "./PromptSettings";
-import { ToolSettings } from "./ToolSettings";
-import { BotHubSettings } from "./BotHubSettings";
+import { StorageSettings } from "./StorageSettings";
 import { TutorialViewer } from "../tutorial/TutorialViewer";
 import { ShortcutSettings } from "./ShortcutSettings";
-import { VoiceInputSettings } from "./VoiceInputSettings";
-import { MigrationSettings } from "./MigrationSettings";
-import { StorageSettings } from "./StorageSettings";
-
-/** 设置 Tab 定义 */
-interface TabItem {
-  id: SettingsTab;
-  label: string;
-  icon: React.ReactNode;
-}
-
-/** 基础 Tabs（所有模式都有） */
-const BASE_TABS: TabItem[] = [
-  { id: "general", label: "通用设置", icon: <Settings size={16} /> },
-  { id: "channels", label: "模型配置", icon: <Radio size={16} /> },
-  { id: "prompts", label: "提示词管理", icon: <BookOpen size={16} /> },
-  { id: "proxy", label: "代理设置", icon: <Globe size={16} /> },
-];
-
-/** Agent 模式专属 Tab */
-const AGENT_TAB: TabItem = {
-  id: "agent",
-  label: "Agent 配置",
-  icon: <Plug size={16} />,
-};
-const TOOLS_TAB: TabItem = {
-  id: "tools",
-  label: "Chat 工具",
-  icon: <Wrench size={16} />,
-};
-const BOTS_TAB: TabItem = {
-  id: "bots",
-  label: "远程连接",
-  icon: <Bot size={16} />,
-};
-const TUTORIAL_TAB: TabItem = {
-  id: "tutorial",
-  label: "HtAiDevAssist 教程",
-  icon: <GraduationCap size={16} />,
-};
-const SHORTCUTS_TAB: TabItem = {
-  id: "shortcuts",
-  label: "快捷键管理",
-  icon: <Keyboard size={16} />,
-};
-const VOICE_INPUT_TAB: TabItem = {
-  id: "voice-input",
-  label: "语音输入",
-  icon: <Mic size={16} />,
-};
-
-/** 尾部 Tabs */
-const TAIL_TABS: TabItem[] = [
-  { id: "migration", label: "数据迁移", icon: <HardDriveDownload size={16} /> },
-  { id: "storage", label: "磁盘管理", icon: <HardDrive size={16} /> },
-  { id: "appearance", label: "外观设置", icon: <Palette size={16} /> },
-  { id: "about", label: "关于/更新", icon: <Info size={16} /> },
-];
-
-const HIDDEN_SETTINGS_TABS = new Set<SettingsTab>([
-  "prompts",
-  "bots",
-  "tutorial",
-  "appearance",
-  "about",
-]);
+import type { TabItem } from "./settings-tabs";
+import { getSettingsTabs } from "./settings-tabs";
 
 /** 根据标签页 id 渲染对应内容 */
 function renderTabContent(tab: SettingsTab): React.ReactElement {
@@ -132,22 +51,14 @@ function renderTabContent(tab: SettingsTab): React.ReactElement {
       return <ProxySettings />;
     case "agent":
       return <AgentSettings />;
-    case "tools":
-      return <ToolSettings />;
     case "appearance":
       return <AppearanceSettings />;
     case "about":
       return <AboutSettings />;
-    case "bots":
-      return <BotHubSettings />;
     case "tutorial":
       return <TutorialViewer />;
     case "shortcuts":
       return <ShortcutSettings />;
-    case "voice-input":
-      return <VoiceInputSettings />;
-    case "migration":
-      return <MigrationSettings />;
     case "storage":
       return <StorageSettings />;
   }
@@ -164,8 +75,6 @@ export function SettingsPanel({
   const channelFormDirty = useAtomValue(channelFormDirtyAtom);
   const [closeRequested, setCloseRequested] = useAtom(settingsCloseRequestedAtom);
   const appMode = useAtomValue(appModeAtom);
-  const hasUpdate = useAtomValue(hasUpdateAtom);
-  const hasEnvironmentIssues = useAtomValue(hasEnvironmentIssuesAtom);
 
   /** 统一的退出拦截对话框状态 */
   type PendingAction = { type: 'tab'; tabId: SettingsTab } | { type: 'close' } | null
@@ -217,28 +126,7 @@ export function SettingsPanel({
 
   // Agent 模式时在渠道后插入 Agent Tab，工具 tab 两种模式都显示
   const tabs = React.useMemo(() => {
-    const allTabs = appMode === "agent"
-      ? [
-          ...BASE_TABS,
-          AGENT_TAB,
-          TOOLS_TAB,
-          VOICE_INPUT_TAB,
-          BOTS_TAB,
-          TUTORIAL_TAB,
-          SHORTCUTS_TAB,
-          ...TAIL_TABS,
-        ]
-      : [
-          ...BASE_TABS,
-          TOOLS_TAB,
-          VOICE_INPUT_TAB,
-          BOTS_TAB,
-          TUTORIAL_TAB,
-          SHORTCUTS_TAB,
-          ...TAIL_TABS,
-        ];
-
-    return allTabs.filter((tab) => !HIDDEN_SETTINGS_TABS.has(tab.id));
+    return getSettingsTabs(appMode);
   }, [appMode]);
 
   React.useEffect(() => {
@@ -285,9 +173,6 @@ export function SettingsPanel({
               >
                 {tab.icon}
                 <span>{tab.label}</span>
-                {tab.id === "about" && (hasUpdate || hasEnvironmentIssues) && (
-                  <span className="w-2 h-2 rounded-full bg-red-500" />
-                )}
               </button>
             ))}
           </nav>

@@ -442,31 +442,12 @@ function ShellEnvironmentCard(): React.ReactElement | null {
 export function AboutSettings(): React.ReactElement {
   return (
     <SettingsSection
-      title="关于 HtAiDevAssist"
+      title="关于 HtAiWorkBench"
       description="集成通用 AI Agent 的下一代人工智能软件"
     >
       <SettingsCard>
         <SettingsRow label="版本">
           <span className="text-sm text-muted-foreground font-mono">{APP_VERSION}</span>
-        </SettingsRow>
-        <SettingsRow label="运行时">
-          <span className="text-sm text-muted-foreground">Electron + React</span>
-        </SettingsRow>
-        <SettingsRow
-          label="开源协议"
-          description="本项目遵循开源协议发布"
-        >
-          <span className="text-sm text-muted-foreground">MIT</span>
-        </SettingsRow>
-        <SettingsRow label="项目地址">
-          <a
-            href="https://github.com/ErlichLiu/Proma.git"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-primary hover:underline"
-          >
-            Proma 官方仓库
-          </a>
         </SettingsRow>
       </SettingsCard>
 
