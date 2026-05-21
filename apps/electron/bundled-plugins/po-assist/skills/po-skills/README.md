@@ -1,5 +1,9 @@
 # PO Skill 使用说明
 
+如果你是产品经理，建议优先阅读面向日常使用的完整手册：
+
+- [Poskill 用户使用手册](../../docs/po-skill-usage-manual.md)
+
 PO Skill 当前着重解决的是 PRD 文档写好之后的整理、拆分、结构化和交付工作。它不替代产品经理写需求，而是把已经存在的 Wiki、Word、PDF 或原始 PRD 文档，进一步加工成更清晰、更标准、更适合后续研发使用的交付物。
 
 它的核心目标有两个：
@@ -25,7 +29,7 @@ PO Skill 当前着重解决的是 PRD 文档写好之后的整理、拆分、结
 ### 安装依赖
 
 ```bash
-pip install -r .claude/skills/po-skills/requirements.txt
+pip install -r src/po-skills/requirements.txt
 ```
 
 ### 初始化配置文件

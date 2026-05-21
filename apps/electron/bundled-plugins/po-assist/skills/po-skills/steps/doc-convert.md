@@ -77,6 +77,8 @@ python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py doc-convert --url "http://w
 
 **输出：** `newreq/<REQID>/1.产品设计/[PROD_ORI]<页面标题或飞书标题>.md`，图片下载至同目录下的 `images/`
 
+**图片路径约束（强制）：** `[PROD_ORI]`、Wiki 转换结果、飞书转换结果中的图片引用必须使用相对于当前 Markdown 文件所在目录的相对路径。图片位于同级 `images/` 目录时必须写成 `./images/<文件名>`；禁止使用绝对路径、项目根路径、`file://` 路径或 Windows 盘符路径。若后续从 `references/` 等跨目录引用图片，必须写成相对当前文档目录的路径，例如 `../references/images/<文件名>`，或复制到当前文档同级 `images/` 后使用 `./images/<文件名>`。
+
 步骤二执行成功后，stdout 会输出：
 
 ```text

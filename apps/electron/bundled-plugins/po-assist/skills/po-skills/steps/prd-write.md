@@ -138,6 +138,8 @@ python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py doc-to-md --file "<路径>"
 
 转换后如有图片引用，执行 enhance-content。
 
+**图片路径约束（强制）：** 首版 PRD、补充后的 PRD 以及后续引用的图片，必须使用相对于当前 Markdown 文件所在目录的相对路径。禁止使用绝对路径、项目根路径、`file://` 路径或 Windows 盘符路径。引用 `{DESIGN_DIR}/images/` 下图片时使用 `./images/<文件名>`；引用 `{REFERENCES_DIR}/images/` 下图片时，必须从 PRD 文件所在目录计算路径，例如 `../references/images/<文件名>`。如果无法稳定计算跨目录相对路径，应先复制图片到 `{DESIGN_DIR}/images/`，再使用 `./images/<文件名>`。
+
 ---
 
 ## 阶段 C：生成首版草稿 PRD
@@ -167,6 +169,7 @@ python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py doc-to-md --file "<路径>"
    - 当输入中有多个关联文档时，`1.2 关联需求` 可继续归纳业务关联关系，但 `1.2.1` 文档清单不得省略、不得合并成一句话
    - 存量文档 + 新变更诉求场景：不要把存量文档里的老逻辑完整复述成新 PRD 正文。存量文档只作为背景、术语、现状和差异判断依据；新 PRD 正文重点写新增/变更内容、触发条件、影响范围、改前改后差异、兼容规则和验收标准。
    - 如果必须引用老逻辑，只保留理解本次变更所必需的现状摘要，并在对应章节标明“现状/本次变更/影响说明”，避免把历史功能说明改写成整篇新需求。
+   - 图片路径必须相对于当前 Markdown 文件所在目录；不得照抄关联文档中的图片路径。PRD 同级图片使用 `./images/<文件名>`；引用 references 图片时使用 `../references/images/<文件名>`，或先复制到 PRD 同级 `images/` 后改写为 `./images/<文件名>`。
 6. 输出 `"正在保存 PRD 文档…"`
 7. 一次 `write` 写入：`{DESIGN_DIR}/[PROD_FORMAT]{标题}.md`（标题不超过 20 字）
 8. 完成输出：`首版草稿 PRD 已生成：<路径>。下一步建议：/req-review 进行质量审查。需要吗？`

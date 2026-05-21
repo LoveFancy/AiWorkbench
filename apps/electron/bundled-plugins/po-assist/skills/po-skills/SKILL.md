@@ -1,7 +1,7 @@
 ---
 name: po-skill
 description: 产品经理工具集 - 七步将 Wiki 或本地文档转换为结构化 PRD 并自动创建 DPMP Story
-version: 7.0.99
+version: 7.0.101
 triggers:
   - "doc-convert"
   - "pdf转md"
@@ -12,6 +12,10 @@ triggers:
   - "doc-upload"
   - "上传文档"
   - "飞书上传"
+  - "wiki-upload"
+  - "上传Wiki"
+  - "上传到Wiki"
+  - "发布到Wiki"
   - "wiki转markdown"
   - "wiki转md"
   - "req-review"
@@ -89,6 +93,16 @@ tools:
 - pmconfig：`${CLAUDE_PLUGIN_ROOT}/../../pmconfig.md`
 
 **严禁使用 `find`/`ls` 搜索文件，直接用变量拼接路径。**
+
+## 图片路径约束（强制）
+
+所有由 po-skill 生成、转换、改写或拆分的 Markdown 文档，包括 `[PROD_ORI]`、`[PROD_FORMAT]`、`[STORY_FORMAT]`、Wiki 转换结果和 PRD 草稿，图片引用必须使用相对于当前 Markdown 文件所在目录的相对路径。
+
+- 禁止使用绝对路径、项目根路径、`file://` 路径、Windows 盘符路径，或从仓库根开始的路径。
+- 同级 `images/` 目录下的图片必须写成 `./images/<文件名>`。
+- 跨目录引用图片时，必须计算从当前 Markdown 文件所在目录到图片文件的相对路径，例如 `../references/images/<文件名>`。
+- 如无法稳定计算跨目录相对路径，应复制图片到当前 Markdown 文件同级 `images/` 目录后使用 `./images/<文件名>`。
+- AI 在生成 PRD、Story 文档或改写图片链接时，不得照抄来源文档中的图片路径，必须按目标文档位置重新计算相对路径。
 
 ## 路由规则（必须首先执行）
 
@@ -176,6 +190,7 @@ tools:
 | EIP / LinkApp URL | manual-download-required | 暂不支持自动下载；返回 `CLOUD_DOC_MANUAL_DOWNLOAD_REQUIRED`，提示用户手工下载原始 `.doc/.docx/.pdf` 文件后再用 `/doc-convert <本地文件路径>` 转换 |
 | 本地文档（.doc/.docx/.pdf） | doc-to-md | `steps/doc-to-md.md`（使用 markitdown；+ `steps/enhance-content.md` 自动串联） |
 | 本地 Markdown 上传飞书 | doc-upload | `steps/doc-upload.md` |
+| 本地 Markdown 上传 Confluence Wiki | wiki-upload | `steps/wiki-upload.md` |
 | [PROD_ORI] 文件 | story-analyze | `steps/story-analyze.md` |
 | story-analyze 确认后 | prd-convert | `steps/prd-convert.md` |
 | prd-convert 完成后 | req-review | `steps/req-review.md` |
@@ -200,6 +215,7 @@ tools:
 | wiki-export | 需检查 HTSC_WIKI_TOKEN 和 `confluence-markdown-exporter`/`cme` 可用；输入必须是一个或多个 Wiki URL | 提示配置环境变量、`${CLAUDE_PROJECT_DIR}/.env`、当前工作目录 `.env` 或插件 `.env`，并安装依赖 |
 | manual-download-required | EIP/LinkApp 云文档 URL | 提示暂不支持自动下载，请用户手工下载原始文件后再转换 |
 | doc-upload | 需确认本地 Markdown 文件存在；需本机可用 `pandoc` 和 `lark-cli` | 提示检查文件路径或安装依赖 |
+| wiki-upload | 需确认本地 Markdown 文件存在；需本机可用 `markdown-to-confluence` 提供的 `md2conf`；需配置 `HTSC_WIKI_TOKEN` | 提示检查文件路径、Token 或依赖 |
 | story-analyze | 检查 [PROD_ORI] 是否存在 | 不存在 → 自动执行 doc-convert 后继续 |
 | prd-convert | 检查 [PROD_ORI] 末尾是否含"附录：Story 结构分析" | 不含 → 自动执行 story-analyze 后继续 |
 | req-review | 检查 [PROD_FORMAT] 是否存在 | 不存在 → 自动执行 prd-convert 后继续 |

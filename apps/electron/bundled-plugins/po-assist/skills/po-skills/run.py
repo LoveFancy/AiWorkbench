@@ -625,6 +625,14 @@ def cmd_doc_upload(args):
     du.main()
 
 
+def cmd_wiki_upload(args):
+    """工具：本地 Markdown → Confluence Wiki 页面"""
+    import wiki_upload as wu
+
+    sys.argv = ["wiki_upload.py"] + args
+    wu.main()
+
+
 def cmd_wiki_export(args):
     """工具：批量导出 Wiki Markdown 知识库。"""
     import wiki_export as we
@@ -1048,6 +1056,7 @@ COMMANDS = {
     "doc-to-md":    (cmd_doc_to_md,    "工具：本地文档 → 干净 Markdown [PROD_ORI]"),
     "lark-doc-to-md": (cmd_lark_doc_to_md, "工具：飞书文档 → 本地 Markdown + images"),
     "doc-upload":   (cmd_doc_upload,   "工具：本地 Markdown → docx → 飞书在线文档"),
+    "wiki-upload":  (cmd_wiki_upload,  "工具：本地 Markdown → Confluence Wiki 页面"),
     "wiki-export":  (cmd_wiki_export,  "工具：批量导出 Wiki Markdown 知识库"),
     "enhance-content": (cmd_enhance_content, "步骤二：图片重命名并生成过程记录"),
     "story-create": (cmd_story_create, "步骤四：[Story规划] → DPMP 批量创建 Story"),

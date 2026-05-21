@@ -221,7 +221,7 @@ def convert_document(input_path: str) -> str:
         from markitdown import MarkItDown
     except ImportError as exc:
         raise RuntimeError(
-            "未安装 markitdown。请先执行: pip install -r po-skills/requirements.txt"
+            "未安装 markitdown。请先执行: pip install -r src/po-skills/requirements.txt"
         ) from exc
 
     result = MarkItDown().convert(input_path)

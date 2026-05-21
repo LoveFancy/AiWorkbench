@@ -252,3 +252,9 @@ def test_init_story_is_legacy_in_command_help(monkeypatch, tmp_path, capsys):
     output = capsys.readouterr().out
     assert "LEGACY" in output
     assert "不推荐新项目使用" in output
+
+
+def test_wiki_upload_command_is_registered(monkeypatch, tmp_path):
+    run = load_run_module(monkeypatch, tmp_path)
+
+    assert "wiki-upload" in run.COMMANDS

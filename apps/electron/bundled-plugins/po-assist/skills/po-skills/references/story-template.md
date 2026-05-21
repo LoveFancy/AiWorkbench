@@ -9,6 +9,8 @@
   [STORY_FORMAT][<story_key>]<Story标题>.md → 本文件，单个 Story 独立文档
 
 所有文件统一放在 <需求ID>/1.产品设计/ 目录下。
+
+图片路径必须使用相对于当前 Markdown 文件所在目录的相对路径；禁止使用绝对路径、项目根路径、`file://` 路径或 Windows 盘符路径。同级 `images/` 下图片写成 `./images/<文件名>`；引用参考资料图片时写成 `../references/images/<文件名>`，或复制到同级 `images/` 后使用 `./images/<文件名>`。
 -->
 
 ## 基本信息
