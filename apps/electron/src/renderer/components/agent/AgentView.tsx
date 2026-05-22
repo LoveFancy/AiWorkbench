@@ -28,6 +28,7 @@ import { ExitPlanModeBanner } from './ExitPlanModeBanner'
 import { PlanModeDashedBorder } from './PlanModeDashedBorder'
 import { ModelSelector } from '@/components/chat/ModelSelector'
 import { AttachmentPreviewItem } from '@/components/chat/AttachmentPreviewItem'
+import { QuotedSelectionChip } from '@/components/diff/QuotedSelectionChip'
 import { RichTextInput } from '@/components/ai-elements/rich-text-input'
 import { SpeechButton } from '@/components/ai-elements/speech-button'
 import { Button } from '@/components/ui/button'
@@ -48,9 +49,10 @@ import { cn } from '@/lib/utils'
 import { getActiveAccelerator, getAcceleratorDisplay } from '@/lib/shortcut-registry'
 import { FeishuNotifyToggle } from '@/components/chat/FeishuNotifyToggle'
 import { registerShortcut } from '@/lib/shortcut-registry'
-import { previewPanelOpenMapAtom, previewFileMapAtom, autoPreviewEnabledAtom } from '@/atoms/preview-atoms'
+import { previewPanelOpenMapAtom, previewFileMapAtom, autoPreviewEnabledAtom, quotedSelectionMapAtom, currentQuotedSelectionAtom } from '@/atoms/preview-atoms'
 import {
   agentStreamingStatesAtom,
+  agentSessionStreamingStateAtomFamily,
   agentChannelIdAtom,
   agentModelIdAtom,
   agentChannelIdsAtom,
@@ -62,7 +64,9 @@ import {
   agentWorkspacesAtom,
   agentStreamErrorsAtom,
   agentSessionDraftsAtom,
+  agentSessionDraftAtomFamily,
   agentSessionDraftHtmlAtom,
+  agentSessionDraftHtmlAtomFamily,
   agentPromptSuggestionsAtom,
   agentMessageRefreshAtom,
   agentDiffRefreshVersionAtom,
@@ -286,7 +290,7 @@ function AutoPreviewPopover({ enabled, onToggle }: AutoPreviewPopoverProps): Rea
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <div className="flex items-center justify-between gap-4">
-          <span className="text-xs text-foreground/70">自动预览</span>
+          <span className="text-xs text-foreground/70">自动预览修改中文件</span>
           <Switch
             checked={enabled}
             onCheckedChange={onToggle}
@@ -301,8 +305,10 @@ function AutoPreviewPopover({ enabled, onToggle }: AutoPreviewPopoverProps): Rea
 export function AgentView({ sessionId }: { sessionId: string }): React.ReactElement {
   const [persistedSDKMessages, setPersistedSDKMessages] = React.useState<SDKMessage[]>([])
   const setStreamingStates = useSetAtom(agentStreamingStatesAtom)
-  const streamingStates = useAtomValue(agentStreamingStatesAtom)
-  const streamState = streamingStates.get(sessionId)
+  // 按 sessionId 切片订阅：仅本 session 的 streaming state 变化才让 AgentView 重渲染。
+  // 流式期间其他 session 的高频更新（每 token 一次）通过 base map atom 传播但派生
+  // atom 输出引用未变，订阅者跳过通知。
+  const streamState = useAtomValue(agentSessionStreamingStateAtomFamily(sessionId))
   const streaming = streamState?.running ?? false
   const stoppedByUserSessions = useAtomValue(stoppedByUserSessionsAtom)
   const sendWithCmdEnter = useAtomValue(sendWithCmdEnterAtom)
@@ -378,6 +384,18 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
   const permissionMode = permissionModeMap.get(sessionId) ?? persistedPermissionMode ?? defaultPermissionMode
   const isPermissionPlanMode = permissionMode === 'plan'
   const store = useStore()
+  const currentQuotedSelection = useAtomValue(currentQuotedSelectionAtom)
+  const setQuotedSelectionMap = useSetAtom(quotedSelectionMapAtom)
+
+  /** 移除当前引用选中文本 */
+  const handleRemoveQuotedSelection = React.useCallback(() => {
+    setQuotedSelectionMap((prev) => {
+      const m = new Map(prev)
+      m.delete(sessionId)
+      return m
+    })
+  }, [sessionId, setQuotedSelectionMap])
+
   const setPreviewFileMap = useSetAtom(previewFileMapAtom)
   const suggestionsMap = useAtomValue(agentPromptSuggestionsAtom)
   const suggestion = suggestionsMap.get(sessionId) ?? null
@@ -396,9 +414,10 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
   const wsAttachedFilesMap = useAtomValue(workspaceAttachedFilesMapAtom)
   const wsAttachedFiles = currentWorkspaceId ? (wsAttachedFilesMap.get(currentWorkspaceId) ?? []) : []
 
-  const draftsMap = useAtomValue(agentSessionDraftsAtom)
+  // 按 sessionId 切片订阅 drafts/draftHtml：仅本 session 草稿变化才让 AgentView 重渲染。
+  // 输入框每次按键都会写整 Map atom，若直接订阅整 Map，AgentView 跟着每键重渲染。
+  const inputContent = useAtomValue(agentSessionDraftAtomFamily(sessionId))
   const setDraftsMap = useSetAtom(agentSessionDraftsAtom)
-  const inputContent = draftsMap.get(sessionId) ?? ''
   const setInputContent = React.useCallback((value: string) => {
     setDraftsMap((prev) => {
       const map = new Map(prev)
@@ -410,9 +429,8 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       return map
     })
   }, [sessionId, setDraftsMap])
-  const draftHtmlMap = useAtomValue(agentSessionDraftHtmlAtom)
+  const inputHtmlContent = useAtomValue(agentSessionDraftHtmlAtomFamily(sessionId))
   const setDraftHtmlMap = useSetAtom(agentSessionDraftHtmlAtom)
-  const inputHtmlContent = draftHtmlMap.get(sessionId) ?? ''
   const setInputHtmlContent = React.useCallback((html: string) => {
     setDraftHtmlMap((prev) => {
       const map = new Map(prev)
@@ -1290,6 +1308,28 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       setPendingFiles([])
     }
 
+    // 构建引用选中文本：内联 XML 拼入 prompt，对话框不展示（parseAttachedFiles 剥离）
+    const quotedSelection = store.get(quotedSelectionMapAtom).get(sessionId)
+    if (quotedSelection) {
+      const capturedAt = quotedSelection.capturedAt
+      // XML 转义：path 走完整实体编码（&, <, >, "），text 仅需防误闭合外层标签
+      const safePath = quotedSelection.filePath
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+      const safeText = quotedSelection.text.replace(/<\/quoted_file>/gi, '</quoted_file_>')
+      const quotedBlock = `<quoted_file path="${safePath}">\n${safeText}\n</quoted_file>\n\n`
+      fileReferences = fileReferences + quotedBlock
+
+      store.set(quotedSelectionMapAtom, (prev) => {
+        const m = new Map(prev)
+        const current = m.get(sessionId)
+        if (current && current.capturedAt === capturedAt) m.delete(sessionId)
+        return m
+      })
+    }
+
     // 2. 构建最终消息
     const finalMessage = fileReferences + effectiveText
 
@@ -1581,8 +1621,14 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       })
     } catch (error) {
       console.error('[AgentView] 分叉会话失败:', error)
+      const rawMsg = error instanceof Error ? error.message : '未知错误'
+      // SDK 偶尔会因为 sidechain/消息归属问题抛 "not found in session"，
+      // 这里给出更可操作的中文提示，而不是把 SDK 内部英文报错直接透传给用户
+      const friendlyDesc = /not found in session/i.test(rawMsg)
+        ? '该消息无法作为分叉起点（可能属于子代理执行过程或已被清理）。请选择主对话中的其他消息再试。'
+        : rawMsg
       toast.error('分叉会话失败', {
-        description: error instanceof Error ? error.message : '未知错误',
+        description: friendlyDesc,
       })
     }
   }, [sessionId, openSession, setAgentSessions])
@@ -1755,8 +1801,8 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
               </div>
             )}
 
-            {/* 附件预览区域 */}
-            {pendingFiles.length > 0 && (
+            {/* 附件 + 引用选中文本 Chip（同排并排） */}
+            {(pendingFiles.length > 0 || currentQuotedSelection) && (
               <div className="flex flex-wrap gap-2 px-3 pt-2.5 pb-1.5">
                 {pendingFiles.map((file) => (
                   <AttachmentPreviewItem
@@ -1768,6 +1814,13 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
                     onClick={file.filename.startsWith('clipboard-') ? () => handleClipboardPreview(file) : undefined}
                   />
                 ))}
+                {currentQuotedSelection && (
+                  <QuotedSelectionChip
+                    text={currentQuotedSelection.text}
+                    filePath={currentQuotedSelection.filePath}
+                    onRemove={handleRemoveQuotedSelection}
+                  />
+                )}
               </div>
             )}
 
