@@ -52,7 +52,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: HtAiDevAssist-windows-auto-update
+          name: HtAiWorkBench-windows-auto-update
           path: |
             apps/electron/out/latest.yml
             apps/electron/out/*.exe

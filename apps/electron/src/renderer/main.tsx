@@ -490,7 +490,7 @@ function FeishuInitializer(): null {
       })
       // 桌面通知
       if (Notification.permission === 'granted') {
-        new Notification('HtAiDevAssist → 飞书', {
+        new Notification('HtAiWorkBench → 飞书', {
           body: `${payload.sessionTitle} 的回复已发送到飞书`,
         })
       }

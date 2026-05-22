@@ -16,17 +16,17 @@ export function createApplicationMenu(): Menu {
     ...(isMac
       ? [
           {
-            label: 'HtAiDevAssist',
+            label: 'HtAiWorkBench',
             submenu: [
-              { role: 'about' as const, label: '关于 HtAiDevAssist' },
+              { role: 'about' as const, label: '关于 HtAiWorkBench' },
               { type: 'separator' as const },
               { role: 'services' as const, label: '服务' },
               { type: 'separator' as const },
-              { role: 'hide' as const, label: '隐藏 HtAiDevAssist' },
+              { role: 'hide' as const, label: '隐藏 HtAiWorkBench' },
               { role: 'hideOthers' as const, label: '隐藏其他' },
               { role: 'unhide' as const, label: '显示全部' },
               { type: 'separator' as const },
-              { role: 'quit' as const, label: '退出 HtAiDevAssist' },
+              { role: 'quit' as const, label: '退出 HtAiWorkBench' },
             ],
           },
         ]

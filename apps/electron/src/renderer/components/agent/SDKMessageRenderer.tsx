@@ -12,7 +12,7 @@
  */
 
 import * as React from 'react'
-import { Bot, Loader2, AlertTriangle, FileText, FileImage, Download, Split, Undo2, RotateCw, Plus, Minimize2, Wrench, Settings, ExternalLink } from 'lucide-react'
+import { Bot, Loader2, AlertTriangle, FileText, FileImage, Download, Split, Undo2, RotateCw, Plus, Minimize2, Wrench, Settings, ExternalLink, Quote } from 'lucide-react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { cn } from '@/lib/utils'
 import { ImageLightbox } from '@/components/ui/image-lightbox'
@@ -102,7 +102,7 @@ function PermissionDeniedNotice({ message }: { message: SDKSystemMessage }): Rea
   const reason = typeof message.decision_reason === 'string' ? message.decision_reason : undefined
 
   return (
-    <div className="my-3 px-1">
+    <div className="my-3 pl-[46px] pr-1">
       <div className="flex items-start gap-2.5 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2.5 text-xs text-foreground/80">
         <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-500" />
         <div className="min-w-0 space-y-1">
@@ -394,11 +394,9 @@ function mergeAdjacentSameModelTurns(groups: MessageGroup[]): MessageGroup[] {
 function buildTaskProgressData(
   topLevelBlocks: SDKContentBlock[],
   turnMessages: SDKMessage[],
-  allMessages: SDKMessage[],
 ): {
   taskActivities: ToolActivity[]
   firstTaskIndex: number
-  historicalTaskSubjects: Map<string, string>
 } {
   const taskBlocks: SDKToolUseBlock[] = []
   let firstTaskIndex = -1
@@ -434,6 +432,17 @@ function buildTaskProgressData(
     done: true,
   }))
 
+  return { taskActivities, firstTaskIndex }
+}
+
+/**
+ * 扫描全部消息，构建跨 turn 的「历史 TaskCreate id → subject」映射。
+ *
+ * 早期把这部分逻辑放在 buildTaskProgressData 里，每个 AssistantTurnRenderer 渲染都要
+ * 跑一次 → O(T × M)；流式期间 allMessages 引用每帧变化，useMemo 缓存失效，长会话
+ * 雪崩。提升到 AgentMessages 顶层后只算一次，O(M)。
+ */
+export function buildHistoricalTaskSubjects(allMessages: SDKMessage[]): Map<string, string> {
   const historicalTaskSubjects = new Map<string, string>()
   const globalResultMap = new Map<string, string>()
   const pendingTaskCreates: SDKToolUseBlock[] = []
@@ -475,7 +484,7 @@ function buildTaskProgressData(
     if (parsedResult?.id) historicalTaskSubjects.set(parsedResult.id, parsedResult.subject ?? subject)
   }
 
-  return { taskActivities, firstTaskIndex, historicalTaskSubjects }
+  return historicalTaskSubjects
 }
 
 // ===== AssistantTurnRenderer — 渲染一个完整的 assistant turn =====
@@ -484,6 +493,8 @@ export interface AssistantTurnRendererProps {
   turn: AssistantTurn
   /** 所有消息（全局，供工具结果查找跨 turn 的结果） */
   allMessages: SDKMessage[]
+  /** 跨 turn 历史 TaskCreate id → subject 映射（由父组件 useMemo 算一次后传入） */
+  historicalTaskSubjects: Map<string, string>
   basePath?: string
   /** 分叉回调（传入最后一条 assistant 消息的 uuid） */
   onFork?: (upToMessageUuid: string) => void
@@ -503,7 +514,7 @@ export interface AssistantTurnRendererProps {
   sessionModelId?: string
 }
 
-export function AssistantTurnRenderer({ turn, allMessages, basePath, onFork, onRewind, onRetry, onRetryInNewSession, onCompact, isStreaming, stoppedByUser, sessionModelId }: AssistantTurnRendererProps): React.ReactElement | null {
+export function AssistantTurnRenderer({ turn, allMessages, historicalTaskSubjects, basePath, onFork, onRewind, onRetry, onRetryInNewSession, onCompact, isStreaming, stoppedByUser, sessionModelId }: AssistantTurnRendererProps): React.ReactElement | null {
   const channels = useAtomValue(channelsAtom)
   // 收集所有 assistant 消息的内容块，保留 parent_tool_use_id 关联
   interface EnrichedBlock {
@@ -571,9 +582,9 @@ export function AssistantTurnRenderer({ turn, allMessages, basePath, onFork, onR
   )
 
   // Task 聚合数据（useMemo 防止每次渲染重算）
-  const { taskActivities, firstTaskIndex, historicalTaskSubjects } = React.useMemo(() => {
-    return buildTaskProgressData(topLevelBlocks, turn.turnMessages, allMessages)
-  }, [topLevelBlocks, turn.turnMessages, allMessages])
+  const { taskActivities, firstTaskIndex } = React.useMemo(() => {
+    return buildTaskProgressData(topLevelBlocks, turn.turnMessages)
+  }, [topLevelBlocks, turn.turnMessages])
 
   // 如果只有错误消息
   if (enrichedBlocks.length === 0 && hasError && errorContent) {
@@ -644,8 +655,12 @@ export function AssistantTurnRenderer({ turn, allMessages, basePath, onFork, onR
           .filter((b) => b.type === 'text' && 'text' in b)
           .map((b) => (b as { text: string }).text)
           .join('\n\n')
-        const lastUuid = turn.assistantMessages.length > 0
-          ? turn.assistantMessages[turn.assistantMessages.length - 1]?.uuid
+        // 仅取主线 assistant 消息的 uuid 作为 fork/rewind 截断点。
+        // SDK forkSession 内部会过滤掉 sidechain（parent_tool_use_id 非空的子代理消息），
+        // 若把子代理 uuid 传过去会触发 "Message <uuid> not found in session" 错误。
+        const mainlineAssistants = turn.assistantMessages.filter((m) => !m.parent_tool_use_id)
+        const lastUuid = mainlineAssistants.length > 0
+          ? mainlineAssistants[mainlineAssistants.length - 1]?.uuid
           : undefined
         const hasActions = !!(textContent || (onFork && lastUuid) || (onRewind && lastUuid))
         const hasDuration = durationMs != null
@@ -775,11 +790,38 @@ export interface AttachedFileRef {
   path: string
 }
 
-/** 解析消息中的 <attached_files> 块，返回文件列表和剩余文本 */
-export function parseAttachedFiles(content: string): { files: AttachedFileRef[]; text: string } {
+/** 解析的引用文件 */
+export interface QuotedFileRef {
+  /** 源文件路径 */
+  path: string
+  /** 源文件名 */
+  filename: string
+}
+
+/** 解析消息中的 <attached_files> 块和 <quoted_file> 块，返回文件列表、引用列表和剩余文本 */
+export function parseAttachedFiles(content: string): { files: AttachedFileRef[]; quotes: QuotedFileRef[]; text: string } {
+  const quoteRegex = /<quoted_file[^>]*>[\s\S]*?<\/quoted_file>\n*/g
+  const quotes: QuotedFileRef[] = []
+  let quoteMatch: RegExpExecArray | null
+  while ((quoteMatch = quoteRegex.exec(content)) !== null) {
+    const pathMatch = quoteMatch[0].match(/path="([^"]*)"/)
+    if (pathMatch) {
+      // 反解 XML 实体：&amp; 必须最后做，否则会被先一步解出的 & 误伤
+      const filePath = pathMatch[1]!
+        .replace(/&quot;/g, '"')
+        .replace(/&gt;/g, '>')
+        .replace(/&lt;/g, '<')
+        .replace(/&amp;/g, '&')
+      quotes.push({ path: filePath, filename: filePath.split('/').pop() ?? filePath })
+    }
+  }
+
   const regex = /<attached_files>\n?([\s\S]*?)\n?<\/attached_files>\n*/
   const match = content.match(regex)
-  if (!match) return { files: [], text: content }
+  if (!match) {
+    const cleanText = content.replace(/<quoted_file[^>]*>[\s\S]*?<\/quoted_file>\n*/g, '').trim()
+    return { files: [], quotes, text: cleanText }
+  }
 
   const files: AttachedFileRef[] = []
   const lines = match[1]!.split('\n')
@@ -790,8 +832,10 @@ export function parseAttachedFiles(content: string): { files: AttachedFileRef[];
     }
   }
 
-  const text = content.replace(regex, '').trim()
-  return { files, text }
+  let text = content.replace(regex, '')
+  text = text.replace(/<quoted_file[^>]*>[\s\S]*?<\/quoted_file>\n*/g, '')
+  text = text.trim()
+  return { files, quotes, text }
 }
 
 /** 判断文件是否为图片类型 */
@@ -866,12 +910,22 @@ function AttachedFileChip({ file }: { file: AttachedFileRef }): React.ReactEleme
   )
 }
 
+/** 引用文件 Chip（显示在用户消息中，表示该消息引用了某个文件的选中内容） */
+function QuoteChip({ quote }: { quote: QuotedFileRef }): React.ReactElement {
+  return (
+    <div className="inline-flex items-center gap-1.5 rounded-md bg-primary/8 border border-primary/20 px-2.5 py-1 text-[12px] text-muted-foreground">
+      <Quote className="size-3.5 shrink-0 text-primary/60" />
+      <span className="truncate max-w-[200px]">{quote.filename}</span>
+    </div>
+  )
+}
+
 // ===== 用户输入消息渲染 =====
 
 function UserInputMessage({ message }: { message: SDKUserMessage }): React.ReactElement {
   const userProfile = useAtomValue(userProfileAtom)
   const rawText = extractUserText(message) ?? ''
-  const { files: attachedFiles, text } = parseAttachedFiles(rawText)
+  const { files: attachedFiles, quotes, text } = parseAttachedFiles(rawText)
   const imageFiles = attachedFiles.filter((f) => isImageFile(f.filename))
   const nonImageFiles = attachedFiles.filter((f) => !isImageFile(f.filename))
   const meta = extractMeta(message as unknown as SDKMessage)
@@ -888,6 +942,14 @@ function UserInputMessage({ message }: { message: SDKUserMessage }): React.React
         </div>
       </div>
       <MessageContent>
+        {/* 引用文件 Chip */}
+        {quotes.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {quotes.map((q, i) => (
+              <QuoteChip key={`${q.path}:${i}`} quote={q} />
+            ))}
+          </div>
+        )}
         {/* 图片缩略图 */}
         {imageFiles.length > 0 && (
           <div className="flex flex-wrap gap-2.5 mb-2">
@@ -1115,6 +1177,8 @@ function ErrorMessage({ message, onRetry, onRetryInNewSession, onCompact }: Erro
 export interface MessageGroupRendererProps {
   group: MessageGroup
   allMessages: SDKMessage[]
+  /** 跨 turn 历史 TaskCreate id → subject 映射（由父组件 useMemo 算一次后传入） */
+  historicalTaskSubjects: Map<string, string>
   basePath?: string
   onFork?: (upToMessageUuid: string) => void
   onRewind?: (assistantMessageUuid: string) => void
@@ -1181,7 +1245,10 @@ export function getGroupId(group: MessageGroup): string {
  */
 export function getGroupPreview(group: MessageGroup): string {
   if (group.type === 'user') {
-    return (extractUserText(group.message) ?? '').replace(/<attached_files>[\s\S]*?<\/attached_files>\n*/, '').slice(0, 200)
+    return (extractUserText(group.message) ?? '')
+      .replace(/<attached_files>[\s\S]*?<\/attached_files>\n*/, '')
+      .replace(/<quoted_file[^>]*>[\s\S]*?<\/quoted_file>\n*/g, '')
+      .slice(0, 200)
   }
   if (group.type === 'system') {
     if (group.message.subtype === 'compact_boundary') return '上下文已压缩'
@@ -1203,7 +1270,7 @@ export function getGroupPreview(group: MessageGroup): string {
   return texts.join(' ').slice(0, 200)
 }
 
-export function MessageGroupRenderer({ group, allMessages, basePath, onFork, onRewind, onRetry, onRetryInNewSession, onCompact, isStreaming, stoppedByUser, sessionModelId }: MessageGroupRendererProps): React.ReactElement | null {
+export function MessageGroupRenderer({ group, allMessages, historicalTaskSubjects, basePath, onFork, onRewind, onRetry, onRetryInNewSession, onCompact, isStreaming, stoppedByUser, sessionModelId }: MessageGroupRendererProps): React.ReactElement | null {
   const groupId = getGroupId(group)
 
   if (group.type === 'user') {
@@ -1228,6 +1295,7 @@ export function MessageGroupRenderer({ group, allMessages, basePath, onFork, onR
       <AssistantTurnRenderer
         turn={group}
         allMessages={allMessages}
+        historicalTaskSubjects={historicalTaskSubjects}
         basePath={basePath}
         onFork={onFork}
         onRewind={onRewind}

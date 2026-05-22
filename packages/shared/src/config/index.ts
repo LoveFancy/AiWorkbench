@@ -3,4 +3,4 @@
  */
 
 // Placeholder - will be expanded as needed
-export const APP_NAME = 'HtAiDevAssist'
+export const APP_NAME = 'HtAiWorkBench'
