@@ -2,10 +2,10 @@
  * Git Diff 服务
  *
  * 提供工作区文件变更检测、diff 获取、文件还原等 Git 操作。
- * 复用 git-detector.ts 中 runGitCommand 的 spawnSync 模式。
+ * Git 命令使用异步子进程，避免 Windows 上同步等待导致 Electron 主进程未响应。
  */
 
-import { spawnSync } from 'child_process'
+import { spawn } from 'child_process'
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'fs'
 import { basename, isAbsolute, join, resolve, sep } from 'path'
 import type { ChangedFileEntry, UnstagedChangesResult, UntrackedFileEntry } from '@proma/shared'
@@ -55,12 +55,10 @@ function normalizeSafePath(root: string, filePath: string): string | null {
  * @param cwd - 工作目录
  * @returns 命令输出，如果失败返回 null
  */
-function runGitCommand(args: string[], cwd: string): string | null {
-  try {
-    const result = spawnSync('git', args, {
+function runGitCommand(args: string[], cwd: string): Promise<string | null> {
+  return new Promise((resolveResult) => {
+    const child = spawn('git', args, {
       cwd,
-      encoding: 'utf-8',
-      timeout: 10000,
       stdio: ['pipe', 'pipe', 'pipe'],
       env: {
         ...process.env,
@@ -68,18 +66,100 @@ function runGitCommand(args: string[], cwd: string): string | null {
       },
     })
 
-    if (result.error) {
-      console.error('[git-diff-service] git 命令错误:', result.error)
-      return null
-    }
-    if (result.status === 0) {
-      return result.stdout.trim()
-    }
-  } catch {
-    // 命令执行失败
+    let stdout = ''
+    let settled = false
+    const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
+      child.kill()
+      resolveResult(null)
+    }, 10000)
+
+    child.stdout.setEncoding('utf-8')
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk
+    })
+
+    child.on('error', (error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      console.error('[git-diff-service] git 命令错误:', error)
+      resolveResult(null)
+    })
+
+    child.on('close', (code) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolveResult(code === 0 ? stdout.trim() : null)
+    })
+  })
+}
+
+async function runGitCommandRaw(args: string[], cwd: string): Promise<string | null> {
+  return new Promise((resolveResult) => {
+    const child = spawn('git', args, {
+      cwd,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        GIT_TERMINAL_PROMPT: '0',
+      },
+    })
+
+    let stdout = ''
+    let settled = false
+    const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
+      child.kill()
+      resolveResult(null)
+    }, 10000)
+
+    child.stdout.setEncoding('utf-8')
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk
+    })
+
+    child.on('error', (error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      console.error('[git-diff-service] git 命令错误:', error)
+      resolveResult(null)
+    })
+
+    child.on('close', (code) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolveResult(code === 0 ? stdout : null)
+    })
+  })
+}
+
+async function findAllGitRoots(baseDir: string): Promise<string[]> {
+  if (!existsSync(baseDir)) return []
+
+  // 1. 向上搜索：git rev-parse --show-toplevel
+  const toplevel = await runGitCommand(['rev-parse', '--show-toplevel'], baseDir)
+  const roots: string[] = []
+  if (toplevel && existsSync(toplevel) && !roots.includes(toplevel)) {
+    roots.push(toplevel)
   }
 
-  return null
+  // 2. 向下搜索所有子 .git
+  for (const r of findAllGitRootsDown(baseDir, 3)) {
+    if (!roots.includes(r)) roots.push(r)
+  }
+
+  return roots
+}
+
+/** 查找 Git 仓库根目录，先向上后向下搜索，失败返回 null */
+async function findGitRoot(baseDir: string): Promise<string | null> {
+  return (await findAllGitRoots(baseDir))[0] ?? null
 }
 
 /**
@@ -159,7 +239,7 @@ export async function getUnstagedChanges(
   )
   const gitRoots: string[] = []
   for (const cand of candidates) {
-    for (const root of findAllGitRoots(cand)) {
+    for (const root of await findAllGitRoots(cand)) {
       if (!gitRoots.includes(root)) gitRoots.push(root)
     }
   }
@@ -182,8 +262,10 @@ export async function getUnstagedChanges(
 
   for (const gitRoot of gitRoots) {
     // 获取变更文件列表 (M=modified, D=deleted, A=added, R=renamed, C=copied, T=type)
-    const nameStatus = runGitCommand(['diff', '--name-status'], gitRoot)
-    const numStat = runGitCommand(['diff', '--numstat'], gitRoot)
+    const [nameStatus, numStat] = await Promise.all([
+      runGitCommand(['diff', '--name-status'], gitRoot),
+      runGitCommand(['diff', '--numstat'], gitRoot),
+    ])
     const numStatMap = parseNumstat(numStat)
 
     if (nameStatus) {
@@ -225,7 +307,7 @@ export async function getUnstagedChanges(
     }
 
     // 获取未追踪文件
-    const untrackedOutput = runGitCommand(['ls-files', '--others', '--exclude-standard'], gitRoot)
+    const untrackedOutput = await runGitCommand(['ls-files', '--others', '--exclude-standard'], gitRoot)
     if (untrackedOutput) {
       for (const rel of untrackedOutput.split('\n').filter(Boolean)) {
         const absPath = join(gitRoot, rel)
@@ -279,42 +361,18 @@ function findAllGitRootsDown(dirPath: string, maxDepth: number): string[] {
   return found
 }
 
-/** 查找 Git 仓库根目录（支持向上搜索子目录内的 repos），返回所有找到的根 */
-function findAllGitRoots(baseDir: string): string[] {
-  if (!existsSync(baseDir)) return []
-
-  // 1. 向上搜索：git rev-parse --show-toplevel
-  const toplevel = runGitCommand(['rev-parse', '--show-toplevel'], baseDir)
-  const roots: string[] = []
-  if (toplevel && existsSync(toplevel) && !roots.includes(toplevel)) {
-    roots.push(toplevel)
-  }
-
-  // 2. 向下搜索所有子 .git
-  for (const r of findAllGitRootsDown(baseDir, 3)) {
-    if (!roots.includes(r)) roots.push(r)
-  }
-
-  return roots
-}
-
-/** 查找 Git 仓库根目录，先向上后向下搜索，失败返回 null */
-function findGitRoot(baseDir: string): string | null {
-  return findAllGitRoots(baseDir)[0] ?? null
-}
-
 /**
  * 获取单个文件的 unified diff
  */
 export async function getFileDiff(dirPath: string, filePath: string, gitRoot?: string): Promise<string> {
-  const root = gitRoot || findGitRoot(dirPath)
+  const root = gitRoot || await findGitRoot(dirPath)
   if (!root) return ''
   const safePath = normalizeSafePath(root, filePath)
   if (!safePath) {
     console.warn('[git-diff-service] getFileDiff 拒绝不安全路径:', filePath)
     return ''
   }
-  const diff = runGitCommand(['diff', '--', safePath], root)
+  const diff = await runGitCommand(['diff', '--', safePath], root)
   return diff || ''
 }
 
@@ -322,7 +380,7 @@ export async function getFileDiff(dirPath: string, filePath: string, gitRoot?: s
  * 获取文件的旧版本（git HEAD）和新版本（磁盘）内容
  */
 export async function getDiffContents(dirPath: string, filePath: string, gitRoot?: string): Promise<{ oldContent: string; newContent: string } | null> {
-  const root = gitRoot || findGitRoot(dirPath)
+  const root = gitRoot || await findGitRoot(dirPath)
 
   // 无 git root：纯文件预览（无 git HEAD 可比较），仅读磁盘文件，安全检查依赖 dirPath
   if (!root) {
@@ -356,19 +414,7 @@ export async function getDiffContents(dirPath: string, filePath: string, gitRoot
 
   // 旧版本从 git HEAD 读取
   let oldContent = ''
-  try {
-    const result = spawnSync('git', ['show', `HEAD:${safePath}`], {
-      cwd: root,
-      encoding: 'utf-8',
-      timeout: 10000,
-      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-    })
-    if (result.status === 0) {
-      oldContent = result.stdout
-    }
-  } catch {
-    // 文件在 HEAD 中不存在（新文件）
-  }
+  oldContent = await runGitCommandRaw(['show', `HEAD:${safePath}`], root) ?? ''
 
   // 新版本从磁盘读取
   let newContent = ''
@@ -397,7 +443,7 @@ export async function getDiffContents(dirPath: string, filePath: string, gitRoot
  */
 export async function getUntrackedContent(dirPath: string, filePath: string, gitRoot?: string): Promise<string> {
   if (!filePath || typeof filePath !== 'string') return ''
-  const root = gitRoot || findGitRoot(dirPath) || dirPath
+  const root = gitRoot || await findGitRoot(dirPath) || dirPath
   const safePath = normalizeSafePath(root, filePath)
   if (!safePath) {
     console.warn('[git-diff-service] getUntrackedContent 拒绝不安全路径:', filePath)
@@ -420,13 +466,13 @@ export async function getUntrackedContent(dirPath: string, filePath: string, git
  * 还原文件的未暂存变更
  */
 export async function revertFile(dirPath: string, filePath: string, gitRoot?: string): Promise<void> {
-  const root = gitRoot || findGitRoot(dirPath)
+  const root = gitRoot || await findGitRoot(dirPath)
   if (!root) throw new Error('未找到 Git 仓库')
   const safePath = normalizeSafePath(root, filePath)
   if (!safePath) {
     throw new Error(`不安全的路径: ${filePath}`)
   }
-  const result = runGitCommand(['checkout', '--', safePath], root)
+  const result = await runGitCommand(['checkout', '--', safePath], root)
   if (result === null) {
     throw new Error(`还原失败: git checkout -- ${safePath}`)
   }
