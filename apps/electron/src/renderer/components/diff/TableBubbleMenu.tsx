@@ -20,6 +20,21 @@ interface TableBubbleMenuProps {
   editor: Editor
 }
 
+interface TableCommandChain {
+  addRowBefore: () => TableCommandChain
+  addRowAfter: () => TableCommandChain
+  addColumnBefore: () => TableCommandChain
+  addColumnAfter: () => TableCommandChain
+  deleteRow: () => TableCommandChain
+  deleteColumn: () => TableCommandChain
+  deleteTable: () => TableCommandChain
+  run: () => boolean
+}
+
+function tableChain(editor: Editor): TableCommandChain {
+  return editor.chain().focus() as unknown as TableCommandChain
+}
+
 function selectionInsideNode(editor: Editor, nodeName: string): boolean {
   const { $from, $to } = editor.state.selection
   const contains = (pos: typeof $from) => {
@@ -79,19 +94,19 @@ export function TableBubbleMenu({ editor }: TableBubbleMenuProps): React.ReactEl
       shouldShow={({ editor: ed }) => shouldShowTableMenu(ed)}
     >
       <div className="flex items-center gap-0.5 rounded-lg border bg-popover px-1 py-0.5 shadow-md">
-        <TableButton icon={ArrowUpFromLine} label="上方插入行" onClick={() => editor.chain().focus().addRowBefore().run()} />
-        <TableButton icon={ArrowDownFromLine} label="下方插入行" onClick={() => editor.chain().focus().addRowAfter().run()} />
-        <TableButton icon={ArrowLeftFromLine} label="左侧插入列" onClick={() => editor.chain().focus().addColumnBefore().run()} />
-        <TableButton icon={ArrowRightFromLine} label="右侧插入列" onClick={() => editor.chain().focus().addColumnAfter().run()} />
+        <TableButton icon={ArrowUpFromLine} label="上方插入行" onClick={() => tableChain(editor).addRowBefore().run()} />
+        <TableButton icon={ArrowDownFromLine} label="下方插入行" onClick={() => tableChain(editor).addRowAfter().run()} />
+        <TableButton icon={ArrowLeftFromLine} label="左侧插入列" onClick={() => tableChain(editor).addColumnBefore().run()} />
+        <TableButton icon={ArrowRightFromLine} label="右侧插入列" onClick={() => tableChain(editor).addColumnAfter().run()} />
 
         <Separator orientation="vertical" className="mx-0.5 h-5" />
 
-        <TableButton icon={Rows} label="删除行" destructive onClick={() => editor.chain().focus().deleteRow().run()} />
-        <TableButton icon={Columns} label="删除列" destructive onClick={() => editor.chain().focus().deleteColumn().run()} />
+        <TableButton icon={Rows} label="删除行" destructive onClick={() => tableChain(editor).deleteRow().run()} />
+        <TableButton icon={Columns} label="删除列" destructive onClick={() => tableChain(editor).deleteColumn().run()} />
 
         <Separator orientation="vertical" className="mx-0.5 h-5" />
 
-        <TableButton icon={Trash2} label="删除表格" destructive onClick={() => editor.chain().focus().deleteTable().run()} />
+        <TableButton icon={Trash2} label="删除表格" destructive onClick={() => tableChain(editor).deleteTable().run()} />
       </div>
     </BubbleMenu>
   )

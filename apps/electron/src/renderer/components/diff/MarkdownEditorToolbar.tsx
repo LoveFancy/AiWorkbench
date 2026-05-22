@@ -34,6 +34,11 @@ interface MarkdownEditorToolbarProps {
   editor: Editor
 }
 
+interface TableCommandChain {
+  insertTable: (options: { rows: number; cols: number; withHeaderRow: boolean }) => TableCommandChain
+  run: () => boolean
+}
+
 interface ToolbarActiveState {
   bold: boolean
   italic: boolean
@@ -164,7 +169,8 @@ function TableGridPicker({ editor }: { editor: Editor }) {
   const [hover, setHover] = React.useState({ row: 0, col: 0 })
 
   const insert = (rows: number, cols: number) => {
-    editor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run()
+    const chain = editor.chain().focus() as unknown as TableCommandChain
+    chain.insertTable({ rows, cols, withHeaderRow: true }).run()
     setOpen(false)
   }
 

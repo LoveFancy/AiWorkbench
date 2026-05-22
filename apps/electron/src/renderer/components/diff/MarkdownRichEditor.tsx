@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
+import type { AnyExtension } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
 import Link from '@tiptap/extension-link'
@@ -78,7 +79,7 @@ export function MarkdownRichEditor({
     MathInline,
     TaskList,
     TaskItem,
-    ...tableExtensions,
+    ...(tableExtensions as unknown as AnyExtension[]),
     createShikiCodeBlock(shikiThemeRef),
     StarterKit.configure({
       codeBlock: false,
@@ -99,7 +100,7 @@ export function MarkdownRichEditor({
       tightLists: true,
       bulletListMarker: '-',
     }),
-  ], [])
+  ], []) as unknown as AnyExtension[]
 
   const initialHtml = React.useMemo(() => markdownToHtml(value), [value])
   const editor = useEditor({

@@ -9,6 +9,7 @@
 
 import * as React from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
+import type { AnyExtension } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
@@ -74,7 +75,7 @@ export function ScratchPadView(): React.ReactElement {
     TaskList,
     TaskItem,
     ...tableExtensions,
-  ], [])
+  ], []) as unknown as AnyExtension[]
 
   const editor = useEditor({
     extensions,

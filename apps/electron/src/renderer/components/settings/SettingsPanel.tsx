@@ -61,6 +61,8 @@ function renderTabContent(tab: SettingsTab): React.ReactElement {
       return <ShortcutSettings />;
     case "storage":
       return <StorageSettings />;
+    default:
+      return <GeneralSettings />;
   }
 }
 
@@ -126,7 +128,7 @@ export function SettingsPanel({
 
   // Agent 模式时在渠道后插入 Agent Tab，工具 tab 两种模式都显示
   const tabs = React.useMemo(() => {
-    return getSettingsTabs(appMode);
+    return getSettingsTabs(appMode === 'agent' ? 'agent' : 'chat');
   }, [appMode]);
 
   React.useEffect(() => {
