@@ -1131,8 +1131,8 @@ function HtSkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInstalled
         </Button>
       }
     >
-      <div className="flex border border-border rounded-lg overflow-hidden min-h-[520px]">
-        <div className="w-80 flex-shrink-0 border-r border-border bg-muted/20 flex flex-col min-h-0">
+      <div className="flex border border-border rounded-lg overflow-hidden min-h-[520px] max-h-[calc(100vh-260px)]">
+        <div className="w-80 flex-shrink-0 border-r border-border bg-muted/20 flex flex-col min-h-0 max-h-[calc(100vh-260px)]">
           <div className="p-3 border-b border-border space-y-2">
             <div className="relative">
               <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -1205,7 +1205,7 @@ function HtSkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInstalled
 
         <div className="flex-1 min-w-0 flex flex-col">
           {selectedSkill ? (
-            <div className="flex flex-col h-full min-h-0">
+            <div className="flex flex-col min-h-0">
               <div className="shrink-0 border-b border-border p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -1242,7 +1242,7 @@ function HtSkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInstalled
                 </div>
               </div>
 
-              <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
+              <div className="p-4 space-y-4">
                 <SettingsCard divided={false}>
                   <div className="p-4">
                     <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">SKILL.md</div>

@@ -8,17 +8,17 @@ import {
 } from './web-search-tool.ts'
 
 describe('数智中台联网搜索工具', () => {
-  test('使用内置 API Key，无需用户填写', () => {
-    expect(getBuiltinWebSearchApiKey()).toBe('001421@ngaflkmmttnaab2jzkaa')
+  test('使用内置裸 API Key，无需用户填写', () => {
+    expect(getBuiltinWebSearchApiKey()).toBe('ngaflkmmttnaab2jzkaa')
   })
 
-  test('构造数智中台搜索请求时使用固定 appId、apiKey header 和 OneDay 搜索参数', () => {
-    const request = buildCompassSearchRequest('黄金怎么样', '001421@secret')
+  test('构造数智中台搜索请求时分别使用 appId、apiKey header 和 OneDay 搜索参数', () => {
+    const request = buildCompassSearchRequest('黄金怎么样', 'secret')
 
     expect(request.url).toBe('http://168.63.65.40:8090/ai-service/v1/api/web/search')
     expect(request.init.method).toBe('POST')
     expect(request.init.headers).toEqual({
-      apiKey: '001421@secret',
+      apiKey: 'secret',
       appId: '001421',
       'Content-Type': 'application/json',
     })

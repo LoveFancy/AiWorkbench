@@ -10,7 +10,7 @@ import type { ChatToolMeta } from '@proma/shared'
 
 const COMPASS_SEARCH_ENDPOINT = 'http://168.63.65.40:8090/ai-service/v1/api/web/search'
 const COMPASS_APP_ID = '001421'
-const COMPASS_API_KEY = '001421@ngaflkmmttnaab2jzkaa'
+const COMPASS_API_KEY = 'ngaflkmmttnaab2jzkaa'
 
 // ===== 工具元数据 =====
 
