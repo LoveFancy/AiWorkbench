@@ -63,6 +63,7 @@ import { UpdateDialog } from './components/settings/UpdateDialog'
 import { GlobalShortcuts } from './components/shortcuts/GlobalShortcuts'
 import { TabSwitcher } from './components/tabs/TabSwitcher'
 import { htmlToMarkdown, markdownToHtml } from './lib/markdown-rich-text'
+import { resolveAgentSelectedModel, resolveSelectedModel } from './lib/model-selection'
 import './styles/globals.css'
 import 'katex/dist/katex.min.css'
 
@@ -173,47 +174,52 @@ function AgentSettingsInitializer(): null {
 
       // 验证 Chat 模式的全局默认模型（localStorage 持久化的可能指向已删除渠道）
       const chatModel = store.get(selectedModelAtom)
-      if (chatModel && !channelIds.has(chatModel.channelId)) {
-        console.warn('[AgentSettings] Chat selectedModel 指向已删除的渠道，清除')
-        store.set(selectedModelAtom, null)
-      }
-
-      // 验证并加载 Agent 渠道/模型
-      if (settings.agentChannelId && channelIds.has(settings.agentChannelId)) {
-        setAgentChannelId(settings.agentChannelId)
-      } else if (settings.agentChannelId && !channelIds.has(settings.agentChannelId)) {
-        // 渠道已删除，清除无效设置
-        console.warn('[AgentSettings] agentChannelId 指向已删除的渠道，清除')
-        window.electronAPI.updateSettings({ agentChannelId: undefined, agentModelId: undefined }).catch(console.error)
-      }
-      if (settings.agentModelId && (!settings.agentChannelId || channelIds.has(settings.agentChannelId))) {
-        setAgentModelId(settings.agentModelId)
+      const resolvedChatModel = resolveSelectedModel(channels, chatModel)
+      if (resolvedChatModel?.channelId !== chatModel?.channelId || resolvedChatModel?.modelId !== chatModel?.modelId) {
+        if (chatModel) {
+          console.warn('[AgentSettings] Chat selectedModel 已失效，切换到第一个可用模型')
+        }
+        store.set(selectedModelAtom, resolvedChatModel)
       }
 
       // 加载 Agent 启用渠道列表，过滤已删除的渠道
+      let validAgentChannelIds: string[] = []
       if (settings.agentChannelIds && settings.agentChannelIds.length > 0) {
-        const validIds = settings.agentChannelIds.filter((id) => channelIds.has(id))
-        setAgentChannelIds(validIds)
+        validAgentChannelIds = settings.agentChannelIds.filter((id) => channelIds.has(id))
+        setAgentChannelIds(validAgentChannelIds)
         // 如果有渠道被清理，持久化更新后的列表
-        if (validIds.length !== settings.agentChannelIds.length) {
+        if (validAgentChannelIds.length !== settings.agentChannelIds.length) {
           console.warn('[AgentSettings] 清理了已删除的 agentChannelIds')
-          window.electronAPI.updateSettings({ agentChannelIds: validIds }).catch(console.error)
+          window.electronAPI.updateSettings({ agentChannelIds: validAgentChannelIds }).catch(console.error)
         }
       } else if (settings.agentChannelId && channelIds.has(settings.agentChannelId)) {
         // 迁移：旧版本只有 agentChannelId，自动转为数组
-        const migrated = [settings.agentChannelId]
-        setAgentChannelIds(migrated)
-        window.electronAPI.updateSettings({ agentChannelIds: migrated }).catch(console.error)
+        validAgentChannelIds = [settings.agentChannelId]
+        setAgentChannelIds(validAgentChannelIds)
+        window.electronAPI.updateSettings({ agentChannelIds: validAgentChannelIds }).catch(console.error)
       }
 
       // 兜底：agentChannelId 存在但不在 agentChannelIds 白名单中，自动修复不一致
       if (settings.agentChannelId && channelIds.has(settings.agentChannelId)) {
-        const currentIds = settings.agentChannelIds?.filter((id) => channelIds.has(id)) ?? []
-        if (!currentIds.includes(settings.agentChannelId)) {
-          const fixedIds = [...currentIds, settings.agentChannelId]
-          setAgentChannelIds(fixedIds)
-          window.electronAPI.updateSettings({ agentChannelIds: fixedIds }).catch(console.error)
+        if (!validAgentChannelIds.includes(settings.agentChannelId)) {
+          validAgentChannelIds = [...validAgentChannelIds, settings.agentChannelId]
+          setAgentChannelIds(validAgentChannelIds)
+          window.electronAPI.updateSettings({ agentChannelIds: validAgentChannelIds }).catch(console.error)
         }
+      }
+
+      const currentAgentModel = settings.agentChannelId && settings.agentModelId
+        ? { channelId: settings.agentChannelId, modelId: settings.agentModelId }
+        : null
+      const resolvedAgentModel = resolveAgentSelectedModel(channels, validAgentChannelIds, currentAgentModel)
+      setAgentChannelId(resolvedAgentModel?.channelId ?? null)
+      setAgentModelId(resolvedAgentModel?.modelId ?? null)
+      if (resolvedAgentModel?.channelId !== currentAgentModel?.channelId || resolvedAgentModel?.modelId !== currentAgentModel?.modelId) {
+        window.electronAPI.updateSettings({
+          agentChannelId: resolvedAgentModel?.channelId,
+          agentModelId: resolvedAgentModel?.modelId,
+          agentChannelIds: validAgentChannelIds,
+        }).catch(console.error)
       }
 
       if (settings.agentThinking) {

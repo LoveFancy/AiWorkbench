@@ -243,8 +243,13 @@ export const workspaceFilesVersionAtom = atom(0)
 
 // ===== 侧面板 Atoms =====
 
-/** 侧面板是否打开（全局共享，所有会话共用一个状态） */
-export const agentSidePanelOpenAtom = atomWithStorage<boolean>('proma-agent-sidepanel-open', true)
+/**
+ * 侧面板是否打开（全局共享，所有会话共用一个状态）。
+ *
+ * 旧版本可能已把 false 持久化到 localStorage；产品现在要求文件面板默认打开，
+ * 因此换一个 storage key，让用户首次进入新版本时重新使用默认值。
+ */
+export const agentSidePanelOpenAtom = atomWithStorage<boolean>('proma-agent-sidepanel-open-v2', true)
 
 /** 侧面板宽度（全局共享，用户拖拽后持久化） */
 export const agentSidePanelWidthAtom = atomWithStorage<number>('proma-agent-sidepanel-width', 280)

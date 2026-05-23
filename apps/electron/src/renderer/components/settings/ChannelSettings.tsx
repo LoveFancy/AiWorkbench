@@ -16,7 +16,8 @@ import { PROVIDER_LABELS, isAgentCompatibleProvider } from '@proma/shared'
 import type { Channel } from '@proma/shared'
 import { getChannelLogo } from '@/lib/model-logo'
 import { agentChannelIdAtom, agentModelIdAtom, agentChannelIdsAtom } from '@/atoms/agent-atoms'
-import { channelsAtom } from '@/atoms/chat-atoms'
+import { channelsAtom, selectedModelAtom } from '@/atoms/chat-atoms'
+import { resolveAgentSelectedModel, resolveSelectedModel } from '@/lib/model-selection'
 import { SettingsSection, SettingsCard, SettingsRow } from './primitives'
 import {
   AlertDialog,
@@ -39,9 +40,10 @@ export function ChannelSettings(): React.ReactElement {
   const [editingChannel, setEditingChannel] = React.useState<Channel | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [agentChannelId, setAgentChannelId] = useAtom(agentChannelIdAtom)
-  const [, setAgentModelId] = useAtom(agentModelIdAtom)
+  const [agentModelId, setAgentModelId] = useAtom(agentModelIdAtom)
   const [agentChannelIds, setAgentChannelIds] = useAtom(agentChannelIdsAtom)
   const setGlobalChannels = useSetAtom(channelsAtom)
+  const [selectedModel, setSelectedModel] = useAtom(selectedModelAtom)
   const [deleteTarget, setDeleteTarget] = React.useState<Channel | null>(null)
   const agentChannelIdsRef = React.useRef(agentChannelIds)
   const agentChannelIdRef = React.useRef(agentChannelId)
@@ -54,12 +56,38 @@ export function ChannelSettings(): React.ReactElement {
     agentChannelIdRef.current = agentChannelId
   }, [agentChannelId])
 
+  const syncDefaultAgentModel = React.useCallback(async (
+    list: Channel[],
+    nextAgentChannelIds = agentChannelIdsRef.current,
+  ): Promise<void> => {
+    const current = agentChannelIdRef.current && agentModelId
+      ? { channelId: agentChannelIdRef.current, modelId: agentModelId }
+      : null
+    const nextModel = resolveAgentSelectedModel(list, nextAgentChannelIds, current)
+
+    if (nextModel?.channelId === current?.channelId && nextModel?.modelId === current?.modelId) return
+
+    agentChannelIdRef.current = nextModel?.channelId ?? null
+    setAgentChannelId(nextModel?.channelId ?? null)
+    setAgentModelId(nextModel?.modelId ?? null)
+    await window.electronAPI.updateSettings({
+      agentChannelId: nextModel?.channelId,
+      agentModelId: nextModel?.modelId,
+      agentChannelIds: nextAgentChannelIds,
+    }).catch(console.error)
+  }, [agentModelId, setAgentChannelId, setAgentModelId])
+
   /** 加载渠道列表 */
   const loadChannels = React.useCallback(async (): Promise<Channel[]> => {
     try {
       const list = await window.electronAPI.listChannels()
       setChannels(list)
       setGlobalChannels(list) // 同步到全局缓存
+      const nextModel = resolveSelectedModel(list, selectedModel)
+      if (nextModel?.channelId !== selectedModel?.channelId || nextModel?.modelId !== selectedModel?.modelId) {
+        setSelectedModel(nextModel)
+      }
+      await syncDefaultAgentModel(list)
       return list
     } catch (error) {
       console.error('[渠道设置] 加载渠道列表失败:', error)
@@ -67,7 +95,7 @@ export function ChannelSettings(): React.ReactElement {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [selectedModel, setGlobalChannels, setSelectedModel, syncDefaultAgentModel])
 
   React.useEffect(() => {
     loadChannels()
@@ -84,7 +112,7 @@ export function ChannelSettings(): React.ReactElement {
       const newIds = [...currentIds, channel.id]
       agentChannelIdsRef.current = newIds
       setAgentChannelIds(newIds)
-      await window.electronAPI.updateSettings({ agentChannelIds: newIds }).catch(console.error)
+      await syncDefaultAgentModel(await window.electronAPI.listChannels(), newIds)
       return
     }
 
@@ -93,19 +121,14 @@ export function ChannelSettings(): React.ReactElement {
     agentChannelIdsRef.current = newIds
     setAgentChannelIds(newIds)
 
-    const updates: Parameters<typeof window.electronAPI.updateSettings>[0] = {
-      agentChannelIds: newIds,
-    }
     if (agentChannelIdRef.current === channel.id) {
       agentChannelIdRef.current = null
       setAgentChannelId(null)
       setAgentModelId(null)
-      updates.agentChannelId = undefined
-      updates.agentModelId = undefined
     }
 
-    await window.electronAPI.updateSettings(updates).catch(console.error)
-  }, [setAgentChannelIds, setAgentChannelId, setAgentModelId])
+    await syncDefaultAgentModel(await window.electronAPI.listChannels(), newIds)
+  }, [setAgentChannelIds, setAgentChannelId, setAgentModelId, syncDefaultAgentModel])
 
   /** 删除渠道（通过弹窗确认） */
   const handleDeleteRequest = (channel: Channel): void => {
@@ -163,20 +186,16 @@ export function ChannelSettings(): React.ReactElement {
       : agentChannelIds.filter((id) => id !== channelId)
 
     setAgentChannelIds(newIds)
+    agentChannelIdsRef.current = newIds
 
     // 如果关闭的是当前选中的渠道，清空选择
     if (!enabled && agentChannelId === channelId) {
+      agentChannelIdRef.current = null
       setAgentChannelId(null)
       setAgentModelId(null)
-      await window.electronAPI.updateSettings({
-        agentChannelIds: newIds,
-        agentChannelId: undefined,
-        agentModelId: undefined,
-      }).catch(console.error)
-      return
     }
 
-    await window.electronAPI.updateSettings({ agentChannelIds: newIds }).catch(console.error)
+    await syncDefaultAgentModel(channels, newIds)
   }
 
   /** 表单保存回调 */

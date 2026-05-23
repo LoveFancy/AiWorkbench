@@ -11,6 +11,7 @@
  */
 
 import { atom } from 'jotai'
+import { DEFAULT_THEME_MODE, DEFAULT_THEME_STYLE } from '../../types'
 import type { ThemeMode, ThemeStyle } from '../../types'
 
 /** localStorage 缓存键 */
@@ -29,7 +30,7 @@ function getCachedThemeMode(): ThemeMode {
   } catch {
     // localStorage 不可用时忽略
   }
-  return 'dark'
+  return DEFAULT_THEME_MODE
 }
 
 /**
@@ -44,7 +45,7 @@ function getCachedThemeStyle(): ThemeStyle {
   } catch {
     // localStorage 不可用时忽略
   }
-  return 'default'
+  return DEFAULT_THEME_STYLE
 }
 
 /**

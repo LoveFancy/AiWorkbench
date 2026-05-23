@@ -141,6 +141,12 @@ function isAgentEligibleChannel(channel: Pick<Channel, 'provider' | 'enabled'>):
   return channel.enabled && isAgentCompatibleProvider(channel.provider)
 }
 
+function getApiKeyPlaceholder(provider: ProviderType): string {
+  return provider === 'huatai-anthropic' || provider === 'huatai-openai'
+    ? '请输入从中台申请到的 API Key'
+    : '请输入 API Key'
+}
+
 export function ChannelForm({ channel, onSaved, onAgentEligibilityChange, onCancel }: ChannelFormProps): React.ReactElement {
   const isEdit = channel !== null
 
@@ -531,7 +537,7 @@ export function ChannelForm({ channel, onSaved, onAgentEligibilityChange, onCanc
                 type={showApiKey ? 'text' : 'password'}
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                placeholder={isEdit ? '留空则不更新' : '输入 API Key'}
+                placeholder={getApiKeyPlaceholder(provider)}
                 required={!isEdit}
                 className="pr-10"
               />
@@ -566,7 +572,7 @@ export function ChannelForm({ channel, onSaved, onAgentEligibilityChange, onCanc
       {/* 已启用模型 */}
       <SettingsSection
         title="已启用模型"
-        description={enabledModels.length > 0 ? `${enabledModels.length} 个模型` : undefined}
+        description={`${enabledModels.length} 个模型。已启用模型不代表可用，请确保 API Key 有授权相应模型的访问权限，申请权限请联系黄宇海。`}
       >
         <SettingsCard divided={false}>
           {enabledModels.length === 0 ? (

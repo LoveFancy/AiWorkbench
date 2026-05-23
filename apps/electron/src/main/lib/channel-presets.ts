@@ -20,9 +20,7 @@ interface EnsurePresetChannelsResult {
 }
 
 const PRESET_CHANNELS: PresetChannelDefinition[] = [
-  { name: 'DeepSeek', provider: 'deepseek' },
   { name: '华泰（Anthropic）', provider: 'huatai-anthropic' },
-  { name: '华泰（OpenAI）', provider: 'huatai-openai' },
 ]
 
 export function ensurePresetChannels(input: EnsurePresetChannelsInput): EnsurePresetChannelsResult {
@@ -62,10 +60,6 @@ function hasMatchingChannel(channels: Channel[], provider: ProviderType): boolea
   return channels.some((channel) => {
     if (channel.provider === provider) {
       return true
-    }
-
-    if (provider === 'deepseek') {
-      return channel.baseUrl.includes('api.deepseek.com')
     }
 
     return defaultUrl !== '' && channel.baseUrl === defaultUrl

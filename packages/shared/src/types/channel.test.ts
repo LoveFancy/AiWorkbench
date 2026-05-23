@@ -8,6 +8,8 @@ describe('渠道默认配置', () => {
     expect(PROVIDER_DEFAULT_MODELS['huatai-anthropic']).toEqual([
       { id: 'local-glm-47-flash', name: 'local-glm-47-flash', enabled: true },
       { id: 'saas-kimi-k25', name: 'saas-kimi-k25', enabled: true },
+      { id: 'local-deepseek-v4-flash', name: 'local-deepseek-v4-flash', enabled: true },
+      { id: 'local-deepseek-v4-pro', name: 'local-deepseek-v4-pro', enabled: true },
     ])
   })
 

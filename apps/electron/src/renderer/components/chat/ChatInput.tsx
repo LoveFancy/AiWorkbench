@@ -14,7 +14,7 @@
 
 import * as React from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
-import { CornerDownLeft, Square, Brain, Paperclip } from 'lucide-react'
+import { CornerDownLeft, Square, Brain, Paperclip, Settings } from 'lucide-react'
 import { ModelSelector } from './ModelSelector'
 import { ClearContextButton } from './ClearContextButton'
 import { ContextSettingsPopover } from './ContextSettingsPopover'
@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/tooltip'
 import { getActiveAccelerator, getAcceleratorDisplay } from '@/lib/shortcut-registry'
 import {
+  channelsAtom,
   conversationDraftsAtom,
 } from '@/atoms/chat-atoms'
 import type { PendingAttachment } from '@/atoms/chat-atoms'
@@ -42,6 +43,8 @@ import { cn } from '@/lib/utils'
 import { fileToBase64, formatFileNames } from '@/lib/file-utils'
 import { MAX_ATTACHMENT_SIZE } from '@proma/shared'
 import { sendWithCmdEnterAtom } from '@/atoms/shortcut-atoms'
+import { settingsOpenAtom, settingsTabAtom } from '@/atoms/settings-tab'
+import { hasUsableChatModel } from '@/lib/model-selection'
 import { toast } from 'sonner'
 
 interface ChatInputProps {
@@ -66,6 +69,9 @@ export function ChatInput({ conversationId, streaming, pendingAttachments, onSet
   // 从 Map atom 读写草稿
   const draftsMap = useAtomValue(conversationDraftsAtom)
   const setDraftsMap = useSetAtom(conversationDraftsAtom)
+  const channels = useAtomValue(channelsAtom)
+  const setSettingsOpen = useSetAtom(settingsOpenAtom)
+  const setSettingsTab = useSetAtom(settingsTabAtom)
   const content = draftsMap.get(conversationId) ?? ''
   const setContent = React.useCallback((value: string) => {
     setDraftsMap((prev) => {
@@ -83,10 +89,17 @@ export function ChatInput({ conversationId, streaming, pendingAttachments, onSet
   const [thinkingEnabled, setThinkingEnabled] = useConversationThinkingEnabled()
   const setPendingAttachments = onSetPendingAttachments
   const [isDragOver, setIsDragOver] = React.useState(false)
+  const hasAvailableModel = React.useMemo(() => hasUsableChatModel(channels), [channels])
 
   const canSend = (content.trim().length > 0 || pendingAttachments.length > 0)
     && selectedModel !== null
+    && hasAvailableModel
     && !streaming
+
+  const openModelSettings = React.useCallback((): void => {
+    setSettingsTab('channels')
+    setSettingsOpen(true)
+  }, [setSettingsOpen, setSettingsTab])
 
   /**
    * 将文件列表添加为附件
@@ -291,15 +304,34 @@ export function ChatInput({ conversationId, streaming, pendingAttachments, onSet
             </div>
           )}
 
+          {!hasAvailableModel && (
+            <div className="flex items-center gap-2 px-4 py-2 text-sm text-amber-600 dark:text-amber-400">
+              <Settings size={14} />
+              <span>暂无可用模型，请先在设置中添加模型配置</span>
+              <button
+                type="button"
+                className="text-xs underline underline-offset-2 hover:text-foreground transition-colors"
+                onClick={openModelSettings}
+              >
+                前往设置
+              </button>
+            </div>
+          )}
+
           {/* TipTap 富文本编辑器 */}
           <RichTextInput
             value={content}
             onChange={setContent}
             onSubmit={handleSend}
             onPasteFiles={handlePasteFiles}
-            placeholder={sendWithCmdEnter ? '输入消息... (⌘/Ctrl+Enter 发送，Enter 换行)' : '输入消息... (Enter 发送，Shift+Enter 换行)'}
+            placeholder={
+              hasAvailableModel
+                ? sendWithCmdEnter ? '输入消息... (⌘/Ctrl+Enter 发送，Enter 换行)' : '输入消息... (Enter 发送，Shift+Enter 换行)'
+                : '请先在设置中添加可用模型'
+            }
             autoFocusTrigger={conversationId}
             sendWithCmdEnter={sendWithCmdEnter}
+            disabled={!hasAvailableModel}
           />
 
           {/* Footer 工具栏 — Cherry Studio: padding 5px 8px, height 40px, gap 16px */}

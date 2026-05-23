@@ -146,10 +146,10 @@ export type ThemeMode = 'light' | 'dark' | 'system' | 'special'
 export type ThemeStyle = 'default' | 'ocean-light' | 'ocean-dark' | 'forest-light' | 'forest-dark' | 'slate-light' | 'slate-dark'
 
 /** 默认主题模式 */
-export const DEFAULT_THEME_MODE: ThemeMode = 'dark'
+export const DEFAULT_THEME_MODE: ThemeMode = 'special'
 
 /** 默认特殊风格 */
-export const DEFAULT_THEME_STYLE: ThemeStyle = 'default'
+export const DEFAULT_THEME_STYLE: ThemeStyle = 'ocean-dark'
 
 /** 应用设置 */
 export interface AppSettings {
