@@ -52,6 +52,8 @@ import type {
   SkillMeta,
   OtherWorkspaceSkillsGroup,
   WorkspaceCapabilities,
+  HtSkillHubSkill,
+  HtSkillHubInstallResult,
   FileEntry,
   FileSearchResult,
   EnvironmentCheckResult,
@@ -543,6 +545,15 @@ export interface ElectronAPI {
 
   /** 重命名/移动 Skill 目录下的文件或目录 */
   renameSkillEntry: (workspaceSlug: string, skillSlug: string, fromRelative: string, toRelative: string) => Promise<void>
+
+  /** 获取华泰 SkillHub 清单 */
+  getHtSkillHubSkills: (workspaceSlug: string) => Promise<HtSkillHubSkill[]>
+
+  /** 读取华泰 SkillHub 远端 SKILL.md */
+  readHtSkillHubSkill: (skillName: string) => Promise<string>
+
+  /** 安装华泰 SkillHub Skill 到当前工作区 */
+  installHtSkillHubSkill: (workspaceSlug: string, skillName: string, overwrite: boolean) => Promise<HtSkillHubInstallResult>
 
   /** 订阅 Agent 流式事件（返回清理函数） */
   onAgentStreamEvent: (callback: (event: AgentStreamEvent) => void) => () => void
@@ -1543,6 +1554,18 @@ const electronAPI: ElectronAPI = {
 
   renameSkillEntry: (workspaceSlug: string, skillSlug: string, fromRelative: string, toRelative: string) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.RENAME_SKILL_ENTRY, workspaceSlug, skillSlug, fromRelative, toRelative)
+  },
+
+  getHtSkillHubSkills: (workspaceSlug: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_HT_SKILLHUB_SKILLS, workspaceSlug)
+  },
+
+  readHtSkillHubSkill: (skillName: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.READ_HT_SKILLHUB_SKILL, skillName)
+  },
+
+  installHtSkillHubSkill: (workspaceSlug: string, skillName: string, overwrite: boolean) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.INSTALL_HT_SKILLHUB_SKILL, workspaceSlug, skillName, overwrite)
   },
 
   onAgentStreamEvent: (callback: (event: AgentStreamEvent) => void) => {

@@ -58,6 +58,8 @@ import type {
   WorkspaceMcpConfig,
   SkillMeta,
   WorkspaceCapabilities,
+  HtSkillHubSkill,
+  HtSkillHubInstallResult,
   FileEntry,
   FileSearchResult,
   EnvironmentCheckResult,
@@ -1590,6 +1592,35 @@ export function registerIpcHandlers(): void {
     }
   )
 
+  // ===== 华泰 SkillHub =====
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.GET_HT_SKILLHUB_SKILLS,
+    async (_, workspaceSlug: string): Promise<HtSkillHubSkill[]> => {
+      const { fetchHtSkillHubIndex } = await import('./lib/skillhub-service')
+      return fetchHtSkillHubIndex(workspaceSlug)
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.READ_HT_SKILLHUB_SKILL,
+    async (_, skillName: string): Promise<string> => {
+      const { readHtSkillHubSkillContent } = await import('./lib/skillhub-service')
+      return readHtSkillHubSkillContent(skillName)
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.INSTALL_HT_SKILLHUB_SKILL,
+    async (_, workspaceSlug: string, skillName: string, overwrite: boolean): Promise<HtSkillHubInstallResult> => {
+      const { fetchHtSkillHubIndex, installHtSkillHubSkill } = await import('./lib/skillhub-service')
+      const skills = await fetchHtSkillHubIndex(workspaceSlug)
+      const skill = skills.find((item) => item.name === skillName)
+      if (!skill) throw new Error(`华泰 SkillHub 未找到 Skill: ${skillName}`)
+      return installHtSkillHubSkill({ workspaceSlug, skill, overwrite })
+    }
+  )
+
   // 发送 Agent 消息（触发 Agent SDK 流式响应）
   ipcMain.handle(
     AGENT_IPC_CHANNELS.SEND_MESSAGE,
@@ -1812,27 +1843,15 @@ export function registerIpcHandlers(): void {
       }
       // 联网搜索工具测试
       if (toolId === 'web-search') {
-        const { getToolCredentials: getCredentials } = await import('./lib/chat-tool-config')
-        const credentials = getCredentials('web-search')
-        if (!credentials.apiKey) {
-          return { success: false, message: '请先填写 Tavily API Key' }
-        }
+        const { buildCompassSearchRequest, getBuiltinWebSearchApiKey } = await import('./lib/chat-tools/web-search-tool')
         try {
-          const response = await fetch('https://api.tavily.com/search', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              api_key: credentials.apiKey,
-              query: 'test connection',
-              search_depth: 'basic',
-              max_results: 1,
-            }),
-          })
+          const request = buildCompassSearchRequest('test connection', getBuiltinWebSearchApiKey())
+          const response = await fetch(request.url, request.init)
           if (!response.ok) {
             const errorText = await response.text()
             return { success: false, message: `API 请求失败 (${response.status}): ${errorText}` }
           }
-          return { success: true, message: '连接成功，Tavily 搜索 API 可用' }
+          return { success: true, message: '连接成功，数智中台搜索 API 可用' }
         } catch (error) {
           const msg = error instanceof Error ? error.message : String(error)
           return { success: false, message: `连接失败: ${msg}` }

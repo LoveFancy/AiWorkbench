@@ -772,6 +772,22 @@ export interface WorkspaceCapabilities {
   skills: SkillMeta[]
 }
 
+/** 华泰 SkillHub 市场 Skill 条目 */
+export interface HtSkillHubSkill {
+  name: string
+  description: string
+  files: string[]
+  installed: boolean
+  enabled?: boolean
+}
+
+/** 华泰 SkillHub 安装结果 */
+export interface HtSkillHubInstallResult {
+  skillName: string
+  status: 'installed' | 'overwritten'
+  enabled: boolean
+}
+
 // ===== Agent 发送输入 =====
 
 /**
@@ -1302,6 +1318,12 @@ export const AGENT_IPC_CHANNELS = {
   DELETE_SKILL_ENTRY: 'agent:delete-skill-entry',
   /** 重命名/移动 Skill 目录下的文件或目录 */
   RENAME_SKILL_ENTRY: 'agent:rename-skill-entry',
+  /** 获取华泰 SkillHub 清单 */
+  GET_HT_SKILLHUB_SKILLS: 'agent:get-ht-skillhub-skills',
+  /** 读取华泰 SkillHub 远端 SKILL.md */
+  READ_HT_SKILLHUB_SKILL: 'agent:read-ht-skillhub-skill',
+  /** 安装华泰 SkillHub Skill */
+  INSTALL_HT_SKILLHUB_SKILL: 'agent:install-ht-skillhub-skill',
 
   // 流式事件（主进程 → 渲染进程推送）
   /** Agent 流式事件 */

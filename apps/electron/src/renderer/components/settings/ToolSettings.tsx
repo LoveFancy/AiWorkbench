@@ -27,31 +27,19 @@ async function refreshChatTools(setter: (tools: Awaited<ReturnType<typeof window
 }
 
 /** 联网搜索工具设置区域 */
-function WebSearchSettings(): React.ReactElement {
-  const [apiKey, setApiKey] = React.useState('')
-  const [showApiKey, setShowApiKey] = React.useState(false)
+export function WebSearchSettings(): React.ReactElement {
   const [enabled, setEnabled] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
   const [testing, setTesting] = React.useState(false)
   const [testResult, setTestResult] = React.useState<{ success: boolean; message: string } | null>(null)
   const setChatTools = useSetAtom(chatToolsAtom)
 
-  // 已保存的 API Key（用于判断是否有变更）
-  const savedApiKeyRef = React.useRef('')
-
-  // 从主进程加载当前配置 + 凭据
+  // 从主进程加载当前开关状态
   React.useEffect(() => {
-    Promise.all([
-      window.electronAPI.getChatTools(),
-      window.electronAPI.getChatToolCredentials('web-search'),
-    ]).then(([tools, credentials]) => {
+    window.electronAPI.getChatTools().then((tools) => {
       const searchTool = tools.find((t) => t.meta.id === 'web-search')
       if (searchTool) {
         setEnabled(searchTool.enabled)
-      }
-      if (credentials.apiKey) {
-        setApiKey(credentials.apiKey)
-        savedApiKeyRef.current = credentials.apiKey
       }
     }).catch((err: unknown) => {
       console.error('[联网搜索设置] 加载失败:', err)
@@ -59,21 +47,6 @@ function WebSearchSettings(): React.ReactElement {
       setLoading(false)
     })
   }, [])
-
-  /** 静默保存 API Key（blur 时触发） */
-  const handleBlurSave = React.useCallback(async (): Promise<void> => {
-    const trimmed = apiKey.trim()
-    if (trimmed === savedApiKeyRef.current) return
-    try {
-      await window.electronAPI.updateChatToolCredentials('web-search', { apiKey: trimmed })
-      savedApiKeyRef.current = trimmed
-      // 刷新全局工具列表（available 状态可能变化）
-      await refreshChatTools(setChatTools)
-      toast.success('联网搜索设置已保存')
-    } catch (error) {
-      console.error('[联网搜索设置] 保存失败:', error)
-    }
-  }, [apiKey, setChatTools])
 
   const handleToggle = async (checked: boolean): Promise<void> => {
     try {
@@ -86,18 +59,6 @@ function WebSearchSettings(): React.ReactElement {
   }
 
   const handleTest = async (): Promise<void> => {
-    // 先保存可能的变更
-    const trimmed = apiKey.trim()
-    if (trimmed !== savedApiKeyRef.current) {
-      try {
-        await window.electronAPI.updateChatToolCredentials('web-search', { apiKey: trimmed })
-        savedApiKeyRef.current = trimmed
-        await refreshChatTools(setChatTools)
-      } catch (error) {
-        console.error('[联网搜索设置] 保存失败:', error)
-      }
-    }
-
     setTesting(true)
     setTestResult(null)
     try {
@@ -129,57 +90,23 @@ function WebSearchSettings(): React.ReactElement {
         <div className="space-y-4 p-4">
           {/* 引导说明 */}
           <div className="rounded-lg bg-muted/50 p-3 space-y-2 text-sm text-muted-foreground">
-            <p>联网搜索由 <span className="font-medium text-foreground">Tavily</span> 提供，启用后 AI 可以搜索互联网获取实时信息。</p>
-            <p className="text-xs">配置步骤：</p>
-            <ol className="text-xs list-decimal list-inside space-y-1">
-              <li>
-                访问{' '}
-                <a
-                  href="https://tavily.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline inline-flex items-center gap-0.5"
-                >
-                  Tavily 官网
-                  <ExternalLink size={10} />
-                </a>
-                {' '}注册账号
-              </li>
-              <li>在控制台获取 API Key（免费额度每月 1000 次搜索）</li>
-              <li>将 API Key 填入下方，然后开启开关</li>
-            </ol>
+            <p>联网搜索由 <span className="font-medium text-foreground">数智中台搜索服务</span> 提供，启用后 AI 可以搜索互联网获取实时信息。</p>
+            <p className="text-xs">服务凭据由系统内置管理，开启开关后即可使用。</p>
           </div>
 
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium">API Key</label>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={testing || !apiKey.trim()}
-                onClick={handleTest}
-              >
-                {testing ? <><Loader2 size={14} className="animate-spin mr-1.5" />测试中...</> : '测试连接'}
-              </Button>
+          <div className="flex items-center justify-between rounded-lg bg-muted/30 p-3">
+            <div>
+              <div className="text-sm font-medium">连接测试</div>
+              <div className="text-xs text-muted-foreground mt-0.5">验证数智中台搜索服务当前是否可用</div>
             </div>
-            <div className="relative">
-              <Input
-                type={showApiKey ? 'text' : 'password'}
-                placeholder="tvly-..."
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                onBlur={handleBlurSave}
-                className="pr-10"
-              />
-              <button
-                type="button"
-                onClick={() => setShowApiKey(!showApiKey)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground transition-colors"
-                tabIndex={-1}
-              >
-                {showApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={testing}
+              onClick={handleTest}
+            >
+              {testing ? <><Loader2 size={14} className="animate-spin mr-1.5" />测试中...</> : '测试连接'}
+            </Button>
           </div>
 
           {testResult && (
