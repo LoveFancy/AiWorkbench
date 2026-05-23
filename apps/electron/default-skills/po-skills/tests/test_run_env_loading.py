@@ -50,6 +50,29 @@ def test_existing_environment_value_wins_over_env_file(tmp_path, monkeypatch):
     assert os.environ["HTSC_WIKI_TOKEN"] == "from_env"
 
 
+def test_loads_env_with_python_dotenv_syntax(tmp_path, monkeypatch):
+    skill_dir = tmp_path / "plugin" / "skills" / "po-skills"
+    skill_dir.mkdir(parents=True)
+    source = Path(__file__).resolve().parents[1] / "run.py"
+    run_py = skill_dir / "run.py"
+    run_py.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+
+    project_dir = tmp_path / "aiworkspace"
+    project_dir.mkdir()
+    (project_dir / ".env").write_text(
+        'export HTSC_WIKI_TOKEN="from dotenv" # inline comment\n',
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(project_dir)
+    monkeypatch.delenv("HTSC_WIKI_TOKEN", raising=False)
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+
+    _load_run_module(run_py)
+
+    assert os.environ["HTSC_WIKI_TOKEN"] == "from dotenv"
+
+
 def test_loads_env_from_claude_project_dir_when_injected(tmp_path, monkeypatch):
     skill_dir = tmp_path / "plugin" / "skills" / "po-skills"
     skill_dir.mkdir(parents=True)

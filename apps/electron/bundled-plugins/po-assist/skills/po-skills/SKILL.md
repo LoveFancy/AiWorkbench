@@ -1,7 +1,7 @@
 ---
 name: po-skill
 description: 产品经理工具集 - 七步将 Wiki 或本地文档转换为结构化 PRD 并自动创建 DPMP Story
-version: 7.0.101
+version: 7.0.114
 triggers:
   - "doc-convert"
   - "pdf转md"

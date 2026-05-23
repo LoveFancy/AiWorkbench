@@ -1,15 +1,4 @@
-# [STORY_FORMAT][<story_key>]：[Story 标题]
-
-<!--
-文件命名规范：
-  [PROD_ORI]<需求名>.md          → Wiki 原始文档
-  [PROD_FORMAT]<需求名>.md       → 结构化 PRD（含所有 Story）
-  [REQ_ANALYSIS_LIST]<需求名>.md → 需求分析清单
-  [STORY_PLAN]<需求名>.csv       → Story 规划表（含 story_key，可选：story-create 后新增 story_id 列）
-  [STORY_FORMAT][<story_key>]<Story标题>.md → 本文件，单个 Story 独立文档
-
-所有文件统一放在 <需求ID>/1.产品设计/ 目录下。
--->
+# [Story 标题]
 
 ## 基本信息
 

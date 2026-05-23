@@ -38,7 +38,7 @@ ENHANCE_INPUT=<路径>
 此时 skill 必须继续执行 `enhance-content --input "<OUTPUT_FILE>"`。
 
 **错误处理：**
-- 未安装 `markitdown`：提示先安装依赖
+- 未安装 `markitdown`：说明首次自检未完成或依赖安装失败，引导用户执行一次 `bootstrap.py`
 - 输入文件不存在：提示检查路径
 - 转换结果为空：提示检查源文件格式是否受支持
 

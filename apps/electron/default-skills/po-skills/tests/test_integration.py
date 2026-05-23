@@ -345,7 +345,9 @@ class TestRunDocConvertCommand:
         fake_doc_convert = types.SimpleNamespace()
 
         def fake_main():
-            print("OUTPUT_FILE=REQ-1/1.产品设计/[PROD_ORI]需求.md")
+            output = tmp_path / "newreq" / "REQ-1" / "1.产品设计" / "[PROD_ORI]需求.md"
+            output.write_text("![a](./images/a.png)\n", encoding="utf-8")
+            print("OUTPUT_FILE=newreq/REQ-1/1.产品设计/[PROD_ORI]需求.md")
 
         fake_doc_convert.main = fake_main
         fake_doc_convert.extract_page_id = lambda value: "1"
@@ -364,7 +366,38 @@ class TestRunDocConvertCommand:
         captured = capsys.readouterr()
 
         assert "ENHANCE_CONTENT=true" in captured.out
-        assert "ENHANCE_INPUT=REQ-1/1.产品设计/[PROD_ORI]需求.md" in captured.out
+        assert "ENHANCE_INPUT=newreq/REQ-1/1.产品设计/[PROD_ORI]需求.md" in captured.out
+
+    def test_doc_convert_enhance_content_requires_confirmation_for_many_images(self, monkeypatch, capsys, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        fake_doc_convert = types.SimpleNamespace()
+
+        def fake_main():
+            output = tmp_path / "newreq" / "REQ-1" / "1.产品设计" / "[PROD_ORI]需求.md"
+            images = "\n".join(f"![图{i}](./images/image-{i:03d}.png)" for i in range(1, 22))
+            output.write_text(images + "\n", encoding="utf-8")
+            print("OUTPUT_FILE=newreq/REQ-1/1.产品设计/[PROD_ORI]需求.md")
+
+        fake_doc_convert.main = fake_main
+        fake_doc_convert.extract_page_id = lambda value: "1"
+        monkeypatch.setitem(sys.modules, "doc_convert", fake_doc_convert)
+        sys.modules.pop("run", None)
+        run = importlib.import_module("run")
+        run.cmd_newreq(["--reqid", "REQ-1", "--init-only"])
+
+        run.cmd_doc_convert([
+            "--url",
+            "http://wiki.example.com?pageId=1",
+            "--reqid",
+            "REQ-1",
+            "--enhance-content",
+        ])
+        captured = capsys.readouterr()
+
+        assert "IMAGE_ENHANCE_CONFIRM_REQUIRED=true" in captured.out
+        assert "IMAGE_COUNT=21" in captured.out
+        assert "ENHANCE_CONTENT=true" not in captured.out
+        assert "图片数量较多" in captured.out
 
 
 

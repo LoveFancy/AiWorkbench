@@ -56,6 +56,7 @@ import type {
   GetTaskOutputResult,
   StopTaskInput,
   WorkspaceMcpConfig,
+  AgentSlashCommand,
   SkillMeta,
   WorkspaceCapabilities,
   HtSkillHubSkill,
@@ -176,6 +177,7 @@ import { runAgent, stopAgent, generateAgentTitle, saveFilesToAgentSession, saveF
 import { permissionService } from './lib/agent-permission-service'
 import { askUserService } from './lib/agent-ask-user-service'
 import { exitPlanService } from './lib/agent-exit-plan-service'
+import { listAgentSlashCommands } from './lib/agent-slash-command-service'
 import { getAgentSessionWorkspacePath, getAgentWorkspacesDir, getWorkspaceSkillsDir, getWorkspaceFilesDir, getScratchPadPath } from './lib/config-paths'
 import { calculateStorageStats, cleanupStorage, cleanupTempFiles } from './lib/storage-service'
 import type { CleanupOptions } from './lib/storage-service'
@@ -1446,6 +1448,14 @@ export function registerIpcHandlers(): void {
     AGENT_IPC_CHANNELS.GET_CAPABILITIES,
     async (_, workspaceSlug: string): Promise<WorkspaceCapabilities> => {
       return getWorkspaceCapabilities(workspaceSlug)
+    }
+  )
+
+  // 获取工作区 Slash Command 列表
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.LIST_SLASH_COMMANDS,
+    async (_, workspaceSlug: string): Promise<AgentSlashCommand[]> => {
+      return listAgentSlashCommands(workspaceSlug)
     }
   )
 

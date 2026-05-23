@@ -5,3 +5,4 @@ beautifulsoup4>=4.12.0
 python-dotenv>=1.0.0
 markitdown[all]>=0.1.0
 confluence-markdown-exporter>=0.15.0
+markdown-to-confluence>=0.5.9

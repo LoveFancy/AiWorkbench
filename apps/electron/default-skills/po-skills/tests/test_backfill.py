@@ -57,6 +57,30 @@ def test_prod_ori_md_story_key_replaced(tmp_path):
     assert stats["process"] == 1
 
 
+def test_prod_ori_md_compact_story_column_replaced(tmp_path):
+    """新版合并列中 Story 列开头的 S-01 应被替换为真实 story_id。"""
+    plan = _write_story_plan(tmp_path, [
+        {"story_key": "S-01", "story_id": "TAILOR-124-3456",
+         "story名称": "客户全景视图", "所属需求编号": "TAILOR-124"},
+    ])
+    proc = tmp_path / "[PROD_ORI]需求.md"
+    proc.write_text(
+        "## 附录：Story-Feature-MUC 结构分析\n\n"
+        "| Story | Feature | MUC | 类型识别 | 变更类型 | 端侧 | 影响说明 |\n"
+        "|-------|---------|-----|----------|----------|------|----------|\n"
+        "| S-01 客户全景视图 | F-01 交易数据捕获 | MUC-01 Calypso文件接收 | 数据 | 新增 | PC | 影响说明 |\n"
+        "| S-01 客户全景视图 | F-01 交易数据捕获 | MUC-02 部门筛选 | 数据 | 新增 | PC | 影响说明 |\n",
+        encoding="utf-8",
+    )
+
+    stats = _backfill_story_ids(plan)
+
+    content = proc.read_text(encoding="utf-8")
+    assert "TAILOR-124-3456 客户全景视图" in content
+    assert "| S-01 客户全景视图 |" not in content
+    assert stats["process"] == 1
+
+
 def test_prod_ori_md_multiple_stories_replaced(tmp_path):
     """[PROD_ORI].md 里多个 story_key 都应被替换。"""
     plan = _write_story_plan(tmp_path, [

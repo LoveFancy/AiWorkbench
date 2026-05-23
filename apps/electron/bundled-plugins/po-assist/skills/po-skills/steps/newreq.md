@@ -4,6 +4,8 @@
 
 **职责：** 创建或复用 `newreq/<REQID>/`，维护 `newreq/req.index`，并在默认模式下串联 `prd-write`。
 
+若环境变量 `OUTPUT_PATH_PREFIX` 存在且非空，`run.py` 会将其作为工作空间根目录，并在 stdout 中输出带该根目录的完整路径；若未设置，则保持现有相对路径输出。路径拼接由脚本完成，skill 只消费 stdout 字段，不自行拼接环境变量。
+
 ## 执行规则
 
 1. 从用户输入中识别需求编号、标题和 `--init-only`。
@@ -33,6 +35,18 @@ CREATED=<true|false>
 REUSED=<true|false>
 INDEX_UPDATED=<true|false>
 NEXT_STEP=<prd-write 或空>
+```
+
+当 `OUTPUT_PATH_PREFIX=/app/docs/test_session_id/OUTPUT/` 时，目录字段示例：
+
+```text
+REQID=<REQID>
+REQ_ROOT=/app/docs/test_session_id/OUTPUT/newreq/<REQID>
+DESIGN_DIR=/app/docs/test_session_id/OUTPUT/newreq/<REQID>/1.产品设计
+REFERENCES_DIR=/app/docs/test_session_id/OUTPUT/newreq/<REQID>/references
+REFERENCE_IMAGES_DIR=/app/docs/test_session_id/OUTPUT/newreq/<REQID>/references/images
+IMAGES_DIR=/app/docs/test_session_id/OUTPUT/newreq/<REQID>/1.产品设计/images
+REQ_INDEX=/app/docs/test_session_id/OUTPUT/newreq/req.index
 ```
 
 ## 串联规则

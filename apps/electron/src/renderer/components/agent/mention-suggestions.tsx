@@ -8,11 +8,11 @@
 import type React from 'react'
 import { ReactRenderer } from '@tiptap/react'
 import type { SuggestionOptions } from '@tiptap/suggestion'
-import { MessageSquareText, Sparkles, Server } from 'lucide-react'
+import { MessageSquareText, Sparkles, Server, TerminalSquare } from 'lucide-react'
 import { MentionList } from './MentionList'
 import type { MentionListRef } from './MentionList'
 import { createMentionPopup, positionPopup } from './mention-popup-utils'
-import type { AgentSessionReferenceSearchResult } from '@proma/shared'
+import type { AgentSessionReferenceSearchResult, AgentSlashCommand } from '@proma/shared'
 
 // ===== 泛型工厂 =====
 
@@ -27,8 +27,8 @@ interface MentionSuggestionConfig<T> {
   keyExtractor: (item: T) => string
   /** 渲染列表项 */
   renderItem: (item: T) => React.ReactNode
-  /** 选中后传给 command 的 id 和 label */
-  toCommand: (item: T) => { id: string; label: string }
+  /** 选中后传给 TipTap Suggestion command 的参数 */
+  toCommand: (item: T) => { id: string; label: string; commandText?: string }
 }
 
 function createMentionSuggestion<T>(
@@ -68,7 +68,7 @@ function createMentionSuggestion<T>(
               renderItem: config.renderItem,
               onSelect: (item: T) => {
                 const cmd = config.toCommand(item)
-                props.command({ id: cmd.id, label: cmd.label })
+                props.command(cmd)
               },
             },
             editor: props.editor,
@@ -83,7 +83,7 @@ function createMentionSuggestion<T>(
             items: props.items,
             onSelect: (item: T) => {
               const cmd = config.toCommand(item)
-              props.command({ id: cmd.id, label: cmd.label })
+              props.command(cmd)
             },
           })
           positionPopup(popup, props.clientRect?.())
@@ -109,38 +109,84 @@ function createMentionSuggestion<T>(
 // ===== Skill 配置 =====
 
 export interface SkillMentionItem {
+  kind: 'skill'
   id: string
   name: string
   description?: string
 }
+
+export interface SlashCommandMentionItem {
+  kind: 'command'
+  id: string
+  name: string
+  command: string
+  description?: string
+  argumentHint?: string
+  sourceLabel: string
+}
+
+type SlashMentionItem = SkillMentionItem | SlashCommandMentionItem
 
 export function createSkillMentionSuggestion(
   workspaceSlugRef: React.RefObject<string | null>,
   mentionActiveRef: React.MutableRefObject<boolean>,
   mentionItemCountRef: React.MutableRefObject<number>,
 ) {
-  return createMentionSuggestion<SkillMentionItem>(
+  return createMentionSuggestion<SlashMentionItem>(
     {
       char: '/',
-      emptyText: '无匹配 Skill',
+      emptyText: '无匹配命令或 Skill',
       fetchItems: async (slug, q) => {
-        const caps = await window.electronAPI.getWorkspaceCapabilities(slug)
-        return caps.skills
+        const [commands, caps] = await Promise.all([
+          window.electronAPI.listAgentSlashCommands(slug),
+          window.electronAPI.getWorkspaceCapabilities(slug),
+        ])
+        const commandItems: SlashCommandMentionItem[] = commands
+          .filter((command: AgentSlashCommand) => {
+            const text = `${command.command} ${command.description ?? ''}`.toLowerCase()
+            return !q || text.includes(q)
+          })
+          .map((command: AgentSlashCommand) => ({
+            kind: 'command',
+            id: command.name,
+            name: command.name,
+            command: command.command,
+            description: command.description,
+            argumentHint: command.argumentHint,
+            sourceLabel: command.sourceLabel,
+          }))
+        const skillItems: SkillMentionItem[] = caps.skills
           .filter((s) => s.enabled)
           .filter((s) => !q || s.name.toLowerCase().includes(q) || (s.slug ?? '').toLowerCase().includes(q))
-          .map((s) => ({ id: s.slug, name: s.name, description: s.description }))
+          .map((s) => ({ kind: 'skill', id: s.slug, name: s.name, description: s.description }))
+        return [...commandItems, ...skillItems]
       },
-      keyExtractor: (item) => item.id,
-      renderItem: (item) => (
-        <>
-          <Sparkles className="size-3.5 text-violet-500 flex-shrink-0" />
-          <span className="truncate font-medium flex-1 min-w-0">{item.name}</span>
-          {item.description && (
-            <span className="truncate text-[10px] text-muted-foreground/50 max-w-[120px]">{item.description}</span>
-          )}
-        </>
-      ),
-      toCommand: (item) => ({ id: item.id, label: item.name }),
+      keyExtractor: (item) => `${item.kind}:${item.id}`,
+      renderItem: (item) => {
+        if (item.kind === 'command') {
+          return (
+            <>
+              <TerminalSquare className="size-3.5 text-amber-500 flex-shrink-0" />
+              <span className="truncate font-medium w-[108px] flex-shrink-0">{item.command}</span>
+              <span className="truncate text-[10px] text-muted-foreground/55 flex-1 min-w-0">
+                {[item.argumentHint, item.description].filter(Boolean).join('  ')}
+              </span>
+            </>
+          )
+        }
+        return (
+          <>
+            <Sparkles className="size-3.5 text-violet-500 flex-shrink-0" />
+            <span className="truncate font-medium flex-1 min-w-0">{item.name}</span>
+            {item.description && (
+              <span className="truncate text-[10px] text-muted-foreground/50 max-w-[120px]">{item.description}</span>
+            )}
+          </>
+        )
+      },
+      toCommand: (item) => item.kind === 'command'
+        ? { id: item.id, label: item.command, commandText: `${item.command} ` }
+        : { id: item.id, label: item.name },
     },
     workspaceSlugRef,
     mentionActiveRef,

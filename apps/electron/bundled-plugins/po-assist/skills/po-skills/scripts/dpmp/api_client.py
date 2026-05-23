@@ -157,3 +157,17 @@ class APIClient:
                     return item
         self.logger.warning(f"Parent issue not found: {code}")
         return None
+
+    def query_release_version(self, name: str) -> dict[str, Any] | None:
+        cached = self.cache.get_release_version(name)
+        if cached:
+            return cached
+        url = self._build_query_url("search/select/version", name)
+        resp = self._make_request("GET", url)
+        if resp.get("returnCode") == "000000":
+            for item in resp.get("data", {}).get("list", []):
+                if item.get("name") == name:
+                    self.cache.set_release_version(name, item)
+                    return item
+        self.logger.warning(f"Release version not found: {name}")
+        return None

@@ -17,12 +17,20 @@
 > 🚫 **最高优先级**：
 
 1. **禁止 WebFetch**：收到 Wiki URL 时，**绝对不允许**使用 WebFetch 或任何 HTTP 请求工具访问。必须调用脚本转换。
-2. **脚本固定位置**：`run.py` 固定位于技能根目录下，从项目根目录直接执行。首次使用或工作空间缺失时先初始化：
+2. **脚本固定位置**：`run.py` 固定位于技能根目录下，从项目根目录直接执行。业务命令直接调用 `run.py`，不要在外层逐项检查 Python 依赖、`requirements.txt` 或具体三方命令。
+3. **首次启动自检**：首次启动负责检查必需配置并初始化 `.env`。只有技能目录下不存在 `.poskill-env.json` 时，才先执行一次环境自检：
    ```bash
-   python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py init-workspace
+   python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/bootstrap.py
    ```
-3. **Windows 路径**：使用正斜杠格式（`/d/GitWorkspace/...`）。
-4. **不要猜输出文件名**：不要自行改写协议或猜测输出文件名。
+   若当前还没有工作空间，或用户明确执行初始化，则可用 `bootstrap.py` 包住初始化命令：
+   ```bash
+   python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/bootstrap.py -- python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py init-workspace
+   ```
+   如果执行 `bootstrap.py` 时提示缺少 Python 或版本不满足要求，引导用户参考 `http://eip.htsc.com.cn/huatech/practices/124061#heading-0` 配置 Python 后重试。
+   只有这个判断允许查看 `.poskill-env.json` 是否存在；不要检查 `requirements.txt`，不要手工探测 `md2conf`、`markitdown` 等依赖命令，是否安装依赖、是否跳过安装都由 `bootstrap.py` 内部判断。
+   首次自检会在技能目录初始化 `.env` 模板并提示用户补充必需配置；后续命令不要主动检查 `.env`、Token、Cookie 或依赖，直接调用对应 `run.py` 命令，等脚本返回错误后再按错误处理。
+4. **Windows 路径**：使用正斜杠格式（`/d/GitWorkspace/...`）。
+5. **不要猜输出文件名**：不要自行改写协议或猜测输出文件名。
 
 ---
 
@@ -82,6 +90,8 @@
 | `{WIKI_DIR}` | `wiki` | Wiki 导出和知识沉淀 |
 | `{TITLE}` | 文档标题 | 从 doc-convert stdout 提取 |
 
+若运行环境提供 `OUTPUT_PATH_PREFIX`，上述目录会以该环境变量作为工作空间根目录，并由 `run.py` 在 stdout 中输出完整路径，例如 `{WORKDIR}` 输出为 `/app/docs/test_session_id/OUTPUT/newreq/{REQID}/1.产品设计`。若未提供该环境变量，保持当前相对路径输出。路径拼接必须由脚本完成，不由 AI 手工拼接。
+
 ### 标准目录结构
 
 ```
@@ -118,7 +128,7 @@ newreq/
 
 1. 从 stdout 读取 `OUTPUT_FILE=<路径>`，记为 `[PROD_ORI]` 路径
 2. 从中间步骤开始时，先执行 `resolve-workspace`，从用户提供的文件路径推导 `{WORKDIR}` 和 `{REFERENCES_DIR}`
-3. `doc-convert` 必须显式传入 `--reqid <REQID>`、`--raw` 或 `--output-dir`；不得再默认创建 `REQ-<pageId>/1.产品设计`
+3. `doc-convert` 必须显式传入 `--reqid <REQID>`、`--raw` 或 `--output-dir`；不得再默认创建 `REQ-<pageId>/1.产品设计`。临时转换时使用 `--raw`，脚本会自动落到 `raw/<文档标题或token>/`
 4. `doc-to-md` 必须显式传入 `--reqid <REQID>` 或 `--output-dir`；临时转换本地文档时传 `--output-dir raw`，脚本会自动落到 `raw/<文档名>/`
 5. 无明确需求编号时，直接使用 `newreq --mock` 创建正式需求空间；不要为了确认需求编号而阻断 Wiki、云文档或本地文档的下载与转换。
 6. 关联资料默认进入 `{REFERENCES_DIR}`。不要为了消费参考资料而先输出到 `{DESIGN_DIR}`，也不要把已转换的 Wiki Markdown 再交给 `doc-to-md` 搬迁。

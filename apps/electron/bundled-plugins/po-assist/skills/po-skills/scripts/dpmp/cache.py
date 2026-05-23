@@ -10,6 +10,7 @@ class QueryCache:
         self._iterations: dict[str, dict[str, Any]] = {}
         self._users: dict[str, dict[str, Any]] = {}
         self._parent_issues: dict[str, dict[str, Any]] = {}
+        self._release_versions: dict[str, dict[str, Any]] = {}
 
     def get_iteration(self, name: str) -> dict[str, Any] | None:
         return self._iterations.get(name)
@@ -29,7 +30,14 @@ class QueryCache:
     def set_parent_issue(self, code: str, data: dict[str, Any]) -> None:
         self._parent_issues[code] = data
 
+    def get_release_version(self, name: str) -> dict[str, Any] | None:
+        return self._release_versions.get(name)
+
+    def set_release_version(self, name: str, data: dict[str, Any]) -> None:
+        self._release_versions[name] = data
+
     def clear(self) -> None:
         self._iterations.clear()
         self._users.clear()
         self._parent_issues.clear()
+        self._release_versions.clear()

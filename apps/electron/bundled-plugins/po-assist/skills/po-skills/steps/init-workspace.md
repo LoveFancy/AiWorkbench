@@ -7,11 +7,16 @@
 - 不创建任何具体需求目录
 - 不输出 `NEXT_STEP`
 - 不调用 `prd-write`
+- 若环境变量 `OUTPUT_PATH_PREFIX` 存在且非空，脚本会将其作为工作空间根目录；否则保持当前执行目录作为根目录
 
 ## 执行
 
+先执行一次环境自检，再初始化工作空间。环境状态判断和依赖安装都由 `bootstrap.py` 内部完成。
+
+除初始化外，业务命令直接调用 `run.py`；只有技能目录下不存在 `.poskill-env.json` 时，才先执行首次自检。不要检查 `requirements.txt` 或逐个探测三方命令。
+
 ```bash
-python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py init-workspace [--force]
+python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/bootstrap.py -- python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py init-workspace [--force]
 ```
 
 ## 参数
@@ -27,6 +32,16 @@ RAW_DIR=raw
 WIKI_DIR=wiki
 NEWREQ_DIR=newreq
 REQ_INDEX=newreq/req.index
+CREATED=true
+```
+
+当 `OUTPUT_PATH_PREFIX=/app/docs/test_session_id/OUTPUT/` 时，stdout 路径由脚本实时计算并输出完整路径：
+
+```text
+RAW_DIR=/app/docs/test_session_id/OUTPUT/raw
+WIKI_DIR=/app/docs/test_session_id/OUTPUT/wiki
+NEWREQ_DIR=/app/docs/test_session_id/OUTPUT/newreq
+REQ_INDEX=/app/docs/test_session_id/OUTPUT/newreq/req.index
 CREATED=true
 ```
 

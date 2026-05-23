@@ -32,6 +32,8 @@
 **输出边界（强制）：**
 - **唯一允许的确认输出结构**是本节下方代码块中的 `📋 结构分析` 表格、汇总行和确认提示。
 - 确认展示和写入 `[PROD_ORI]` 必须使用同一套 Story-Feature-MUC 表结构。
+- 完整表结构只在 `references/story-feature-muc-rules.md` 中定义；本步骤不得重复定义或改写表头。
+- 附录标题必须使用规则文件中的 `Story-Feature-MUC 结构分析`。
 - 禁止输出“Story 分析报告”标题。
 - 禁止输出“详细分析说明”标题或任何逐条解释性段落。
 - 禁止额外输出 `Story（用户故事）`、`Feature（功能特性）`、`MUC` 分段说明。
@@ -41,7 +43,7 @@
 **输出前自校验（强制）：** 在输出结构分析表之前，AI 必须先执行以下校验，确保数据一致性：
 1. **计数校验**：逐行扫描表格，分别统计唯一的 Story 数、唯一的需求点数、MUC 总行数，确保与汇总行的 `N 个 Story，M 个需求点，K 个 MUC` 一致
 2. **层级完整性**：每个 Story 至少有 1 个需求点，每个需求点至少有 1 个 MUC
-3. **格式一致性**：每行的 `story_key / feature_key / muc_key / Story / Feature / MUC / 类型识别 / 变更类型 / 端侧 / 影响说明` 列均不能为空
+3. **格式一致性**：每行必须严格符合 `references/story-feature-muc-rules.md` 中的输出表结构；`Story / Feature / MUC / 类型识别 / 变更类型 / 端侧 / 影响说明` 列均不能为空，且 Story、Feature、MUC 列必须以对应编号开头
 4. 如果校验发现不一致，先修正再输出，不要输出有错误的表格
 
 **三层结构分析表**
@@ -53,11 +55,7 @@
 输入文件：<路径>
 输出：追加到 [PROD_ORI] 文档末尾
 
-## 附录：Story-Feature-MUC 结构分析
-
-| story_key | feature_key | muc_key | Story | Feature | MUC | 类型识别 | 变更类型 | 端侧 | 影响说明 |
-|-----------|-------------|---------|-------|---------|-----|----------|----------|------|----------|
-| S-01 | F-01 | MUC-01 | <Story 标题> | <Feature 标题> | <MUC 名称> | 权限/数据/交互/风险/状态 | 新增/修改/删除 | PC/APP/全端 | <一句话说明> |
+<严格使用 references/story-feature-muc-rules.md 中“输出表结构”的完整表格，不要在本步骤自定义表头>
 
 共 N 个 Story，M 个需求点，K 个 MUC。
 
@@ -82,13 +80,9 @@
 
 ---
 
-## 附录：Story-Feature-MUC 结构分析
-
 > story_key 为 Story 的唯一标识（S-01、S-02...），在 PRD 和 Story 文档中统一使用。如后续执行 story-create，真实 DPMP ID 将替换此值。
 
-| story_key | feature_key | muc_key | Story | Feature | MUC | 类型识别 | 变更类型 | 端侧 | 影响说明 |
-|-----------|-------------|---------|-------|---------|-----|----------|----------|------|----------|
-| S-01 | F-01 | MUC-01 | <Story 标题> | <Feature 标题> | <MUC 名称> | 权限/数据/交互/风险/状态 | 新增/修改/删除 | PC/APP/全端 | <一句话说明> |
+<严格追加 references/story-feature-muc-rules.md 中“输出表结构”的完整表格，不要在本步骤自定义表头>
 ```
 
 ### 阶段 D：输出结果

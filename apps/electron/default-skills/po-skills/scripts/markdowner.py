@@ -97,6 +97,12 @@ class ConfluenceConverter(MarkdownConverter):
         alt = el.get("alt", "")
         if not src:
             return ""
+        if el.find_parent(["td", "th", "table"]):
+            attrs = f'src="{src}"'
+            if alt:
+                attrs += f' alt="{alt}"'
+            prefix = "<br/>" if el.find_previous_sibling("img") else ""
+            return f'{prefix}<img {attrs} />'
         return f"![{alt}]({src})"
 
     def convert_ac_link(self, el, text, parent_tags):

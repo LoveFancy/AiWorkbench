@@ -101,6 +101,18 @@ def test_prd_write_routes_reference_wiki_to_references_dir_not_design_dir():
     assert "关联资料默认进入 `{REFERENCES_DIR}`" in init
 
 
+def test_prd_template_uses_single_related_requirements_section():
+    template = (SKILL_ROOT / "references" / "prd-template.md").read_text(encoding="utf-8")
+    prd_write = (SKILL_ROOT / "steps" / "prd-write.md").read_text(encoding="utf-8")
+
+    assert "### 1.2 关联需求" in template
+    assert "| 关联类型 | ID / 来源 | 标题 | 关联说明 / 用途 | 当前状态 |" in template
+    assert "#### 1.2.1 参考资料 / 关联文档清单" not in template
+    assert "1.2.1 参考资料 / 关联文档清单" not in prd_write
+    assert "`1.2.1`" not in prd_write
+    assert "参考资料 / 关联文档清单" not in prd_write
+
+
 def test_prd_write_focuses_on_delta_when_reference_is_legacy_document():
     content = (SKILL_ROOT / "steps" / "prd-write.md").read_text(encoding="utf-8")
     template = (SKILL_ROOT / "references" / "prd-template.md").read_text(encoding="utf-8")
@@ -134,6 +146,29 @@ def test_prd_outputs_keep_diagrams_optional_for_simple_stories():
     assert "图示按需" in convert_prompt
 
 
+def test_workflow_file_contracts_stay_out_of_final_document_templates():
+    prd_template = (SKILL_ROOT / "references" / "prd-template.md").read_text(encoding="utf-8")
+    story_template = (SKILL_ROOT / "references" / "story-template.md").read_text(encoding="utf-8")
+    naming = (SKILL_ROOT / "common" / "naming-conventions.md").read_text(encoding="utf-8")
+
+    for template in (prd_template, story_template):
+        assert "文件命名规范" not in template
+        assert "文件前缀" not in template
+        assert "所有文件统一放在" not in template
+        assert "图片路径必须使用" not in template
+        assert "file://" not in template
+        assert "Windows 盘符路径" not in template
+        assert "[REQ_ANALYSIS_LIST]" not in template
+
+    assert "# [STORY_FORMAT][<story_key>]" not in story_template
+    assert story_template.startswith("# [Story 标题]")
+
+    assert "文件命名规范" in naming
+    assert "图片路径必须使用" in naming
+    assert "[PROD_ORI]" in naming
+    assert "[STORY_FORMAT][<story_key>]" in naming
+
+
 def test_prd_write_requires_plain_language_analysis_and_research():
     content = (SKILL_ROOT / "steps" / "prd-write.md").read_text(encoding="utf-8")
 
@@ -165,6 +200,82 @@ def test_workspace_commands_have_matching_step_files():
     assert "stdout 契约" in newreq_step
     assert "NEXT_STEP=<prd-write 或空>" in newreq_step
     assert "串联规则" in newreq_step
+
+
+def test_bootstrap_self_check_is_not_exposed_as_manual_state_probe():
+    init_common = (SKILL_ROOT / "common" / "init.md").read_text(encoding="utf-8")
+    init_step = (SKILL_ROOT / "steps" / "init-workspace.md").read_text(encoding="utf-8")
+    combined = init_common + "\n" + init_step
+
+    assert "bootstrap.py" in combined
+    assert "bootstrap.py -- python" in combined
+    assert "只有技能目录下不存在 `.poskill-env.json` 时" in combined
+    assert "首次启动负责检查必需配置并初始化 `.env`" in combined
+    assert "业务命令直接调用 `run.py`" in combined
+    assert "不要检查 `requirements.txt`" in combined
+    assert "后续命令不要主动检查 `.env`" in combined
+    assert "ENV_EXISTS" not in combined
+    assert "ENV_NOT_EXISTS" not in combined
+
+
+def test_commands_do_not_force_manual_env_or_dependency_checks_after_bootstrap():
+    command_paths = sorted((SRC_ROOT / "commands").glob("*.md"))
+    step_paths = sorted((SKILL_ROOT / "steps").glob("*.md"))
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in command_paths + step_paths)
+
+    forbidden = [
+        "依赖校验",
+        "检查 `.env`",
+        "检查 .env",
+        "检查 `.env` 中",
+        "检查 `HTSC_WIKI_TOKEN` 是否配置",
+        "检查 `DPMP_COOKIE` 是否配置",
+        "检查本机是否可用",
+        "检查 `md2conf` 是否可执行",
+        "提示安装 `src/po-skills/requirements.txt`",
+    ]
+
+    for text in forbidden:
+        assert text not in combined
+
+
+def test_wiki_upload_does_not_force_manual_dependency_probe_every_time():
+    command = (SRC_ROOT / "commands" / "wiki-upload.md").read_text(encoding="utf-8")
+    step = (SKILL_ROOT / "steps" / "wiki-upload.md").read_text(encoding="utf-8")
+
+    assert "确认 `markdown-to-confluence` 安装后可用的 `md2conf` 命令存在" not in command
+    assert "检查 `md2conf` 是否可执行" not in step
+    assert "提示安装 `src/po-skills/requirements.txt`" not in step
+    assert "配置校验：检查 `.env`" not in command
+    assert "检查 `HTSC_WIKI_TOKEN` 是否配置" not in step
+    assert "检查本地 Markdown 文件是否存在" not in step
+    assert "不要手工执行 `ls`" in step
+    assert "不要手工执行 `grep`" in step
+    assert "不要手工执行 `which md2conf`" in step
+    assert "缺文件、缺 Token、缺依赖都由脚本返回错误" in step
+    assert "首次自检" in command
+    assert "首次自检" in step
+
+
+def test_doc_upload_does_not_force_manual_dependency_probe_every_time():
+    command = (SRC_ROOT / "commands" / "doc-upload.md").read_text(encoding="utf-8")
+
+    assert "依赖校验：检查本机是否可用 `pandoc` 和 `lark-cli`" not in command
+    assert "首次自检" in command
+    assert "不要手工探测" in command
+
+
+def test_wiki_upload_parent_page_default_requires_user_confirmation():
+    command = (SRC_ROOT / "commands" / "wiki-upload.md").read_text(encoding="utf-8")
+    step = (SKILL_ROOT / "steps" / "wiki-upload.md").read_text(encoding="utf-8")
+    combined = command + "\n" + step
+
+    assert "父页面ID或URL" in command
+    assert "HTSC_WIKI_PARENT_PAGE_URL" in combined
+    assert "pages/viewpage.action?pageId=..." in combined
+    assert "发布后提醒用户可写入项目根目录 `.env`" in command
+    assert "发布后提醒用户记录到项目根目录 `.env`" in step
+    assert "上传前必须提醒用户将默认发布到该父页面下，并获得用户确认后再执行" in combined
 
 
 def test_image_analyse_command_and_step_exist():

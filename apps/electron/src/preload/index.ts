@@ -49,6 +49,7 @@ import type {
   GetTaskOutputResult,
   StopTaskInput,
   WorkspaceMcpConfig,
+  AgentSlashCommand,
   SkillMeta,
   OtherWorkspaceSkillsGroup,
   WorkspaceCapabilities,
@@ -469,6 +470,9 @@ export interface ElectronAPI {
 
   /** 停止任务 */
   stopTask: (input: StopTaskInput) => Promise<void>
+
+  /** 获取工作区 Slash Command 列表 */
+  listAgentSlashCommands: (workspaceSlug: string) => Promise<AgentSlashCommand[]>
 
   // ===== Agent 工作区管理相关 =====
 
@@ -1462,6 +1466,10 @@ const electronAPI: ElectronAPI = {
   },
 
   // 工作区能力（MCP + Skill）
+  listAgentSlashCommands: (workspaceSlug: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.LIST_SLASH_COMMANDS, workspaceSlug)
+  },
+
   getWorkspaceCapabilities: (workspaceSlug: string) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_CAPABILITIES, workspaceSlug)
   },

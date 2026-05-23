@@ -417,6 +417,8 @@ export function htmlToMarkdown(html: string): string {
         const dataId = el.getAttribute('data-id') || ''
         const suggestionChar = el.getAttribute('data-mention-suggestion-char') || '@'
         if (dataType === 'mention') {
+          const commandText = el.getAttribute('data-command-text')
+          if (commandText) return commandText
           if (suggestionChar === '/') return `/skill:${dataId}`
           if (suggestionChar === '#') return `#mcp:${dataId}`
           if (suggestionChar === '&') return `&session:${dataId}`

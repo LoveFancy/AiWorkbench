@@ -139,6 +139,7 @@ def main() -> None:
         iteration_name=args.iteration,
         requirement_code=args.req_code,
         requirement_name=parent_issue.get("name", ""),
+        release_version="",
         assignee_id=assignee_id,
         assignee_name=assignee.get("displayName", ""),
         reporter_id=reporter_id,

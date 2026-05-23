@@ -788,6 +788,27 @@ export interface HtSkillHubInstallResult {
   enabled: boolean
 }
 
+// ===== Agent Slash Command =====
+
+export type AgentSlashCommandSource = 'workspace' | 'builtin'
+
+export interface AgentSlashCommand {
+  /** 命令名称，不含开头斜杠；子目录命令使用 path/name 格式 */
+  name: string
+  /** 可直接发送给 SDK 的命令文本，如 /review */
+  command: string
+  /** 命令说明，来自 frontmatter.description 或正文首行 */
+  description?: string
+  /** 参数提示，来自 frontmatter argument-hint / argumentHint */
+  argumentHint?: string
+  /** 命令来源 */
+  source: AgentSlashCommandSource
+  /** 来源标签，工作区 slug 或内置插件名 */
+  sourceLabel: string
+  /** Markdown 文件绝对路径 */
+  filePath: string
+}
+
 // ===== Agent 发送输入 =====
 
 /**
@@ -1282,6 +1303,8 @@ export const AGENT_IPC_CHANNELS = {
   // 工作区能力（MCP + Skill）
   /** 获取工作区能力摘要 */
   GET_CAPABILITIES: 'agent:get-capabilities',
+  /** 获取工作区 Slash Command 列表 */
+  LIST_SLASH_COMMANDS: 'agent:list-slash-commands',
   /** 获取工作区 MCP 配置 */
   GET_MCP_CONFIG: 'agent:get-mcp-config',
   /** 保存工作区 MCP 配置 */

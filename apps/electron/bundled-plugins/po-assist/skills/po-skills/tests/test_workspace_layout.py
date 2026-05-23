@@ -46,6 +46,28 @@ def test_init_workspace_creates_global_dirs_index_and_readmes(monkeypatch, tmp_p
     assert "当前记录：" in index_text
 
 
+def test_output_path_prefix_overrides_workspace_root(monkeypatch, tmp_path, capsys):
+    output_root = tmp_path / "session" / "OUTPUT"
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    monkeypatch.setenv("OUTPUT_PATH_PREFIX", str(output_root))
+    run = load_run_module(monkeypatch, cwd)
+
+    run.cmd_newreq(["--reqid", "REQ-004", "--title", "即时查询SQL执行优化需求"])
+
+    out = parse_stdout(capsys.readouterr().out)
+    assert out["REQ_ROOT"] == f"{output_root}/newreq/REQ-004"
+    assert out["DESIGN_DIR"] == f"{output_root}/newreq/REQ-004/1.产品设计"
+    assert out["IMAGES_DIR"] == f"{output_root}/newreq/REQ-004/1.产品设计/images"
+    assert out["REFERENCES_DIR"] == f"{output_root}/newreq/REQ-004/references"
+    assert out["REFERENCE_IMAGES_DIR"] == f"{output_root}/newreq/REQ-004/references/images"
+    assert out["RAW_DIR"] == f"{output_root}/raw"
+    assert out["WIKI_DIR"] == f"{output_root}/wiki"
+    assert out["REQ_INDEX"] == f"{output_root}/newreq/req.index"
+    assert (output_root / "newreq" / "REQ-004" / "1.产品设计" / "images").is_dir()
+    assert not (cwd / "newreq").exists()
+
+
 def test_init_workspace_force_accepts_flag(monkeypatch, tmp_path, capsys):
     run = load_run_module(monkeypatch, tmp_path)
 
@@ -225,9 +247,98 @@ def test_doc_convert_lark_url_without_reqid_uses_raw_and_does_not_prompt(monkeyp
     assert captured["argv"] == [
         "lark_doc_to_md.py",
         "--output-dir",
-        "raw",
+        "raw/OWqmwAX1ki5GmmkXcOVchtP7noh",
         "--doc",
         "https://my.feishu.cn/wiki/OWqmwAX1ki5GmmkXcOVchtP7noh",
+    ]
+
+
+def test_doc_convert_wiki_raw_uses_title_subdirectory(monkeypatch, tmp_path):
+    run = load_run_module(monkeypatch, tmp_path)
+    run.cmd_init_workspace([])
+
+    captured = {}
+
+    class FakeDocConvert:
+        @staticmethod
+        def main():
+            captured["argv"] = list(sys.argv)
+            print("OUTPUT_FILE=raw/客户画像/[PROD_ORI]客户画像.md")
+
+        @staticmethod
+        def _fetch_page_title(token, page_id):
+            return "客户画像"
+
+        @staticmethod
+        def extract_page_id(value):
+            return "123456"
+
+        @staticmethod
+        def load_from_json(path):
+            return "ignored", "", ""
+
+    class FakeLarkDocToMd:
+        @staticmethod
+        def is_lark_doc_url(value):
+            return False
+
+    monkeypatch.setenv("HTSC_WIKI_TOKEN", "token")
+    monkeypatch.setitem(sys.modules, "doc_convert", FakeDocConvert)
+    monkeypatch.setitem(sys.modules, "lark_doc_to_md", FakeLarkDocToMd)
+
+    run.cmd_doc_convert(["--url", "http://wiki/pages/viewpage.action?pageId=123456", "--raw"])
+
+    assert captured["argv"] == [
+        "doc_convert.py",
+        "--output-dir",
+        "raw/客户画像",
+        "--url",
+        "http://wiki/pages/viewpage.action?pageId=123456",
+    ]
+
+
+def test_doc_convert_json_raw_uses_json_title_subdirectory(monkeypatch, tmp_path):
+    run = load_run_module(monkeypatch, tmp_path)
+    run.cmd_init_workspace([])
+    source = tmp_path / "page.json"
+    source.write_text("{}", encoding="utf-8")
+
+    captured = {}
+
+    class FakeDocConvert:
+        @staticmethod
+        def main():
+            captured["argv"] = list(sys.argv)
+            print("OUTPUT_FILE=raw/交易台账/[PROD_ORI]交易台账.md")
+
+        @staticmethod
+        def _fetch_page_title(token, page_id):
+            return "ignored"
+
+        @staticmethod
+        def extract_page_id(value):
+            return "ignored"
+
+        @staticmethod
+        def load_from_json(path):
+            return "交易台账", "<p>content</p>", "123"
+
+    class FakeLarkDocToMd:
+        @staticmethod
+        def is_lark_doc_url(value):
+            return False
+
+    monkeypatch.setitem(sys.modules, "doc_convert", FakeDocConvert)
+    monkeypatch.setitem(sys.modules, "lark_doc_to_md", FakeLarkDocToMd)
+
+    run.cmd_doc_convert(["--file", str(source), "--raw"])
+
+    assert captured["argv"] == [
+        "doc_convert.py",
+        "--output-dir",
+        "raw/交易台账",
+        "--file",
+        str(source),
     ]
 
 

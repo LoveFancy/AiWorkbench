@@ -32,6 +32,23 @@ def test_load_runtime_token_from_cwd_env_file(tmp_path, monkeypatch):
     assert os.environ["HTSC_WIKI_TOKEN"] == "from_cwd_env"
 
 
+def test_load_runtime_token_uses_python_dotenv_syntax(tmp_path, monkeypatch):
+    (tmp_path / ".env").write_text(
+        'export HTSC_WIKI_TOKEN="from dotenv" # inline comment\n',
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("HTSC_WIKI_TOKEN", raising=False)
+    monkeypatch.delenv("CONFLUENCE_TOKEN", raising=False)
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+
+    token = wiki_export.load_runtime_token()
+
+    assert token == "from dotenv"
+    assert os.environ["HTSC_WIKI_TOKEN"] == "from dotenv"
+
+
 def test_load_runtime_token_maps_confluence_token(tmp_path, monkeypatch):
     (tmp_path / ".env").write_text("CONFLUENCE_TOKEN=from_confluence_env\n", encoding="utf-8")
 
@@ -85,6 +102,35 @@ def test_command_for_pages_accepts_multiple_urls(tmp_path):
     assert generated_config["auth"]["confluence"]["http://wiki.htzq.htsc.com.cn"]["pat"] == "token123"
     assert result.mode == "pages"
     assert result.output_dir == str(tmp_path)
+
+
+def test_run_export_bypasses_proxy_for_confluence_host(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setenv("HTTP_PROXY", "http://proxy.example.com:8080")
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.example.com:8080")
+    monkeypatch.setenv("NO_PROXY", "localhost")
+
+    def fake_runner(cmd, **kwargs):
+        calls.append((cmd, kwargs))
+        return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
+
+    wiki_export.run_export(
+        urls=["http://wiki.htzq.htsc.com.cn/pages/viewpage.action?pageId=1"],
+        mode="pages",
+        output_dir=str(tmp_path),
+        token="token123",
+        runner=fake_runner,
+        executable_finder=lambda name: "/usr/local/bin/cme" if name == "cme" else None,
+        base_url="http://wiki.htzq.htsc.com.cn",
+    )
+
+    env = calls[0][1]["env"]
+    assert "HTTP_PROXY" not in env
+    assert "HTTPS_PROXY" not in env
+    assert "http_proxy" not in env
+    assert "https_proxy" not in env
+    assert env["NO_PROXY"] == "localhost,wiki.htzq.htsc.com.cn"
+    assert env["no_proxy"] == "localhost,wiki.htzq.htsc.com.cn"
 
 
 def test_run_export_emits_diagnostic_logs_without_token(tmp_path, capsys):

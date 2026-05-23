@@ -16,6 +16,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from dotenv import load_dotenv
+from wiki_network import build_confluence_env
+
 
 MODE_COMMANDS = {
     "pages": "pages",
@@ -45,12 +48,7 @@ def default_output_dir(now: datetime | None = None) -> str:
 def _load_env_file(path: Path) -> bool:
     if not path.is_file():
         return False
-    with path.open(encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                key, _, value = line.partition("=")
-                os.environ.setdefault(key.strip(), value.strip())
+    load_dotenv(path, override=False)
     return True
 
 
@@ -212,7 +210,7 @@ def run_export(
     with tempfile.TemporaryDirectory(prefix="wiki-export-cme-") as config_dir:
         config_path = _make_config(token, base_url, config_dir)
         _log(f"config path={config_path}")
-        env = os.environ.copy()
+        env = build_confluence_env(base_url)
         env.update(
             {
                 "CME_CONFIG_PATH": config_path,

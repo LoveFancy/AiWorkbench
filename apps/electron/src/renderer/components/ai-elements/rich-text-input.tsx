@@ -266,6 +266,13 @@ export function RichTextInput({
                   'data-mention-suggestion-char': attrs.mentionSuggestionChar,
                 }),
               },
+              commandText: {
+                default: null,
+                parseHTML: (el: HTMLElement) => el.getAttribute('data-command-text'),
+                renderHTML: (attrs: Record<string, string | null>) => (
+                  attrs.commandText ? { 'data-command-text': attrs.commandText } : {}
+                ),
+              },
             }
           },
         }).configure({
@@ -284,10 +291,19 @@ export function RichTextInput({
                 'data-id': node.attrs.id,
                 'data-label': node.attrs.label,
                 'data-mention-suggestion-char': char,
+                ...(node.attrs.commandText ? { 'data-command-text': node.attrs.commandText } : {}),
                 class: chipClass,
               },
               `${char === '@' ? '@' : ''}${label}`,
             ]
+          },
+          renderText({ node, suggestion }) {
+            const commandText = node.attrs.commandText
+            if (typeof commandText === 'string') return commandText
+
+            const char = suggestion?.char ?? node.attrs.mentionSuggestionChar ?? '@'
+            const label = node.attrs.label ?? node.attrs.id
+            return `${char === '@' ? '@' : ''}${label}`
           },
           suggestions: [
             mentionSuggestion,

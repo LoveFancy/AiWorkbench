@@ -161,7 +161,21 @@ class StoryAutomation:
                 self.logger.error(f"Parent issue not found: {story.requirement_code}")
                 return False, None
 
-            payload = self._build_payload(story, iteration, assignee, reporter, parent_issue)
+            release_version = None
+            if story.release_version:
+                release_version = self.api_client.query_release_version(story.release_version)
+                if not release_version:
+                    self.logger.error(f"Release version not found: {story.release_version}")
+                    return False, None
+
+            payload = self._build_payload(
+                story,
+                iteration,
+                assignee,
+                reporter,
+                parent_issue,
+                release_version=release_version,
+            )
             result = self._create_story(payload)
 
             if result:
@@ -194,13 +208,15 @@ class StoryAutomation:
 
     def _build_payload(
         self, story: StoryData, iteration: dict, assignee: dict,
-        reporter: dict, parent_issue: dict,
+        reporter: dict, parent_issue: dict, release_version: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         custom_fields: list[dict[str, Any]] = [
             {"fieldKey": "priorityLevel", "value": {"id": 2013, "name": "高(一般)", "type": "default"}},
             {"fieldKey": "reporter", "value": reporter.get("id")},
-            {"fieldKey": "version", "value": [{"id": 434910, "name": "COSMOS-13-32.1332.2099-FOREVER", "disabled": False}]},
         ]
+
+        if release_version:
+            custom_fields.append({"fieldKey": "version", "value": [release_version]})
 
         dev_end = self._parse_datetime_ms(story.plan_dev_end)
         if dev_end is not None:

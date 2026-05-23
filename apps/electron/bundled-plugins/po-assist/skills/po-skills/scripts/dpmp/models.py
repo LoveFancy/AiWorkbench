@@ -28,6 +28,7 @@ class StoryData:
     iteration_name: str
     requirement_code: str
     requirement_name: str
+    release_version: str
     assignee_id: str
     assignee_name: str
     reporter_id: str
@@ -43,6 +44,7 @@ class StoryData:
         "所属完整迭代名": "iteration_name",
         "所属需求编号": "requirement_code",
         "所属需求名称": "requirement_name",
+        "发布版本": "release_version",
         "经办人工号": "assignee_id",
         "经办人姓名": "assignee_name",
         "创建人工号": "reporter_id",

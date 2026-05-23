@@ -26,7 +26,7 @@ argument-hint: [wiki-url、飞书文档 URL 或本地文件路径]
 
 1. 首先 `read` 公共模块和步骤文件：`${CLAUDE_PLUGIN_ROOT}/skills/po-skills/common/init.md`，以及对应的步骤文件（Wiki/JSON/飞书文档 → `doc-convert.md`，本地文档 → `doc-to-md.md`）
 2. init.md 中的全局输出规范对本命令生效
-3. 若识别到飞书文档 URL，直接执行 `run.py doc-convert --url "<飞书URL>"`；不要询问是否改用 `lark-doc`，不要要求用户二次确认。脚本会自动转调 `lark-doc-to-md`；如无 REQID / `--output-dir`，默认输出到 `raw/`。
+3. 若识别到飞书文档 URL，直接执行 `run.py doc-convert --url "<飞书URL>"`；不要询问是否改用 `lark-doc`，不要要求用户二次确认。脚本会自动转调 `lark-doc-to-md`；如无 REQID / `--output-dir`，默认输出到 `raw/<飞书文档token>/`。
 4. 非飞书输入如无 REQID，先询问用户；若只是临时转换，按输入类型处理：Wiki/JSON 使用 `doc-convert --raw`；本地文档使用 `doc-to-md --output-dir raw`，不得给 `doc-to-md` 传 `--raw`
 5. 若识别到 EIP / LinkApp 云文档 URL，不要调用 chrome-devtools、不要派发 subagent、不要进入浏览器下载流程；直接返回：
 

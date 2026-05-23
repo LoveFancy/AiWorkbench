@@ -33,6 +33,8 @@ from datetime import datetime
 from contextlib import redirect_stdout
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 
 def _configure_stdio() -> None:
     """在 Windows/VSCode 终端下尽量稳定 stdout/stderr 的 UTF-8 输出。"""
@@ -45,15 +47,8 @@ def _configure_stdio() -> None:
 _configure_stdio()
 
 
-# 自动加载 .env 文件（po-skills 目录下的 .env）
 def _load_env_file(path: str) -> None:
-    if os.path.exists(path):
-        with open(path, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    key, _, val = line.partition("=")
-                    os.environ.setdefault(key.strip(), val.strip())
+    load_dotenv(path, override=False)
 
 _SKILL_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -121,10 +116,15 @@ WORKSPACE_STATUS_VALUES = {"initialized", "archived", "invalid"}
 
 def _project_workspace_root() -> str:
     """Return the user's active project workspace root."""
+    output_path_prefix = os.environ.get("OUTPUT_PATH_PREFIX", "").strip()
+    if output_path_prefix:
+        return os.path.abspath(os.path.expanduser(output_path_prefix))
     return os.getcwd()
 
 
 def _rel(path: str) -> str:
+    if os.environ.get("OUTPUT_PATH_PREFIX", "").strip():
+        return os.path.abspath(path).replace(os.sep, "/")
     return os.path.relpath(path, _project_workspace_root()).replace(os.sep, "/")
 
 
@@ -407,6 +407,39 @@ def _resolve_doc_convert_output_dir(opts, parser, *, default_raw: bool = False) 
     parser.error("必须指定 --reqid、--raw 或 --output-dir")
 
 
+def _safe_raw_doc_dir_name(value: str, fallback: str = "文档") -> str:
+    cleaned = re.sub(r'[\\/:*?"<>|]', "", value).strip().strip(".")
+    return cleaned or fallback
+
+
+def _lark_doc_token(value: str) -> str:
+    from urllib.parse import urlparse
+
+    parsed = urlparse(value.strip())
+    token = os.path.basename(parsed.path.rstrip("/"))
+    return _safe_raw_doc_dir_name(token, "飞书文档")
+
+
+def _doc_convert_raw_subdir(opts, dc, *, is_lark_url: bool) -> str:
+    raw_dir = _workspace_paths()["raw_dir"]
+    if is_lark_url:
+        doc_name = _lark_doc_token(opts.url)
+    elif opts.file:
+        try:
+            title, _html, _page_id = dc.load_from_json(opts.file)
+            doc_name = _safe_raw_doc_dir_name(title, os.path.splitext(os.path.basename(opts.file))[0])
+        except Exception:
+            doc_name = _safe_raw_doc_dir_name(os.path.splitext(os.path.basename(opts.file))[0], "文档")
+    else:
+        token = os.environ.get("HTSC_WIKI_TOKEN", "")
+        page_id = dc.extract_page_id(opts.url)
+        title = dc._fetch_page_title(token, page_id) if token else page_id
+        doc_name = _safe_raw_doc_dir_name(title, page_id)
+    output_dir = os.path.join(raw_dir, doc_name)
+    os.makedirs(output_dir, exist_ok=True)
+    return _rel(output_dir)
+
+
 def _resolve_doc_to_md_output_dir(opts, parser) -> str:
     if opts.output_dir:
         output_dir = opts.output_dir
@@ -559,6 +592,8 @@ def cmd_doc_convert(args):
 
     is_lark_url = bool(opts.url and ldm.is_lark_doc_url(opts.url))
     output_dir = _resolve_doc_convert_output_dir(opts, parser, default_raw=is_lark_url)
+    if not opts.output_dir and (opts.raw or (is_lark_url and not opts.reqid)):
+        output_dir = _doc_convert_raw_subdir(opts, dc, is_lark_url=is_lark_url)
     print(f"输出目录：{output_dir}")
 
     if opts.file:
@@ -872,48 +907,67 @@ def _backfill_story_ids(story_plan_path: str) -> dict:
     def _replace_story_key_column_in_tables(content: str) -> str:
         lines = content.splitlines()
         updated_lines = []
-        in_story_table = False
+        table_mode: str | None = None
         for line in lines:
             stripped = line.strip()
             if stripped.startswith("| story_key |"):
-                in_story_table = True
+                table_mode = "legacy"
                 updated_lines.append(line)
                 continue
-            if in_story_table and stripped.startswith("|---"):
+            if stripped.startswith("| Story |") and "| Feature |" in stripped and "| MUC |" in stripped:
+                table_mode = "compact"
                 updated_lines.append(line)
                 continue
-            if in_story_table and stripped.startswith("|"):
+            if table_mode and stripped.startswith("|---"):
+                updated_lines.append(line)
+                continue
+            if table_mode and stripped.startswith("|"):
                 parts = line.split("|")
                 if len(parts) >= 3:
-                    story_key = parts[1].strip()
-                    if story_key in id_map:
-                        parts[1] = f" {id_map[story_key]} "
-                        line = "|".join(parts)
+                    story_cell = parts[1].strip()
+                    if table_mode == "legacy":
+                        if story_cell in id_map:
+                            parts[1] = f" {id_map[story_cell]} "
+                            line = "|".join(parts)
+                    else:
+                        match = _re.match(r"^(S-\d{2,})(\s+.*)?$", story_cell)
+                        if match and match.group(1) in id_map:
+                            suffix = match.group(2) or ""
+                            parts[1] = f" {id_map[match.group(1)]}{suffix} "
+                            line = "|".join(parts)
                 updated_lines.append(line)
                 continue
-            in_story_table = False
+            table_mode = None
             updated_lines.append(line)
         return "\n".join(updated_lines) + ("\n" if content.endswith("\n") else "")
 
     def _find_unreplaced_story_keys_in_tables(content: str) -> set[str]:
         leftovers: set[str] = set()
         lines = content.splitlines()
-        in_story_table = False
+        table_mode: str | None = None
         for line in lines:
             stripped = line.strip()
             if stripped.startswith("| story_key |"):
-                in_story_table = True
+                table_mode = "legacy"
                 continue
-            if in_story_table and stripped.startswith("|---"):
+            if stripped.startswith("| Story |") and "| Feature |" in stripped and "| MUC |" in stripped:
+                table_mode = "compact"
                 continue
-            if in_story_table and stripped.startswith("|"):
+            if table_mode and stripped.startswith("|---"):
+                continue
+            if table_mode and stripped.startswith("|"):
                 parts = line.split("|")
                 if len(parts) >= 3:
-                    story_key = parts[1].strip()
-                    if unreplaced_pattern.fullmatch(story_key):
-                        leftovers.add(story_key)
+                    story_cell = parts[1].strip()
+                    if table_mode == "legacy":
+                        if unreplaced_pattern.fullmatch(story_cell):
+                            leftovers.add(story_cell)
+                    else:
+                        match = _re.match(r"^(S-\d{2,})(?:\s+.*)?$", story_cell)
+                        if match:
+                            leftovers.add(match.group(1))
                 continue
-            in_story_table = False
+            table_mode = None
         return leftovers
 
     # ── 1. 回写 [PROD_ORI].md (附录分析表) ──────────────────────────────────────

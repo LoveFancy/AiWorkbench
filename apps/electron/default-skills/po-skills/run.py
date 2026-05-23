@@ -31,6 +31,9 @@ import uuid
 import io
 from datetime import datetime
 from contextlib import redirect_stdout
+from pathlib import Path
+
+from dotenv import load_dotenv
 
 
 def _configure_stdio() -> None:
@@ -44,15 +47,8 @@ def _configure_stdio() -> None:
 _configure_stdio()
 
 
-# 自动加载 .env 文件（po-skills 目录下的 .env）
 def _load_env_file(path: str) -> None:
-    if os.path.exists(path):
-        with open(path, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    key, _, val = line.partition("=")
-                    os.environ.setdefault(key.strip(), val.strip())
+    load_dotenv(path, override=False)
 
 _SKILL_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -120,10 +116,15 @@ WORKSPACE_STATUS_VALUES = {"initialized", "archived", "invalid"}
 
 def _project_workspace_root() -> str:
     """Return the user's active project workspace root."""
+    output_path_prefix = os.environ.get("OUTPUT_PATH_PREFIX", "").strip()
+    if output_path_prefix:
+        return os.path.abspath(os.path.expanduser(output_path_prefix))
     return os.getcwd()
 
 
 def _rel(path: str) -> str:
+    if os.environ.get("OUTPUT_PATH_PREFIX", "").strip():
+        return os.path.abspath(path).replace(os.sep, "/")
     return os.path.relpath(path, _project_workspace_root()).replace(os.sep, "/")
 
 
@@ -289,6 +290,20 @@ def _emit_layout(layout: dict[str, str], **extra: str) -> None:
         print(f"{key}={value}")
 
 
+_LOCAL_IMAGE_REF_RE = re.compile(r"!\[[^\]]*]\(\s*(?:\./)?images/[^)\s]+(?:\s+\"[^\"]*\")?\s*\)")
+IMAGE_ENHANCE_CONFIRM_THRESHOLD = 20
+
+
+def _count_local_markdown_images(markdown_path: str) -> int:
+    path = Path(markdown_path)
+    if not path.is_absolute():
+        path = Path(_project_workspace_root()) / path
+    if not path.is_file():
+        return 0
+    content = path.read_text(encoding="utf-8", errors="replace")
+    return len(_LOCAL_IMAGE_REF_RE.findall(content))
+
+
 def _ensure_req_workspace(reqid: str, title: str = "") -> tuple[dict[str, str], bool, bool]:
     _ensure_global_workspace()
     layout = _resolve_req_layout(reqid)
@@ -376,7 +391,7 @@ def _resolve_existing_req_from_path(path: str, must_be_file: bool) -> dict[str, 
     return _resolve_existing_req_by_id(parts[1])
 
 
-def _resolve_doc_convert_output_dir(opts, parser) -> str:
+def _resolve_doc_convert_output_dir(opts, parser, *, default_raw: bool = False) -> str:
     if opts.output_dir:
         return opts.output_dir
     if opts.reqid:
@@ -384,11 +399,45 @@ def _resolve_doc_convert_output_dir(opts, parser) -> str:
     if opts.raw:
         _require_global_workspace()
         raw_dir = _workspace_paths()["raw_dir"]
-        if not os.path.isdir(raw_dir):
-            print("raw/ 不存在，请先执行 init-workspace。", file=sys.stderr)
-            sys.exit(1)
+        return _rel(raw_dir)
+    if default_raw:
+        _ensure_global_workspace()
+        raw_dir = _workspace_paths()["raw_dir"]
         return _rel(raw_dir)
     parser.error("必须指定 --reqid、--raw 或 --output-dir")
+
+
+def _safe_raw_doc_dir_name(value: str, fallback: str = "文档") -> str:
+    cleaned = re.sub(r'[\\/:*?"<>|]', "", value).strip().strip(".")
+    return cleaned or fallback
+
+
+def _lark_doc_token(value: str) -> str:
+    from urllib.parse import urlparse
+
+    parsed = urlparse(value.strip())
+    token = os.path.basename(parsed.path.rstrip("/"))
+    return _safe_raw_doc_dir_name(token, "飞书文档")
+
+
+def _doc_convert_raw_subdir(opts, dc, *, is_lark_url: bool) -> str:
+    raw_dir = _workspace_paths()["raw_dir"]
+    if is_lark_url:
+        doc_name = _lark_doc_token(opts.url)
+    elif opts.file:
+        try:
+            title, _html, _page_id = dc.load_from_json(opts.file)
+            doc_name = _safe_raw_doc_dir_name(title, os.path.splitext(os.path.basename(opts.file))[0])
+        except Exception:
+            doc_name = _safe_raw_doc_dir_name(os.path.splitext(os.path.basename(opts.file))[0], "文档")
+    else:
+        token = os.environ.get("HTSC_WIKI_TOKEN", "")
+        page_id = dc.extract_page_id(opts.url)
+        title = dc._fetch_page_title(token, page_id) if token else page_id
+        doc_name = _safe_raw_doc_dir_name(title, page_id)
+    output_dir = os.path.join(raw_dir, doc_name)
+    os.makedirs(output_dir, exist_ok=True)
+    return _rel(output_dir)
 
 
 def _resolve_doc_to_md_output_dir(opts, parser) -> str:
@@ -489,9 +538,18 @@ def cmd_resolve_workspace(args):
 
 
 def _emit_enhance_marker(enabled: bool, output_file: str) -> None:
-    if enabled and output_file:
-        print("ENHANCE_CONTENT=true")
+    if not enabled or not output_file:
+        return
+    image_count = _count_local_markdown_images(output_file)
+    if image_count > IMAGE_ENHANCE_CONFIRM_THRESHOLD:
+        print("IMAGE_ENHANCE_CONFIRM_REQUIRED=true")
+        print(f"IMAGE_COUNT={image_count}")
+        print(f"IMAGE_ENHANCE_THRESHOLD={IMAGE_ENHANCE_CONFIRM_THRESHOLD}")
         print(f"ENHANCE_INPUT={output_file}")
+        print(f"图片数量较多（{image_count} 张），是否继续执行图片转换 / enhance-content？")
+        return
+    print("ENHANCE_CONTENT=true")
+    print(f"ENHANCE_INPUT={output_file}")
 
 
 def _run_and_capture_output(main_func) -> str:
@@ -512,6 +570,7 @@ def cmd_doc_convert(args):
     """步骤一：Wiki/JSON → 干净 Markdown（[NL] 前缀）"""
     import argparse
     import doc_convert as dc
+    import lark_doc_to_md as ldm
 
     parser = argparse.ArgumentParser(
         prog="run.py doc-convert",
@@ -531,18 +590,35 @@ def cmd_doc_convert(args):
     )
     opts = parser.parse_args(args)
 
-    output_dir = _resolve_doc_convert_output_dir(opts, parser)
+    is_lark_url = bool(opts.url and ldm.is_lark_doc_url(opts.url))
+    output_dir = _resolve_doc_convert_output_dir(opts, parser, default_raw=is_lark_url)
+    if not opts.output_dir and (opts.raw or (is_lark_url and not opts.reqid)):
+        output_dir = _doc_convert_raw_subdir(opts, dc, is_lark_url=is_lark_url)
     print(f"输出目录：{output_dir}")
 
-    argv = ["doc_convert.py", "--output-dir", output_dir]
     if opts.file:
+        argv = ["doc_convert.py", "--output-dir", output_dir]
         argv += ["--file", opts.file]
+        main_func = dc.main
+    elif is_lark_url:
+        argv = ["lark_doc_to_md.py", "--output-dir", output_dir, "--doc", opts.url]
+        main_func = ldm.main
     else:
+        argv = ["doc_convert.py", "--output-dir", output_dir]
         argv += ["--url", opts.url]
+        main_func = dc.main
 
     sys.argv = argv
-    output_file = _run_and_capture_output(dc.main)
+    output_file = _run_and_capture_output(main_func)
     _emit_enhance_marker(opts.enhance_content, output_file)
+
+
+def cmd_lark_doc_to_md(args):
+    """工具：飞书文档 → 本地 Markdown + images"""
+    import lark_doc_to_md as ldm
+
+    sys.argv = ["lark_doc_to_md.py"] + args
+    ldm.main()
 
 
 def cmd_doc_to_md(args):
@@ -574,6 +650,22 @@ def cmd_doc_to_md(args):
     sys.argv = ["doc_to_md.py", "--output-dir", output_dir, "--file", opts.file]
     output_file = _run_and_capture_output(dtm.main)
     _emit_enhance_marker(opts.enhance_content, output_file)
+
+
+def cmd_doc_upload(args):
+    """工具：本地 Markdown → docx → 飞书在线文档"""
+    import doc_upload as du
+
+    sys.argv = ["doc_upload.py"] + args
+    du.main()
+
+
+def cmd_wiki_upload(args):
+    """工具：本地 Markdown → Confluence Wiki 页面"""
+    import wiki_upload as wu
+
+    sys.argv = ["wiki_upload.py"] + args
+    wu.main()
 
 
 def cmd_wiki_export(args):
@@ -815,48 +907,67 @@ def _backfill_story_ids(story_plan_path: str) -> dict:
     def _replace_story_key_column_in_tables(content: str) -> str:
         lines = content.splitlines()
         updated_lines = []
-        in_story_table = False
+        table_mode: str | None = None
         for line in lines:
             stripped = line.strip()
             if stripped.startswith("| story_key |"):
-                in_story_table = True
+                table_mode = "legacy"
                 updated_lines.append(line)
                 continue
-            if in_story_table and stripped.startswith("|---"):
+            if stripped.startswith("| Story |") and "| Feature |" in stripped and "| MUC |" in stripped:
+                table_mode = "compact"
                 updated_lines.append(line)
                 continue
-            if in_story_table and stripped.startswith("|"):
+            if table_mode and stripped.startswith("|---"):
+                updated_lines.append(line)
+                continue
+            if table_mode and stripped.startswith("|"):
                 parts = line.split("|")
                 if len(parts) >= 3:
-                    story_key = parts[1].strip()
-                    if story_key in id_map:
-                        parts[1] = f" {id_map[story_key]} "
-                        line = "|".join(parts)
+                    story_cell = parts[1].strip()
+                    if table_mode == "legacy":
+                        if story_cell in id_map:
+                            parts[1] = f" {id_map[story_cell]} "
+                            line = "|".join(parts)
+                    else:
+                        match = _re.match(r"^(S-\d{2,})(\s+.*)?$", story_cell)
+                        if match and match.group(1) in id_map:
+                            suffix = match.group(2) or ""
+                            parts[1] = f" {id_map[match.group(1)]}{suffix} "
+                            line = "|".join(parts)
                 updated_lines.append(line)
                 continue
-            in_story_table = False
+            table_mode = None
             updated_lines.append(line)
         return "\n".join(updated_lines) + ("\n" if content.endswith("\n") else "")
 
     def _find_unreplaced_story_keys_in_tables(content: str) -> set[str]:
         leftovers: set[str] = set()
         lines = content.splitlines()
-        in_story_table = False
+        table_mode: str | None = None
         for line in lines:
             stripped = line.strip()
             if stripped.startswith("| story_key |"):
-                in_story_table = True
+                table_mode = "legacy"
                 continue
-            if in_story_table and stripped.startswith("|---"):
+            if stripped.startswith("| Story |") and "| Feature |" in stripped and "| MUC |" in stripped:
+                table_mode = "compact"
                 continue
-            if in_story_table and stripped.startswith("|"):
+            if table_mode and stripped.startswith("|---"):
+                continue
+            if table_mode and stripped.startswith("|"):
                 parts = line.split("|")
                 if len(parts) >= 3:
-                    story_key = parts[1].strip()
-                    if unreplaced_pattern.fullmatch(story_key):
-                        leftovers.add(story_key)
+                    story_cell = parts[1].strip()
+                    if table_mode == "legacy":
+                        if unreplaced_pattern.fullmatch(story_cell):
+                            leftovers.add(story_cell)
+                    else:
+                        match = _re.match(r"^(S-\d{2,})(?:\s+.*)?$", story_cell)
+                        if match:
+                            leftovers.add(match.group(1))
                 continue
-            in_story_table = False
+            table_mode = None
         return leftovers
 
     # ── 1. 回写 [PROD_ORI].md (附录分析表) ──────────────────────────────────────
@@ -997,6 +1108,9 @@ COMMANDS = {
     "resolve-workspace": (cmd_resolve_workspace, "解析已有需求空间目录上下文"),
     "doc-convert":  (cmd_doc_convert,  "步骤一：Wiki/JSON → 干净 Markdown [NL]"),
     "doc-to-md":    (cmd_doc_to_md,    "工具：本地文档 → 干净 Markdown [PROD_ORI]"),
+    "lark-doc-to-md": (cmd_lark_doc_to_md, "工具：飞书文档 → 本地 Markdown + images"),
+    "doc-upload":   (cmd_doc_upload,   "工具：本地 Markdown → docx → 飞书在线文档"),
+    "wiki-upload":  (cmd_wiki_upload,  "工具：本地 Markdown → Confluence Wiki 页面"),
     "wiki-export":  (cmd_wiki_export,  "工具：批量导出 Wiki Markdown 知识库"),
     "enhance-content": (cmd_enhance_content, "步骤二：图片重命名并生成过程记录"),
     "story-create": (cmd_story_create, "步骤四：[Story规划] → DPMP 批量创建 Story"),
