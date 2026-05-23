@@ -26,6 +26,7 @@ _MD2CONF_DESCENDANT_PAGE_ERROR_RE = re.compile(
     r"expected:\s*page with ID\s+(\d+)\s+to be a descendant of the root page",
     re.IGNORECASE,
 )
+_STANDALONE_MD_IMAGE_RE = re.compile(r"^(?P<indent>\s*)!\[(?P<alt>[^\]\n]*)\]\((?P<src>[^)\n]+)\)\s*$")
 DEFAULT_CONFLUENCE_BASE_URL = "http://wiki.htzq.htsc.com.cn"
 
 
@@ -95,6 +96,43 @@ def _merge_title_into_front_matter(front_matter: str, title: str) -> str:
     return "\n".join(body) + "\n"
 
 
+def _html_escape_attr(value: str) -> str:
+    return (
+        value.replace("&", "&amp;")
+        .replace('"', "&quot;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+
+def _left_align_standalone_images(markdown: str) -> str:
+    lines = markdown.splitlines(keepends=True)
+    rendered = []
+    in_fence = False
+    for line in lines:
+        stripped = line.lstrip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_fence = not in_fence
+            rendered.append(line)
+            continue
+        if in_fence:
+            rendered.append(line)
+            continue
+
+        line_body = line[:-1] if line.endswith("\n") else line
+        newline = "\n" if line.endswith("\n") else ""
+        match = _STANDALONE_MD_IMAGE_RE.match(line_body)
+        if not match:
+            rendered.append(line)
+            continue
+
+        alt = _html_escape_attr(match.group("alt").strip())
+        src = _html_escape_attr(match.group("src").strip())
+        rendered.append(f'{match.group("indent")}<p style="text-align: left;"><img src="{src}" alt="{alt}" /></p>{newline}')
+
+    return "".join(rendered)
+
+
 def _prepare_sync_source(
     markdown_path: Path,
     *,
@@ -105,6 +143,7 @@ def _prepare_sync_source(
     content = markdown_path.read_text(encoding="utf-8")
     front_matter, body = _split_front_matter(content)
     body = _CONFLUENCE_META_COMMENT_RE.sub("", body)
+    body = _left_align_standalone_images(body)
 
     if title:
         if front_matter:

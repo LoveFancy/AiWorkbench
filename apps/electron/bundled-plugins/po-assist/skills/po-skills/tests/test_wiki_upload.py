@@ -68,7 +68,7 @@ def test_publish_markdown_create_mode_calls_md2conf_with_temp_source(monkeypatch
         source_text = source.read_text(encoding="utf-8")
         assert 'title: "需求说明"' in source_text
         assert "<!-- confluence-space-key: AI -->" in source_text
-        assert "![](./images/a.png)" in source_text
+        assert '<p style="text-align: left;"><img src="./images/a.png" alt="" /></p>' in source_text
         return "created page http://wiki.htzq.htsc.com.cn/pages/viewpage.action?pageId=123"
 
     monkeypatch.setattr(wiki_upload, "_run_command", fake_run)
@@ -101,6 +101,36 @@ def test_publish_markdown_create_mode_calls_md2conf_with_temp_source(monkeypatch
     assert result.page_id == "123"
     assert result.page_url == "http://wiki.htzq.htsc.com.cn/pages/viewpage.action?pageId=123"
     assert result.mode == "create"
+
+
+def test_publish_markdown_left_aligns_standalone_images_in_temp_source(monkeypatch, tmp_path):
+    wiki_upload = _load_wiki_upload()
+    markdown = tmp_path / "需求说明.md"
+    markdown.write_text(
+        "# 需求说明\n\n![架构图](./images/a.png)\n\n正文 ![内联图](./images/inline.png)\n",
+        encoding="utf-8",
+    )
+    captured = {}
+
+    def fake_run(command, *, cwd=None, env=None):
+        source = Path(command[1])
+        captured["text"] = source.read_text(encoding="utf-8")
+        return "created page http://wiki.htzq.htsc.com.cn/pages/viewpage.action?pageId=123"
+
+    monkeypatch.setattr(wiki_upload, "_run_command", fake_run)
+
+    wiki_upload.publish_markdown_to_confluence(
+        markdown,
+        base_url="http://wiki.htzq.htsc.com.cn",
+        token="token",
+        space_key="AI",
+        root_page_id="456",
+        title="需求说明",
+        mode="create",
+    )
+
+    assert '<p style="text-align: left;"><img src="./images/a.png" alt="架构图" /></p>' in captured["text"]
+    assert "正文 ![内联图](./images/inline.png)" in captured["text"]
 
 
 def test_publish_markdown_update_mode_injects_existing_page_id(monkeypatch, tmp_path):
