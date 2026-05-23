@@ -7,6 +7,12 @@
 
 import type { ToolCall, ToolResult, ToolDefinition } from '@proma/core'
 import type { ChatToolMeta } from '@proma/shared'
+import { Agent, fetch as undiciFetch } from 'undici'
+import type {
+  RequestInfo as UndiciRequestInfo,
+  RequestInit as UndiciRequestInit,
+  Response as UndiciResponse,
+} from 'undici'
 
 const COMPASS_SEARCH_ENDPOINT = 'http://168.63.65.40:8090/ai-service/v1/api/web/search'
 const COMPASS_APP_ID = '001421'
@@ -95,6 +101,34 @@ interface CompassSearchRequest {
   url: string
   init: RequestInit
 }
+
+interface WebSearchResponse {
+  ok: boolean
+  status: number
+  text(): Promise<string>
+  json(): Promise<unknown>
+}
+
+type WebSearchFetch = (input: string, init: RequestInit) => Promise<WebSearchResponse>
+
+const WEB_SEARCH_DIRECT_DISPATCHER = new Agent()
+
+/**
+ * 创建联网搜索专用 fetch。
+ *
+ * web_search 访问的是内网数智中台服务，必须显式直连，避免复用全局 fetch
+ * 或全局 dispatcher 上的代理配置导致请求被转发到外部代理后不可达。
+ */
+export function createNoProxyWebSearchFetch(): WebSearchFetch {
+  return async (input, init) => {
+    return undiciFetch(input as UndiciRequestInfo, {
+      ...(init as UndiciRequestInit | undefined),
+      dispatcher: WEB_SEARCH_DIRECT_DISPATCHER,
+    }) as Promise<UndiciResponse>
+  }
+}
+
+const noProxyWebSearchFetch = createNoProxyWebSearchFetch()
 
 /**
  * 构造数智中台搜索请求。
@@ -232,7 +266,10 @@ export function formatCompassSearchResults(results: CompassSearchResult[]): stri
 /**
  * 执行联网搜索工具调用。
  */
-export async function executeWebSearchTool(toolCall: ToolCall): Promise<ToolResult> {
+export async function executeWebSearchTool(
+  toolCall: ToolCall,
+  fetchFn: WebSearchFetch = noProxyWebSearchFetch,
+): Promise<ToolResult> {
   try {
     const query = toolCall.arguments.query as string | undefined
 
@@ -245,7 +282,7 @@ export async function executeWebSearchTool(toolCall: ToolCall): Promise<ToolResu
     }
 
     const request = buildCompassSearchRequest(query, getBuiltinWebSearchApiKey())
-    const response = await fetch(request.url, request.init)
+    const response = await fetchFn(request.url, request.init)
 
     if (!response.ok) {
       const errorText = await response.text()

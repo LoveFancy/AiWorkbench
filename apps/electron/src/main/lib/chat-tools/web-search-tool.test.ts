@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   buildCompassSearchRequest,
+  executeWebSearchTool,
   formatCompassSearchResults,
   getBuiltinWebSearchApiKey,
   parseCompassSearchResponse,
@@ -64,5 +65,40 @@ describe('数智中台联网搜索工具', () => {
     const parsed = parseCompassSearchResponse({ data: { results: [] } })
 
     expect(formatCompassSearchResults(parsed)).toBe('未找到相关结果。')
+  })
+
+  test('执行联网搜索时不使用全局 fetch 代理路径', async () => {
+    const originalFetch = globalThis.fetch
+    let globalFetchCalled = false
+
+    globalThis.fetch = (async () => {
+      globalFetchCalled = true
+      throw new Error('不应调用全局 fetch')
+    }) as unknown as typeof globalThis.fetch
+
+    try {
+      let capturedUrl = ''
+      const directFetch = async (input: string, init: RequestInit) => {
+        capturedUrl = String(input)
+        expect(init?.method).toBe('POST')
+        return new Response(JSON.stringify({ data: { results: [] } }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+
+      const result = await executeWebSearchTool({
+        id: 'tool-1',
+        name: 'web_search',
+        arguments: { query: '黄金怎么样' },
+      }, directFetch)
+
+      expect(globalFetchCalled).toBe(false)
+      expect(capturedUrl).toBe('http://168.63.65.40:8090/ai-service/v1/api/web/search')
+      expect(result.toolCallId).toBe('tool-1')
+      expect(result.content).toBe('未找到相关结果。')
+    } finally {
+      globalThis.fetch = originalFetch
+    }
   })
 })
