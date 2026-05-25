@@ -185,6 +185,13 @@ export async function testWebSearchConnection(
     if (query) {
       const data = await response.json() as unknown
       const results = parseCompassSearchResponse(data)
+      if (results.length === 0) {
+        return {
+          success: false,
+          message: `连接成功，但关键词「${query}」未找到相关结果`,
+          details: '接口已正常返回，请换一个更具体或更常见的关键词重试。',
+        }
+      }
       return {
         success: true,
         message: `搜索成功，返回 ${results.length} 条结果`,
@@ -309,7 +316,7 @@ export function parseCompassSearchResponse(data: unknown): CompassSearchResult[]
     .map((item) => {
       const url = readString(item, ['url', 'URL', 'Url', 'link', 'Link', 'sourceUrl', 'source_url']) ?? ''
       const title = readString(item, ['title', 'Title', 'name', 'Name']) ?? url
-      const content = readString(item, ['snippet', 'Snippet', 'content', 'Content', 'summary', 'Summary', 'description', 'Description', 'abstract', 'Abstract'])
+      const content = readString(item, ['content', 'Content', 'summary', 'Summary', 'snippet', 'Snippet', 'description', 'Description', 'abstract', 'Abstract'])
       return { title, url, content }
     })
     .filter((item) => item.title || item.url)

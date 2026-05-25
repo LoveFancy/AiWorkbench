@@ -17,6 +17,7 @@ import {
   HardDrive,
   Palette,
   Info,
+  Wrench,
 } from 'lucide-react'
 import type { SettingsTab } from '@/atoms/settings-tab'
 
@@ -41,6 +42,12 @@ const AGENT_TAB: TabItem = {
   icon: <Plug size={16} />,
 }
 
+const TOOLS_TAB: TabItem = {
+  id: 'tools',
+  label: 'Chat 工具',
+  icon: <Wrench size={16} />,
+}
+
 const TUTORIAL_TAB: TabItem = {
   id: 'tutorial',
   label: '使用教程',
@@ -62,6 +69,6 @@ const TAIL_TABS: TabItem[] = [
 
 export function getSettingsTabs(appMode: 'chat' | 'agent'): TabItem[] {
   return appMode === 'agent'
-    ? [...BASE_TABS, AGENT_TAB, TUTORIAL_TAB, SHORTCUTS_TAB, ...TAIL_TABS]
-    : [...BASE_TABS, TUTORIAL_TAB, SHORTCUTS_TAB, ...TAIL_TABS]
+    ? [...BASE_TABS, TOOLS_TAB, AGENT_TAB, TUTORIAL_TAB, SHORTCUTS_TAB, ...TAIL_TABS]
+    : [...BASE_TABS, TOOLS_TAB, TUTORIAL_TAB, SHORTCUTS_TAB, ...TAIL_TABS]
 }

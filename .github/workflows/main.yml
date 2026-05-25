@@ -23,6 +23,13 @@ jobs:
       - name: Build Electron app
         run: bun run electron:build
 
+      - name: Read app version
+        shell: pwsh
+        run: |
+          $package = Get-Content 'apps/electron/package.json' | ConvertFrom-Json
+          "APP_VERSION=$($package.version)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "APP_VERSION=$($package.version)"
+
       - name: Build Windows NSIS installer
         working-directory: apps/electron
         run: bun run dist:win -- --x64 --publish never
@@ -52,7 +59,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: HtAiWorkBench-windows-auto-update
+          name: HtAiWorkBench-windows-v${{ env.APP_VERSION }}-auto-update
           path: |
             apps/electron/out/latest.yml
             apps/electron/out/*.exe

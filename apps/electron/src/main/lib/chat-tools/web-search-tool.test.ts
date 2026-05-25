@@ -100,6 +100,24 @@ describe('数智中台联网搜索工具', () => {
     ])
   })
 
+  test('result.webResults 同时包含 snippet 和 content 时优先使用完整 content', () => {
+    const parsed = parseCompassSearchResponse({
+      result: {
+        webResults: [
+          {
+            title: '环境质量_中华人民共和国生态环境部',
+            url: 'https://www.mee.gov.cn/hjzl/',
+            snippet: '环境质量\n生态环境状况公报',
+            content: '环境质量\n生态环境状况公报\n中国生态环境状况公报\n2024年，全国生态环境质量持续改善。',
+          },
+        ],
+      },
+    })
+
+    expect(parsed[0]?.content).toContain('中国生态环境状况公报')
+    expect(parsed[0]?.content).toContain('2024年，全国生态环境质量持续改善')
+  })
+
   test('搜索响应没有结果时返回空列表提示', () => {
     const parsed = parseCompassSearchResponse({ data: { results: [] } })
 
@@ -197,6 +215,24 @@ describe('数智中台联网搜索工具', () => {
     expect(result.success).toBe(true)
     expect(result.message).toBe('搜索成功，返回 1 条结果')
     expect(result.details).toContain('- [黄金价格上涨](https://example.com/gold)')
+  })
+
+  test('测试搜索关键字无结果时返回非成功状态，避免误判为搜索成功', async () => {
+    const result = await testWebSearchConnection('zz33', async () => {
+      return new Response(JSON.stringify({
+        result: {
+          resultCount: 0,
+          webResults: [],
+        },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.message).toBe('连接成功，但关键词「zz33」未找到相关结果')
+    expect(result.details).toBe('接口已正常返回，请换一个更具体或更常见的关键词重试。')
   })
 
   test('测试连接失败时展示底层网络错误原因', async () => {

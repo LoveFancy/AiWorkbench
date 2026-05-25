@@ -4,7 +4,6 @@
  * Tab 布局：
  * 1. Skills — Master-Detail 视图（左列列表 + 右列详情 + 内联编辑）
  * 2. MCP 服务器 — 管理当前工作区的 MCP 服务器配置
- * 3. 内置工具 — 只读展示内置工具状态
  */
 
 import * as React from 'react'
@@ -35,7 +34,6 @@ import type { McpServerEntry, SkillMeta, OtherWorkspaceSkillsGroup, WorkspaceMcp
 import { SettingsSection, SettingsCard, SettingsRow } from './primitives'
 import { McpServerForm } from './McpServerForm'
 import { SkillFilesPanel } from './SkillFilesPanel'
-import { WebSearchSettings } from './ToolSettings'
 
 // ===== Types =====
 
@@ -422,18 +420,16 @@ ${skillList}
         <div className="relative flex rounded-xl bg-muted p-1">
           <div
             className={cn(
-              'mode-slider absolute top-1 bottom-1 w-[calc(25%-3px)] rounded-lg bg-background shadow-sm transition-transform duration-300 ease-in-out',
+              'mode-slider absolute top-1 bottom-1 w-[calc(33.333%_-_3px)] rounded-lg bg-background shadow-sm transition-transform duration-300 ease-in-out',
               activeTab === 'skills' && 'translate-x-0',
               activeTab === 'skillhub' && 'translate-x-[100%]',
               activeTab === 'mcp' && 'translate-x-[200%]',
-              activeTab === 'tools' && 'translate-x-[300%]',
             )}
           />
           {[
             { value: 'skills', label: 'Skills' },
             { value: 'skillhub', label: '华泰 SkillHub' },
             { value: 'mcp', label: 'MCP' },
-            { value: 'tools', label: '内置工具' },
           ].map(({ value, label }) => (
             <button
               key={value}
@@ -584,10 +580,6 @@ ${skillList}
           </SettingsSection>
         </TabsContent>
 
-        {/* ===== Built-in Tools Tab ===== */}
-        <TabsContent value="tools" className="mt-4">
-          <BuiltinAgentTools />
-        </TabsContent>
       </Tabs>
 
       <ImportSkillFromWorkspaceDialog
@@ -1311,16 +1303,6 @@ function MetadataEditRow({ label, value, onChange, multiline }: { label: string;
           className="flex-1 min-w-0 text-sm bg-transparent border border-border rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
         />
       )}
-    </div>
-  )
-}
-
-// ===== Built-in Agent Tools =====
-
-function BuiltinAgentTools(): React.ReactElement {
-  return (
-    <div className="space-y-8">
-      <WebSearchSettings />
     </div>
   )
 }

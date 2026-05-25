@@ -22,8 +22,16 @@ test('关于更新入口在设置页导航中可见', () => {
   expect(agentTabs.find((tab) => tab.id === 'about')?.label).toBe('关于 / 更新')
 })
 
+test('Chat 工具入口在设置页导航中可见', () => {
+  const generalTabs = getSettingsTabs('chat')
+  const agentTabs = getSettingsTabs('agent')
+
+  expect(generalTabs.find((tab) => tab.id === 'tools')?.label).toBe('Chat 工具')
+  expect(agentTabs.find((tab) => tab.id === 'tools')?.label).toBe('Chat 工具')
+})
+
 test('隐藏非公开设置入口', () => {
-  const hiddenTabIds = ['tools', 'voice-input', 'bots', 'migration']
+  const hiddenTabIds = ['voice-input', 'bots', 'migration']
   const generalTabs = getSettingsTabs('chat')
   const agentTabs = getSettingsTabs('agent')
 
