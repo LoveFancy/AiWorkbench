@@ -16,6 +16,7 @@ import {
   Keyboard,
   HardDrive,
   Palette,
+  Info,
 } from 'lucide-react'
 import type { SettingsTab } from '@/atoms/settings-tab'
 
@@ -56,6 +57,7 @@ const SHORTCUTS_TAB: TabItem = {
 const TAIL_TABS: TabItem[] = [
   { id: 'storage', label: '磁盘管理', icon: <HardDrive size={16} /> },
   { id: 'appearance', label: '外观设置', icon: <Palette size={16} /> },
+  { id: 'about', label: '关于 / 更新', icon: <Info size={16} /> },
 ]
 
 export function getSettingsTabs(appMode: 'chat' | 'agent'): TabItem[] {
