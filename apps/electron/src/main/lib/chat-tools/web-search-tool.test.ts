@@ -62,6 +62,44 @@ describe('数智中台联网搜索工具', () => {
     expect(formatCompassSearchResults(parsed)).toContain('- [黄金价格上涨](https://example.com/gold)')
   })
 
+  test('解析数智中台 result.webResults 响应结构', () => {
+    const parsed = parseCompassSearchResponse({
+      responseMetadata: {
+        requestId: '2026052510342487969A6DB44B2616AE2B',
+        error: null,
+      },
+      result: {
+        resultCount: 2,
+        webResults: [
+          {
+            title: '金价大跌15年之最！一周狂跌近10%',
+            siteName: '今日头条',
+            url: 'http://m.toutiao.com/group/7643440198033900095/',
+            snippet: '金价大跌15年之最，一周狂跌近10%。',
+          },
+          {
+            title: '黄金市场最新行情',
+            url: 'https://example.com/gold-market',
+            snippet: '黄金市场出现明显波动。',
+          },
+        ],
+      },
+    })
+
+    expect(parsed).toEqual([
+      {
+        title: '金价大跌15年之最！一周狂跌近10%',
+        url: 'http://m.toutiao.com/group/7643440198033900095/',
+        content: '金价大跌15年之最，一周狂跌近10%。',
+      },
+      {
+        title: '黄金市场最新行情',
+        url: 'https://example.com/gold-market',
+        content: '黄金市场出现明显波动。',
+      },
+    ])
+  })
+
   test('搜索响应没有结果时返回空列表提示', () => {
     const parsed = parseCompassSearchResponse({ data: { results: [] } })
 
