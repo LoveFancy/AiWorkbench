@@ -1831,7 +1831,7 @@ export function registerIpcHandlers(): void {
   // 测试工具连接
   ipcMain.handle(
     CHAT_TOOL_IPC_CHANNELS.TEST_TOOL,
-    async (_, toolId: string): Promise<{ success: boolean; message: string }> => {
+    async (_, toolId: string, options?: { query?: string }): Promise<{ success: boolean; message: string; details?: string }> => {
       // 记忆工具复用现有测试逻辑
       if (toolId === 'memory') {
         const config = getMemoryConfig()
@@ -1853,19 +1853,8 @@ export function registerIpcHandlers(): void {
       }
       // 联网搜索工具测试
       if (toolId === 'web-search') {
-        const { buildCompassSearchRequest, getBuiltinWebSearchApiKey } = await import('./lib/chat-tools/web-search-tool')
-        try {
-          const request = buildCompassSearchRequest('test connection', getBuiltinWebSearchApiKey())
-          const response = await fetch(request.url, request.init)
-          if (!response.ok) {
-            const errorText = await response.text()
-            return { success: false, message: `API 请求失败 (${response.status}): ${errorText}` }
-          }
-          return { success: true, message: '连接成功，数智中台搜索 API 可用' }
-        } catch (error) {
-          const msg = error instanceof Error ? error.message : String(error)
-          return { success: false, message: `连接失败: ${msg}` }
-        }
+        const { testWebSearchConnection } = await import('./lib/chat-tools/web-search-tool')
+        return testWebSearchConnection(options?.query)
       }
       // Nano Banana 生图工具测试
       if (toolId === 'nano-banana') {

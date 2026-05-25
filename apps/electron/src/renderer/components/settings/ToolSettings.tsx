@@ -8,13 +8,19 @@
 import * as React from 'react'
 import { useSetAtom, useAtomValue } from 'jotai'
 import { toast } from 'sonner'
-import { ExternalLink, Eye, EyeOff, Loader2, CheckCircle2, XCircle, Trash2 } from 'lucide-react'
+import { ExternalLink, Eye, EyeOff, Loader2, CheckCircle2, XCircle, Trash2, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
 import { MemorySettings } from './MemorySettings'
 import { SettingsSection, SettingsCard } from './primitives'
 import { chatToolsAtom } from '@/atoms/chat-tool-atoms'
+
+interface ToolTestResult {
+  success: boolean
+  message: string
+  details?: string
+}
 
 /** 刷新全局工具列表 atom */
 async function refreshChatTools(setter: (tools: Awaited<ReturnType<typeof window.electronAPI.getChatTools>>) => void): Promise<void> {
@@ -31,7 +37,8 @@ export function WebSearchSettings(): React.ReactElement {
   const [enabled, setEnabled] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
   const [testing, setTesting] = React.useState(false)
-  const [testResult, setTestResult] = React.useState<{ success: boolean; message: string } | null>(null)
+  const [testQuery, setTestQuery] = React.useState('')
+  const [testResult, setTestResult] = React.useState<ToolTestResult | null>(null)
   const setChatTools = useSetAtom(chatToolsAtom)
 
   // 从主进程加载当前开关状态
@@ -59,10 +66,13 @@ export function WebSearchSettings(): React.ReactElement {
   }
 
   const handleTest = async (): Promise<void> => {
+    const query = testQuery.trim()
+    if (!query) return
+
     setTesting(true)
     setTestResult(null)
     try {
-      const result = await window.electronAPI.testChatTool('web-search')
+      const result = await window.electronAPI.testChatTool('web-search', { query })
       setTestResult(result)
     } catch (error) {
       setTestResult({ success: false, message: error instanceof Error ? error.message : String(error) })
@@ -94,25 +104,50 @@ export function WebSearchSettings(): React.ReactElement {
             <p className="text-xs">服务凭据由系统内置管理，开启开关后即可使用。</p>
           </div>
 
-          <div className="flex items-center justify-between rounded-lg bg-muted/30 p-3">
-            <div>
-              <div className="text-sm font-medium">连接测试</div>
-              <div className="text-xs text-muted-foreground mt-0.5">验证数智中台搜索服务当前是否可用</div>
+          <div className="rounded-lg bg-muted/30 p-3">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Search size={15} className="text-muted-foreground" />
+              搜索测试
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={testing}
-              onClick={handleTest}
-            >
-              {testing ? <><Loader2 size={14} className="animate-spin mr-1.5" />测试中...</> : '测试连接'}
-            </Button>
+            <div className="mt-3 flex gap-2">
+              <Input
+                value={testQuery}
+                placeholder="输入测试关键字"
+                disabled={testing}
+                onChange={(event) => {
+                  setTestQuery(event.target.value)
+                  setTestResult(null)
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    handleTest().catch(console.error)
+                  }
+                }}
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                className="shrink-0"
+                disabled={testing || !testQuery.trim()}
+                onClick={handleTest}
+              >
+                {testing ? <><Loader2 size={14} className="animate-spin mr-1.5" />测试中...</> : '测试'}
+              </Button>
+            </div>
           </div>
 
           {testResult && (
-            <div className={`flex items-start gap-2 rounded-lg p-3 text-sm ${testResult.success ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-destructive/10 text-destructive'}`}>
-              {testResult.success ? <CheckCircle2 size={16} className="mt-0.5 shrink-0" /> : <XCircle size={16} className="mt-0.5 shrink-0" />}
-              <span>{testResult.message}</span>
+            <div className={`rounded-lg p-3 text-sm ${testResult.success ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-destructive/10 text-destructive'}`}>
+              <div className="flex items-start gap-2">
+                {testResult.success ? <CheckCircle2 size={16} className="mt-0.5 shrink-0" /> : <XCircle size={16} className="mt-0.5 shrink-0" />}
+                <span>{testResult.message}</span>
+              </div>
+              {testResult.details && (
+                <pre className="mt-3 max-h-56 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-background/80 p-3 text-xs leading-relaxed text-foreground">
+                  {testResult.details}
+                </pre>
+              )}
             </div>
           )}
         </div>

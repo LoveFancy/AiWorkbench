@@ -1,6 +1,6 @@
 {
   "name": "@proma/electron",
-  "version": "0.9.54",
+  "version": "0.9.56",
   "description": "HtAiWorkBench next gen ai software with general agents - Electron App",
   "main": "dist/main.cjs",
   "author": {

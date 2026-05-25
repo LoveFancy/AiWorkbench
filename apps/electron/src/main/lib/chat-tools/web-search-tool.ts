@@ -111,6 +111,12 @@ interface WebSearchResponse {
 
 type WebSearchFetch = (input: string, init: RequestInit) => Promise<WebSearchResponse>
 
+export interface WebSearchConnectionTestResult {
+  success: boolean
+  message: string
+  details?: string
+}
+
 const WEB_SEARCH_DIRECT_DISPATCHER = new Agent()
 
 /**
@@ -129,6 +135,69 @@ export function createNoProxyWebSearchFetch(): WebSearchFetch {
 }
 
 const noProxyWebSearchFetch = createNoProxyWebSearchFetch()
+
+function formatNetworkError(error: unknown, depth = 0): string {
+  if (depth > 3) return String(error)
+  if (!isRecord(error)) return error instanceof Error ? error.message : String(error)
+
+  const message = error instanceof Error
+    ? error.message
+    : typeof error.message === 'string'
+      ? error.message
+      : String(error)
+
+  const fields = ['code', 'errno', 'syscall', 'address', 'port', 'hostname']
+    .map((key) => {
+      const value = error[key]
+      if (typeof value !== 'string' && typeof value !== 'number') return null
+      return `${key}=${value}`
+    })
+    .filter((item): item is string => item !== null)
+
+  const cause = error.cause
+  const suffixParts: string[] = []
+  if (fields.length > 0) suffixParts.push(fields.join(', '))
+  if (cause) suffixParts.push(`cause: ${formatNetworkError(cause, depth + 1)}`)
+
+  if (suffixParts.length === 0) return message
+  return `${message} (${suffixParts.join('; ')})`
+}
+
+export function testWebSearchConnection(fetchFn?: WebSearchFetch): Promise<WebSearchConnectionTestResult>
+export function testWebSearchConnection(query?: string, fetchFn?: WebSearchFetch): Promise<WebSearchConnectionTestResult>
+export async function testWebSearchConnection(
+  queryOrFetch?: string | WebSearchFetch,
+  maybeFetchFn?: WebSearchFetch,
+): Promise<WebSearchConnectionTestResult> {
+  const query = typeof queryOrFetch === 'string' ? queryOrFetch.trim() : ''
+  const fetchFn = typeof queryOrFetch === 'function'
+    ? queryOrFetch
+    : maybeFetchFn ?? noProxyWebSearchFetch
+
+  try {
+    const request = buildCompassSearchRequest(query || 'test connection', getBuiltinWebSearchApiKey())
+    const response = await fetchFn(request.url, request.init)
+    if (!response.ok) {
+      const errorText = await response.text()
+      return { success: false, message: `API 请求失败 (${response.status}): ${errorText}` }
+    }
+
+    if (query) {
+      const data = await response.json() as unknown
+      const results = parseCompassSearchResponse(data)
+      return {
+        success: true,
+        message: `搜索成功，返回 ${results.length} 条结果`,
+        details: formatCompassSearchResults(results),
+      }
+    }
+
+    return { success: true, message: '连接成功，数智中台搜索 API 可用' }
+  } catch (error) {
+    const msg = formatNetworkError(error)
+    return { success: false, message: `连接失败: ${msg}` }
+  }
+}
 
 /**
  * 构造数智中台搜索请求。
@@ -300,7 +369,7 @@ export async function executeWebSearchTool(
       content: formatCompassSearchResults(results),
     }
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
+    const msg = formatNetworkError(error)
     console.error('[联网搜索] 执行失败:', error)
     return {
       toolCallId: toolCall.id,
