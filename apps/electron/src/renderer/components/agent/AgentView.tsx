@@ -31,6 +31,7 @@ import { AttachmentPreviewItem } from '@/components/chat/AttachmentPreviewItem'
 import { QuotedSelectionChip } from '@/components/diff/QuotedSelectionChip'
 import { RichTextInput } from '@/components/ai-elements/rich-text-input'
 import { SpeechButton } from '@/components/ai-elements/speech-button'
+import { InputToolbarOverflow, type ToolbarItem } from '@/components/ai-elements/InputToolbarOverflow'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -60,7 +61,7 @@ import {
   agentSessionModelMapAtom,
   currentAgentWorkspaceIdAtom,
   agentPendingPromptAtom,
-  agentPendingFilesAtom,
+  agentPendingFilesAtomFamily,
   agentWorkspacesAtom,
   agentStreamErrorsAtom,
   agentSessionDraftsAtom,
@@ -340,17 +341,19 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
     return meta.workspaceId ?? null     // 数据已加载，以会话自身为准
   }, [sessions, sessionId, globalWorkspaceId])
   const [pendingPrompt, setPendingPrompt] = useAtom(agentPendingPromptAtom)
-  const [pendingFiles, setPendingFiles] = useAtom(agentPendingFilesAtom)
+  const [pendingFiles, setPendingFiles] = useAtom(agentPendingFilesAtomFamily(sessionId))
   const workspaces = useAtomValue(agentWorkspacesAtom)
   // 保持 channelId 稳定：初始化前使用上次有效值，避免工具栏抖动
   const stableChannelIdRef = React.useRef(agentChannelId)
   if (agentChannelId) stableChannelIdRef.current = agentChannelId
   const stableChannelId = agentChannelId ?? stableChannelIdRef.current
 
-  // 已有会话首次打开时，从全局默认值初始化 per-session map
+  // 已有会话首次打开时，从全局默认值初始化 per-session map。
+  // setter 内的 `prev.has(sessionId)` 守卫保证幂等，外层不再订阅 Map atom，
+  // 避免 setter 写入 → atom 引用变化 → effect 重跑的自循环（React #185）。
   React.useEffect(() => {
     if (!sessionId) return
-    if (!sessionChannelMap.has(sessionId) && defaultChannelId) {
+    if (defaultChannelId) {
       setSessionChannelMap((prev) => {
         if (prev.has(sessionId)) return prev
         const map = new Map(prev)
@@ -358,7 +361,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
         return map
       })
     }
-    if (!sessionModelMap.has(sessionId) && defaultModelId) {
+    if (defaultModelId) {
       setSessionModelMap((prev) => {
         if (prev.has(sessionId)) return prev
         const map = new Map(prev)
@@ -366,7 +369,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
         return map
       })
     }
-  }, [sessionId, sessionChannelMap, sessionModelMap, defaultChannelId, defaultModelId, setSessionChannelMap, setSessionModelMap])
+  }, [sessionId, defaultChannelId, defaultModelId, setSessionChannelMap, setSessionModelMap])
 
   const contextStatus: AgentContextStatus = {
     isCompacting: streamState?.isCompacting ?? false,
@@ -478,18 +481,22 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
     const firstModel = channel.models.find((m) => m.enabled)
     if (!firstModel) return
 
-    // 更新 per-session map
+    // 更新 per-session map（带幂等守卫，避免无意义写入导致 effect 自循环）
     setSessionModelMap((prev) => {
+      if (prev.get(sessionId) === firstModel.id) return prev
       const map = new Map(prev)
       map.set(sessionId, firstModel.id)
       return map
     })
-    // 同步全局默认值
-    setDefaultModelId(firstModel.id)
-    window.electronAPI.updateSettings({
-      agentChannelId,
-      agentModelId: firstModel.id,
-    }).catch(console.error)
+    // 全局默认值 + 持久化 IPC 也加幂等：firstModel 与当前 defaultModelId 相同时跳过，
+    // 避免每次 agentChannelId / globalChannels 变化都重复写盘和触发 agentModelIdAtom 更新。
+    if (defaultModelId !== firstModel.id) {
+      setDefaultModelId(firstModel.id)
+      window.electronAPI.updateSettings({
+        agentChannelId,
+        agentModelId: firstModel.id,
+      }).catch(console.error)
+    }
   }, [agentChannelId, agentModelId, globalChannels, sessionId, setSessionModelMap, setDefaultModelId])
 
   // 获取当前 session 的工作路径（文件浏览器需要）
@@ -1728,6 +1735,156 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
   const hasTextInput = inputContent.trim().length > 0
   const canSend = (hasTextInput || pendingFiles.length > 0 || !!suggestion) && agentChannelId !== null && hasAvailableModel && (!streaming || hasTextInput)
 
+  const inputToolbarItems = React.useMemo<ToolbarItem[]>(() => [
+    {
+      key: 'model',
+      node: (
+        <ModelSelector
+          filterChannelIds={agentChannelIds}
+          externalSelectedModel={externalSelectedModel}
+          onModelSelect={handleModelSelect}
+        />
+      ),
+    },
+    { key: 'permission-mode', node: <PermissionModeSelector sessionId={sessionId} /> },
+    {
+      key: 'thinking',
+      node: (
+        <AgentThinkingPopover
+          agentThinking={agentThinking}
+          onToggle={() => {
+            const next = agentThinking?.type === 'adaptive'
+              ? { type: 'disabled' as const }
+              : { type: 'adaptive' as const }
+            setAgentThinking(next)
+            window.electronAPI.updateSettings({ agentThinking: next })
+          }}
+        />
+      ),
+    },
+    { key: 'speech', node: <SpeechButton className="size-[36px] shrink-0 rounded-full" /> },
+    {
+      key: 'attach-file',
+      node: (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-[36px] shrink-0 rounded-full text-foreground/60 hover:text-foreground"
+              onClick={handleOpenFileDialog}
+            >
+              <Paperclip className="size-5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            <p>添加附件</p>
+          </TooltipContent>
+        </Tooltip>
+      ),
+    },
+    {
+      key: 'attach-folder',
+      node: (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-[36px] shrink-0 rounded-full text-foreground/60 hover:text-foreground"
+              onClick={handleAttachFolder}
+            >
+              <FolderPlus className="size-5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            <p>附加文件夹</p>
+          </TooltipContent>
+        </Tooltip>
+      ),
+    },
+    {
+      key: 'context-usage',
+      node: (
+        <ContextUsageBadge
+          inputTokens={contextStatus.inputTokens}
+          outputTokens={contextStatus.outputTokens}
+          cacheReadTokens={contextStatus.cacheReadTokens}
+          cacheCreationTokens={contextStatus.cacheCreationTokens}
+          contextWindow={contextStatus.contextWindow}
+          isCompacting={contextStatus.isCompacting}
+          isProcessing={streaming}
+          onCompact={handleCompact}
+        />
+      ),
+    },
+    {
+      key: 'auto-preview',
+      node: (
+        <AutoPreviewPopover
+          enabled={autoPreviewEnabled}
+          onToggle={() => setAutoPreviewEnabled(!autoPreviewEnabled)}
+        />
+      ),
+    },
+  ], [
+    agentChannelIds,
+    externalSelectedModel,
+    handleModelSelect,
+    sessionId,
+    agentThinking,
+    setAgentThinking,
+    handleOpenFileDialog,
+    handleAttachFolder,
+    contextStatus.inputTokens,
+    contextStatus.outputTokens,
+    contextStatus.cacheReadTokens,
+    contextStatus.cacheCreationTokens,
+    contextStatus.contextWindow,
+    contextStatus.isCompacting,
+    streaming,
+    handleCompact,
+    autoPreviewEnabled,
+    setAutoPreviewEnabled,
+  ])
+
+  const inputTrailingNode = streaming && !hasTextInput ? (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-[36px] rounded-full text-destructive hover:!text-[hsl(0,75%,55%)] hover:!bg-[var(--stop-hover-bg)]"
+          onClick={handleStop}
+        >
+          <Square className="size-[16px]" fill="currentColor" strokeWidth={0} />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="top">
+        <p>停止 Agent ({getAcceleratorDisplay(getActiveAccelerator('stop-generation'))})</p>
+      </TooltipContent>
+    </Tooltip>
+  ) : (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      className={cn(
+        'size-[36px] rounded-full',
+        canSend
+          ? 'text-primary hover:bg-primary/10'
+          : 'text-foreground/30 cursor-not-allowed'
+      )}
+      onClick={handleSend}
+      disabled={!canSend}
+    >
+      <CornerDownLeft className="size-[22px]" />
+    </Button>
+  )
+
   return (
     <>
     <AgentSessionProvider sessionId={sessionId}>
@@ -1881,113 +2038,8 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
               sendWithCmdEnter={sendWithCmdEnter}
             />
 
-            {/* Footer 工具栏 */}
-            <div className="flex items-center justify-between px-2 py-1 h-[48px] gap-4">
-              <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                <ModelSelector
-                  filterChannelIds={agentChannelIds}
-                  externalSelectedModel={externalSelectedModel}
-                  onModelSelect={handleModelSelect}
-                />
-                <PermissionModeSelector sessionId={sessionId} />
-                {/* 思考模式切换 + 展开偏好 */}
-                <AgentThinkingPopover
-                  agentThinking={agentThinking}
-                  onToggle={() => {
-                    const next = agentThinking?.type === 'adaptive'
-                      ? { type: 'disabled' as const }
-                      : { type: 'adaptive' as const }
-                    setAgentThinking(next)
-                    window.electronAPI.updateSettings({ agentThinking: next })
-                  }}
-                />
-                <SpeechButton className="size-[36px] rounded-full" />
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="size-[36px] rounded-full text-foreground/60 hover:text-foreground"
-                      onClick={handleOpenFileDialog}
-                    >
-                      <Paperclip className="size-5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">
-                    <p>添加附件</p>
-                  </TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="size-[36px] rounded-full text-foreground/60 hover:text-foreground"
-                      onClick={handleAttachFolder}
-                    >
-                      <FolderPlus className="size-5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">
-                    <p>附加文件夹</p>
-                  </TooltipContent>
-                </Tooltip>
-                <ContextUsageBadge
-                  inputTokens={contextStatus.inputTokens}
-                  outputTokens={contextStatus.outputTokens}
-                  cacheReadTokens={contextStatus.cacheReadTokens}
-                  cacheCreationTokens={contextStatus.cacheCreationTokens}
-                  contextWindow={contextStatus.contextWindow}
-                  isCompacting={contextStatus.isCompacting}
-                  isProcessing={streaming}
-                  onCompact={handleCompact}
-                />
-                {/* <FeishuNotifyToggle sessionId={sessionId} /> */}
-                <AutoPreviewPopover
-                  enabled={autoPreviewEnabled}
-                  onToggle={() => setAutoPreviewEnabled(!autoPreviewEnabled)}
-                />
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                {streaming && !hasTextInput ? (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="size-[36px] rounded-full text-destructive hover:!text-[hsl(0,75%,55%)] hover:!bg-[var(--stop-hover-bg)]"
-                        onClick={handleStop}
-                      >
-                        <Square className="size-[16px]" fill="currentColor" strokeWidth={0} />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top">
-                      <p>停止 Agent ({getAcceleratorDisplay(getActiveAccelerator('stop-generation'))})</p>
-                    </TooltipContent>
-                  </Tooltip>
-                ) : (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className={cn(
-                      'size-[36px] rounded-full',
-                      canSend
-                        ? 'text-primary hover:bg-primary/10'
-                        : 'text-foreground/30 cursor-not-allowed'
-                    )}
-                    onClick={handleSend}
-                    disabled={!canSend}
-                  >
-                    <CornerDownLeft className="size-[22px]" />
-                  </Button>
-                )}
-              </div>
-            </div>
+            {/* Footer 工具栏 — 容器变窄时尾部按钮自动折叠进「更多」Popover */}
+            <InputToolbarOverflow items={inputToolbarItems} trailing={inputTrailingNode} />
           </div>
         </div>
         )}

@@ -131,11 +131,18 @@ export interface MicPermissionResult {
   platform: NodeJS.Platform
 }
 
-/** 用户自定义快捷键覆盖（持久化到 settings.json） */
+/**
+ * 用户自定义快捷键覆盖（持久化到 settings.json）
+ *
+ * 字段三态语义：
+ * - `undefined`（字段缺失）→ 使用默认快捷键
+ * - 非空字符串 → 使用该自定义 accelerator
+ * - `null` → 用户已主动禁用此平台的快捷键，不注册任何监听
+ */
 export interface ShortcutOverrides {
   [shortcutId: string]: {
-    mac?: string
-    win?: string
+    mac?: string | null
+    win?: string | null
   }
 }
 
@@ -150,6 +157,12 @@ export const DEFAULT_THEME_MODE: ThemeMode = 'special'
 
 /** 默认特殊风格 */
 export const DEFAULT_THEME_STYLE: ThemeStyle = 'ocean-dark'
+
+/** Markdown 预览字号档位 */
+export type MarkdownFontSize = 'small' | 'medium' | 'large'
+
+/** 默认 Markdown 字号档位 */
+export const DEFAULT_MARKDOWN_FONT_SIZE: MarkdownFontSize = 'medium'
 
 /** 应用设置 */
 export interface AppSettings {
@@ -197,6 +210,8 @@ export interface AppSettings {
   shortcutOverrides?: ShortcutOverrides
   /** 是否显示用户消息悬浮置顶条（默认 true） */
   stickyUserMessageEnabled?: boolean
+  /** Markdown 预览字号档位（默认 'medium'，对应 15px） */
+  markdownFontSize?: MarkdownFontSize
   /** 上次是否在 Scratch Pad 页（用于重启恢复） */
   scratchPadActive?: boolean
   /** 应用图标变体 ID（dock + window icon），'default' 或 logo 变体 id */

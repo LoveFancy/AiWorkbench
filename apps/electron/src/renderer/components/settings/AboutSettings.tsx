@@ -449,6 +449,32 @@ export function AboutSettings(): React.ReactElement {
         <SettingsRow label="版本">
           <span className="text-sm text-muted-foreground font-mono">{APP_VERSION}</span>
         </SettingsRow>
+        <SettingsRow label="运行时">
+          <span className="text-sm text-muted-foreground">Electron + React</span>
+        </SettingsRow>
+        <SettingsRow
+          label="开源协议"
+          description="基于 AGPL-3.0 开源协议发布"
+        >
+          <a
+            href="https://www.gnu.org/licenses/agpl-3.0.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-primary hover:underline"
+          >
+            AGPL-3.0
+          </a>
+        </SettingsRow>
+        <SettingsRow label="项目地址">
+          <a
+            href="https://github.com/LoveFancy/AiWorkbench.git"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-primary hover:underline"
+          >
+            github.com/LoveFancy/AiWorkbench
+          </a>
+        </SettingsRow>
       </SettingsCard>
 
       {/* 自动更新卡片（updater 不可用时不渲染） */}
