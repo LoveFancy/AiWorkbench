@@ -6,11 +6,54 @@ import { readFile } from 'node:fs/promises'
 const ENDPOINT = process.env.PROMA_WEB_SEARCH_ENDPOINT || 'http://168.63.65.40:8090/ai-service/v1/api/web/search'
 const APP_ID = '001421'
 const API_KEY = 'ngaflkmmttnaab2jzkaa'
+const DEFAULT_TIME_RANGE = 'OneMonth'
+const DEFAULT_MAX_CONTENT_CHARS = 600
+const TIME_RANGE_VALUES = new Set(['OneDay', 'OneWeek', 'OneMonth', 'OneYear'])
 
-const query = process.argv.slice(2).join(' ').trim()
+function parseArgs(argv) {
+  const queryParts = []
+  let timeRange = DEFAULT_TIME_RANGE
+  let maxContentChars = DEFAULT_MAX_CONTENT_CHARS
+
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i]
+    if (arg === '--time-range') {
+      const value = argv[i + 1]
+      if (!TIME_RANGE_VALUES.has(value)) {
+        console.error(`无效的 --time-range: ${value || ''}`)
+        console.error(`可选值: ${Array.from(TIME_RANGE_VALUES).join(', ')}`)
+        process.exit(2)
+      }
+      timeRange = value
+      i += 1
+      continue
+    }
+    if (arg === '--max-content-chars') {
+      const value = Number(argv[i + 1])
+      if (!Number.isInteger(value) || value < 80 || value > 4000) {
+        console.error(`无效的 --max-content-chars: ${argv[i + 1] || ''}`)
+        console.error('可选范围: 80 到 4000')
+        process.exit(2)
+      }
+      maxContentChars = value
+      i += 1
+      continue
+    }
+    queryParts.push(arg)
+  }
+
+  return {
+    query: queryParts.join(' ').trim(),
+    timeRange,
+    maxContentChars,
+  }
+}
+
+const { query, timeRange, maxContentChars } = parseArgs(process.argv.slice(2))
 
 if (!query) {
-  console.error('用法: node scripts/search.mjs "搜索关键词"')
+  console.error('用法: node scripts/search.mjs [--time-range OneMonth] [--max-content-chars 600] "搜索关键词"')
+  console.error('有效期可选值: OneDay, OneWeek, OneMonth, OneYear；默认 OneMonth')
   process.exit(2)
 }
 
@@ -86,6 +129,13 @@ function readString(record, keys) {
   return undefined
 }
 
+function compactText(value, maxChars) {
+  if (!value) return { text: '', truncated: false }
+  const normalized = value.replace(/\s+/g, ' ').trim()
+  if (normalized.length <= maxChars) return { text: normalized, truncated: false }
+  return { text: `${normalized.slice(0, maxChars)}...`, truncated: true }
+}
+
 function findResultArray(data) {
   if (Array.isArray(data)) return data
   if (typeof data !== 'object' || data === null) return []
@@ -109,16 +159,21 @@ function findResultArray(data) {
   return []
 }
 
-function parseResults(data) {
+function parseResults(data, maxChars) {
   return findResultArray(data)
     .filter((item) => typeof item === 'object' && item !== null && !Array.isArray(item))
-    .map((item) => ({
-      title: readString(item, ['title', 'Title', 'name', 'Name']) ?? readString(item, ['url', 'URL', 'Url', 'link', 'Link']) ?? '',
-      url: readString(item, ['url', 'URL', 'Url', 'link', 'Link', 'sourceUrl', 'source_url']) ?? '',
-      content: readString(item, ['content', 'Content', 'summary', 'Summary', 'snippet', 'Snippet', 'description', 'Description', 'abstract', 'Abstract']) ?? '',
-      siteName: readString(item, ['siteName', 'SiteName', 'site_name']) ?? '',
-      publishTime: readString(item, ['publishTime', 'PublishTime', 'publish_time']) ?? '',
-    }))
+    .map((item) => {
+      const rawContent = readString(item, ['summary', 'Summary', 'content', 'Content', 'snippet', 'Snippet', 'description', 'Description', 'abstract', 'Abstract']) ?? ''
+      const content = compactText(rawContent, maxChars)
+      return {
+        title: readString(item, ['title', 'Title', 'name', 'Name']) ?? readString(item, ['url', 'URL', 'Url', 'link', 'Link']) ?? '',
+        url: readString(item, ['url', 'URL', 'Url', 'link', 'Link', 'sourceUrl', 'source_url']) ?? '',
+        content: content.text,
+        contentTruncated: content.truncated,
+        siteName: readString(item, ['siteName', 'SiteName', 'site_name']) ?? '',
+        publishTime: readString(item, ['publishTime', 'PublishTime', 'publish_time']) ?? '',
+      }
+    })
     .filter((item) => item.title || item.url)
 }
 
@@ -132,8 +187,8 @@ const body = {
     Sites: null,
     AuthInfoLevel: '0',
   },
-  NeedSummary: false,
-  TimeRange: 'OneDay',
+  NeedSummary: true,
+  TimeRange: timeRange,
 }
 
 try {
@@ -147,9 +202,11 @@ try {
       }
       return JSON.parse(response.text)
     })()
-  const results = parseResults(data)
+  const results = parseResults(data, maxContentChars)
   console.log(JSON.stringify({
     query,
+    timeRange,
+    maxContentChars,
     count: results.length,
     results,
   }, null, 2))

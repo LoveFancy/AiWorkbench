@@ -17,6 +17,14 @@ import type {
 const COMPASS_SEARCH_ENDPOINT = 'http://168.63.65.40:8090/ai-service/v1/api/web/search'
 const COMPASS_APP_ID = '001421'
 const COMPASS_API_KEY = 'ngaflkmmttnaab2jzkaa'
+const DEFAULT_WEB_SEARCH_TIME_RANGE = 'OneMonth'
+const WEB_SEARCH_TIME_RANGE_VALUES = ['OneDay', 'OneWeek', 'OneMonth', 'OneYear'] as const
+
+export type WebSearchTimeRange = typeof WEB_SEARCH_TIME_RANGE_VALUES[number]
+
+export interface WebSearchOptions {
+  timeRange?: WebSearchTimeRange
+}
 
 // ===== 工具元数据 =====
 
@@ -26,6 +34,13 @@ export const WEB_SEARCH_TOOL_META: ChatToolMeta = {
   description: '实时搜索互联网获取最新信息',
   params: [
     { name: 'query', type: 'string', description: '搜索查询', required: true },
+    {
+      name: 'timeRange',
+      type: 'string',
+      description: '检索有效期，默认 OneMonth。可选: OneDay, OneWeek, OneMonth, OneYear',
+      required: false,
+      enum: [...WEB_SEARCH_TIME_RANGE_VALUES],
+    },
   ],
   icon: 'Globe',
   category: 'builtin',
@@ -41,6 +56,7 @@ export const WEB_SEARCH_TOOL_META: ChatToolMeta = {
 - 用户明确要求搜索或查找信息
 
 搜索时使用简洁明确的关键词，返回结果后综合整理回答用户。
+默认检索近一个月内容；如用户指定“近一天 / 近一周 / 近一年”等有效期，将 timeRange 分别设为 OneDay / OneWeek / OneYear。
 </web_search_instructions>`,
 }
 
@@ -54,6 +70,11 @@ export const WEB_SEARCH_TOOL_DEFINITIONS: ToolDefinition[] = [
       type: 'object',
       properties: {
         query: { type: 'string', description: 'Search query string' },
+        timeRange: {
+          type: 'string',
+          description: 'Search time range. Defaults to OneMonth.',
+          enum: [...WEB_SEARCH_TIME_RANGE_VALUES],
+        },
       },
       required: ['query'],
     },
@@ -165,17 +186,24 @@ function formatNetworkError(error: unknown, depth = 0): string {
 
 export function testWebSearchConnection(fetchFn?: WebSearchFetch): Promise<WebSearchConnectionTestResult>
 export function testWebSearchConnection(query?: string, fetchFn?: WebSearchFetch): Promise<WebSearchConnectionTestResult>
+export function testWebSearchConnection(query?: string, options?: WebSearchOptions, fetchFn?: WebSearchFetch): Promise<WebSearchConnectionTestResult>
 export async function testWebSearchConnection(
   queryOrFetch?: string | WebSearchFetch,
+  optionsOrFetch?: WebSearchOptions | WebSearchFetch,
   maybeFetchFn?: WebSearchFetch,
 ): Promise<WebSearchConnectionTestResult> {
   const query = typeof queryOrFetch === 'string' ? queryOrFetch.trim() : ''
   const fetchFn = typeof queryOrFetch === 'function'
     ? queryOrFetch
-    : maybeFetchFn ?? noProxyWebSearchFetch
+    : typeof optionsOrFetch === 'function'
+      ? optionsOrFetch
+      : maybeFetchFn ?? noProxyWebSearchFetch
+  const options = typeof optionsOrFetch === 'object' && optionsOrFetch !== null
+    ? optionsOrFetch
+    : undefined
 
   try {
-    const request = buildCompassSearchRequest(query || 'test connection', getBuiltinWebSearchApiKey())
+    const request = buildCompassSearchRequest(query || 'test connection', getBuiltinWebSearchApiKey(), options)
     const response = await fetchFn(request.url, request.init)
     if (!response.ok) {
       const errorText = await response.text()
@@ -212,9 +240,12 @@ export async function testWebSearchConnection(
 export function buildCompassSearchRequest(
   query: string,
   apiKey: string,
-  appId = COMPASS_APP_ID,
-  endpoint = COMPASS_SEARCH_ENDPOINT,
+  options: WebSearchOptions & { appId?: string; endpoint?: string } = {},
 ): CompassSearchRequest {
+  const appId = options.appId ?? COMPASS_APP_ID
+  const endpoint = options.endpoint ?? COMPASS_SEARCH_ENDPOINT
+  const timeRange = normalizeWebSearchTimeRange(options.timeRange)
+
   return {
     url: endpoint,
     init: {
@@ -235,10 +266,16 @@ export function buildCompassSearchRequest(
           AuthInfoLevel: '0',
         },
         NeedSummary: false,
-        TimeRange: 'OneDay',
+        TimeRange: timeRange,
       }),
     },
   }
+}
+
+function normalizeWebSearchTimeRange(value: unknown): WebSearchTimeRange {
+  return WEB_SEARCH_TIME_RANGE_VALUES.includes(value as WebSearchTimeRange)
+    ? value as WebSearchTimeRange
+    : DEFAULT_WEB_SEARCH_TIME_RANGE
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -355,6 +392,7 @@ export async function executeWebSearchTool(
 ): Promise<ToolResult> {
   try {
     const query = toolCall.arguments.query as string | undefined
+    const timeRange = normalizeWebSearchTimeRange(toolCall.arguments.timeRange)
 
     if (!query) {
       return {
@@ -364,7 +402,7 @@ export async function executeWebSearchTool(
       }
     }
 
-    const request = buildCompassSearchRequest(query, getBuiltinWebSearchApiKey())
+    const request = buildCompassSearchRequest(query, getBuiltinWebSearchApiKey(), { timeRange })
     const response = await fetchFn(request.url, request.init)
 
     if (!response.ok) {

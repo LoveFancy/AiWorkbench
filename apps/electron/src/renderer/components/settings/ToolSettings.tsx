@@ -11,14 +11,24 @@ import { Loader2, CheckCircle2, XCircle, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { SettingsSection, SettingsCard } from './primitives'
 import { chatToolsAtom } from '@/atoms/chat-tool-atoms'
+
+type WebSearchTimeRange = 'OneDay' | 'OneWeek' | 'OneMonth' | 'OneYear'
 
 interface ToolTestResult {
   success: boolean
   message: string
   details?: string
 }
+
+const TIME_RANGE_OPTIONS: Array<{ value: WebSearchTimeRange; label: string }> = [
+  { value: 'OneDay', label: '近一天' },
+  { value: 'OneWeek', label: '近一周' },
+  { value: 'OneMonth', label: '近一个月' },
+  { value: 'OneYear', label: '近一年' },
+]
 
 /** 刷新全局工具列表 atom */
 async function refreshChatTools(setter: (tools: Awaited<ReturnType<typeof window.electronAPI.getChatTools>>) => void): Promise<void> {
@@ -36,6 +46,7 @@ export function WebSearchSettings(): React.ReactElement {
   const [loading, setLoading] = React.useState(true)
   const [testing, setTesting] = React.useState(false)
   const [testQuery, setTestQuery] = React.useState('')
+  const [testTimeRange, setTestTimeRange] = React.useState<WebSearchTimeRange>('OneMonth')
   const [testResult, setTestResult] = React.useState<ToolTestResult | null>(null)
   const setChatTools = useSetAtom(chatToolsAtom)
 
@@ -70,7 +81,7 @@ export function WebSearchSettings(): React.ReactElement {
     setTesting(true)
     setTestResult(null)
     try {
-      const result = await window.electronAPI.testChatTool('web-search', { query })
+      const result = await window.electronAPI.testChatTool('web-search', { query, timeRange: testTimeRange })
       setTestResult(result)
     } catch (error) {
       setTestResult({ success: false, message: error instanceof Error ? error.message : String(error) })
@@ -107,7 +118,7 @@ export function WebSearchSettings(): React.ReactElement {
               <Search size={15} className="text-muted-foreground" />
               搜索测试
             </div>
-            <div className="mt-3 flex gap-2">
+            <div className="mt-3 grid grid-cols-[1fr_128px_auto] gap-2">
               <Input
                 value={testQuery}
                 placeholder="输入测试关键字"
@@ -123,6 +134,25 @@ export function WebSearchSettings(): React.ReactElement {
                   }
                 }}
               />
+              <Select
+                value={testTimeRange}
+                disabled={testing}
+                onValueChange={(value) => {
+                  setTestTimeRange(value as WebSearchTimeRange)
+                  setTestResult(null)
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TIME_RANGE_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Button
                 size="sm"
                 variant="outline"

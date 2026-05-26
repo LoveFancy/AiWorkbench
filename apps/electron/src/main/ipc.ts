@@ -1834,7 +1834,7 @@ export function registerIpcHandlers(): void {
   // 测试工具连接
   ipcMain.handle(
     CHAT_TOOL_IPC_CHANNELS.TEST_TOOL,
-    async (_, toolId: string, options?: { query?: string }): Promise<{ success: boolean; message: string; details?: string }> => {
+    async (_, toolId: string, options?: { query?: string; timeRange?: 'OneDay' | 'OneWeek' | 'OneMonth' | 'OneYear' }): Promise<{ success: boolean; message: string; details?: string }> => {
       // 记忆工具复用现有测试逻辑
       if (toolId === 'memory') {
         const config = getMemoryConfig()
@@ -1857,7 +1857,7 @@ export function registerIpcHandlers(): void {
       // 联网搜索工具测试
       if (toolId === 'web-search') {
         const { testWebSearchConnection } = await import('./lib/chat-tools/web-search-tool')
-        return testWebSearchConnection(options?.query)
+        return testWebSearchConnection(options?.query, { timeRange: options?.timeRange })
       }
       // Nano Banana 生图工具测试
       if (toolId === 'nano-banana') {

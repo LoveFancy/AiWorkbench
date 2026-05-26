@@ -14,7 +14,7 @@ describe('数智中台联网搜索工具', () => {
     expect(getBuiltinWebSearchApiKey()).toBe('ngaflkmmttnaab2jzkaa')
   })
 
-  test('构造数智中台搜索请求时分别使用 appId、apiKey header 和 OneDay 搜索参数', () => {
+  test('构造数智中台搜索请求时分别使用 appId、apiKey header 和默认一个月搜索参数', () => {
     const request = buildCompassSearchRequest('黄金怎么样', 'secret')
 
     expect(request.url).toBe('http://168.63.65.40:8090/ai-service/v1/api/web/search')
@@ -35,8 +35,14 @@ describe('数智中台联网搜索工具', () => {
         AuthInfoLevel: '0',
       },
       NeedSummary: false,
-      TimeRange: 'OneDay',
+      TimeRange: 'OneMonth',
     })
+  })
+
+  test('构造数智中台搜索请求时可覆盖搜索有效期', () => {
+    const request = buildCompassSearchRequest('黄金怎么样', 'secret', { timeRange: 'OneWeek' })
+
+    expect(JSON.parse(String(request.init.body)).TimeRange).toBe('OneWeek')
   })
 
   test('解析常见搜索响应字段并格式化为带链接的结果列表', () => {
@@ -147,7 +153,7 @@ describe('数智中台联网搜索工具', () => {
       const result = await executeWebSearchTool({
         id: 'tool-1',
         name: 'web_search',
-        arguments: { query: '黄金怎么样' },
+        arguments: { query: '黄金怎么样', timeRange: 'OneYear' },
       }, directFetch)
 
       expect(globalFetchCalled).toBe(false)
@@ -191,8 +197,11 @@ describe('数智中台联网搜索工具', () => {
 
   test('测试搜索关键字时返回格式化结果内容', async () => {
     let capturedQuery = ''
+    let capturedTimeRange = ''
     const directFetch = async (_input: string, init: RequestInit) => {
-      capturedQuery = JSON.parse(String(init.body)).query
+      const body = JSON.parse(String(init.body))
+      capturedQuery = body.query
+      capturedTimeRange = body.TimeRange
       return new Response(JSON.stringify({
         data: {
           results: [
@@ -209,9 +218,10 @@ describe('数智中台联网搜索工具', () => {
       })
     }
 
-    const result = await testWebSearchConnection('黄金', directFetch)
+    const result = await testWebSearchConnection('黄金', { timeRange: 'OneWeek' }, directFetch)
 
     expect(capturedQuery).toBe('黄金')
+    expect(capturedTimeRange).toBe('OneWeek')
     expect(result.success).toBe(true)
     expect(result.message).toBe('搜索成功，返回 1 条结果')
     expect(result.details).toContain('- [黄金价格上涨](https://example.com/gold)')

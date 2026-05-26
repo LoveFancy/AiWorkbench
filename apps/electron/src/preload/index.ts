@@ -612,7 +612,7 @@ export interface ElectronAPI {
   onCustomToolChanged: (callback: () => void) => () => void
 
   /** 测试工具连接 */
-  testChatTool: (toolId: string, options?: { query?: string }) => Promise<{ success: boolean; message: string; details?: string }>
+  testChatTool: (toolId: string, options?: { query?: string; timeRange?: 'OneDay' | 'OneWeek' | 'OneMonth' | 'OneYear' }) => Promise<{ success: boolean; message: string; details?: string }>
 
   // ===== AskUserQuestion 交互式问答 =====
 
@@ -1664,7 +1664,7 @@ const electronAPI: ElectronAPI = {
     return () => { ipcRenderer.removeListener(CHAT_TOOL_IPC_CHANNELS.CUSTOM_TOOL_CHANGED, listener) }
   },
 
-  testChatTool: (toolId: string, options?: { query?: string }) => {
+  testChatTool: (toolId: string, options?: { query?: string; timeRange?: 'OneDay' | 'OneWeek' | 'OneMonth' | 'OneYear' }) => {
     return ipcRenderer.invoke(CHAT_TOOL_IPC_CHANNELS.TEST_TOOL, toolId, options)
   },
 
