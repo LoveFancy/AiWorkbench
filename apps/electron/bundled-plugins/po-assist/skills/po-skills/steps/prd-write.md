@@ -42,8 +42,8 @@
 ### Step 3：读取目录上下文
 
 ```bash
-python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py newreq --reqid "{REQID}"
-python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py newreq --title "{标题}" --mock
+python <技能根目录>/run.py newreq --reqid "{REQID}"
+python <技能根目录>/run.py newreq --title "{标题}" --mock
 ```
 
 从 stdout 读取 `REQID`、`REQ_ROOT`、`DESIGN_DIR`、`REFERENCES_DIR`、`REFERENCE_IMAGES_DIR`、`IMAGES_DIR`、`NEXT_STEP`。后续路径一律使用这些变量，不自行 `mkdir -p`。
@@ -84,7 +84,7 @@ python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py newreq --title "{标题}" -
 
 需要 brainstorming 时：
 
-1. 静默加载 `${CLAUDE_PLUGIN_ROOT}/skills/po-skills/steps/brainstorming.md`
+1. 静默加载 `<技能根目录>/steps/brainstorming.md`
 2. 按产品澄清流程进行 2-3 轮内的收敛
 3. 输出头脑风暴纪要，重点记录问题、用户答复、形成的结论、待确认问题和“PRD 写作参考”
 4. 默认不生成 `[BRAINSTORM]需求澄清纪要.md`
@@ -111,7 +111,7 @@ python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py newreq --title "{标题}" -
 Wiki URL 在 `prd-write` 中属于关联文档，不是主需求文档。必须转换到 `{REFERENCES_DIR}`，不得使用 `--reqid` 输出到 `{DESIGN_DIR}`；`{DESIGN_DIR}` 只保存最终 PRD、主需求文档、Story 文档和主文档图片。
 
 ```bash
-python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py doc-convert --url "<URL>" --output-dir "{REFERENCES_DIR}"
+python <技能根目录>/run.py doc-convert --url "<URL>" --output-dir "{REFERENCES_DIR}"
 ```
 
 **EIP / LinkApp 云文档：**
@@ -133,7 +133,7 @@ CLOUD_DOC_MANUAL_DOWNLOAD_REQUIRED：暂不支持自动下载 EIP/LinkApp 云文
 
 **本地文档：**
 ```bash
-python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py doc-to-md --file "<路径>" --output-dir "{REFERENCES_DIR}"
+python <技能根目录>/run.py doc-to-md --file "<路径>" --output-dir "{REFERENCES_DIR}"
 ```
 
 转换后如有图片引用，执行 enhance-content。
@@ -147,7 +147,7 @@ python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py doc-to-md --file "<路径>"
 > 执行过程中最多向用户输出 4 句进展提示，用产品语言，不暴露内部步骤。
 
 1. 输出 `"正在分析你的需求描述…"`
-2. `read` 模板：`${CLAUDE_PLUGIN_ROOT}/skills/po-skills/references/prd-template.md`
+2. `read` 模板：`<技能根目录>/references/prd-template.md`
 3. 输出 `"已确定文档结构，正在填充 PRD 内容…"`
 4. 写作前先在内部完成“四问分析”，再生成 PRD。分析内容要融入正文，不要单独输出长篇推理：
    - 我们正在解决什么问题？

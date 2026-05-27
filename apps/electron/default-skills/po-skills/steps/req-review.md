@@ -15,7 +15,7 @@
 
 用 `read` 工具依次读取（**不要执行任何 bash 命令**）：
 1. 输入的 `[PROD_FORMAT]` Markdown 文件
-2. `${CLAUDE_PLUGIN_ROOT}/skills/po-skills/references/req-review-prompt.md`（需求审查规范）
+2. `<技能根目录>/references/req-review-prompt.md`（需求审查规范）
 
 > pmconfig 已在启动时加载，无需重复读取。
 

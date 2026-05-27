@@ -9,10 +9,10 @@
 
 **执行：**
 ```bash
-python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py doc-to-md --file ./data/spec.pdf
-python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py doc-to-md --file ./data/spec.docx --output-dir ./TAILOR-124/1.产品设计
-python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py doc-to-md --file ./raw/spec.docx --output-dir raw
-python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py doc-to-md --file ./data/spec.docx --enhance-content
+python <技能根目录>/run.py doc-to-md --file ./data/spec.pdf
+python <技能根目录>/run.py doc-to-md --file ./data/spec.docx --output-dir ./TAILOR-124/1.产品设计
+python <技能根目录>/run.py doc-to-md --file ./raw/spec.docx --output-dir raw
+python <技能根目录>/run.py doc-to-md --file ./data/spec.docx --enhance-content
 ```
 
 **输出目录规则：**
@@ -38,7 +38,7 @@ ENHANCE_INPUT=<路径>
 此时 skill 必须继续执行 `enhance-content --input "<OUTPUT_FILE>"`。
 
 **错误处理：**
-- 未安装 `markitdown`：说明首次自检未完成或依赖安装失败，引导用户执行一次 `bootstrap.py`
+- 未安装 `markitdown`：说明环境初始化未完成或依赖安装失败，按 init.md 的全局自检规则处理
 - 输入文件不存在：提示检查路径
 - 转换结果为空：提示检查源文件格式是否受支持
 

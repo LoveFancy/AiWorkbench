@@ -1,7 +1,7 @@
 ---
 name: po-skill
 description: 产品经理工具集 - 七步将 Wiki 或本地文档转换为结构化 PRD 并自动创建 DPMP Story
-version: 7.0.115
+version: 7.0.119
 triggers:
   - "doc-convert"
   - "pdf转md"
@@ -86,13 +86,21 @@ tools:
 
 ## 路径约定
 
-`${CLAUDE_PLUGIN_ROOT}` 由 Claude Code 自动解析为插件根目录，技能文件路径统一基于此变量：
+使用当前已加载 skill 的所在目录作为技能根目录；不要要求运行环境提供 Claude 专用变量：
 
-- 步骤文件：`${CLAUDE_PLUGIN_ROOT}/skills/po-skills/steps/doc-convert.md`
-- 脚本入口：`${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py`
-- pmconfig：`${CLAUDE_PLUGIN_ROOT}/../../pmconfig.md`
+- 步骤文件：`<技能根目录>/steps/doc-convert.md`
+- 脚本入口：`<技能根目录>/run.py`
+- pmconfig：`<技能根目录>/../../pmconfig.md`
 
-**严禁使用 `find`/`ls` 搜索文件，直接用变量拼接路径。**
+首次解析出的技能根目录必须记录到项目根目录 `.env`：
+
+```bash
+POSKILL_SKILL_ROOT=<技能根目录>
+```
+
+后续命令必须先读取项目根目录 `.env` 中的 `POSKILL_SKILL_ROOT`。如果该路径存在且包含 `run.py`，直接复用该路径；路径有效时禁止再次 glob、搜索或猜测技能目录。只有缓存缺失或失效时，才允许重新定位一次并写回 `.env`。
+
+**严禁使用 `find`/`ls` 搜索文件，直接基于技能根目录拼接路径。**
 
 ## 图片路径约束（强制）
 
@@ -215,7 +223,7 @@ tools:
 | wiki-export | 需检查 HTSC_WIKI_TOKEN 和 `confluence-markdown-exporter`/`cme` 可用；输入必须是一个或多个 Wiki URL | 提示配置环境变量、`${CLAUDE_PROJECT_DIR}/.env`、当前工作目录 `.env` 或插件 `.env`，并安装依赖 |
 | manual-download-required | EIP/LinkApp 云文档 URL | 提示暂不支持自动下载，请用户手工下载原始文件后再转换 |
 | doc-upload | 需确认本地 Markdown 文件存在；需本机可用 `pandoc` 和 `lark-cli` | 提示检查文件路径或安装依赖 |
-| wiki-upload | 需确认本地 Markdown 文件存在；需本机可用 `markdown-to-confluence` 提供的 `md2conf`；需配置 `HTSC_WIKI_TOKEN` | 提示检查文件路径、Token 或依赖 |
+| wiki-upload | 配置只允许写入并读取项目根目录 `.env`；如 `.env` 缺少 `HTSC_WIKI_TOKEN` 或新建页面所需目标配置，先引导用户补齐 `.env`，不要继续上传；缺文件和 `md2conf` 依赖由 `run.py wiki-upload` 返回错误 | 不要使用 `export HTSC_WIKI_TOKEN=...`，不要把 Token 写进命令行参数，不得调用 `ht-wiki`、`md2conf` 或手工探测依赖；按 `steps/wiki-upload.md` 的 Python 参数模板调用 |
 | story-analyze | 检查 [PROD_ORI] 是否存在 | 不存在 → 自动执行 doc-convert 后继续 |
 | prd-convert | 检查 [PROD_ORI] 末尾是否含"附录：Story 结构分析" | 不含 → 自动执行 story-analyze 后继续 |
 | req-review | 检查 [PROD_FORMAT] 是否存在 | 不存在 → 自动执行 prd-convert 后继续 |
@@ -248,9 +256,9 @@ tools:
 
 静默加载以下文件，不向用户输出文件清单和技术路径：
 
-- `${CLAUDE_PLUGIN_ROOT}/skills/po-skills/common/init.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/po-skills/steps/<target>.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/po-skills/references/<按需>.md`
+- `<技能根目录>/common/init.md`
+- `<技能根目录>/steps/<target>.md`
+- `<技能根目录>/references/<按需>.md`
 
 加载后直接执行步骤指令，向用户输出一句自然的开场白（如"好的，帮你处理这份文档。"）。
 

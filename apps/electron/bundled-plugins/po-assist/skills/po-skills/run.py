@@ -2,10 +2,10 @@
 """
 po-skills 本地执行入口
 
-位置：${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py（与 SKILL.md 同目录）
+位置：<技能根目录>/run.py（与 SKILL.md 同目录）
 执行方式（始终从项目根目录执行，不需要 cd）：
-  python3 ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py <命令> [参数]
-  python3 ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py <命令> --help
+  python3 <技能根目录>/run.py <命令> [参数]
+  python3 <技能根目录>/run.py <命令> --help
 
 十步以内工作流核心脚本：
   doc-convert      Wiki/JSON → 干净 Markdown（[PROD_ORI] 前缀）+ 图片分析
@@ -18,10 +18,10 @@ po-skills 本地执行入口
   fetch-title   获取 Confluence 页面标题
 
 示例：
-  python3 ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py doc-convert --url "http://wiki.../pageId=123456" --output-dir ./TAILOR-124/1.产品设计
-  python3 ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py doc-to-md --file ./data/spec.pdf
-  python3 ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py wiki-export --mode pages "http://wiki.../pageId=123456"
-  python3 ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py story-create --story-plan "./TAILOR-124/1.产品设计/[STORY_PLAN]xxx.csv"
+  python3 <技能根目录>/run.py doc-convert --url "http://wiki.../pageId=123456" --output-dir ./TAILOR-124/1.产品设计
+  python3 <技能根目录>/run.py doc-to-md --file ./data/spec.pdf
+  python3 <技能根目录>/run.py wiki-export --mode pages "http://wiki.../pageId=123456"
+  python3 <技能根目录>/run.py story-create --story-plan "./TAILOR-124/1.产品设计/[STORY_PLAN]xxx.csv"
 """
 
 import sys
@@ -29,6 +29,7 @@ import os
 import re
 import uuid
 import io
+import tempfile
 from datetime import datetime
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -48,7 +49,7 @@ _configure_stdio()
 
 
 def _load_env_file(path: str) -> None:
-    load_dotenv(path, override=False)
+    load_dotenv(path, override=True)
 
 _SKILL_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -84,11 +85,15 @@ def _find_project_root() -> str:
     return _SKILL_DIR
 
 
-# .env 加载顺序：项目根目录优先，skill 目录作为兜底
+# .env 加载顺序：skill 目录兜底，当前目录次之，项目根目录优先。
 _project_root = _find_project_root()
-_load_env_file(os.path.join(os.getcwd(), ".env"))
-_load_env_file(os.path.join(_project_root, ".env"))
-_load_env_file(os.path.join(_SKILL_DIR, ".env"))
+_loaded_env_dirs: set[str] = set()
+for _env_dir in (_SKILL_DIR, os.getcwd(), _project_root):
+    _env_dir = os.path.abspath(_env_dir)
+    if _env_dir in _loaded_env_dirs:
+        continue
+    _loaded_env_dirs.add(_env_dir)
+    _load_env_file(os.path.join(_env_dir, ".env"))
 
 
 def _normalize_confluence_env() -> None:
@@ -120,6 +125,54 @@ def _project_workspace_root() -> str:
     if output_path_prefix:
         return os.path.abspath(os.path.expanduser(output_path_prefix))
     return os.getcwd()
+
+
+def _write_runtime_skill_root(project_root: str, skill_dir: str) -> None:
+    env_path = Path(project_root) / ".env"
+    skill_dir = str(Path(skill_dir).resolve())
+    existing = env_path.read_text(encoding="utf-8") if env_path.is_file() else ""
+    lines = existing.splitlines()
+    rendered = []
+    updated = False
+
+    for line in lines:
+        if re.match(r"^\s*(?:export\s+)?POSKILL_SKILL_ROOT\s*=", line):
+            rendered.append(f"POSKILL_SKILL_ROOT={skill_dir}")
+            updated = True
+        else:
+            rendered.append(line)
+
+    if not updated:
+        if rendered and rendered[-1].strip():
+            rendered.append("")
+        rendered.append("# Poskill runtime")
+        rendered.append(f"POSKILL_SKILL_ROOT={skill_dir}")
+
+    content = "\n".join(rendered).rstrip() + "\n"
+    env_path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=str(env_path.parent),
+        prefix=".env.",
+        suffix=".tmp",
+        delete=False,
+    ) as handle:
+        handle.write(content)
+        temp_path = Path(handle.name)
+    temp_path.replace(env_path)
+
+
+def _runtime_config_root() -> str:
+    project_root = os.path.abspath(_project_root)
+    skill_dir = os.path.abspath(_SKILL_DIR)
+    cwd = os.path.abspath(os.getcwd())
+    if project_root == skill_dir and cwd != skill_dir:
+        return cwd
+    return project_root
+
+
+_write_runtime_skill_root(_runtime_config_root(), _SKILL_DIR)
 
 
 def _rel(path: str) -> str:

@@ -26,6 +26,7 @@ import {
 import { useConversationModelOptional } from '@/hooks/useConversationSettings'
 import { useConversationIdOptional } from '@/contexts/session-context'
 import { getModelLogo, getChannelLogo } from '@/lib/model-logo'
+import { hasConfiguredApiKey } from '@/lib/model-selection'
 import { cn } from '@/lib/utils'
 import type { Channel, ModelOption } from '@proma/shared'
 
@@ -35,6 +36,7 @@ function buildModelOptions(channels: Channel[], filterChannelId?: string, filter
 
   for (const channel of channels) {
     if (!channel.enabled) continue
+    if (!hasConfiguredApiKey(channel)) continue
     if (filterChannelId && channel.id !== filterChannelId) continue
     if (filterChannelIds && filterChannelIds.length > 0 && !filterChannelIds.includes(channel.id)) continue
 

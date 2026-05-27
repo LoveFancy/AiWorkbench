@@ -11,11 +11,11 @@
 1. 从用户输入中识别需求编号、标题和 `--init-only`。
 2. 有 `REQID` 时执行：
    ```bash
-   python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py newreq --reqid "<REQID>" --title "<标题>"
+   python <技能根目录>/run.py newreq --reqid "<REQID>" --title "<标题>"
    ```
 3. 无 `REQID` 时执行：
    ```bash
-   python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py newreq --title "<标题>" --mock
+   python <技能根目录>/run.py newreq --title "<标题>" --mock
    ```
 4. 仅初始化时追加 `--init-only`。
 

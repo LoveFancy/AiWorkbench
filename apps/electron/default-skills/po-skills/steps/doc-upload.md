@@ -13,7 +13,7 @@
 ## 执行流程
 
 1. 解析用户输入，确定本地 Markdown 路径
-2. 调用 `python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py doc-upload --file "<本地 Markdown 路径>" ...`
+2. 调用 `python <技能根目录>/run.py doc-upload --file "<本地 Markdown 路径>" ...`
 3. 先执行 `pandoc` 生成临时 `.docx`
 4. 再执行 `lark-cli drive +import --file "<docx>" --type docx`
 5. 如用户指定目标文件夹或名称，透传 `--folder-token` 和 `--name`

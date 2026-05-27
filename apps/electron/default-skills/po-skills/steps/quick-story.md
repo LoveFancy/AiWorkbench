@@ -18,7 +18,7 @@
 
 ### 阶段 A：提取字段，确认信息
 
-从用户描述中提取字段，读取 `${CLAUDE_PLUGIN_ROOT}/skills/po-skills/../../pmconfig.md` 补全默认值，向用户展示确认：
+从用户描述中提取字段，读取 `<技能根目录>/../../pmconfig.md` 补全默认值，向用户展示确认：
 
 ```
 📋 即将创建 Story：
@@ -40,7 +40,7 @@
 用户确认后执行：
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py quick-story \
+python3 <技能根目录>/run.py quick-story \
     --name "<Story名称>" \
     --desc "<Story描述>" \
     --iteration "<迭代名>" \
@@ -51,7 +51,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py quick-story \
 
 **Mock 模式（网络不通时）：**
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py quick-story \
+python3 <技能根目录>/run.py quick-story \
     --name "<Story名称>" \
     --desc "<Story描述>" \
     --iteration "<迭代名>" \

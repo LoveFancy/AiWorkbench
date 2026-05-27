@@ -35,6 +35,7 @@ import {
   PROVIDER_LABELS,
   isAgentCompatibleProvider,
 } from '@proma/shared'
+import { hasConfiguredApiKey } from '@/lib/model-selection'
 import type {
   Channel,
   ChannelCreateInput,
@@ -137,8 +138,8 @@ function buildPreviewUrl(baseUrl: string, provider: ProviderType): string {
 /** auto-save 防抖延迟 */
 const AUTO_SAVE_DELAY = 600
 
-function isAgentEligibleChannel(channel: Pick<Channel, 'provider' | 'enabled'>): boolean {
-  return channel.enabled && isAgentCompatibleProvider(channel.provider)
+function isAgentEligibleChannel(channel: Pick<Channel, 'id' | 'provider' | 'enabled' | 'apiKeyConfigured'>): boolean {
+  return channel.enabled && hasConfiguredApiKey(channel) && isAgentCompatibleProvider(channel.provider)
 }
 
 function getApiKeyPlaceholder(provider: ProviderType): string {

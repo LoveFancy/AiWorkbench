@@ -397,7 +397,7 @@ export function ChatInput({ conversationId, streaming, pendingAttachments, onSet
           {!hasAvailableModel && (
             <div className="flex items-center gap-2 px-4 py-2 text-sm text-amber-600 dark:text-amber-400">
               <Settings size={14} />
-              <span>暂无可用模型，请先在设置中添加模型配置</span>
+              <span>暂无可用模型，请先在设置中配置 API Key 并启用模型</span>
               <button
                 type="button"
                 className="text-xs underline underline-offset-2 hover:text-foreground transition-colors"
@@ -417,7 +417,7 @@ export function ChatInput({ conversationId, streaming, pendingAttachments, onSet
             placeholder={
               hasAvailableModel
                 ? sendWithCmdEnter ? '输入消息... (⌘/Ctrl+Enter 发送，Enter 换行)' : '输入消息... (Enter 发送，Shift+Enter 换行)'
-                : '请先在设置中添加可用模型'
+                : '请先在设置中配置 API Key 并启用模型'
             }
             autoFocusTrigger={conversationId}
             sendWithCmdEnter={sendWithCmdEnter}

@@ -61,7 +61,7 @@ D. 其他：你可以直接描述
 
 ## 输出结构
 
-输出结论时，读取 `${CLAUDE_PLUGIN_ROOT}/skills/po-skills/references/brainstorming-template.md` 作为格式参考。
+输出结论时，读取 `<技能根目录>/references/brainstorming-template.md` 作为格式参考。
 
 纪要重点记录：
 

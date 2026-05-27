@@ -20,7 +20,7 @@
 > ⚠️ **严禁直接执行以下命令**（不带 `--rename`/`--keep` 参数会触发旧的映射文件模式并报错）：
 > ```bash
 > # ❌ 错误：直接调用会因找不到映射文件而失败
-> python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py enhance-content --input "..."
+> python <技能根目录>/run.py enhance-content --input "..."
 > ```
 >
 > **✅ 正确做法**：必须先完成阶段 A（读规则）和阶段 B（逐图分析），再在阶段 C 构造带有 `--rename`/`--keep` 参数的命令执行。示例见阶段 C。
@@ -30,7 +30,7 @@
 ### 阶段 A：读取规则和文档
 
 用 `read` 工具依次读取：
-1. `${CLAUDE_PLUGIN_ROOT}/skills/po-skills/references/image-classify-prompt.md`（判断规则、命名规则、输出格式）
+1. `<技能根目录>/references/image-classify-prompt.md`（判断规则、命名规则、输出格式）
 2. 输入的 `[PROD_ORI]` Markdown 文件（完整内容）
 
 ### 阶段 B：逐图判断
@@ -65,7 +65,7 @@ AI 已在阶段 B 分析得到完整映射，直接构造 `--rename` / `--keep` 
 **小于 20 条时（正常流程）：**
 
 ```bash
-python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py enhance-content \
+python <技能根目录>/run.py enhance-content \
     --input "<PROD_ORI路径>" \
     --rename "./images/image2025-9-22_10-5-45.png" "./images/[原型图]客户列表页面-01.png" \
     --rename "./images/image2025-9-22_10-18-22.png" "./images/[原型图]客户信息编辑页-01.png" \
@@ -76,13 +76,13 @@ python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py enhance-content \
 
 ```bash
 # 第 1 批：#1~#15
-python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py enhance-content \
+python <技能根目录>/run.py enhance-content \
     --input "<PROD_ORI路径>" \
     --rename "./images/old1.png" "./images/new1.png" \
     ... 共 15 条
 
 # 第 2 批：#16~#30
-python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py enhance-content \
+python <技能根目录>/run.py enhance-content \
     --input "<PROD_ORI路径>" \
     --rename "./images/old16.png" "./images/new16.png" \
     ... 剩余条目

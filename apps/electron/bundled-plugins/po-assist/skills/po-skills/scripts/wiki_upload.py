@@ -236,6 +236,20 @@ def build_md2conf_command(
     return command
 
 
+def _redact_command(command: list[str]) -> str:
+    redacted = []
+    redact_next = False
+    for part in command:
+        if redact_next:
+            redacted.append("<redacted>")
+            redact_next = False
+            continue
+        redacted.append(part)
+        if part in {"-a", "--api-key", "--token", "--password"}:
+            redact_next = True
+    return " ".join(redacted)
+
+
 def _run_command(command: list[str], *, cwd: Path | None = None, env: dict[str, str] | None = None) -> str:
     try:
         completed = subprocess.run(
@@ -253,7 +267,7 @@ def _run_command(command: list[str], *, cwd: Path | None = None, env: dict[str, 
         stdout = (exc.stdout or "").strip()
         detail = stderr or stdout or f"exit code {exc.returncode}"
         detail = _summarize_md2conf_error(detail)
-        raise RuntimeError(f"命令执行失败：{' '.join(command)}\n{detail}") from exc
+        raise RuntimeError(f"命令执行失败：{_redact_command(command)}\n{detail}") from exc
     return "\n".join(part for part in (completed.stdout.strip(), completed.stderr.strip()) if part).strip()
 
 
@@ -367,15 +381,19 @@ def main() -> None:
 
     token = (os.environ.get("HTSC_WIKI_TOKEN") or os.environ.get("CONFLUENCE_API_KEY") or "").strip()
     if not token:
-        print("环境变量 HTSC_WIKI_TOKEN 未设置", file=sys.stderr)
+        print("项目根目录 .env 缺少 HTSC_WIKI_TOKEN，请补充 Confluence Personal Access Token 后重试", file=sys.stderr)
         sys.exit(1)
 
-    space_key = opts.space_key.strip() or os.environ.get("HTSC_WIKI_SPACE_KEY", "").strip()
-    raw_parent_page = (
-        opts.parent_page_id.strip()
-        or os.environ.get("HTSC_WIKI_PARENT_PAGE_ID", "").strip()
-        or os.environ.get("HTSC_WIKI_PARENT_PAGE_URL", "").strip()
-    )
+    if opts.mode == "create":
+        space_key = opts.space_key.strip() or os.environ.get("HTSC_WIKI_SPACE_KEY", "").strip()
+        raw_parent_page = (
+            opts.parent_page_id.strip()
+            or os.environ.get("HTSC_WIKI_PARENT_PAGE_ID", "").strip()
+            or os.environ.get("HTSC_WIKI_PARENT_PAGE_URL", "").strip()
+        )
+    else:
+        space_key = ""
+        raw_parent_page = ""
     try:
         parent_page_id = _normalize_page_id(raw_parent_page)
     except ValueError as exc:
@@ -383,7 +401,7 @@ def main() -> None:
         sys.exit(1)
 
     if opts.mode == "create" and not space_key:
-        print("create 模式需要 --space-key", file=sys.stderr)
+        print("create 模式需要 --space-key，或在项目根目录 .env 配置 HTSC_WIKI_SPACE_KEY", file=sys.stderr)
         sys.exit(1)
     if opts.mode == "update" and not opts.page_id.strip():
         print("update 模式需要 --page-id", file=sys.stderr)

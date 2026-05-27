@@ -159,6 +159,42 @@ def test_publish_markdown_update_mode_injects_existing_page_id(monkeypatch, tmp_
     assert result.page_id == "789"
 
 
+def test_cli_update_mode_ignores_create_defaults_from_environment(monkeypatch, tmp_path):
+    wiki_upload = _load_wiki_upload()
+    markdown = tmp_path / "需求说明.md"
+    markdown.write_text("# 需求说明\n", encoding="utf-8")
+    captured = {}
+
+    def fake_publish(markdown_path, **kwargs):
+        captured["kwargs"] = kwargs
+        return wiki_upload.WikiUploadResult(
+            markdown_path=markdown_path,
+            sync_path=markdown_path,
+            page_id=kwargs["page_id"],
+            page_title=kwargs["title"] or markdown_path.stem,
+            page_url=f"http://wiki.htzq.htsc.com.cn/pages/viewpage.action?pageId={kwargs['page_id']}",
+            mode=kwargs["mode"],
+            command_output="",
+        )
+
+    monkeypatch.setenv("HTSC_WIKI_TOKEN", "token")
+    monkeypatch.setenv("HTSC_WIKI_SPACE_KEY", "AI")
+    monkeypatch.setenv("HTSC_WIKI_PARENT_PAGE_ID", "456")
+    monkeypatch.setattr(wiki_upload, "publish_markdown_to_confluence", fake_publish)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["wiki_upload.py", "--file", str(markdown), "--mode", "update", "--page-id", "789"],
+    )
+
+    wiki_upload.main()
+
+    assert captured["kwargs"]["mode"] == "update"
+    assert captured["kwargs"]["page_id"] == "789"
+    assert captured["kwargs"]["space_key"] is None
+    assert captured["kwargs"]["root_page_id"] is None
+
+
 def test_publish_markdown_create_mode_strips_stale_page_id_comment(monkeypatch, tmp_path):
     wiki_upload = _load_wiki_upload()
     markdown = tmp_path / "需求说明.md"
@@ -249,6 +285,47 @@ def test_run_command_summarizes_md2conf_title_conflict(monkeypatch):
     assert "400854702" in message
     assert "不在当前目标父页面下" in message
     assert "请修改页面标题后重新同步" in message
+
+
+def test_run_command_redacts_token_from_failure_message(monkeypatch):
+    wiki_upload = _load_wiki_upload()
+
+    def fake_run(*args, **kwargs):
+        raise subprocess.CalledProcessError(1, args[0], stderr="unauthorized")
+
+    monkeypatch.setattr(wiki_upload.subprocess, "run", fake_run)
+
+    try:
+        wiki_upload._run_command(["md2conf", "需求说明.md", "-a", "secret-token", "-s", "AI"])
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("expected RuntimeError")
+
+    assert "secret-token" not in message
+    assert "-a <redacted>" in message
+    assert "unauthorized" in message
+
+
+def test_cli_missing_token_points_to_project_env(monkeypatch, tmp_path, capsys):
+    wiki_upload = _load_wiki_upload()
+    markdown = tmp_path / "需求说明.md"
+    markdown.write_text("# 需求说明\n", encoding="utf-8")
+
+    monkeypatch.delenv("HTSC_WIKI_TOKEN", raising=False)
+    monkeypatch.delenv("CONFLUENCE_API_KEY", raising=False)
+    monkeypatch.setattr(sys, "argv", ["wiki_upload.py", "--file", str(markdown)])
+
+    try:
+        wiki_upload.main()
+    except SystemExit as exc:
+        assert exc.code == 1
+    else:
+        raise AssertionError("expected SystemExit")
+
+    err = capsys.readouterr().err
+    assert "项目根目录 .env" in err
+    assert "HTSC_WIKI_TOKEN" in err
 
 
 def test_cli_create_mode_uses_wiki_target_defaults_from_environment(monkeypatch, tmp_path, capsys):

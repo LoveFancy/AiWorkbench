@@ -141,6 +141,8 @@ export interface Channel {
   baseUrl: string
   /** 加密后的 API Key（base64 编码） */
   apiKey: string
+  /** 是否已配置 API Key（由主进程解密后派生，避免渲染进程误判加密空值） */
+  apiKeyConfigured?: boolean
   /** 可用模型列表 */
   models: ChannelModel[]
   /** 是否启用 */

@@ -9,8 +9,8 @@ argument-hint: [本地 Markdown 文件路径] [--folder-token 目标文件夹] [
 
 ## 执行规则
 
-1. 首先 `read` 公共模块和步骤文件：`${CLAUDE_PLUGIN_ROOT}/skills/po-skills/common/init.md`、`${CLAUDE_PLUGIN_ROOT}/skills/po-skills/steps/doc-upload.md`
+1. 首先 `read` 公共模块和步骤文件：`<技能根目录>/common/init.md`、`<技能根目录>/steps/doc-upload.md`
 2. init.md 中的全局输出规范对本命令生效
-3. 首次自检：按 init.md 规则处理；若已完成首次自检，不要手工探测 `pandoc`、`lark-cli` 等命令
+3. 按 init.md 的全局规则处理环境初始化；不要手工探测 `pandoc`、`lark-cli` 等命令
 4. 只接受本地 Markdown 文件；若用户给出其他格式，提示先转换为 Markdown 再上传
 5. 调用 `run.py doc-upload` 执行 `pandoc -> lark-cli drive +import`

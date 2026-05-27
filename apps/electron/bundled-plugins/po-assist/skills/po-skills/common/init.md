@@ -6,9 +6,17 @@
 
 ## 路径变量
 
-`${CLAUDE_PLUGIN_ROOT}` 由 Claude Code 自动解析为插件根目录，无需手动推导。技能文件路径统一为 `${CLAUDE_PLUGIN_ROOT}/skills/po-skills/<子路径>`。
+使用当前已加载 skill 的所在目录作为技能根目录。技能文件路径统一为 `<技能根目录>/<子路径>`。
 
-**严禁使用 `find`/`ls` 搜索文件，直接用变量拼接路径。**
+项目根目录 `.env` 中可记录运行时路径缓存：
+
+```bash
+POSKILL_SKILL_ROOT=<技能根目录>
+```
+
+后续命令必须先读取项目根目录 `.env` 中的 `POSKILL_SKILL_ROOT`。如果该路径存在且包含 `run.py`，直接作为技能根目录使用，路径有效时禁止再次 glob、搜索或猜测技能目录。只有 `POSKILL_SKILL_ROOT` 缺失、为空或路径下缺少 `run.py` 时，才允许重新定位一次；定位成功后必须写回项目根目录 `.env`。
+
+**严禁使用 `find`/`ls` 搜索文件，直接基于技能根目录拼接路径。**
 
 ---
 
@@ -20,15 +28,15 @@
 2. **脚本固定位置**：`run.py` 固定位于技能根目录下，从项目根目录直接执行。业务命令直接调用 `run.py`，不要在外层逐项检查 Python 依赖、`requirements.txt` 或具体三方命令。
 3. **首次启动自检**：首次启动负责检查必需配置并初始化 `.env`。只有技能目录下不存在 `.poskill-env.json` 时，才先执行一次环境自检：
    ```bash
-   python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/bootstrap.py
+   python <技能根目录>/bootstrap.py
    ```
    若当前还没有工作空间，或用户明确执行初始化，则可用 `bootstrap.py` 包住初始化命令：
    ```bash
-   python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/bootstrap.py -- python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py init-workspace
+   python <技能根目录>/bootstrap.py -- python <技能根目录>/run.py init-workspace
    ```
    如果执行 `bootstrap.py` 时提示缺少 Python 或版本不满足要求，引导用户参考 `http://eip.htsc.com.cn/huatech/practices/124061#heading-0` 配置 Python 后重试。
    只有这个判断允许查看 `.poskill-env.json` 是否存在；不要检查 `requirements.txt`，不要手工探测 `md2conf`、`markitdown` 等依赖命令，是否安装依赖、是否跳过安装都由 `bootstrap.py` 内部判断。
-   首次自检会在技能目录初始化 `.env` 模板并提示用户补充必需配置；后续命令不要主动检查 `.env`、Token、Cookie 或依赖，直接调用对应 `run.py` 命令，等脚本返回错误后再按错误处理。
+   首次自检会初始化 `.env` 模板并提示用户补充必需配置。具体命令若有必需配置，按该命令步骤文件的配置契约先检查项目根目录 `.env`；缺配置时只创建/补齐 `.env` 键并提示用户填写真实值，不使用临时 `export` 绕过。
 4. **Windows 路径**：使用正斜杠格式（`/d/GitWorkspace/...`）。
 5. **不要猜输出文件名**：不要自行改写协议或猜测输出文件名。
 

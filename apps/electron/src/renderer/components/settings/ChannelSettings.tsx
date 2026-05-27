@@ -17,7 +17,7 @@ import type { Channel } from '@proma/shared'
 import { getChannelLogo } from '@/lib/model-logo'
 import { agentChannelIdAtom, agentModelIdAtom, agentChannelIdsAtom } from '@/atoms/agent-atoms'
 import { channelsAtom, selectedModelAtom } from '@/atoms/chat-atoms'
-import { resolveAgentSelectedModel, resolveSelectedModel } from '@/lib/model-selection'
+import { hasConfiguredApiKey, resolveAgentSelectedModel, resolveSelectedModel } from '@/lib/model-selection'
 import { SettingsSection, SettingsCard, SettingsRow } from './primitives'
 import {
   AlertDialog,
@@ -170,7 +170,7 @@ export function ChannelSettings(): React.ReactElement {
       const savedChannel = await window.electronAPI.updateChannel(channel.id, { enabled: !channel.enabled })
       await syncAgentChannelEligibility(
         savedChannel,
-        savedChannel.enabled && isAgentCompatibleProvider(savedChannel.provider),
+        savedChannel.enabled && hasConfiguredApiKey(savedChannel) && isAgentCompatibleProvider(savedChannel.provider),
       )
 
       await loadChannels()
@@ -327,6 +327,7 @@ function ChannelRow({ channel, onEdit, onDelete, onToggle }: ChannelRowProps): R
   const enabledCount = channel.models.filter((m) => m.enabled).length
   const description = [
     PROVIDER_LABELS[channel.provider],
+    !hasConfiguredApiKey(channel) ? '待配置 API Key' : undefined,
     enabledCount > 0 ? `${enabledCount} 个模型已启用` : undefined,
     isAgentCompatibleProvider(channel.provider) ? '可用于 Agent' : undefined,
   ]
@@ -377,8 +378,10 @@ interface AgentProviderRowProps {
 
 function AgentProviderRow({ channel, enabled, onToggle }: AgentProviderRowProps): React.ReactElement {
   const enabledCount = channel.models.filter((m) => m.enabled).length
+  const apiKeyMissing = !hasConfiguredApiKey(channel)
   const description = [
     PROVIDER_LABELS[channel.provider],
+    apiKeyMissing ? '待配置 API Key' : undefined,
     enabledCount > 0 ? `${enabledCount} 个模型可用` : undefined,
   ]
     .filter(Boolean)
@@ -392,7 +395,8 @@ function AgentProviderRow({ channel, enabled, onToggle }: AgentProviderRowProps)
     >
       <Switch
         checked={enabled}
-        onCheckedChange={onToggle}
+        onCheckedChange={apiKeyMissing ? undefined : onToggle}
+        disabled={apiKeyMissing}
       />
     </SettingsRow>
   )

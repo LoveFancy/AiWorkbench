@@ -39,19 +39,19 @@ If both `references_dir` and `reqid` are missing, ask the parent for the missing
 
 ## Required Workflow
 
-1. Read the browser download step file:
+1. Read `POSKILL_SKILL_ROOT` from the project root `.env`. If it points to a directory containing `run.py`, use that directory as the skill root and do not glob, search, or guess another skill path.
+
+If `POSKILL_SKILL_ROOT` is missing, empty, or invalid, resolve the skill root once, write it back to the project root `.env`, then continue.
+
+2. Read the browser download step file:
 
 ```text
-${CLAUDE_PLUGIN_ROOT}/skills/po-skills/steps/doc-browser-download.md
+<POSKILL_SKILL_ROOT>/steps/doc-browser-download.md
 ```
 
-If `${CLAUDE_PLUGIN_ROOT}` is unavailable, use the repo-local plugin path:
+If `POSKILL_SKILL_ROOT` is unavailable after the single recovery attempt, return `POSKILL_SKILL_ROOT_MISSING` instead of trying multiple candidate directories.
 
-```text
-plugins/po-assist/skills/po-skills/steps/doc-browser-download.md
-```
-
-2. Open the cloud document with `chrome-devtools`.
+3. Open the cloud document with `chrome-devtools`.
 
 The plugin MCP configuration connects to the user's running Chrome through:
 
@@ -80,7 +80,7 @@ Recovery order:
 
 Do not present manual choices before the automatic recovery attempts. Manual fallback is allowed only after automatic recovery fails.
 
-3. For the “更多” menu, scope the search to `.right-e1267a` first, then hover and click `.more-e1267a`.
+4. For the “更多” menu, scope the search to `.right-e1267a` first, then hover and click `.more-e1267a`.
 
 Example:
 
@@ -98,7 +98,7 @@ Chrome-devtools [evaluate_script]
 }
 ```
 
-4. Wait for the dropdown container, then click the “下载” menu item inside that container only.
+5. Wait for the dropdown container, then click the “下载” menu item inside that container only.
 
 Example:
 
@@ -120,7 +120,7 @@ Chrome-devtools [evaluate_script]
 }
 ```
 
-5. Locate the downloaded file using the download directory rules in `doc-browser-download.md`.
+6. Locate the downloaded file using the download directory rules in `doc-browser-download.md`.
 
 For download detection, prefer the newest stable file that matches the document title:
 
@@ -132,32 +132,24 @@ For download detection, prefer the newest stable file that matches the document 
 Example:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/scripts/cloud_download_finder.py wait \
+python3 <POSKILL_SKILL_ROOT>/scripts/cloud_download_finder.py wait \
   --expected-title "AI赋能研发项目周报0417" \
   --timeout 60
 ```
 
-6. Copy the downloaded file into `references_dir`.
+7. Copy the downloaded file into `references_dir`.
 
-7. Run:
+8. Run:
 
 ```bash
-python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py doc-to-md \
+python <POSKILL_SKILL_ROOT>/run.py doc-to-md \
   --file "<references_dir>/<downloaded_file>" \
   --output-dir "<references_dir>"
 ```
 
-If `${CLAUDE_PLUGIN_ROOT}` is unavailable, use:
+9. Read stdout and use the exact `OUTPUT_FILE=<path>` value as `output_file`. Do not guess the converted Markdown path.
 
-```bash
-python plugins/po-assist/skills/po-skills/run.py doc-to-md \
-  --file "<references_dir>/<downloaded_file>" \
-  --output-dir "<references_dir>"
-```
-
-8. Read stdout and use the exact `OUTPUT_FILE=<path>` value as `output_file`. Do not guess the converted Markdown path.
-
-9. After a successful download and conversion, do a best-effort browser cleanup:
+10. After a successful download and conversion, do a best-effort browser cleanup:
 
 - List pages in the current Chrome DevTools session.
 - Close only the current cloud document tab with `close_page`.

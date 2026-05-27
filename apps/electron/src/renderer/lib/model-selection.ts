@@ -1,15 +1,21 @@
 import type { Channel } from '@proma/shared'
 import type { SelectedModel } from '../atoms/chat-atoms'
 
+export function hasConfiguredApiKey(channel: Pick<Channel, 'id' | 'apiKeyConfigured'>): boolean {
+  return channel.id === 'proma-official' || channel.apiKeyConfigured === true
+}
+
 function isUsableModel(channels: Channel[], selected: SelectedModel): boolean {
   const channel = channels.find((item) => item.id === selected.channelId)
   if (!channel?.enabled) return false
+  if (!hasConfiguredApiKey(channel)) return false
   return channel.models.some((model) => model.id === selected.modelId && model.enabled)
 }
 
 function findFirstUsableModel(channels: Channel[]): SelectedModel | null {
   for (const channel of channels) {
     if (!channel.enabled) continue
+    if (!hasConfiguredApiKey(channel)) continue
     const model = channel.models.find((item) => item.enabled)
     if (model) {
       return {
@@ -45,7 +51,7 @@ export function resolveAgentSelectedModel(
   }
 
   const promaOfficial = channels.find((channel) => channel.id === 'proma-official')
-  if (promaOfficial?.enabled) {
+  if (promaOfficial?.enabled && hasConfiguredApiKey(promaOfficial)) {
     const model = promaOfficial.models.find((item) => item.enabled)
     if (model) {
       return {
@@ -57,6 +63,7 @@ export function resolveAgentSelectedModel(
 
   for (const channel of channels) {
     if (!channel.enabled || !selectableChannelIds.has(channel.id)) continue
+    if (!hasConfiguredApiKey(channel)) continue
     const model = channel.models.find((item) => item.enabled)
     if (model) {
       return {

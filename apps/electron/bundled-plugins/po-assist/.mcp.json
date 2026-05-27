@@ -1,0 +1,23 @@
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "npx",
+      "env": {
+        "DEBUG": "*"
+      },
+      "args": [
+        "-y",
+        "chrome-devtools-mcp@latest",
+        "--log-file=D:/claude/chrome-devtools-mcp.log",
+        "--userDataDir=D:/claude/chrome-devtools-profile"
+      ]
+    },
+    "drawio": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@drawio/mcp"
+      ]
+    }
+  }
+}

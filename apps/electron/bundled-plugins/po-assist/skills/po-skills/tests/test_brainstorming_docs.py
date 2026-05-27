@@ -2,7 +2,16 @@ from pathlib import Path
 
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
-SRC_ROOT = Path(__file__).resolve().parents[2]
+
+
+def find_plugin_root() -> Path:
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "commands").is_dir() and (parent / "skills" / "po-skills").is_dir():
+            return parent
+    return Path(__file__).resolve().parents[2]
+
+
+SRC_ROOT = find_plugin_root()
 
 
 def test_brainstorming_command_and_step_exist():
@@ -213,9 +222,39 @@ def test_bootstrap_self_check_is_not_exposed_as_manual_state_probe():
     assert "首次启动负责检查必需配置并初始化 `.env`" in combined
     assert "业务命令直接调用 `run.py`" in combined
     assert "不要检查 `requirements.txt`" in combined
-    assert "后续命令不要主动检查 `.env`" in combined
+    assert "后续命令不要主动检查 `.env`" not in combined
+    assert "按该命令步骤文件的配置契约先检查项目根目录 `.env`" in combined
     assert "ENV_EXISTS" not in combined
     assert "ENV_NOT_EXISTS" not in combined
+
+
+def test_common_prompt_uses_platform_neutral_skill_root():
+    combined = "\n".join(
+        [
+            (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8"),
+            (SKILL_ROOT / "common" / "init.md").read_text(encoding="utf-8"),
+        ]
+    )
+
+    assert "${CLAUDE_PLUGIN_ROOT}" not in combined
+    assert "由 Claude Code 自动解析" not in combined
+    assert "当前已加载 skill 的所在目录作为技能根目录" in combined
+    assert "POSKILL_SKILL_ROOT" in combined
+    assert "后续命令必须先读取项目根目录 `.env` 中的 `POSKILL_SKILL_ROOT`" in combined
+    assert "路径有效时禁止再次 glob、搜索或猜测技能目录" in combined
+
+
+def test_published_model_prompts_do_not_reference_claude_plugin_root():
+    paths = [
+        *sorted((SRC_ROOT / "commands").glob("*.md")),
+        *sorted((SRC_ROOT / "agents").glob("*.md")),
+        SKILL_ROOT / "SKILL.md",
+        SKILL_ROOT / "common" / "init.md",
+        *sorted((SKILL_ROOT / "steps").glob("*.md")),
+    ]
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in paths)
+
+    assert "${CLAUDE_PLUGIN_ROOT}" not in combined
 
 
 def test_commands_do_not_force_manual_env_or_dependency_checks_after_bootstrap():
@@ -242,6 +281,7 @@ def test_commands_do_not_force_manual_env_or_dependency_checks_after_bootstrap()
 def test_wiki_upload_does_not_force_manual_dependency_probe_every_time():
     command = (SRC_ROOT / "commands" / "wiki-upload.md").read_text(encoding="utf-8")
     step = (SKILL_ROOT / "steps" / "wiki-upload.md").read_text(encoding="utf-8")
+    combined = command + "\n" + step
 
     assert "确认 `markdown-to-confluence` 安装后可用的 `md2conf` 命令存在" not in command
     assert "检查 `md2conf` 是否可执行" not in step
@@ -252,17 +292,49 @@ def test_wiki_upload_does_not_force_manual_dependency_probe_every_time():
     assert "不要手工执行 `ls`" in step
     assert "不要手工执行 `grep`" in step
     assert "不要手工执行 `which md2conf`" in step
-    assert "缺文件、缺 Token、缺依赖都由脚本返回错误" in step
-    assert "首次自检" in command
-    assert "首次自检" in step
+    assert "缺文件、缺依赖都由脚本返回错误" in step
+    assert "首次自检" not in combined
+    assert "缺少必需配置时，AI 只创建/补齐 `.env` 键并提示用户填写真实值" not in combined
+    assert "如果 `.env` 缺少必需配置，AI 先创建/补齐 `.env` 模板并引导用户填写" not in combined
+
+
+def test_wiki_upload_env_and_command_contract_is_explicit():
+    command = (SRC_ROOT / "commands" / "wiki-upload.md").read_text(encoding="utf-8")
+    step = (SKILL_ROOT / "steps" / "wiki-upload.md").read_text(encoding="utf-8")
+    skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    combined = command + "\n" + step + "\n" + skill
+
+    assert "先读取项目根目录 `.env` 中的 `POSKILL_SKILL_ROOT`" in command
+    assert "路径有效时禁止再次 glob、搜索或猜测技能目录" in combined
+    assert "配置只允许写入并读取项目根目录 `.env`" in combined
+    assert "不要使用 `export HTSC_WIKI_TOKEN=...`" in combined
+    assert "不要把 Token 写进命令行参数" in combined
+    assert "run.py` 会自动读取 `.env`" in combined
+    assert "--mode update --page-id" in combined
+    assert "--space-key" in combined
+    assert "--parent-page-id" in combined
+    assert "用户说“上传回原页面”" in combined
+    assert "更新模式不读取也不传入 Space Key 或父页面默认值" in combined
+    assert "不得调用 `ht-wiki`" in combined
+    assert "${CLAUDE_PLUGIN_ROOT}" not in command
+    assert "${CLAUDE_PLUGIN_ROOT}" not in step
+    assert "技能根目录" in command
+    assert "技能根目录" in step
 
 
 def test_doc_upload_does_not_force_manual_dependency_probe_every_time():
     command = (SRC_ROOT / "commands" / "doc-upload.md").read_text(encoding="utf-8")
 
     assert "依赖校验：检查本机是否可用 `pandoc` 和 `lark-cli`" not in command
-    assert "首次自检" in command
+    assert "首次自检" not in command
     assert "不要手工探测" in command
+
+
+def test_doc_to_md_uses_global_bootstrap_guidance():
+    step = (SKILL_ROOT / "steps" / "doc-to-md.md").read_text(encoding="utf-8")
+
+    assert "引导用户执行一次 `bootstrap.py`" not in step
+    assert "按 init.md 的全局自检规则处理" in step
 
 
 def test_wiki_upload_parent_page_default_requires_user_confirmation():

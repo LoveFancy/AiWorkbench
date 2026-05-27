@@ -1,6 +1,6 @@
 {
   "name": "po-assist",
-  "version": "7.0.115",
+  "version": "7.0.119",
   "description": "产品经理工具集 - 将 Wiki 或本地文档转换为结构化 PRD 并自动创建 DPMP Story。支持文档转换、需求审查、Story 分析与创建等功能。",
   "author": {
     "name": "Qinxiao"

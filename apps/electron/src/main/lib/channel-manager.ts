@@ -109,6 +109,20 @@ function decryptKey(encryptedKey: string): string {
   }
 }
 
+function withApiKeyConfigured(channel: Channel): Channel {
+  try {
+    return {
+      ...channel,
+      apiKeyConfigured: decryptKey(channel.apiKey).trim().length > 0,
+    }
+  } catch {
+    return {
+      ...channel,
+      apiKeyConfigured: false,
+    }
+  }
+}
+
 /**
  * 获取所有渠道
  *
@@ -131,7 +145,7 @@ export function listChannels(): Channel[] {
     console.log(`[渠道管理] 已自动创建预设渠道: ${presets.addedNames.join('、')}`)
   }
 
-  return config.channels
+  return config.channels.map(withApiKeyConfigured)
 }
 
 /**
@@ -170,7 +184,7 @@ export function createChannel(input: ChannelCreateInput): Channel {
   writeConfig(config)
 
   console.log(`[渠道管理] 已创建渠道: ${channel.name} (${channel.id})`)
-  return channel
+  return withApiKeyConfigured(channel)
 }
 
 /**
@@ -205,7 +219,7 @@ export function updateChannel(id: string, input: ChannelUpdateInput): Channel {
   writeConfig(config)
 
   console.log(`[渠道管理] 已更新渠道: ${updated.name} (${updated.id})`)
-  return updated
+  return withApiKeyConfigured(updated)
 }
 
 /**

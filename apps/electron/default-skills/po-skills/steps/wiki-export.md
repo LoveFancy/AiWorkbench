@@ -97,15 +97,15 @@ cme pages "http://wiki.htzq.htsc.com.cn/pages/viewpage.action?pageId=123456789"
 命令示例：
 
 ```bash
-python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py wiki-export --mode pages "http://wiki.../pages/viewpage.action?pageId=123"
-python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py wiki-export --mode tree --output-dir "./tmp-wiki-export-demo" "http://wiki.../pages/viewpage.action?pageId=123"
-python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py wiki-export --mode space "http://wiki.../display/ABC"
+python <技能根目录>/run.py wiki-export --mode pages "http://wiki.../pages/viewpage.action?pageId=123"
+python <技能根目录>/run.py wiki-export --mode tree --output-dir "./tmp-wiki-export-demo" "http://wiki.../pages/viewpage.action?pageId=123"
+python <技能根目录>/run.py wiki-export --mode space "http://wiki.../display/ABC"
 ```
 
 多个 URL：
 
 ```bash
-python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py wiki-export --mode pages \
+python <技能根目录>/run.py wiki-export --mode pages \
   "http://wiki.../pages/viewpage.action?pageId=123" \
   "http://wiki.../pages/viewpage.action?pageId=456"
 ```

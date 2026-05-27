@@ -19,7 +19,7 @@
 
 用 `read` 工具依次读取（**不要执行任何 bash 命令，必须全部读取后再进入阶段 B**）：
 1. 输入的 `[PROD_ORI]` Markdown 文件
-2. `${CLAUDE_PLUGIN_ROOT}/skills/po-skills/references/story-feature-muc-rules.md`（**必读**，包含 Story/Feature/MUC 的划分规则和 MUC 五维度识别方法）
+2. `<技能根目录>/references/story-feature-muc-rules.md`（**必读**，包含 Story/Feature/MUC 的划分规则和 MUC 五维度识别方法）
 
 > pmconfig 已在启动时加载，无需重复读取。
 

@@ -8,6 +8,7 @@ function channel(
   id: string,
   models: Array<{ id: string; enabled: boolean }>,
   enabled = true,
+  apiKeyConfigured = true,
 ): Channel {
   return {
     id,
@@ -15,6 +16,7 @@ function channel(
     provider: 'openai',
     baseUrl: 'https://example.com',
     apiKey: 'encrypted',
+    apiKeyConfigured,
     models: models.map((model) => ({
       id: model.id,
       name: model.id,
@@ -69,6 +71,21 @@ describe('resolveSelectedModel', () => {
       modelId: 'fallback-model',
     })
   })
+
+  test('当前选择的渠道缺少 API Key 时，回退到已配置 KEY 的渠道', () => {
+    const resolved = resolveSelectedModel([
+      channel('missing-key-channel', [{ id: 'missing-key-model', enabled: true }], true, false),
+      channel('configured-channel', [{ id: 'configured-model', enabled: true }]),
+    ], {
+      channelId: 'missing-key-channel',
+      modelId: 'missing-key-model',
+    })
+
+    expect(resolved).toEqual({
+      channelId: 'configured-channel',
+      modelId: 'configured-model',
+    })
+  })
 })
 
 describe('hasUsableChatModel', () => {
@@ -83,6 +100,12 @@ describe('hasUsableChatModel', () => {
     expect(hasUsableChatModel([
       channel('disabled-channel', [{ id: 'ignored', enabled: true }], false),
       channel('empty-channel', [{ id: 'disabled-model', enabled: false }]),
+    ])).toBe(false)
+  })
+
+  test('渠道缺少 API Key 时，即使模型已启用也返回 false', () => {
+    expect(hasUsableChatModel([
+      channel('missing-key-channel', [{ id: 'enabled-model', enabled: true }], true, false),
     ])).toBe(false)
   })
 })
@@ -134,6 +157,28 @@ describe('resolveAgentSelectedModel', () => {
     expect(resolved).toEqual({
       channelId: 'fallback-channel',
       modelId: 'fallback-model',
+    })
+  })
+
+  test('Agent 白名单渠道缺少 API Key 时返回 null，触发配置提示', () => {
+    const resolved = resolveAgentSelectedModel([
+      channel('missing-key-agent', [{ id: 'agent-model', enabled: true }], true, false),
+    ], ['missing-key-agent'], null)
+
+    expect(resolved).toBeNull()
+  })
+
+  test('Proma 官方渠道无 apiKeyConfigured 字段时保持可选择', () => {
+    const promaOfficial = channel('proma-official', [{ id: 'official-model', enabled: true }])
+    delete promaOfficial.apiKeyConfigured
+
+    const resolved = resolveAgentSelectedModel([
+      promaOfficial,
+    ], [], null)
+
+    expect(resolved).toEqual({
+      channelId: 'proma-official',
+      modelId: 'official-model',
     })
   })
 })

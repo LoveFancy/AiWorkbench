@@ -19,8 +19,8 @@
 
 用 `read` 工具依次读取（**不要执行任何 bash 命令**）：
 1. 输入的 `[PROD_ORI]` Markdown 文件（包含末尾的"附录：Story 结构分析"节，获取三层结构和 key 映射）
-2. `${CLAUDE_PLUGIN_ROOT}/skills/po-skills/references/prd-convert-prompt.md`
-3. `${CLAUDE_PLUGIN_ROOT}/skills/po-skills/references/prd-template.md`
+2. `<技能根目录>/references/prd-convert-prompt.md`
+3. `<技能根目录>/references/prd-template.md`
 
 > pmconfig 已在启动时加载，无需重复读取。
 
@@ -44,7 +44,7 @@
 
 对三层结构分析表中的**每个去重后的 Story**，执行：
 
-**C1. 读取模板**：`${CLAUDE_PLUGIN_ROOT}/skills/po-skills/references/story-template.md`
+**C1. 读取模板**：`<技能根目录>/references/story-template.md`
 
 **C2. 提取并生成**（一次 `write` 一个文件，不要分步写）：
 
