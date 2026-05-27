@@ -336,7 +336,7 @@ export function GlobalShortcuts(): null {
     return cleanup
   }, [store])
 
-  // ===== 语音输入 → 写入当前 HtAiWorkBench 输入框 =====
+  // ===== 语音输入 → 写入当前 WorkMate 输入框 =====
 
   useEffect(() => {
     const cleanup = window.electronAPI.onVoiceDictationInsertText(({ text }) => {

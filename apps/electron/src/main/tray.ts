@@ -101,12 +101,12 @@ function buildTrayMenu(actions: TrayActions): Menu {
     },
     { type: 'separator' },
     {
-      label: '打开 HtAiWorkBench',
+      label: '打开 WorkMate 伴行',
       click: () => actions.showMainWindow(),
     },
     { type: 'separator' },
     {
-      label: '退出 HtAiWorkBench',
+      label: '退出 WorkMate 伴行',
       click: () => {
         app.quit()
       },
@@ -148,7 +148,7 @@ export function createTray(actionsInput?: Partial<TrayActions>): Tray | null {
     tray = new Tray(image)
 
     // 设置 tooltip
-    tray.setToolTip('HtAiWorkBench')
+    tray.setToolTip('WorkMate 伴行')
 
     updateTrayMenu(actions)
 

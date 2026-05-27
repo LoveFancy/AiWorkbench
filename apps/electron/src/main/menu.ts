@@ -16,17 +16,17 @@ export function createApplicationMenu(): Menu {
     ...(isMac
       ? [
           {
-            label: 'HtAiWorkBench',
+            label: 'WorkMate',
             submenu: [
-              { role: 'about' as const, label: '关于 HtAiWorkBench' },
+              { role: 'about' as const, label: '关于 WorkMate 伴行' },
               { type: 'separator' as const },
               { role: 'services' as const, label: '服务' },
               { type: 'separator' as const },
-              { role: 'hide' as const, label: '隐藏 HtAiWorkBench' },
+              { role: 'hide' as const, label: '隐藏 WorkMate 伴行' },
               { role: 'hideOthers' as const, label: '隐藏其他' },
               { role: 'unhide' as const, label: '显示全部' },
               { type: 'separator' as const },
-              { role: 'quit' as const, label: '退出 HtAiWorkBench' },
+              { role: 'quit' as const, label: '退出 WorkMate 伴行' },
             ],
           },
         ]

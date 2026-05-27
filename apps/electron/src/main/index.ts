@@ -8,7 +8,7 @@ if (!app.isPackaged) {
   app.setPath('userData', join(app.getPath('appData'), '@proma/electron-dev'))
 }
 
-app.setName('HtAiWorkBench')
+app.setName('WorkMate')
 
 // 单实例锁：防止重复启动同一个版本（dev/prod 因 userData 已隔离，互不影响）
 //

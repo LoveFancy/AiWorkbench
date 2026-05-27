@@ -55,7 +55,7 @@ export function OnboardingView({ onComplete }: OnboardingViewProps) {
       {step === 'welcome' && (
         <>
           <div className="mb-12 text-center">
-            <h1 className="text-4xl font-bold mb-4">欢迎使用 HtAiWorkBench</h1>
+            <h1 className="text-4xl font-bold mb-4">欢迎使用 WorkMate 伴行</h1>
             <p className="text-lg text-muted-foreground">
               下一代桌面 AI 软件，让通用 Agent 触手可及
             </p>
@@ -73,7 +73,7 @@ export function OnboardingView({ onComplete }: OnboardingViewProps) {
                 <div className="flex-1">
                   <h3 className="text-sm font-semibold text-foreground">查看使用教程</h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    了解 HtAiWorkBench 的全部功能和使用技巧
+                    了解 WorkMate 伴行的全部功能和使用技巧
                   </p>
                 </div>
               </button>
@@ -104,7 +104,7 @@ export function OnboardingView({ onComplete }: OnboardingViewProps) {
           <div className="mb-6 text-center">
             <h2 className="text-2xl font-semibold mb-2">先检查一下环境</h2>
             <p className="text-sm text-muted-foreground">
-              HtAiWorkBench 在 Windows 上需要 Git Bash 或 WSL 才能执行命令
+              WorkMate 在 Windows 上需要 Git Bash 或 WSL 才能执行命令
             </p>
           </div>
 
@@ -139,7 +139,7 @@ export function OnboardingView({ onComplete }: OnboardingViewProps) {
           <SheetHeader className="px-6 pt-6 pb-4 border-b">
             <SheetTitle className="flex items-center gap-2">
               <GraduationCap size={18} className="text-primary" />
-              HtAiWorkBench 使用教程
+              WorkMate 伴行使用教程
             </SheetTitle>
           </SheetHeader>
           <ScrollArea className="h-[calc(100vh-80px)]">

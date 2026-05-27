@@ -461,7 +461,7 @@ ${skillList}
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom" className="max-w-xs text-xs">
-                    HtAiWorkBench Agent 内置 Skills Finder，你可以在 Agent 模式下要求 HtAiWorkBench 帮你联网查找某类 Skills 并安装到当前的工作区使用；也可以跟 HtAiWorkBench Agent 一起探讨，利用 HtAiWorkBench Agent 内置的 Skills Creator 来一起创建高质量可复用的 Skills 到当前的工作区
+                    WorkMate Agent 内置 Skills Finder，你可以在 Agent 模式下要求 WorkMate 帮你联网查找某类 Skills 并安装到当前的工作区使用；也可以跟 WorkMate Agent 一起探讨，利用 WorkMate Agent 内置的 Skills Creator 来一起创建高质量可复用的 Skills 到当前的工作区
                   </TooltipContent>
                 </Tooltip>
                 <Button size="sm" variant="outline" onClick={() => setShowImportDialog(true)}>
@@ -545,7 +545,7 @@ ${skillList}
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom" className="max-w-xs text-xs">
-                    HtAiWorkBench Agent 可以帮助你联网查找公开的 MCP 并配置到当前工作区，你可以在 Agent 模式下用自然语言表达你想要的 MCP 并要求安装到当前工作区即可；也可以跟 HtAiWorkBench Agent 一起探讨创建你的专属 MCP 到当前工作区
+                    WorkMate Agent 可以帮助你联网查找公开的 MCP 并配置到当前工作区，你可以在 Agent 模式下用自然语言表达你想要的 MCP 并要求安装到当前工作区即可；也可以跟 WorkMate Agent 一起探讨创建你的专属 MCP 到当前工作区
                   </TooltipContent>
                 </Tooltip>
                 <Button size="sm" variant="outline" onClick={() => { setActiveTab('mcp'); setViewMode('create') }}>

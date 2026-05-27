@@ -442,7 +442,7 @@ function ShellEnvironmentCard(): React.ReactElement | null {
 export function AboutSettings(): React.ReactElement {
   return (
     <SettingsSection
-      title="关于 HtAiWorkBench"
+      title="关于 WorkMate 伴行"
       description="集成通用 AI Agent 的下一代人工智能软件"
     >
       <SettingsCard>
@@ -451,6 +451,9 @@ export function AboutSettings(): React.ReactElement {
         </SettingsRow>
         <SettingsRow label="运行时">
           <span className="text-sm text-muted-foreground">Electron + React</span>
+        </SettingsRow>
+        <SettingsRow label="作者">
+          <span className="text-sm text-muted-foreground">秦晓 012950</span>
         </SettingsRow>
       </SettingsCard>
 

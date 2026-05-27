@@ -30,7 +30,7 @@ export function buildAgentReplyCard(result: FormattedAgentResult, subtitle?: str
   return {
     config: { wide_screen_mode: true },
     header: {
-      title: { tag: 'plain_text', content: 'HtAiWorkBench Agent' },
+      title: { tag: 'plain_text', content: 'WorkMate Agent' },
       ...(subtitle ? { subtitle: { tag: 'plain_text', content: subtitle } } : {}),
       template: 'blue',
     },
@@ -61,7 +61,7 @@ export function buildNotificationCard(
   return {
     config: { wide_screen_mode: true },
     header: {
-      title: { tag: 'plain_text', content: 'HtAiWorkBench 任务完成' },
+      title: { tag: 'plain_text', content: 'WorkMate 任务完成' },
       template: 'green',
     },
     elements: [
@@ -73,7 +73,7 @@ export function buildNotificationCard(
         { tag: 'hr' },
         {
           tag: 'note',
-          elements: [{ tag: 'plain_text', content: `${toolLine} | 在 HtAiWorkBench 中查看完整回复` }],
+          elements: [{ tag: 'plain_text', content: `${toolLine} | 在 WorkMate 中查看完整回复` }],
         },
       ] : []),
     ],
@@ -87,7 +87,7 @@ export function buildErrorCard(errorMessage: string): Record<string, unknown> {
   return {
     config: { wide_screen_mode: true },
     header: {
-      title: { tag: 'plain_text', content: 'HtAiWorkBench 错误' },
+      title: { tag: 'plain_text', content: 'WorkMate 错误' },
       template: 'red',
     },
     elements: [
@@ -250,7 +250,7 @@ export function buildHelpCard(): Record<string, unknown> {
   return {
     config: { wide_screen_mode: true },
     header: {
-      title: { tag: 'plain_text', content: 'HtAiWorkBench Bot 命令' },
+      title: { tag: 'plain_text', content: 'WorkMate Bot 命令' },
       template: 'blue',
     },
     elements: [
@@ -303,7 +303,7 @@ function formatToolSummaryLine(summaries: ToolSummary[], durationSeconds: number
  */
 function truncateForFeishu(text: string, maxLength = 25000): string {
   if (text.length <= maxLength) return text
-  return text.slice(0, maxLength) + '\n\n... [内容过长，请在 HtAiWorkBench 中查看完整回复]'
+  return text.slice(0, maxLength) + '\n\n... [内容过长，请在 WorkMate 中查看完整回复]'
 }
 
 /**

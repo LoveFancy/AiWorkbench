@@ -1,7 +1,7 @@
 {
   "name": "@proma/electron",
-  "version": "0.10.4",
-  "description": "HtAiWorkBench next gen ai software with general agents - Electron App",
+  "version": "0.10.5",
+  "description": "WorkMate next gen ai software with general agents - Electron App",
   "main": "dist/main.cjs",
   "author": {
     "name": "ErlichLiu",

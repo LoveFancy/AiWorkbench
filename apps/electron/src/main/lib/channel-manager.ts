@@ -95,6 +95,18 @@ function encryptApiKey(plainKey: string): string {
  * @returns 明文 API Key
  */
 function decryptKey(encryptedKey: string): string {
+  return decryptKeyInternal(encryptedKey, { logError: true })
+}
+
+function tryDecryptKey(encryptedKey: string): string | null {
+  try {
+    return decryptKeyInternal(encryptedKey, { logError: false })
+  } catch {
+    return null
+  }
+}
+
+function decryptKeyInternal(encryptedKey: string, options: { logError: boolean }): string {
   if (!safeStorage.isEncryptionAvailable()) {
     // 如果加密不可用，假设存储的是明文
     return encryptedKey
@@ -104,22 +116,18 @@ function decryptKey(encryptedKey: string): string {
     const buffer = Buffer.from(encryptedKey, 'base64')
     return safeStorage.decryptString(buffer)
   } catch (error) {
-    console.error('[渠道管理] 解密 API Key 失败:', error)
+    if (options.logError) {
+      console.warn('[渠道管理] API Key 解密失败，请重新填写该渠道的 API Key。', error)
+    }
     throw new Error('解密 API Key 失败')
   }
 }
 
 function withApiKeyConfigured(channel: Channel): Channel {
-  try {
-    return {
-      ...channel,
-      apiKeyConfigured: decryptKey(channel.apiKey).trim().length > 0,
-    }
-  } catch {
-    return {
-      ...channel,
-      apiKeyConfigured: false,
-    }
+  const apiKey = tryDecryptKey(channel.apiKey)
+  return {
+    ...channel,
+    apiKeyConfigured: apiKey !== null && apiKey.trim().length > 0,
   }
 }
 
@@ -290,7 +298,7 @@ export async function testChannel(channelId: string): Promise<ChannelTestResult>
       case 'google':
         return await testGoogle(channel.baseUrl, apiKey, proxyUrl)
       default:
-        return { success: false, message: `不支持的供应商: ${channel.provider}。你可能过去使用的是 HtAiWorkBench 商业版，请重新下载商业版覆盖安装，当前版本为开源版本。` }
+        return { success: false, message: `不支持的供应商: ${channel.provider}。你可能过去使用的是 WorkMate 商业版，请重新下载商业版覆盖安装，当前版本为开源版本。` }
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : '未知错误'
