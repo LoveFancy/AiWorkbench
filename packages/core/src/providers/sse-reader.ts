@@ -14,6 +14,13 @@ import type { ProviderAdapter, ProviderRequest, StreamEventCallback, ThinkingBlo
 
 // ===== 流式请求 =====
 
+interface ApiErrorBody {
+  code?: unknown
+  msg?: unknown
+  message?: unknown
+  error?: unknown
+}
+
 /** streamSSE 的输入选项 */
 export interface StreamSSEOptions {
   /** 构建好的 HTTP 请求配置 */
@@ -87,6 +94,8 @@ export async function streamSSE(options: StreamSSEOptions): Promise<StreamSSERes
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  let rawResponseText = ''
+  let hasSSEPayload = false
 
   // 工具调用追踪
   const pendingToolCalls = new Map<string, { id: string; name: string; args: string; metadata?: Record<string, unknown> }>()
@@ -101,7 +110,9 @@ export async function streamSSE(options: StreamSSEOptions): Promise<StreamSSERes
       const { done, value } = await reader.read()
       if (done) break
 
-      buffer += decoder.decode(value, { stream: true })
+      const chunkText = decoder.decode(value, { stream: true })
+      rawResponseText += chunkText
+      buffer += chunkText
       const lines = buffer.split('\n')
       // 保留最后一个可能不完整的行
       buffer = lines.pop() || ''
@@ -117,6 +128,12 @@ export async function streamSSE(options: StreamSSEOptions): Promise<StreamSSERes
           continue
         }
         if (data === '[DONE]' || !data) continue
+        hasSSEPayload = true
+
+        const lineError = extractBusinessError(data, adapter.providerType)
+        if (lineError) {
+          throw new Error(lineError)
+        }
 
         // 4. 委托给 adapter 解析供应商特定 JSON
         const events = adapter.parseSSELine(data)
@@ -174,6 +191,13 @@ export async function streamSSE(options: StreamSSEOptions): Promise<StreamSSERes
     reader.releaseLock()
   }
 
+  if (!hasSSEPayload) {
+    const businessError = extractBusinessError(rawResponseText, adapter.providerType)
+    if (businessError) {
+      throw new Error(businessError)
+    }
+  }
+
   // 将 pending 工具调用解析为最终结果
   const toolCalls: ToolCall[] = []
   for (const [, pending] of pendingToolCalls) {
@@ -202,6 +226,70 @@ export async function streamSSE(options: StreamSSEOptions): Promise<StreamSSERes
 
   onEvent({ type: 'done', stopReason })
   return { content, reasoning, thinkingBlocks, toolCalls, stopReason }
+}
+
+function extractBusinessError(rawText: string, providerType: string): string | null {
+  const trimmed = rawText.trim()
+  if (!trimmed) return null
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(trimmed)
+  } catch {
+    return null
+  }
+
+  if (!isRecord(parsed)) return null
+
+  const error = parsed.error
+  if (isRecord(error)) {
+    const message = readString(error.message) ?? readString(error.msg) ?? readString(error.type)
+    if (message) {
+      return `${providerType} API 错误${formatCode(error.code)}: ${message}`
+    }
+  }
+
+  if (typeof error === 'string' && error) {
+    return `${providerType} API 错误: ${error}`
+  }
+
+  const body = parsed as ApiErrorBody
+  if (hasMeaningfulErrorCode(body.code)) {
+    const message = readString(body.msg) ?? readString(body.message) ?? trimmed.slice(0, 300)
+    return `${providerType} API 业务错误 (${String(body.code)}): ${message}`
+  }
+
+  const message = readString(body.message) ?? readString(body.msg)
+  if (message && !looksLikeSuccessBody(parsed)) {
+    return `${providerType} API 错误: ${message}`
+  }
+
+  return null
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value : null
+}
+
+function hasMeaningfulErrorCode(code: unknown): boolean {
+  if (code === undefined || code === null) return false
+  const normalized = String(code).trim().toLowerCase()
+  return normalized !== '0' && normalized !== '200' && normalized !== 'ok' && normalized !== 'success'
+}
+
+function formatCode(code: unknown): string {
+  if (code === undefined || code === null || code === '') return ''
+  return ` (${String(code)})`
+}
+
+function looksLikeSuccessBody(value: Record<string, unknown>): boolean {
+  const code = value.code
+  if (code === undefined || code === null) return false
+  return !hasMeaningfulErrorCode(code)
 }
 
 // ===== 非流式标题请求 =====
