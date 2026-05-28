@@ -2,10 +2,16 @@ import { app, BrowserWindow, dialog, Menu, nativeTheme, protocol, screen, shell 
 import { join } from 'path'
 import { existsSync } from 'fs'
 
-// Dev 与正式版使用独立的 userData 目录，避免共享 Chromium SingletonLock 导致 dev 启动被静默退出
-// 必须在任何会读取 userData 路径的模块加载之前执行
+// userData 目录必须在任何 safeStorage 调用前固定。
+// safeStorage 的密钥材料依赖 userData/Local State；应用展示名改为 WorkMate 后，
+// 仍沿用旧目录名，避免老版本 HtAiWorkBench 保存的 API Key 无法解密。
+const SAFE_STORAGE_USER_DATA_NAME = 'HtAiWorkBench'
+
 if (!app.isPackaged) {
+  // Dev 与正式版使用独立的 userData 目录，避免共享 Chromium SingletonLock 导致 dev 启动被静默退出
   app.setPath('userData', join(app.getPath('appData'), '@proma/electron-dev'))
+} else {
+  app.setPath('userData', join(app.getPath('appData'), SAFE_STORAGE_USER_DATA_NAME))
 }
 
 app.setName('WorkMate')

@@ -15,6 +15,8 @@ test('Electron 应用品牌名统一为 WorkMate', () => {
 
   expect(builderConfig).toContain('productName: WorkMate')
   expect(mainSource).toContain("app.setName('WorkMate')")
+  expect(mainSource).toContain("const SAFE_STORAGE_USER_DATA_NAME = 'HtAiWorkBench'")
+  expect(mainSource).toContain("app.setPath('userData', join(app.getPath('appData'), SAFE_STORAGE_USER_DATA_NAME))")
   expect(traySource).toContain("tray.setToolTip('WorkMate 伴行')")
   expect(traySource).not.toContain('DevAssist')
   expect(indexHtml).toContain('<title>WorkMate 伴行</title>')
