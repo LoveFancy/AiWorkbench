@@ -60,10 +60,12 @@ export const PROVIDER_DEFAULT_MODELS: Partial<Record<ProviderType, ChannelModel[
     { id: 'MiniMax-M2.7', name: 'MiniMax-M2.7', enabled: true },
   ],
   'huatai-anthropic': [
-    { id: 'local-glm-47-flash', name: 'local-glm-47-flash', enabled: true },
-    { id: 'saas-kimi-k25', name: 'saas-kimi-k25', enabled: true },
-    { id: 'local-deepseek-v4-flash', name: 'local-deepseek-v4-flash', enabled: true },
-    { id: 'local-deepseek-v4-pro', name: 'local-deepseek-v4-pro', enabled: true },
+    { id: 'local-glm-47-flash', name: 'local-glm-47-flash', enabled: false },
+    { id: 'saas-kimi-k25', name: 'saas-kimi-k25', enabled: false },
+    { id: 'local-deepseek-v4-flash', name: 'local-deepseek-v4-flash', enabled: false },
+    { id: 'local-deepseek-v4-pro', name: 'local-deepseek-v4-pro', enabled: false },
+    { id: 'saas-deepseek-v4-flash', name: 'saas-deepseek-v4-flash', enabled: false },
+    { id: 'saas-deepseek-v4-pro', name: 'saas-deepseek-v4-pro', enabled: false },
   ],
   'huatai-openai': [
     { id: 'local-deepseek-v4-flash', name: 'local-deepseek-v4-flash', enabled: true },

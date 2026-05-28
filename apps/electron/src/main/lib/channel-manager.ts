@@ -145,6 +145,7 @@ export function listChannels(): Channel[] {
     now: Date.now,
     createId: () => randomUUID(),
     encryptApiKey,
+    decryptApiKey: tryDecryptKey,
   })
 
   if (presets.changed) {
