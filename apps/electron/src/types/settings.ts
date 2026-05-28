@@ -156,7 +156,7 @@ export type ThemeStyle = 'default' | 'ocean-light' | 'ocean-dark' | 'forest-ligh
 export const DEFAULT_THEME_MODE: ThemeMode = 'special'
 
 /** 默认特殊风格 */
-export const DEFAULT_THEME_STYLE: ThemeStyle = 'ocean-dark'
+export const DEFAULT_THEME_STYLE: ThemeStyle = 'slate-light'
 
 /** Markdown 预览字号档位 */
 export type MarkdownFontSize = 'small' | 'medium' | 'large'
