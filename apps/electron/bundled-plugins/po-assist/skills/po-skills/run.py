@@ -2,10 +2,10 @@
 """
 po-skills 本地执行入口
 
-位置：<技能根目录>/run.py（与 SKILL.md 同目录）
-执行方式（始终从项目根目录执行，不需要 cd）：
-  python3 <技能根目录>/run.py <命令> [参数]
-  python3 <技能根目录>/run.py <命令> --help
+位置：run.py（与 SKILL.md 同目录）
+执行方式（文档中只写相对路径，执行前按当前 SKILL.md 所在目录解析）：
+  python3 run.py <命令> [参数]
+  python3 run.py <命令> --help
 
 十步以内工作流核心脚本：
   doc-convert      Wiki/JSON → 干净 Markdown（[PROD_ORI] 前缀）+ 图片分析
@@ -18,10 +18,10 @@ po-skills 本地执行入口
   fetch-title   获取 Confluence 页面标题
 
 示例：
-  python3 <技能根目录>/run.py doc-convert --url "http://wiki.../pageId=123456" --output-dir ./TAILOR-124/1.产品设计
-  python3 <技能根目录>/run.py doc-to-md --file ./data/spec.pdf
-  python3 <技能根目录>/run.py wiki-export --mode pages "http://wiki.../pageId=123456"
-  python3 <技能根目录>/run.py story-create --story-plan "./TAILOR-124/1.产品设计/[STORY_PLAN]xxx.csv"
+  python3 run.py doc-convert --url "http://wiki.../pageId=123456" --output-dir ./TAILOR-124/PRODUCT_DESIGN
+  python3 run.py doc-to-md --file ./data/spec.pdf
+  python3 run.py wiki-export --mode pages "http://wiki.../pageId=123456"
+  python3 run.py story-create --story-plan "./TAILOR-124/PRODUCT_DESIGN/[STORY_PLAN]xxx.csv"
 """
 
 import sys
@@ -29,7 +29,6 @@ import os
 import re
 import uuid
 import io
-import tempfile
 from datetime import datetime
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -109,6 +108,9 @@ SCRIPTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts"
 REFS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "references")
 sys.path.insert(0, SCRIPTS_DIR)
 
+DESIGN_DIR_NAME = "PRODUCT_DESIGN"
+REFERENCES_DIR_NAME = "REFERENCES"
+
 
 def _read_ref(filename: str) -> str:
     path = os.path.join(REFS_DIR, filename)
@@ -125,54 +127,6 @@ def _project_workspace_root() -> str:
     if output_path_prefix:
         return os.path.abspath(os.path.expanduser(output_path_prefix))
     return os.getcwd()
-
-
-def _write_runtime_skill_root(project_root: str, skill_dir: str) -> None:
-    env_path = Path(project_root) / ".env"
-    skill_dir = str(Path(skill_dir).resolve())
-    existing = env_path.read_text(encoding="utf-8") if env_path.is_file() else ""
-    lines = existing.splitlines()
-    rendered = []
-    updated = False
-
-    for line in lines:
-        if re.match(r"^\s*(?:export\s+)?POSKILL_SKILL_ROOT\s*=", line):
-            rendered.append(f"POSKILL_SKILL_ROOT={skill_dir}")
-            updated = True
-        else:
-            rendered.append(line)
-
-    if not updated:
-        if rendered and rendered[-1].strip():
-            rendered.append("")
-        rendered.append("# Poskill runtime")
-        rendered.append(f"POSKILL_SKILL_ROOT={skill_dir}")
-
-    content = "\n".join(rendered).rstrip() + "\n"
-    env_path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        dir=str(env_path.parent),
-        prefix=".env.",
-        suffix=".tmp",
-        delete=False,
-    ) as handle:
-        handle.write(content)
-        temp_path = Path(handle.name)
-    temp_path.replace(env_path)
-
-
-def _runtime_config_root() -> str:
-    project_root = os.path.abspath(_project_root)
-    skill_dir = os.path.abspath(_SKILL_DIR)
-    cwd = os.path.abspath(os.getcwd())
-    if project_root == skill_dir and cwd != skill_dir:
-        return cwd
-    return project_root
-
-
-_write_runtime_skill_root(_runtime_config_root(), _SKILL_DIR)
 
 
 def _rel(path: str) -> str:
@@ -194,8 +148,8 @@ def _workspace_paths() -> dict[str, str]:
 def _resolve_req_layout(reqid: str) -> dict[str, str]:
     root = _project_workspace_root()
     req_root = os.path.join(root, "newreq", reqid)
-    design_dir = os.path.join(req_root, "1.产品设计")
-    references_dir = os.path.join(req_root, "references")
+    design_dir = os.path.join(req_root, DESIGN_DIR_NAME)
+    references_dir = os.path.join(req_root, REFERENCES_DIR_NAME)
     paths = _workspace_paths()
     return {
         "reqid": reqid,
@@ -203,7 +157,6 @@ def _resolve_req_layout(reqid: str) -> dict[str, str]:
         "design_dir": design_dir,
         "images_dir": os.path.join(design_dir, "images"),
         "references_dir": references_dir,
-        "reference_images_dir": os.path.join(references_dir, "images"),
         "raw_dir": paths["raw_dir"],
         "wiki_dir": paths["wiki_dir"],
         "req_index": paths["req_index"],
@@ -366,7 +319,6 @@ def _ensure_req_workspace(reqid: str, title: str = "") -> tuple[dict[str, str], 
         layout["design_dir"],
         layout["images_dir"],
         layout["references_dir"],
-        layout["reference_images_dir"],
     ):
         os.makedirs(path, exist_ok=True)
     index_updated = _update_req_index(reqid, title, _rel(layout["req_root"]))
@@ -411,7 +363,6 @@ def _resolve_existing_req_by_id(reqid: str) -> dict[str, str]:
         layout["design_dir"],
         layout["references_dir"],
         layout["images_dir"],
-        layout["reference_images_dir"],
     ]
     if not all(os.path.exists(path) for path in required):
         print(f"需求空间不存在或不完整：newreq/{reqid}。请先执行 newreq。", file=sys.stderr)
@@ -473,35 +424,63 @@ def _lark_doc_token(value: str) -> str:
     return _safe_raw_doc_dir_name(token, "飞书文档")
 
 
-def _doc_convert_raw_subdir(opts, dc, *, is_lark_url: bool) -> str:
-    raw_dir = _workspace_paths()["raw_dir"]
+def _lark_doc_title_or_token(doc: str, ldm) -> str:
+    fallback = _lark_doc_token(doc)
+    try:
+        return _safe_raw_doc_dir_name(ldm.fetch_lark_doc_title(doc, fallback), fallback)
+    except Exception:
+        return fallback
+
+
+def _doc_convert_doc_name(opts, dc, ldm, *, is_lark_url: bool) -> str:
     if is_lark_url:
-        doc_name = _lark_doc_token(opts.url)
-    elif opts.file:
+        return _lark_doc_title_or_token(opts.url, ldm)
+    if opts.file:
         try:
             title, _html, _page_id = dc.load_from_json(opts.file)
-            doc_name = _safe_raw_doc_dir_name(title, os.path.splitext(os.path.basename(opts.file))[0])
+            return _safe_raw_doc_dir_name(title, os.path.splitext(os.path.basename(opts.file))[0])
         except Exception:
-            doc_name = _safe_raw_doc_dir_name(os.path.splitext(os.path.basename(opts.file))[0], "文档")
-    else:
-        token = os.environ.get("HTSC_WIKI_TOKEN", "")
-        page_id = dc.extract_page_id(opts.url)
-        title = dc._fetch_page_title(token, page_id) if token else page_id
-        doc_name = _safe_raw_doc_dir_name(title, page_id)
-    output_dir = os.path.join(raw_dir, doc_name)
+            return _safe_raw_doc_dir_name(os.path.splitext(os.path.basename(opts.file))[0], "文档")
+    token = os.environ.get("HTSC_WIKI_TOKEN", "")
+    page_id = dc.extract_page_id(opts.url)
+    title = dc._fetch_page_title(token, page_id) if token else page_id
+    return _safe_raw_doc_dir_name(title, page_id)
+
+
+def _document_subdir(base_dir: str, doc_name: str) -> str:
+    output_dir = os.path.join(base_dir, doc_name)
     os.makedirs(output_dir, exist_ok=True)
     return _rel(output_dir)
+
+
+def _doc_convert_raw_subdir(opts, dc, ldm, *, is_lark_url: bool) -> str:
+    return _document_subdir(
+        _workspace_paths()["raw_dir"],
+        _doc_convert_doc_name(opts, dc, ldm, is_lark_url=is_lark_url),
+    )
+
+
+def _path_under_workspace(path: str) -> str:
+    expanded = os.path.expanduser(path)
+    if os.path.isabs(expanded):
+        return os.path.abspath(expanded)
+    return os.path.abspath(os.path.join(_project_workspace_root(), expanded))
+
+
+def _is_references_root(path: str) -> bool:
+    return os.path.basename(_path_under_workspace(path)) == REFERENCES_DIR_NAME
 
 
 def _resolve_doc_to_md_output_dir(opts, parser) -> str:
     if opts.output_dir:
         output_dir = opts.output_dir
-        root = os.path.abspath(_project_workspace_root())
         raw_dir = os.path.abspath(_workspace_paths()["raw_dir"])
-        candidate = os.path.abspath(os.path.join(root, output_dir))
+        candidate = _path_under_workspace(output_dir)
+        doc_name = _safe_raw_doc_dir_name(os.path.splitext(os.path.basename(opts.file))[0], "文档")
         if candidate == raw_dir:
-            doc_name = os.path.splitext(os.path.basename(opts.file))[0]
-            return _rel(os.path.join(raw_dir, doc_name))
+            return _document_subdir(raw_dir, doc_name)
+        if os.path.basename(candidate) == REFERENCES_DIR_NAME:
+            return _document_subdir(candidate, doc_name)
         return output_dir
     if opts.reqid:
         return _rel(_resolve_existing_req_by_id(opts.reqid)["design_dir"])
@@ -632,7 +611,7 @@ def cmd_doc_convert(args):
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--url", help="Confluence 页面 URL 或纯数字 page_id（需要 HTSC_WIKI_TOKEN）")
     group.add_argument("--file", help="本地 JSON 文件路径（Confluence API 响应格式，无需 Token）")
-    parser.add_argument("--reqid", default=None, help="输出到 newreq/<REQID>/1.产品设计")
+    parser.add_argument("--reqid", default=None, help="输出到 newreq/<REQID>/PRODUCT_DESIGN")
     parser.add_argument("--raw", action="store_true", help="输出到项目根目录 raw/")
     parser.add_argument("--output-dir", default=None,
                         help="显式输出目录（兼容/高级参数）")
@@ -646,7 +625,12 @@ def cmd_doc_convert(args):
     is_lark_url = bool(opts.url and ldm.is_lark_doc_url(opts.url))
     output_dir = _resolve_doc_convert_output_dir(opts, parser, default_raw=is_lark_url)
     if not opts.output_dir and (opts.raw or (is_lark_url and not opts.reqid)):
-        output_dir = _doc_convert_raw_subdir(opts, dc, is_lark_url=is_lark_url)
+        output_dir = _doc_convert_raw_subdir(opts, dc, ldm, is_lark_url=is_lark_url)
+    elif opts.output_dir and _is_references_root(output_dir):
+        output_dir = _document_subdir(
+            _path_under_workspace(output_dir),
+            _doc_convert_doc_name(opts, dc, ldm, is_lark_url=is_lark_url),
+        )
     print(f"输出目录：{output_dir}")
 
     if opts.file:
@@ -684,7 +668,7 @@ def cmd_doc_to_md(args):
         description="工具：将本地文档转换为干净的 Markdown 文件",
     )
     parser.add_argument("--file", required=True, help="本地文档路径，如 doc/docx/pdf")
-    parser.add_argument("--reqid", default=None, help="输出到 newreq/<REQID>/1.产品设计")
+    parser.add_argument("--reqid", default=None, help="输出到 newreq/<REQID>/PRODUCT_DESIGN")
     parser.add_argument(
         "--output-dir",
         default=None,
@@ -797,6 +781,14 @@ def cmd_enhance_content(args):
         default=[],
         help="保留原名（可重复）：--keep 路径",
     )
+    parser.add_argument(
+        "--describe",
+        nargs=2,
+        metavar=("PATH", "TEXT"),
+        action="append",
+        default=[],
+        help="图片说明（可重复）：--describe 图片路径 说明文本",
+    )
     opts = parser.parse_args(args)
 
     # 构造透传给 content_enhancer 的 argv
@@ -805,6 +797,8 @@ def cmd_enhance_content(args):
         ce_argv += ["--rename", old, new]
     for path in opts.keep:
         ce_argv += ["--keep", path]
+    for path, text in opts.describe:
+        ce_argv += ["--describe", path, text]
 
     sys.argv = ce_argv
     ce.main()
@@ -867,7 +861,7 @@ def cmd_init_story(args):
         print(f"错误：文件不存在：{prd_path}", file=sys.stderr)
         sys.exit(1)
 
-    # 推断需求根目录（1.产品设计 的上级）
+    # 推断需求根目录（PRODUCT_DESIGN 的上级）
     design_dir = os.path.dirname(prd_path)
     req_root = os.path.dirname(design_dir)
 

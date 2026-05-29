@@ -16,6 +16,8 @@ if (!app.isPackaged) {
 
 app.setName('WorkMate')
 
+installFileLogger(app.getPath('logs'))
+
 // 单实例锁：防止重复启动同一个版本（dev/prod 因 userData 已隔离，互不影响）
 //
 // 失败的常见原因：用户升级新版本时旧版进程仍在后台运行（macOS 关闭窗口 = hide
@@ -67,6 +69,7 @@ function registerProtocolsAndHandlers(): void {
 
 import { getSettings, updateSettings } from './lib/settings-service'
 import { handlePromaFileRequest } from './lib/local-file-protocol'
+import { attachRendererLogCapture, installFileLogger } from './lib/file-logger'
 
 // 处理 EPIPE 错误：当 stdout/stderr 管道被关闭时（如 electronmon 重启），忽略写入错误
 // 这在开发环境热重载时经常发生，不影响应用功能
@@ -301,6 +304,7 @@ function createWindow(): void {
     ...titleBarOptions,
   })
   installWindowsZoomInFallback(mainWindow)
+  attachRendererLogCapture(mainWindow, app.getPath('logs'))
 
   // Load the renderer
   const isDev = !app.isPackaged

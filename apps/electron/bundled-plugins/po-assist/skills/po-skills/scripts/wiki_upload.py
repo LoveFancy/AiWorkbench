@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -13,6 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
+from console_scripts import resolve_console_script
 from wiki_network import build_confluence_env
 
 
@@ -26,8 +28,17 @@ _MD2CONF_DESCENDANT_PAGE_ERROR_RE = re.compile(
     r"expected:\s*page with ID\s+(\d+)\s+to be a descendant of the root page",
     re.IGNORECASE,
 )
+_MD2CONF_LEGACY_API_ERROR_PATTERNS = (
+    "ScannedDocument",
+    "Scanner().scan()",
+    "Scanner().parse()",
+    "ConfluenceDocument",
+    "object has no len()",
+)
 _STANDALONE_MD_IMAGE_RE = re.compile(r"^(?P<indent>\s*)!\[(?P<alt>[^\]\n]*)\]\((?P<src>[^)\n]+)\)\s*$")
+_MERMAID_FENCE_RE = re.compile(r"(?im)^\s*(?:```|~~~)\s*mermaid(?:\s|$)")
 DEFAULT_CONFLUENCE_BASE_URL = "http://wiki.htzq.htsc.com.cn"
+MERMAID_CLI_PACKAGE = "@mermaid-js/mermaid-cli"
 
 
 def _configure_stdio() -> None:
@@ -179,6 +190,73 @@ def _prepare_sync_source(
         return Path(handle.name), True
 
 
+def _default_skill_dir() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def _local_node_bin_dir(skill_dir: Path) -> Path:
+    return skill_dir / "node_modules" / ".bin"
+
+
+def _local_mermaid_cli_paths(skill_dir: Path) -> list[Path]:
+    local_bin = _local_node_bin_dir(skill_dir)
+    return [local_bin / "mmdc", local_bin / "mmdc.cmd", local_bin / "mmdc.ps1"]
+
+
+def _has_mermaid_fence(markdown: str) -> bool:
+    return bool(_MERMAID_FENCE_RE.search(markdown))
+
+
+def _prepend_local_node_bin(env: dict[str, str], skill_dir: Path) -> dict[str, str]:
+    updated = dict(env)
+    local_bin = str(_local_node_bin_dir(skill_dir))
+    current_path = updated.get("PATH", os.environ.get("PATH", ""))
+    parts = [part for part in current_path.split(os.pathsep) if part]
+    if local_bin not in parts:
+        updated["PATH"] = os.pathsep.join([local_bin, *parts])
+    else:
+        updated["PATH"] = os.pathsep.join(parts)
+    return updated
+
+
+def _mermaid_cli_available(env: dict[str, str], skill_dir: Path) -> bool:
+    if any(path.exists() for path in _local_mermaid_cli_paths(skill_dir)):
+        return True
+    return shutil.which("mmdc", path=env.get("PATH", os.environ.get("PATH", ""))) is not None
+
+
+def _install_mermaid_cli(command: list[str], *, cwd: Path, env: dict[str, str]) -> str:
+    return _run_command(command, cwd=cwd, env=env)
+
+
+def _ensure_mermaid_cli_for_markdown(
+    markdown: str,
+    env: dict[str, str],
+    *,
+    skill_dir: Path | None = None,
+) -> dict[str, str]:
+    if not _has_mermaid_fence(markdown):
+        return env
+
+    resolved_skill_dir = skill_dir or _default_skill_dir()
+    env_with_node_bin = _prepend_local_node_bin(env, resolved_skill_dir)
+    if _mermaid_cli_available(env_with_node_bin, resolved_skill_dir):
+        return env_with_node_bin
+
+    npm = shutil.which("npm", path=os.environ.get("PATH", "")) or "npm"
+    command = ["npm", "install", "--prefix", str(resolved_skill_dir), MERMAID_CLI_PACKAGE]
+    if npm != "npm":
+        command[0] = npm
+    _install_mermaid_cli(command, cwd=resolved_skill_dir, env=env_with_node_bin)
+
+    if not _mermaid_cli_available(env_with_node_bin, resolved_skill_dir):
+        raise RuntimeError(
+            "Mermaid CLI 安装完成后仍未找到 mmdc。请检查 npm 安装输出，或手工确认 "
+            f"{_local_node_bin_dir(resolved_skill_dir)} 是否存在 mmdc。"
+        )
+    return env_with_node_bin
+
+
 def _build_env(
     *,
     base_url: str,
@@ -194,6 +272,7 @@ def _build_env(
     env["CONFLUENCE_API_KEY"] = token
     env["CONFLUENCE_API_VERSION"] = api_version
     env["CONFLUENCE_API_URL"] = _confluence_api_url(base_url)
+    env["PYTHONIOENCODING"] = "utf-8"
     if username:
         env["CONFLUENCE_USER_NAME"] = username
     if space_key:
@@ -234,6 +313,13 @@ def build_md2conf_command(
     if root_page_id:
         command += ["-r", root_page_id]
     return command
+
+
+def _resolve_md2conf_bin(md2conf_bin: str) -> str:
+    configured = md2conf_bin.strip() or "md2conf"
+    if configured != "md2conf":
+        return configured
+    return resolve_console_script("md2conf", executable_finder=shutil.which) or configured
 
 
 def _redact_command(command: list[str]) -> str:
@@ -278,6 +364,12 @@ def _summarize_md2conf_error(detail: str) -> str:
         return (
             f"Wiki 中已存在同名页面（页面 ID：{page_id}），但该页面不在当前目标父页面下。"
             "请修改页面标题后重新同步，或改用 update 模式指定正确页面 ID。"
+        )
+    if any(pattern in detail for pattern in _MD2CONF_LEGACY_API_ERROR_PATTERNS):
+        return (
+            "md2conf 命令来自旧版或冲突包，当前 wiki-upload 需要 "
+            "`markdown-to-confluence` 提供的 md2conf CLI。"
+            "请卸载旧版 md2conf 包，或确认 PATH 中优先使用 markdown-to-confluence 安装的 md2conf.exe。"
         )
     return detail
 
@@ -334,13 +426,14 @@ def publish_markdown_to_confluence(
         space_key=space_key or "",
         api_version="v1",
     )
+    env = _ensure_mermaid_cli_for_markdown(sync_source.read_text(encoding="utf-8"), env)
 
     try:
         command = build_md2conf_command(
             sync_source,
             base_url=base_url,
             token=token,
-            md2conf_bin=md2conf_bin,
+            md2conf_bin=_resolve_md2conf_bin(md2conf_bin),
             space_key=space_key or "",
             root_page_id=root_page_id or "",
             username=username,
@@ -381,7 +474,14 @@ def main() -> None:
 
     token = (os.environ.get("HTSC_WIKI_TOKEN") or os.environ.get("CONFLUENCE_API_KEY") or "").strip()
     if not token:
-        print("项目根目录 .env 缺少 HTSC_WIKI_TOKEN，请补充 Confluence Personal Access Token 后重试", file=sys.stderr)
+        print(
+            "环境变量 HTSC_WIKI_TOKEN 未设置。\n"
+            "WIKI_TOKEN_REQUIRED=true\n"
+            "ENV_FILE=${CLAUDE_PLUGIN_ROOT}/skills/po-skills/.env\n"
+            "请向用户索取 Wiki Personal Access Token，并写入或更新 ENV_FILE 中的 HTSC_WIKI_TOKEN。\n"
+            "不要在对话中回显 Token 明文；写入后重新执行刚才失败的命令。",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     if opts.mode == "create":

@@ -9,21 +9,23 @@
 
 **执行：**
 ```bash
-python <技能根目录>/run.py doc-to-md --file ./data/spec.pdf
-python <技能根目录>/run.py doc-to-md --file ./data/spec.docx --output-dir ./TAILOR-124/1.产品设计
-python <技能根目录>/run.py doc-to-md --file ./raw/spec.docx --output-dir raw
-python <技能根目录>/run.py doc-to-md --file ./data/spec.docx --enhance-content
+python run.py doc-to-md --file ./data/spec.pdf
+python run.py doc-to-md --file ./data/spec.docx --output-dir ./TAILOR-124/PRODUCT_DESIGN
+python run.py doc-to-md --file ./raw/spec.docx --output-dir raw
+python run.py doc-to-md --file ./data/spec.docx --output-dir newreq/TAILOR-124/REFERENCES
+python run.py doc-to-md --file ./data/spec.docx --enhance-content
 ```
 
 **输出目录规则：**
-- 显式传入 `--output-dir` 时，直接使用
+- 显式传入 `--output-dir` 时，直接使用；当目标是 `REFERENCES` 根目录时自动输出到 `REFERENCES/<文档名>/`
 - 当 `--output-dir raw` 指向工作空间 raw 根目录时，自动输出到 `raw/<源文档名>/`
-- 或通过 `--reqid <REQID>` 输出到 `newreq/<REQID>/1.产品设计/`
+- 或通过 `--reqid <REQID>` 输出到 `newreq/<REQID>/PRODUCT_DESIGN/`
 - 未传入上述参数时，直接报错，不再自动创建目录
 - `doc-to-md` 不支持 `--raw`；临时转换本地文档时使用 `--output-dir raw`
 
 **输出：**
-- 正式需求：`newreq/<REQID>/1.产品设计/[PROD_ORI]<文档名>.md`
+- 正式需求：`newreq/<REQID>/PRODUCT_DESIGN/[PROD_ORI]<文档名>.md`
+- 参考资料：`newreq/<REQID>/REFERENCES/<文档名>/[PROD_ORI]<文档名>.md`，图片位于 `REFERENCES/<文档名>/images/`
 - 临时转换：`raw/<文档名>/[PROD_ORI]<文档名>.md`，图片位于 `raw/<文档名>/images/`
 
 步骤执行成功后，stdout 会输出 `OUTPUT_FILE=<路径>` 格式的一行。
@@ -47,5 +49,5 @@ ENHANCE_INPUT=<路径>
 ✅ doc-to-md 完成！
 文件：<路径>
 
-⚡ 自动进入步骤二 enhance-content（图片分析与内容增强）...
+⚡ 接下来会分析文档中的图片，提取图片里可见的页面字段、按钮、流程节点等信息，并把说明回填到图片所在位置。
 ```

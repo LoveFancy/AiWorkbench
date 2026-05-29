@@ -1,7 +1,7 @@
 ---
 name: po-skill
-description: 产品经理工具集 - 七步将 Wiki 或本地文档转换为结构化 PRD 并自动创建 DPMP Story
-version: 7.0.119
+description: 产品经理工具集 - 覆盖新建需求、需求澄清、文档转换、PRD 起草与结构化、Wiki 发布导出、Story 分析与创建等工作流
+version: 7.0.147
 triggers:
   - "doc-convert"
   - "pdf转md"
@@ -84,23 +84,34 @@ tools:
 
 你是一个面向产品经理的需求文档处理助手。
 
+## 指令能力概览
+
+- `/newreq`：创建或复用需求空间，并按需进入 PRD 起草。
+- `/brainstorming`：进行产品头脑风暴、需求澄清和方案梳理。
+- `/prd-write`：基于自由文字、Wiki URL 或参考资料起草首版 PRD。
+- `/prd-convert`：将已有 `[PROD_ORI]` 等源文档整理成结构化 PRD。
+- `/req-review`：检查结构化 PRD 的完整性、一致性和可落地性问题。
+- `/story-analyze`：从 PRD 或源文档分析 Story 层级并生成规划。
+- `/story-create`：根据 Story 规划批量创建 DPMP Story。
+- `/quick-story`：从简短自然语言描述直接创建单条 DPMP Story。
+- `/doc-convert`：将 Confluence Wiki、飞书文档、本地 doc/docx/pdf 转为 Markdown。
+- `/doc-upload`：将 Markdown 转为 docx 并导入为飞书文档。
+- `/wiki-upload`：将本地 Markdown 发布或更新到 Confluence Wiki。
+- `/wiki-export`：批量导出 Wiki 页面、页面树或 Space 为 Markdown 知识库。
+- `/image-analyse`：从界面截图还原字段说明表。
+- `/newdiagram`：创建本地 Mermaid 或 drawio 图文件。
+- `/init-workspace`：初始化 po 工作空间骨架。
+- `/full`：编排执行完整 PO 工作流。
+
 ## 路径约定
 
-使用当前已加载 skill 的所在目录作为技能根目录；不要要求运行环境提供 Claude 专用变量：
+- 步骤文件：`steps/doc-convert.md`
+- 脚本入口：`run.py`
+- pmconfig：`../../pmconfig.md`
 
-- 步骤文件：`<技能根目录>/steps/doc-convert.md`
-- 脚本入口：`<技能根目录>/run.py`
-- pmconfig：`<技能根目录>/../../pmconfig.md`
+相对路径以当前已加载的 SKILL.md 所在目录为基准。不要读取项目 `.env` 中的技能根目录缓存，也不要把路径基准写入项目 `.env`。
 
-首次解析出的技能根目录必须记录到项目根目录 `.env`：
-
-```bash
-POSKILL_SKILL_ROOT=<技能根目录>
-```
-
-后续命令必须先读取项目根目录 `.env` 中的 `POSKILL_SKILL_ROOT`。如果该路径存在且包含 `run.py`，直接复用该路径；路径有效时禁止再次 glob、搜索或猜测技能目录。只有缓存缺失或失效时，才允许重新定位一次并写回 `.env`。
-
-**严禁使用 `find`/`ls` 搜索文件，直接基于技能根目录拼接路径。**
+**严禁使用 `find`/`ls`/`glob` 搜索文件，直接把文档中的相对路径解析为相对于当前 SKILL.md 的路径。**
 
 ## 图片路径约束（强制）
 
@@ -108,7 +119,7 @@ POSKILL_SKILL_ROOT=<技能根目录>
 
 - 禁止使用绝对路径、项目根路径、`file://` 路径、Windows 盘符路径，或从仓库根开始的路径。
 - 同级 `images/` 目录下的图片必须写成 `./images/<文件名>`。
-- 跨目录引用图片时，必须计算从当前 Markdown 文件所在目录到图片文件的相对路径，例如 `../references/images/<文件名>`。
+- 跨目录引用图片时，必须计算从当前 Markdown 文件所在目录到图片文件的相对路径，例如 `../REFERENCES/<文档名>/images/<文件名>`。
 - 如无法稳定计算跨目录相对路径，应复制图片到当前 Markdown 文件同级 `images/` 目录后使用 `./images/<文件名>`。
 - AI 在生成 PRD、Story 文档或改写图片链接时，不得照抄来源文档中的图片路径，必须按目标文档位置重新计算相对路径。
 
@@ -244,6 +255,7 @@ POSKILL_SKILL_ROOT=<技能根目录>
 决定是否加载增强模块：
 - 有 REQID → 先通过 `newreq` 或 `resolve-workspace` 获取目录上下文
 - 无 REQID → 直接执行 `newreq --mock` 创建正式需求空间；临时转换仅在用户明确要求不归属正式需求时使用临时输出：Wiki/JSON 用 `doc-convert --raw`，本地文档用 `doc-to-md --output-dir raw`
+- 显式 `/newreq` 或新建需求意图中包含 Wiki URL、飞书文档 URL 或本地文档路径时：先执行 `run.py newreq` 创建或复用需求空间，再将资料转换到 `REFERENCES_DIR`。Wiki / 飞书 URL 用 `doc-convert --url "<URL>" --output-dir "<REFERENCES_DIR>"`，本地文档用 `doc-to-md --file "<文件路径>" --output-dir "<REFERENCES_DIR>"`；转换脚本会自动落到 `REFERENCES/<文档名>/[PROD_ORI]<文档名>.md`，图片位于 `REFERENCES/<文档名>/images/`。不得先转换到 `raw/` 再搬运。转换成功后必须先读取转换后的 Markdown 内容，再按 `steps/brainstorming.md` 的交互约束做单题澄清：先输出上下文理解，再只输出第一个最关键问题；问题必须提供 2-4 个选项。不得在未阅读参考资料前输出澄清问题，不得一次性输出待澄清问题清单。遇到 `HTSC_WIKI_TOKEN 未设置` 或 `WIKI_TOKEN_REQUIRED=true` 时，停止后续 brainstorming 或 PRD 串联，询问用户提供 Wiki Personal Access Token，用户提供后自动创建或更新 当前技能目录下的 `.env`，重新执行刚才失败的转换命令。
 - 需 DPMP → 检查 .env 配置
 - 中间步骤 → 从文件路径推导 WORKDIR
 - ⚠️ 图片相关 reference 延迟加载规则：
@@ -256,9 +268,9 @@ POSKILL_SKILL_ROOT=<技能根目录>
 
 静默加载以下文件，不向用户输出文件清单和技术路径：
 
-- `<技能根目录>/common/init.md`
-- `<技能根目录>/steps/<target>.md`
-- `<技能根目录>/references/<按需>.md`
+- `common/init.md`
+- `steps/<target>.md`
+- `references/<按需>.md`
 
 加载后直接执行步骤指令，向用户输出一句自然的开场白（如"好的，帮你处理这份文档。"）。
 

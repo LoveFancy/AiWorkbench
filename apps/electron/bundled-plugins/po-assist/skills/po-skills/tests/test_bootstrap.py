@@ -33,7 +33,20 @@ def test_ensure_environment_installs_requirements_and_writes_state(tmp_path):
         runner=fake_run,
     )
 
-    assert calls == [["/usr/bin/python3.14", "-m", "pip", "install", "-r", str(requirements)]]
+    assert calls == [
+        [
+            "/usr/bin/python3.14",
+            "-m",
+            "pip",
+            "install",
+            "-i",
+            bootstrap.PIP_INDEX_URL,
+            "--trusted-host",
+            bootstrap.PIP_TRUSTED_HOST,
+            "-r",
+            str(requirements),
+        ]
+    ]
     state = json.loads(state_file.read_text(encoding="utf-8"))
     assert state["python"] == "/usr/bin/python3.14"
     assert state["python_version"] == "3.14.2"
@@ -78,7 +91,7 @@ def test_main_explains_first_run_self_check(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "第一次使用 Poskill" in out
     assert "正在进行环境自检" in out
-    assert "正在安装 Python 依赖" in out
+    assert "正在使用清华 PyPI 镜像安装 Python 依赖" in out
 
 
 def test_main_initializes_env_template_on_first_run(tmp_path, monkeypatch, capsys):
@@ -139,7 +152,18 @@ def test_main_runs_wrapped_command_after_self_check(tmp_path, monkeypatch, capsy
     bootstrap.main(["--", "python", "run.py", "init-workspace"])
 
     assert calls == [
-        ["/usr/bin/python3.11", "-m", "pip", "install", "-r", str(requirements)],
+        [
+            "/usr/bin/python3.11",
+            "-m",
+            "pip",
+            "install",
+            "-i",
+            bootstrap.PIP_INDEX_URL,
+            "--trusted-host",
+            bootstrap.PIP_TRUSTED_HOST,
+            "-r",
+            str(requirements),
+        ],
         ["python", "run.py", "init-workspace"],
     ]
     out = capsys.readouterr().out
@@ -234,4 +258,17 @@ def test_ensure_environment_reinstalls_when_requirements_change(tmp_path):
         runner=lambda cmd: calls.append(cmd),
     )
 
-    assert calls == [["/usr/bin/python3.14", "-m", "pip", "install", "-r", str(requirements)]]
+    assert calls == [
+        [
+            "/usr/bin/python3.14",
+            "-m",
+            "pip",
+            "install",
+            "-i",
+            bootstrap.PIP_INDEX_URL,
+            "--trusted-host",
+            bootstrap.PIP_TRUSTED_HOST,
+            "-r",
+            str(requirements),
+        ]
+    ]

@@ -17,6 +17,7 @@ from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
+from console_scripts import resolve_console_script
 from wiki_network import build_confluence_env
 
 
@@ -198,7 +199,7 @@ def run_export(
         raise WikiExportError("未配置 HTSC_WIKI_TOKEN：请配置 Wiki Personal Access Token")
     _log("token status=configured")
 
-    executable = executable_finder("cme")
+    executable = resolve_console_script("cme", executable_finder=executable_finder)
     if not executable:
         raise WikiExportError("未安装 confluence-markdown-exporter：请先安装依赖并确认 cme 可执行")
     _log(f"cme executable={executable}")

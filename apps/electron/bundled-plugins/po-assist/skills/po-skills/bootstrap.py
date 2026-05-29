@@ -20,6 +20,8 @@ from pathlib import Path
 SCHEMA_VERSION = 1
 MIN_PYTHON = (3, 11)
 PYTHON_HELP_URL = "http://eip.htsc.com.cn/huatech/practices/124061#heading-0"
+PIP_INDEX_URL = "https://pypi.tuna.tsinghua.edu.cn/simple"
+PIP_TRUSTED_HOST = "pypi.tuna.tsinghua.edu.cn"
 
 
 def _configure_stdio() -> None:
@@ -126,7 +128,20 @@ def ensure_environment(
     if _state_matches(state, python_executable, python_version, requirements_hash):
         return False
 
-    runner([python_executable, "-m", "pip", "install", "-r", str(requirements_path)])
+    runner(
+        [
+            python_executable,
+            "-m",
+            "pip",
+            "install",
+            "-i",
+            PIP_INDEX_URL,
+            "--trusted-host",
+            PIP_TRUSTED_HOST,
+            "-r",
+            str(requirements_path),
+        ]
+    )
     _write_state(state_path, python_executable, python_version, requirements_hash)
     return True
 
@@ -165,7 +180,7 @@ def main(argv: list[str] | None = None) -> None:
     if first_run:
         print("检测到你是第一次使用 Poskill，正在进行环境自检。")
         print("首次自检会安装 Poskill 所需的 Python 依赖，后续同版本目录下不会重复执行。")
-        print("正在安装 Python 依赖，请稍候...")
+        print("正在使用清华 PyPI 镜像安装 Python 依赖，请稍候...")
         if _initialize_env_file(skill_dir / ".env"):
             print("已初始化 Poskill 配置文件 .env。")
             print("如需使用 Wiki 下载或上传，请补充 HTSC_WIKI_TOKEN；其他配置可后续用到时再填写。")

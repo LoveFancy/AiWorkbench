@@ -9,7 +9,9 @@ argument-hint: ""
 
 ## 执行规则
 
-1. 首先 `read` 公共模块：`<技能根目录>/common/init.md`
-2. 再读取 `<技能根目录>/steps/init-workspace.md`
-3. 按 step 文件执行 `run.py init-workspace`
-4. 用产品语言告诉用户工作空间已初始化，不暴露内部脚本细节
+1. 按 po-skill 中对应步骤执行；不要把项目工作区中的 `common/` 或 `steps/` 当作内部目录
+2. 执行 `run.py init-workspace`：
+   ```bash
+   python ${CLAUDE_PLUGIN_ROOT}/skills/po-skills/run.py init-workspace
+   ```
+3. 用产品语言告诉用户工作空间已初始化，不暴露内部脚本细节

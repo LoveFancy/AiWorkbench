@@ -1,0 +1,17 @@
+{
+  "name": "dpmp-assist",
+  "version": "0.1.5",
+  "description": "DPMP项目管理平台REQ与Story创建与管理技能包，使用openApiToken认证",
+  "author": {
+    "name": "Qinxiao"
+  },
+  "homepage": "https://github.com/qinxiao/dpmp-assist",
+  "repository": "https://github.com/qinxiao/dpmp-assist",
+  "license": "MIT",
+  "keywords": [
+    "dpmp",
+    "req",
+    "story",
+    "project-management"
+  ]
+}

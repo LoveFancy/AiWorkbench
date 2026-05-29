@@ -13,10 +13,10 @@ PO Skill 当前着重解决的是 PRD 文档写好之后的整理、拆分、结
 
 可以把它理解成一个”PRD 后处理工具集”：重点解决的是文档落地、结构整理和交付标准化，而不是从 0 开始帮你写需求。
 
-> **平台适配**：本 Skill 同时支持 Claude Code 和 OpenCode。
+> **平台适配**：本 Skill 支持 Claude Code 和 Codex。
 > - Claude Code: skill 安装路径为 `.claude/skills/po-skills/`，pmconfig 为 `.claude/pmconfig.md`
-> - OpenCode: skill 安装路径为 `.opencode/skills/po-skills/`，pmconfig 为 `.opencode/pmconfig.md`
-> - 下文示例以 Claude Code 路径为例，使用 OpenCode 时请自行替换 `.claude` → `.opencode`
+> - Codex: 通过 Codex 插件包安装，skill 位于插件的 `skills/po-skills/` 目录
+> - 下文示例以 Claude Code 路径为例，Codex 插件环境下请使用插件内对应路径
 
 ## 1. 使用前准备
 
@@ -273,7 +273,7 @@ story-analyze
 所有结果默认放在：
 
 ```text
-<REQID>/1.产品设计/
+<REQID>/PRODUCT_DESIGN/
 ```
 
 常见文件如下：
@@ -304,13 +304,13 @@ story-analyze
 
 | 文件 | 用途 |
 |------|------|
-| `<技能根目录>/.env` | Cookie、Token、DPMP 连接配置 |
-| `<技能根目录>/../../pmconfig.md` | 团队默认业务配置 |
-| `<技能根目录>/SKILL.md` | Skill 路由器（决策树路由 + 按需加载） |
-| `<技能根目录>/common/` | 公共模块（全局规则、输出规范、路径契约等） |
-| `<技能根目录>/steps/` | 步骤指令（各步骤独立加载执行） |
-| `<技能根目录>/references/` | AI 提示词模板（PRD、EARS、审查等） |
+| `.env` | Cookie、Token、DPMP 连接配置 |
+| `../../pmconfig.md` | 团队默认业务配置 |
+| `SKILL.md` | Skill 路由器（决策树路由 + 按需加载） |
+| `common/` | 公共模块（全局规则、输出规范、路径契约等） |
+| `steps/` | 步骤指令（各步骤独立加载执行） |
+| `references/` | AI 提示词模板（PRD、EARS、审查等） |
 
-> `<技能根目录>` 为 SKILL.md 所在目录，Claude Code 下为 `.claude/skills/po-skills`，OpenCode 下为 `.opencode/skills/po-skills`。
+> 上表路径均相对于当前 SKILL.md 所在目录解析。
 
 > **v7.0.0 架构说明**：原 ~967 行的巨石 SKILL.md 已拆分为 Router（~170 行）+ common/（5 个公共模块）+ steps/（9 个步骤文件）。Router 通过 4 步决策树按需加载，典型场景上下文减少 40-60%。详见 `docs/2026-05-04-skill-split-decision-tree-design.md`。

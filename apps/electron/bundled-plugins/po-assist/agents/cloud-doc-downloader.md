@@ -39,17 +39,15 @@ If both `references_dir` and `reqid` are missing, ask the parent for the missing
 
 ## Required Workflow
 
-1. Read `POSKILL_SKILL_ROOT` from the project root `.env`. If it points to a directory containing `run.py`, use that directory as the skill root and do not glob, search, or guess another skill path.
-
-If `POSKILL_SKILL_ROOT` is missing, empty, or invalid, resolve the skill root once, write it back to the project root `.env`, then continue.
+1. Use the current loaded skill directory as the skill root. Do not read or write a skill-root cache in the project `.env`, and do not glob, search, or guess another skill path.
 
 2. Read the browser download step file:
 
 ```text
-<POSKILL_SKILL_ROOT>/steps/doc-browser-download.md
+steps/doc-browser-download.md
 ```
 
-If `POSKILL_SKILL_ROOT` is unavailable after the single recovery attempt, return `POSKILL_SKILL_ROOT_MISSING` instead of trying multiple candidate directories.
+If the skill root is unavailable, return `SKILL_ROOT_MISSING` instead of trying multiple candidate directories.
 
 3. Open the cloud document with `chrome-devtools`.
 
@@ -132,7 +130,7 @@ For download detection, prefer the newest stable file that matches the document 
 Example:
 
 ```bash
-python3 <POSKILL_SKILL_ROOT>/scripts/cloud_download_finder.py wait \
+python3 scripts/cloud_download_finder.py wait \
   --expected-title "AI赋能研发项目周报0417" \
   --timeout 60
 ```
@@ -142,7 +140,7 @@ python3 <POSKILL_SKILL_ROOT>/scripts/cloud_download_finder.py wait \
 8. Run:
 
 ```bash
-python <POSKILL_SKILL_ROOT>/run.py doc-to-md \
+python run.py doc-to-md \
   --file "<references_dir>/<downloaded_file>" \
   --output-dir "<references_dir>"
 ```

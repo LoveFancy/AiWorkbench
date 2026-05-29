@@ -9,9 +9,9 @@
 2. 同目录下已有 `[PROD_ORI]` 文件 → 自动匹配
 3. 用户提到了文档名称但未给路径 → 在项目根目录下各子目录中查找匹配的 `[PROD_ORI]*.md` 文件
 
-**输出路径规则（强制）：** `[PROD_FORMAT]` 文件必须与输入的 `[PROD_ORI]` 文件在同一目录下（即 `1.产品设计/`）。
+**输出路径规则（强制）：** `[PROD_FORMAT]` 文件必须与输入的 `[PROD_ORI]` 文件在同一目录下（即 `PRODUCT_DESIGN/`）。
 
-**图片路径规则（强制）：** 生成 `[PROD_FORMAT]` 和 `[STORY_FORMAT]` 时，所有图片引用必须使用相对于当前 Markdown 文件所在目录的相对路径；禁止使用绝对路径、项目根路径、`file://` 路径或 Windows 盘符路径。目标文档同级 `images/` 下图片写成 `./images/<文件名>`；引用参考资料图片时写成 `../references/images/<文件名>`，或复制到目标文档同级 `images/` 后使用 `./images/<文件名>`。不得照抄来源文档中的图片路径，必须按目标文档位置重新计算。
+**图片路径规则（强制）：** 生成 `[PROD_FORMAT]` 和 `[STORY_FORMAT]` 时，所有图片引用必须使用相对于当前 Markdown 文件所在目录的相对路径；禁止使用绝对路径、项目根路径、`file://` 路径或 Windows 盘符路径。目标文档同级 `images/` 下图片写成 `./images/<文件名>`；引用参考资料图片时写成 `../REFERENCES/<文档名>/images/<文件名>`，或复制到目标文档同级 `images/` 后使用 `./images/<文件名>`。不得照抄来源文档中的图片路径，必须按目标文档位置重新计算。
 
 **AI 执行流程：**
 
@@ -19,8 +19,8 @@
 
 用 `read` 工具依次读取（**不要执行任何 bash 命令**）：
 1. 输入的 `[PROD_ORI]` Markdown 文件（包含末尾的"附录：Story 结构分析"节，获取三层结构和 key 映射）
-2. `<技能根目录>/references/prd-convert-prompt.md`
-3. `<技能根目录>/references/prd-template.md`
+2. `references/prd-convert-prompt.md`
+3. `references/prd-template.md`
 
 > pmconfig 已在启动时加载，无需重复读取。
 
@@ -44,7 +44,7 @@
 
 对三层结构分析表中的**每个去重后的 Story**，执行：
 
-**C1. 读取模板**：`<技能根目录>/references/story-template.md`
+**C1. 读取模板**：`references/story-template.md`
 
 **C2. 提取并生成**（一次 `write` 一个文件，不要分步写）：
 

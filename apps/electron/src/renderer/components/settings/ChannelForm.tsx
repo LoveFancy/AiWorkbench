@@ -67,6 +67,7 @@ interface ChannelFormProps {
   /** 编辑模式下传入已有渠道，创建模式传 null */
   channel: Channel | null
   onSaved: (channel?: Channel) => void
+  onAutoSaved?: (channel: Channel) => void
   onAgentEligibilityChange?: (channel: Channel, eligible: boolean) => void | Promise<void>
   onCancel: () => void
 }
@@ -148,7 +149,7 @@ function getApiKeyPlaceholder(provider: ProviderType): string {
     : '请输入 API Key'
 }
 
-export function ChannelForm({ channel, onSaved, onAgentEligibilityChange, onCancel }: ChannelFormProps): React.ReactElement {
+export function ChannelForm({ channel, onSaved, onAutoSaved, onAgentEligibilityChange, onCancel }: ChannelFormProps): React.ReactElement {
   const isEdit = channel !== null
 
   // 表单状态
@@ -225,12 +226,13 @@ export function ChannelForm({ channel, onSaved, onAgentEligibilityChange, onCanc
         lastAgentEligibleRef.current = eligible
         await onAgentEligibilityChange?.(savedChannel, eligible)
       }
+      onAutoSaved?.(savedChannel)
       toast.success('已保存', { id: 'auto-save-success' })
     } catch (error) {
       console.error('[模型配置表单] auto-save 失败:', error)
       toast.error('自动保存失败，请检查后手动重试', { id: 'auto-save-error' })
     }
-  }, [isEdit, channel, onAgentEligibilityChange])
+  }, [isEdit, channel, onAutoSaved, onAgentEligibilityChange])
 
   /** 触发防抖 auto-save */
   const scheduleAutoSave = React.useCallback((

@@ -14,7 +14,7 @@ import os
 import re
 import subprocess
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
@@ -24,6 +24,174 @@ class RenameResult:
     status: str          # 已重命名 / 保留原名 / 处理失败
     category: str = ""
     reason: str = ""
+
+
+@dataclass
+class DescribeResult:
+    path: str
+    text: str
+    matched: int = 0
+    updated: int = 0
+
+
+IMG_REF_RE = re.compile(
+    r'!\[[^\]]*]\((?P<dest>[^)\n]+)\)',
+    re.IGNORECASE,
+)
+
+
+def _extract_link_path(dest: str) -> str:
+    """Extract the comparable path part from a Markdown image destination."""
+    value = dest.strip()
+    if value.startswith("<") and ">" in value:
+        return value[1:value.index(">")].replace("\\", "/")
+    return value.split()[0].replace("\\", "/")
+
+
+def _line_has_image_path(line: str, path: str) -> bool:
+    normalized = path.replace("\\", "/")
+    for match in IMG_REF_RE.finditer(line):
+        if _extract_link_path(match.group("dest")) == normalized:
+            return True
+    return False
+
+
+def _is_table_row(line: str) -> bool:
+    stripped = line.strip()
+    return stripped.startswith("|") and stripped.endswith("|")
+
+
+def _find_table_end(lines: list[str], index: int) -> int:
+    end = index + 1
+    while end < len(lines) and _is_table_row(lines[end]):
+        end += 1
+    return end
+
+
+def _find_paragraph_end(lines: list[str], index: int) -> int:
+    end = index + 1
+    while end < len(lines) and lines[end].strip():
+        end += 1
+    return end
+
+
+def _insertion_index_after_reference(lines: list[str], index: int) -> int:
+    if _is_table_row(lines[index]):
+        insert_at = _find_table_end(lines, index)
+    else:
+        insert_at = _find_paragraph_end(lines, index)
+
+    if insert_at < len(lines) and not lines[insert_at].strip():
+        insert_at += 1
+    return insert_at
+
+
+def _format_description_block(path: str, text: str) -> list[str]:
+    body = " ".join(part.strip() for part in text.splitlines() if part.strip())
+    body = body.removeprefix("> ").strip()
+    if not body.startswith("图片内容提取："):
+        body = f"图片内容提取：{body}"
+
+    return [
+        f"<!-- image-desc:start {path} -->\n",
+        f"> {body}\n",
+        "<!-- image-desc:end -->\n",
+        "\n",
+    ]
+
+
+def _replace_or_insert_block(
+    lines: list[str],
+    insert_at: int,
+    path: str,
+    text: str,
+) -> bool:
+    block = _format_description_block(path, text)
+    start_marker = f"<!-- image-desc:start {path} -->"
+    end_marker = "<!-- image-desc:end -->"
+
+    if insert_at < len(lines) and lines[insert_at].strip() == start_marker:
+        end_at = insert_at + 1
+        while end_at < len(lines) and lines[end_at].strip() != end_marker:
+            end_at += 1
+        if end_at < len(lines):
+            end_at += 1
+            if end_at < len(lines) and not lines[end_at].strip():
+                end_at += 1
+            if lines[insert_at:end_at] == block:
+                return False
+            lines[insert_at:end_at] = block
+            return True
+
+    prefix: list[str] = []
+    if insert_at > 0 and lines[insert_at - 1].strip():
+        prefix = ["\n"]
+    lines[insert_at:insert_at] = prefix + block
+    return True
+
+
+def update_image_descriptions(
+    markdown_path: str,
+    descriptions: list[DescribeResult],
+) -> tuple[int, int, int]:
+    """Insert or update image description blocks.
+
+    Returns (described_paths, failed_paths, updated_blocks).
+    """
+    if not descriptions:
+        return 0, 0, 0
+
+    with open(markdown_path, encoding="utf-8") as f:
+        lines = f.readlines()
+
+    changed = False
+
+    for description in descriptions:
+        occurrences: list[int] = []
+        for index, line in enumerate(lines):
+            if _line_has_image_path(line, description.path):
+                occurrences.append(index)
+
+        description.matched = len(occurrences)
+        for index in reversed(occurrences):
+            insert_at = _insertion_index_after_reference(lines, index)
+            if _replace_or_insert_block(lines, insert_at, description.path, description.text):
+                description.updated += 1
+                changed = True
+
+    if changed:
+        with open(markdown_path, "w", encoding="utf-8") as f:
+            f.writelines(lines)
+
+    described = sum(1 for d in descriptions if d.matched > 0)
+    failed = sum(1 for d in descriptions if d.matched == 0)
+    updated = sum(d.updated for d in descriptions)
+    return described, failed, updated
+
+
+def remap_description_paths(
+    descriptions: list[DescribeResult],
+    results: list[RenameResult],
+    requested_targets: dict[str, str],
+) -> None:
+    """Align description paths with actual rename targets after conflict handling."""
+    if not descriptions or not results:
+        return
+
+    requested_to_actual: dict[str, str] = {}
+    for r in results:
+        if r.status not in {"已重命名", "保留原名"}:
+            continue
+        requested = requested_targets.get(r.original.replace("\\", "/"), r.target)
+        actual = r.target.replace("\\", "/")
+        requested_to_actual[requested.replace("\\", "/")] = actual
+        if requested.startswith("./"):
+            requested_to_actual[requested[2:].replace("\\", "/")] = actual
+        else:
+            requested_to_actual[f"./{requested}".replace("\\", "/")] = actual
+
+    for description in descriptions:
+        description.path = requested_to_actual.get(description.path, description.path)
 
 
 
@@ -104,6 +272,8 @@ def apply_renames(doc_dir: str, results: list[RenameResult]) -> None:
                 counter += 1
             dst = f"{base_stem}-{counter:02d}{ext}"
             r.target = os.path.relpath(dst, os.path.abspath(doc_dir))
+            if r.original.startswith("./") or r.target.startswith("images/"):
+                r.target = f"./{r.target}"
 
         try:
             os.replace(src, dst)
@@ -179,11 +349,19 @@ def main() -> None:
         default=[],
         help="保留原名（可重复）：--keep 路径",
     )
+    parser.add_argument(
+        "--describe",
+        nargs=2,
+        metavar=("PATH", "TEXT"),
+        action="append",
+        default=[],
+        help="图片说明条目（可重复）：--describe 图片路径 说明文本",
+    )
     args = parser.parse_args()
 
-    if not args.rename and not args.keep:
-        print("错误：必须至少提供一个 --rename 或 --keep 参数。", file=sys.stderr)
-        print("提示：请先由 AI 分析图片语义，再构造 --rename OLD NEW 参数调用本脚本。", file=sys.stderr)
+    if not args.rename and not args.keep and not args.describe:
+        print("错误：必须至少提供一个 --rename、--keep 或 --describe 参数。", file=sys.stderr)
+        print("提示：请先由 AI 分析图片语义，再构造参数调用本脚本。", file=sys.stderr)
         sys.exit(1)
 
     results = []
@@ -191,29 +369,37 @@ def main() -> None:
         results.append(RenameResult(original=old, target=new, status="pending"))
     for path in args.keep:
         results.append(RenameResult(original=path, target=path, status="保留原名"))
-
-    if not results:
-        print(f"OUTPUT_FILE={args.input}")
-        print("RENAMED=0")
-        print("KEPT=0")
-        print("FAILED=0")
-        return
+    descriptions = [
+        DescribeResult(path=path.replace("\\", "/"), text=text)
+        for path, text in args.describe
+    ]
+    requested_targets = {
+        r.original.replace("\\", "/"): r.target.replace("\\", "/")
+        for r in results
+    }
 
     doc_dir = os.path.dirname(os.path.abspath(args.input))
     apply_renames(doc_dir, results)
+    remap_description_paths(descriptions, results, requested_targets)
 
     # 同步更新 [PROD_ORI] 中的图片链接（脚本接管，无需 AI write 工具）
     link_count = update_markdown_links(args.input, results)
+    described_count, describe_failed_count, description_updated_count = update_image_descriptions(
+        args.input,
+        descriptions,
+    )
 
     renamed_count = sum(1 for r in results if r.status == "已重命名")
     kept_count    = sum(1 for r in results if r.status == "保留原名")
-    failed_count  = len(results) - renamed_count - kept_count
+    failed_count  = len(results) - renamed_count - kept_count + describe_failed_count
 
     print(f"OUTPUT_FILE={args.input}")
     print(f"RENAMED={renamed_count}")
     print(f"KEPT={kept_count}")
+    print(f"DESCRIBED={described_count}")
     print(f"FAILED={failed_count}")
     print(f"LINKS_UPDATED={link_count}")
+    print(f"DESCRIPTIONS_UPDATED={description_updated_count}")
 
 
 if __name__ == "__main__":

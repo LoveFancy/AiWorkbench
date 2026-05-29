@@ -8,6 +8,7 @@
 import type React from 'react'
 import { ReactRenderer } from '@tiptap/react'
 import type { SuggestionOptions } from '@tiptap/suggestion'
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { MessageSquareText, Sparkles, Server, TerminalSquare } from 'lucide-react'
 import { MentionList } from './MentionList'
 import type { MentionListRef } from './MentionList'
@@ -31,6 +32,34 @@ interface MentionSuggestionConfig<T> {
   toCommand: (item: T) => { id: string; label: string; commandText?: string }
 }
 
+interface MentionCommandProps {
+  id: string
+  label: string
+  commandText?: string
+}
+
+function insertMentionWithCurrentSchema(char: string): NonNullable<SuggestionOptions<unknown, MentionCommandProps>['command']> {
+  return ({ editor, range, props }): void => {
+    const mentionType = editor.state.schema.nodes.mention
+    if (!mentionType) return
+
+    const nodeAfter = editor.view.state.selection.$to.nodeAfter
+    const to = nodeAfter?.text?.startsWith(' ') ? range.to + 1 : range.to
+    const mentionNode = mentionType.create({
+      ...props,
+      mentionSuggestionChar: char,
+    })
+
+    editor.view.focus()
+    const transaction = editor.state.tr
+      .replaceWith(range.from, to, mentionNode as ProseMirrorNode)
+      .insertText(' ', range.from + mentionNode.nodeSize)
+      .scrollIntoView()
+    editor.view.dispatch(transaction)
+    editor.view.dom.ownerDocument.defaultView?.getSelection?.()?.collapseToEnd?.()
+  }
+}
+
 function createMentionSuggestion<T>(
   config: MentionSuggestionConfig<T>,
   workspaceSlugRef: React.RefObject<string | null>,
@@ -40,6 +69,7 @@ function createMentionSuggestion<T>(
   return {
     char: config.char,
     allowSpaces: false,
+    command: insertMentionWithCurrentSchema(config.char),
 
     items: async ({ query }): Promise<T[]> => {
       const slug = workspaceSlugRef.current

@@ -175,6 +175,34 @@ def test_command_for_tree_and_space(tmp_path):
     assert commands[1][1] == "spaces"
 
 
+
+def test_resolve_cme_executable_falls_back_to_python_scripts_dir(tmp_path, monkeypatch):
+    scripts_dir = tmp_path / "Scripts"
+    scripts_dir.mkdir()
+    cme_exe = scripts_dir / "cme.exe"
+    cme_exe.write_text("", encoding="utf-8")
+    python_exe = tmp_path / "python.exe"
+    python_exe.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(wiki_export.sys, "executable", str(python_exe))
+
+    assert wiki_export.resolve_console_script("cme", executable_finder=lambda name: None) == str(cme_exe)
+
+
+def test_resolve_cme_executable_prefers_exe_over_extensionless_windows_script(tmp_path, monkeypatch):
+    scripts_dir = tmp_path / "Scripts"
+    scripts_dir.mkdir()
+    cme_script = scripts_dir / "cme"
+    cme_script.write_text("#!/usr/bin/env python", encoding="utf-8")
+    cme_exe = scripts_dir / "cme.exe"
+    cme_exe.write_text("", encoding="utf-8")
+    python_exe = tmp_path / "python.exe"
+    python_exe.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(wiki_export.sys, "executable", str(python_exe))
+
+    assert wiki_export.resolve_console_script("cme", executable_finder=lambda name: str(cme_script)) == str(cme_exe)
+
 def test_missing_exporter_raises_clear_error(tmp_path):
     with pytest.raises(wiki_export.WikiExportError, match="未安装 confluence-markdown-exporter"):
         wiki_export.run_export(

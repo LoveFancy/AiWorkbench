@@ -9,7 +9,7 @@ argument-hint: [需求描述，可含 Wiki URL、本地文档或 EIP/LinkApp URL
 
 ## 执行规则
 
-1. 首先 `read` 公共模块和步骤文件：`<技能根目录>/common/init.md`、`<技能根目录>/steps/prd-write.md`
+1. 按 po-skill 中对应步骤执行；不要把项目工作区中的 `common/` 或 `steps/` 当作内部目录
 2. init.md 中的全局输出规范对本命令生效
 3. 如输入含 Wiki URL，直接按步骤文件调用脚本转换；缺 Token 或权限由脚本返回错误后再提示用户补充
 4. 如输入含 EIP / LinkApp 云文档 URL，不要自动下载；按步骤文件登记为待补充，并提示用户手工下载原始 `.doc/.docx/.pdf` 文件后再提供本地路径

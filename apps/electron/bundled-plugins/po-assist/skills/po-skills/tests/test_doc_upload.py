@@ -17,7 +17,7 @@ def _load_doc_upload():
 
 def test_build_pandoc_command_uses_markdown_parent_as_resource_path(tmp_path):
     doc_upload = _load_doc_upload()
-    markdown = tmp_path / "1.产品设计" / "[PROD_ORI]需求说明.md"
+    markdown = tmp_path / "PRODUCT_DESIGN" / "[PROD_ORI]需求说明.md"
     markdown.parent.mkdir()
     markdown.write_text("# 需求说明\n\n![图](images/a.png)\n", encoding="utf-8")
     output_docx = tmp_path / "out" / "需求说明.docx"
@@ -49,7 +49,7 @@ def test_build_lark_import_command_includes_optional_folder_and_name():
         "drive",
         "+import",
         "--file",
-        "/tmp/需求说明.docx",
+        "./需求说明.docx",
         "--type",
         "docx",
         "--folder-token",
@@ -67,8 +67,8 @@ def test_upload_markdown_converts_to_docx_then_imports(monkeypatch, tmp_path):
     markdown.write_text("# 需求说明\n", encoding="utf-8")
     calls = []
 
-    def fake_run(command):
-        calls.append(command)
+    def fake_run(command, cwd=None):
+        calls.append((command, cwd))
         if command[0] == "pandoc":
             Path(command[3]).write_bytes(b"docx")
             return ""
@@ -84,8 +84,9 @@ def test_upload_markdown_converts_to_docx_then_imports(monkeypatch, tmp_path):
         identity="user",
     )
 
-    assert calls[0][0] == "pandoc"
-    assert calls[1][:5] == ["lark-cli", "drive", "+import", "--file", str(result.docx_path)]
+    assert calls[0][0][0] == "pandoc"
+    assert calls[0][1] is None
+    assert calls[1][0][:5] == ["lark-cli", "drive", "+import", "--file", "./需求说明.docx"]
+    assert calls[1][1] == result.docx_path.parent
     assert result.docx_path.read_bytes() == b"docx"
     assert result.import_output == '{"ok":true,"data":{"url":"https://example.feishu.cn/docx/abc"}}'
-

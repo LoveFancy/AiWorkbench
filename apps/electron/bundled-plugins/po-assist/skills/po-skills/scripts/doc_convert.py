@@ -148,8 +148,10 @@ def main():
         if not token:
             print(
                 "环境变量 HTSC_WIKI_TOKEN 未设置。\n"
-                "请在 <技能根目录>/.env 中配置：\n"
-                "HTSC_WIKI_TOKEN=<你的 Confluence Personal Access Token>\n\n"
+                "WIKI_TOKEN_REQUIRED=true\n"
+                "ENV_FILE=${CLAUDE_PLUGIN_ROOT}/skills/po-skills/.env\n"
+                "请向用户索取 Wiki Personal Access Token，并写入或更新 ENV_FILE 中的 HTSC_WIKI_TOKEN。\n"
+                "不要在对话中回显 Token 明文；写入后重新执行刚才失败的命令。\n\n"
                 "获取方式：登录 Wiki → 右上角头像 → 个人设置 → 个人访问令牌（Personal Access Tokens）→ 创建并复制 Token。\n"
                 "注意：这里需要的是 Wiki Token，不是浏览器 Cookie。",
                 file=sys.stderr,

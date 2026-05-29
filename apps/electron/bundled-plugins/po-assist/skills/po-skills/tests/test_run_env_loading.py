@@ -31,7 +31,7 @@ def test_loads_env_from_current_working_directory_without_git(tmp_path, monkeypa
     assert os.environ["HTSC_WIKI_TOKEN"] == "from_cwd"
 
 
-def test_records_skill_root_in_current_working_directory_env(tmp_path, monkeypatch):
+def test_does_not_record_skill_root_in_current_working_directory_env(tmp_path, monkeypatch):
     skill_dir = tmp_path / "plugin" / "skills" / "po-skills"
     skill_dir.mkdir(parents=True)
     source = Path(__file__).resolve().parents[1] / "run.py"
@@ -48,11 +48,10 @@ def test_records_skill_root_in_current_working_directory_env(tmp_path, monkeypat
 
     _load_run_module(run_py)
 
-    env_text = (project_dir / ".env").read_text(encoding="utf-8")
-    assert f"POSKILL_SKILL_ROOT={skill_dir}" in env_text
+    assert not (project_dir / ".env").exists()
 
 
-def test_records_skill_root_in_explicit_project_root_env(tmp_path, monkeypatch):
+def test_does_not_record_skill_root_in_explicit_project_root_env(tmp_path, monkeypatch):
     skill_dir = tmp_path / "plugin" / "skills" / "po-skills"
     skill_dir.mkdir(parents=True)
     source = Path(__file__).resolve().parents[1] / "run.py"
@@ -70,8 +69,7 @@ def test_records_skill_root_in_explicit_project_root_env(tmp_path, monkeypatch):
     _load_run_module(run_py)
 
     assert not (other_dir / ".env").exists()
-    env_text = (project_dir / ".env").read_text(encoding="utf-8")
-    assert f"POSKILL_SKILL_ROOT={skill_dir}" in env_text
+    assert not (project_dir / ".env").exists()
 
 
 def test_current_working_directory_env_wins_over_skill_fallback_env(tmp_path, monkeypatch):

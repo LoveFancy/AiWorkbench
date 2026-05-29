@@ -16,7 +16,7 @@
 除初始化外，业务命令直接调用 `run.py`；只有技能目录下不存在 `.poskill-env.json` 时，才先执行首次自检。不要检查 `requirements.txt` 或逐个探测三方命令。
 
 ```bash
-python <技能根目录>/bootstrap.py -- python <技能根目录>/run.py init-workspace [--force]
+python bootstrap.py -- python run.py init-workspace [--force]
 ```
 
 ## 参数

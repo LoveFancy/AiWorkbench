@@ -22,7 +22,7 @@ init-workspace → newreq → doc-convert → story-analyze → prd-convert → 
 说明时必须包含：
 - `init-workspace`：初始化工作空间骨架。
 - `newreq`：创建或复用正式需求目录；如果没有真实需求编号，使用 mock 需求编号承接本次工作。
-- `doc-convert`：把 Wiki URL / 本地文档转换为 `[PROD_ORI]` Markdown，正式链路输出到 `newreq/<REQID>/1.产品设计/`；EIP/LinkApp 云文档暂不支持自动下载，需用户手工下载后作为本地文件转换。
+- `doc-convert`：把 Wiki URL / 本地文档转换为 `[PROD_ORI]` Markdown，正式链路输出到 `newreq/<REQID>/PRODUCT_DESIGN/`；EIP/LinkApp 云文档暂不支持自动下载，需用户手工下载后作为本地文件转换。
 - `story-analyze`：按 Story-Feature-MUC 规则生成三层结构表，写入 `[PROD_ORI]`；story-analyze 后会暂停等待确认。
 - `prd-convert`：基于已确认的三层结构生成 `[PROD_FORMAT]` 和独立 Story 文档。
 - `req-review`：按需求评审 10 项模板输出质量审查报告；req-review 后会暂停等待确认。

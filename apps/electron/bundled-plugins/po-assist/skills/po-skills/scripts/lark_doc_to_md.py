@@ -175,6 +175,24 @@ def _safe_filename(value: str) -> str:
     return cleaned or "飞书文档"
 
 
+def fetch_lark_doc_title(doc: str, fallback: str = "飞书文档") -> str:
+    stdout = _run_command(
+        [
+            "lark-cli",
+            "docs",
+            "+fetch",
+            "--api-version",
+            "v2",
+            "--doc",
+            doc,
+            "--doc-format",
+            "markdown",
+        ]
+    )
+    content = _extract_content(stdout)
+    return _safe_filename(_derive_title(content, fallback))
+
+
 def convert_lark_doc_to_markdown(
     doc: str,
     output_dir: Path,

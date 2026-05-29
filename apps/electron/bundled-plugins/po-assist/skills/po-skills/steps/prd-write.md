@@ -42,11 +42,11 @@
 ### Step 3：读取目录上下文
 
 ```bash
-python <技能根目录>/run.py newreq --reqid "{REQID}"
-python <技能根目录>/run.py newreq --title "{标题}" --mock
+python run.py newreq --reqid "{REQID}"
+python run.py newreq --title "{标题}" --mock
 ```
 
-从 stdout 读取 `REQID`、`REQ_ROOT`、`DESIGN_DIR`、`REFERENCES_DIR`、`REFERENCE_IMAGES_DIR`、`IMAGES_DIR`、`NEXT_STEP`。后续路径一律使用这些变量，不自行 `mkdir -p`。
+从 stdout 读取 `REQID`、`REQ_ROOT`、`DESIGN_DIR`、`REFERENCES_DIR`、`IMAGES_DIR`、`NEXT_STEP`。`REFERENCE_IMAGES_DIR` 是兼容旧输出的空字段，不要使用；参考资料图片位于 `REFERENCES/<文档名>/images/`。后续路径一律使用这些变量，不自行 `mkdir -p`。
 
 ### Step 4：关联文档确认
 
@@ -84,8 +84,8 @@ python <技能根目录>/run.py newreq --title "{标题}" --mock
 
 需要 brainstorming 时：
 
-1. 静默加载 `<技能根目录>/steps/brainstorming.md`
-2. 按产品澄清流程进行 2-3 轮内的收敛
+1. 静默加载 `steps/brainstorming.md`
+2. 按 `steps/brainstorming.md` 执行产品澄清并收敛；轮次与提问方式以 `steps/brainstorming.md` 为准，不在本文件重复定义
 3. 输出头脑风暴纪要，重点记录问题、用户答复、形成的结论、待确认问题和“PRD 写作参考”
 4. 默认不生成 `[BRAINSTORM]需求澄清纪要.md`
 5. 若用户明确要求"保存 / 沉淀成文档 / 保留过程记录"，写入 `{DESIGN_DIR}/[BRAINSTORM]需求澄清纪要.md`
@@ -111,7 +111,7 @@ python <技能根目录>/run.py newreq --title "{标题}" --mock
 Wiki URL 在 `prd-write` 中属于关联文档，不是主需求文档。必须转换到 `{REFERENCES_DIR}`，不得使用 `--reqid` 输出到 `{DESIGN_DIR}`；`{DESIGN_DIR}` 只保存最终 PRD、主需求文档、Story 文档和主文档图片。
 
 ```bash
-python <技能根目录>/run.py doc-convert --url "<URL>" --output-dir "{REFERENCES_DIR}"
+python run.py doc-convert --url "<URL>" --output-dir "{REFERENCES_DIR}"
 ```
 
 **EIP / LinkApp 云文档：**
@@ -133,12 +133,12 @@ CLOUD_DOC_MANUAL_DOWNLOAD_REQUIRED：暂不支持自动下载 EIP/LinkApp 云文
 
 **本地文档：**
 ```bash
-python <技能根目录>/run.py doc-to-md --file "<路径>" --output-dir "{REFERENCES_DIR}"
+python run.py doc-to-md --file "<路径>" --output-dir "{REFERENCES_DIR}"
 ```
 
-转换后如有图片引用，执行 enhance-content。
+转换后如有图片引用，执行 enhance-content。参考资料转换结果按文档分目录：`REFERENCES/<文档名>/`，Markdown 位于 `REFERENCES/<文档名>/[PROD_ORI]<文档名>.md`，图片位于 `REFERENCES/<文档名>/images/`。
 
-**图片路径约束（强制）：** 首版 PRD、补充后的 PRD 以及后续引用的图片，必须使用相对于当前 Markdown 文件所在目录的相对路径。禁止使用绝对路径、项目根路径、`file://` 路径或 Windows 盘符路径。引用 `{DESIGN_DIR}/images/` 下图片时使用 `./images/<文件名>`；引用 `{REFERENCES_DIR}/images/` 下图片时，必须从 PRD 文件所在目录计算路径，例如 `../references/images/<文件名>`。如果无法稳定计算跨目录相对路径，应先复制图片到 `{DESIGN_DIR}/images/`，再使用 `./images/<文件名>`。
+**图片路径约束（强制）：** 首版 PRD、补充后的 PRD 以及后续引用的图片，必须使用相对于当前 Markdown 文件所在目录的相对路径。禁止使用绝对路径、项目根路径、`file://` 路径或 Windows 盘符路径。引用 `{DESIGN_DIR}/images/` 下图片时使用 `./images/<文件名>`；引用参考资料图片时，必须从 PRD 文件所在目录计算路径，例如 `../REFERENCES/<文档名>/images/<文件名>`。如果无法稳定计算跨目录相对路径，应先复制图片到 `{DESIGN_DIR}/images/`，再使用 `./images/<文件名>`。
 
 ---
 
@@ -147,7 +147,7 @@ python <技能根目录>/run.py doc-to-md --file "<路径>" --output-dir "{REFER
 > 执行过程中最多向用户输出 4 句进展提示，用产品语言，不暴露内部步骤。
 
 1. 输出 `"正在分析你的需求描述…"`
-2. `read` 模板：`<技能根目录>/references/prd-template.md`
+2. `read` 模板：`references/prd-template.md`
 3. 输出 `"已确定文档结构，正在填充 PRD 内容…"`
 4. 写作前先在内部完成“四问分析”，再生成 PRD。分析内容要融入正文，不要单独输出长篇推理：
    - 我们正在解决什么问题？
@@ -169,7 +169,7 @@ python <技能根目录>/run.py doc-to-md --file "<路径>" --output-dir "{REFER
    - 当输入中有多个关联文档时，`1.2 关联需求` 必须一条文档一行，不得省略、不得合并成一句话
    - 存量文档 + 新变更诉求场景：不要把存量文档里的老逻辑完整复述成新 PRD 正文。存量文档只作为背景、术语、现状和差异判断依据；新 PRD 正文重点写新增/变更内容、触发条件、影响范围、改前改后差异、兼容规则和验收标准。
    - 如果必须引用老逻辑，只保留理解本次变更所必需的现状摘要，并在对应章节标明“现状/本次变更/影响说明”，避免把历史功能说明改写成整篇新需求。
-   - 图片路径必须相对于当前 Markdown 文件所在目录；不得照抄关联文档中的图片路径。PRD 同级图片使用 `./images/<文件名>`；引用 references 图片时使用 `../references/images/<文件名>`，或先复制到 PRD 同级 `images/` 后改写为 `./images/<文件名>`。
+   - 图片路径必须相对于当前 Markdown 文件所在目录；不得照抄关联文档中的图片路径。PRD 同级图片使用 `./images/<文件名>`；引用 REFERENCES 图片时使用 `../REFERENCES/<文档名>/images/<文件名>`，或先复制到 PRD 同级 `images/` 后改写为 `./images/<文件名>`。
 6. 输出 `"正在保存 PRD 文档…"`
 7. 一次 `write` 写入：`{DESIGN_DIR}/[PROD_FORMAT]{标题}.md`（标题不超过 20 字）
 8. 完成输出：`首版草稿 PRD 已生成：<路径>。下一步建议：/req-review 进行质量审查。需要吗？`
@@ -179,15 +179,15 @@ python <技能根目录>/run.py doc-to-md --file "<路径>" --output-dir "{REFER
 ## 阶段 D：补充文档（可选）
 
 用户补充新文档时：
-1. 处理新文档（→ references/）
-2. 重新读取所有 references + 现有 PRD
+1. 处理新文档（→ REFERENCES/<文档名>/）
+2. 重新读取所有 REFERENCES + 现有 PRD
 3. **先更新 `1.2 关联需求` 表**：每个新补充的文档必须新增一行；如果原表中已有该文档，则更新其 `当前状态`、`关联说明/用途`、`ID/来源`
 4. 再列出受影响的章节，**征得用户确认后**用 Edit 工具做定向替换
 
 补充文档场景下的硬约束：
 - 不允许只更新正文、不更新 `1.2 关联需求` 表
 - 用户后续对话中追加的 Wiki / 云文档 / 本地文档，也按首次输入同样规则处理
-- 若文档已进入 `references/` 但暂未消费到正文，仍需登记到 `1.2 关联需求` 表，`关联说明` 标记为 `待补充`
+- 若文档已进入 `REFERENCES/` 但暂未消费到正文，仍需登记到 `1.2 关联需求` 表，`关联说明` 标记为 `待补充`
 
 ---
 

@@ -121,3 +121,35 @@ def test_convert_lark_doc_writes_prod_ori_and_images(monkeypatch, tmp_path):
     assert result.output_file.name == "[PROD_ORI]飞书标题.md"
     assert "](./images/image-001.png)" in result.output_file.read_text(encoding="utf-8")
     assert result.downloaded == 1
+
+
+def test_fetch_lark_doc_title_derives_title_from_markdown(monkeypatch):
+    module = _load_lark_doc_to_md()
+    fetch_output = {
+        "ok": True,
+        "data": {
+            "document": {
+                "content": "# 飞书标题\n\n正文"
+            }
+        },
+    }
+    calls = []
+
+    def fake_run(command):
+        calls.append(command)
+        return json.dumps(fetch_output, ensure_ascii=False)
+
+    monkeypatch.setattr(module, "_run_command", fake_run)
+
+    assert module.fetch_lark_doc_title("https://example.feishu.cn/docx/abc") == "飞书标题"
+    assert calls[0] == [
+        "lark-cli",
+        "docs",
+        "+fetch",
+        "--api-version",
+        "v2",
+        "--doc",
+        "https://example.feishu.cn/docx/abc",
+        "--doc-format",
+        "markdown",
+    ]

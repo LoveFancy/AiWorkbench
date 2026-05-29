@@ -17,6 +17,7 @@ import type { Channel } from '@proma/shared'
 import { getChannelLogo } from '@/lib/model-logo'
 import { agentChannelIdAtom, agentModelIdAtom, agentChannelIdsAtom } from '@/atoms/agent-atoms'
 import { channelsAtom, selectedModelAtom } from '@/atoms/chat-atoms'
+import { applySavedChannelSnapshot } from '@/lib/channel-sync'
 import { hasConfiguredApiKey, resolveAgentSelectedModel, resolveSelectedModel } from '@/lib/model-selection'
 import { SettingsSection, SettingsCard, SettingsRow } from './primitives'
 import {
@@ -205,6 +206,15 @@ export function ChannelSettings(): React.ReactElement {
     await loadChannels()
   }
 
+  const handleFormAutoSaved = React.useCallback((savedChannel: Channel): void => {
+    const synced = applySavedChannelSnapshot(channels, savedChannel, selectedModel)
+    setChannels(synced.channels)
+    setGlobalChannels(synced.channels)
+    if (synced.selectedModel?.channelId !== selectedModel?.channelId || synced.selectedModel?.modelId !== selectedModel?.modelId) {
+      setSelectedModel(synced.selectedModel)
+    }
+  }, [channels, selectedModel, setGlobalChannels, setSelectedModel])
+
   /** 取消表单 */
   const handleFormCancel = (): void => {
     setViewMode('list')
@@ -217,6 +227,7 @@ export function ChannelSettings(): React.ReactElement {
       <ChannelForm
         channel={editingChannel}
         onSaved={handleFormSaved}
+        onAutoSaved={handleFormAutoSaved}
         onAgentEligibilityChange={syncAgentChannelEligibility}
         onCancel={handleFormCancel}
       />

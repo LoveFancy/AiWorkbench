@@ -53,7 +53,7 @@ def build_lark_import_command(
         "drive",
         "+import",
         "--file",
-        str(docx_path),
+        f"./{docx_path.name}",
         "--type",
         "docx",
     ]
@@ -66,13 +66,14 @@ def build_lark_import_command(
     return command
 
 
-def _run_command(command: list[str]) -> str:
+def _run_command(command: list[str], *, cwd: Path | None = None) -> str:
     try:
         completed = subprocess.run(
             command,
             check=True,
             text=True,
             capture_output=True,
+            cwd=str(cwd) if cwd else None,
         )
     except FileNotFoundError as exc:
         raise RuntimeError(f"命令不可用：{command[0]}") from exc
@@ -80,7 +81,8 @@ def _run_command(command: list[str]) -> str:
         stderr = exc.stderr.strip()
         stdout = exc.stdout.strip()
         detail = stderr or stdout or f"exit code {exc.returncode}"
-        raise RuntimeError(f"命令执行失败：{' '.join(command)}\n{detail}") from exc
+        cwd_detail = f" (cwd={cwd})" if cwd else ""
+        raise RuntimeError(f"命令执行失败{cwd_detail}：{' '.join(command)}\n{detail}") from exc
     return completed.stdout.strip()
 
 
@@ -115,7 +117,8 @@ def upload_markdown_to_lark(
             folder_token=folder_token,
             name=name,
             identity=identity,
-        )
+        ),
+        cwd=docx_path.parent,
     )
     return UploadResult(
         markdown_path=markdown_path,

@@ -113,6 +113,8 @@ export function createWelcomeConversation(): ConversationMeta | null {
 
 了解你的背景之后，我会为你单独整理一份专属的 WorkMate 伴行使用最佳实践——告诉你哪些功能最值得用、推荐的 Skills / MCP 配置，以及贴合你场景的工作流模板。
 
+你也可以先访问安装和使用教程：<https://linkapp.htsc.com.cn/S/019dT1>
+
 直接在下面回复就好，可以一次说完，也可以分几条慢慢聊。
 
 > **使用过程中遇到任何问题，请联系秦晓 012950。**`,

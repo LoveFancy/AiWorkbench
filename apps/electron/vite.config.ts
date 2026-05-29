@@ -15,6 +15,17 @@ export default defineConfig({
     emptyOutDir: true,
   },
   resolve: {
+    dedupe: [
+      '@tiptap/core',
+      '@tiptap/pm',
+      '@tiptap/react',
+      '@tiptap/suggestion',
+      '@tiptap/extension-mention',
+      'prosemirror-model',
+      'prosemirror-state',
+      'prosemirror-transform',
+      'prosemirror-view',
+    ],
     alias: {
       '@/types': resolve(__dirname, 'src/types'),
       '@': resolve(__dirname, 'src/renderer'),

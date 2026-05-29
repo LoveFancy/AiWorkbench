@@ -160,7 +160,7 @@ mcp__Chrome-devtools__evaluate_script →
 点击"下载"后，直接调用 helper 按标题查找下载目录中的最新稳定文件：
 
 ```bash
-python3 <技能根目录>/scripts/cloud_download_finder.py wait \
+python3 scripts/cloud_download_finder.py wait \
   --expected-title "<阶段A3获取到的文件名>" \
   --timeout 60
 ```
@@ -182,7 +182,7 @@ cp "<DOWNLOAD_FILE路径>" "{REFERENCES_DIR}/<文件名>"
 拷贝完成后，对下载的文件执行 doc-to-md：
 
 ```bash
-python <技能根目录>/run.py doc-to-md \
+python run.py doc-to-md \
     --file "{REFERENCES_DIR}/<文件名>" \
     --output-dir "{DESIGN_DIR}"
 ```

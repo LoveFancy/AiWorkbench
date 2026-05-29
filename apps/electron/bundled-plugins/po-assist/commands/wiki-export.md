@@ -9,7 +9,7 @@ argument-hint: <Wiki URL...> [--output-dir <目录>] [--mode pages|tree|space]
 
 ## 执行规则
 
-1. 读取 `<技能根目录>/steps/wiki-export.md`
+1. 按 po-skill 中 wiki-export 步骤执行；不要把项目工作区中的 `steps/` 当作内部目录
 2. 从用户输入中提取一个或多个 Wiki URL
 3. 若用户显式传入 `--mode pages|tree|space`，按参数执行
 4. 若未传 `--mode`，按用户语义判断导出范围

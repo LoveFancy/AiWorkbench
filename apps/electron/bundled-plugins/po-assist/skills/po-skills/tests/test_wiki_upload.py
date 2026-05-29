@@ -92,6 +92,7 @@ def test_publish_markdown_create_mode_calls_md2conf_with_temp_source(monkeypatch
     assert env["CONFLUENCE_API_KEY"] == "token"
     assert env["CONFLUENCE_API_VERSION"] == "v1"
     assert env["CONFLUENCE_API_URL"] == "http://wiki.htzq.htsc.com.cn/"
+    assert env["PYTHONIOENCODING"] == "utf-8"
     assert "HTTP_PROXY" not in env
     assert "HTTPS_PROXY" not in env
     assert "http_proxy" not in env
@@ -131,6 +132,120 @@ def test_publish_markdown_left_aligns_standalone_images_in_temp_source(monkeypat
 
     assert '<p style="text-align: left;"><img src="./images/a.png" alt="架构图" /></p>' in captured["text"]
     assert "正文 ![内联图](./images/inline.png)" in captured["text"]
+
+
+def test_publish_markdown_without_mermaid_does_not_install_mermaid_cli(monkeypatch, tmp_path):
+    wiki_upload = _load_wiki_upload()
+    markdown = tmp_path / "需求说明.md"
+    markdown.write_text("# 需求说明\n\n正文\n", encoding="utf-8")
+    install_calls = []
+
+    def fake_install(command, *, cwd=None, env=None):
+        install_calls.append(command)
+        return ""
+
+    monkeypatch.setattr(wiki_upload, "_install_mermaid_cli", fake_install)
+    monkeypatch.setattr(
+        wiki_upload,
+        "_run_command",
+        lambda command, *, cwd=None, env=None: "created page http://wiki.htzq.htsc.com.cn/pages/viewpage.action?pageId=123",
+    )
+
+    wiki_upload.publish_markdown_to_confluence(
+        markdown,
+        base_url="http://wiki.htzq.htsc.com.cn",
+        token="token",
+        space_key="AI",
+        root_page_id="456",
+        title="需求说明",
+        mode="create",
+    )
+
+    assert install_calls == []
+
+
+def test_publish_markdown_with_existing_local_mermaid_cli_prepends_local_node_bin(monkeypatch, tmp_path):
+    wiki_upload = _load_wiki_upload()
+    skill_dir = tmp_path / "skill"
+    local_bin = skill_dir / "node_modules" / ".bin"
+    local_bin.mkdir(parents=True)
+    local_mmdc = local_bin / ("mmdc.cmd" if os.name == "nt" else "mmdc")
+    local_mmdc.write_text("", encoding="utf-8")
+    markdown = tmp_path / "需求说明.md"
+    markdown.write_text("# 需求说明\n\n```mermaid\ngraph TD\n  A-->B\n```\n", encoding="utf-8")
+    captured = {}
+    install_calls = []
+
+    def fake_run(command, *, cwd=None, env=None):
+        captured["env"] = env
+        return "created page http://wiki.htzq.htsc.com.cn/pages/viewpage.action?pageId=123"
+
+    monkeypatch.setattr(wiki_upload, "_default_skill_dir", lambda: skill_dir)
+    monkeypatch.setattr(wiki_upload, "_install_mermaid_cli", lambda *args, **kwargs: install_calls.append(args))
+    monkeypatch.setattr(wiki_upload, "_run_command", fake_run)
+
+    wiki_upload.publish_markdown_to_confluence(
+        markdown,
+        base_url="http://wiki.htzq.htsc.com.cn",
+        token="token",
+        space_key="AI",
+        root_page_id="456",
+        title="需求说明",
+        mode="create",
+    )
+
+    assert install_calls == []
+    assert captured["env"]["PATH"].split(os.pathsep)[0] == str(local_bin)
+
+
+def test_publish_markdown_with_mermaid_installs_cli_only_when_missing(monkeypatch, tmp_path):
+    wiki_upload = _load_wiki_upload()
+    skill_dir = tmp_path / "skill"
+    local_bin = skill_dir / "node_modules" / ".bin"
+    markdown = tmp_path / "需求说明.md"
+    markdown.write_text("# 需求说明\n\n~~~mermaid\ngraph TD\n  A-->B\n~~~\n", encoding="utf-8")
+    install_calls = []
+    captured = {}
+
+    def fake_install(command, *, cwd=None, env=None):
+        install_calls.append((command, cwd, env))
+        local_bin.mkdir(parents=True)
+        (local_bin / ("mmdc.cmd" if os.name == "nt" else "mmdc")).write_text("", encoding="utf-8")
+        return "installed"
+
+    def fake_run(command, *, cwd=None, env=None):
+        captured["env"] = env
+        return "created page http://wiki.htzq.htsc.com.cn/pages/viewpage.action?pageId=123"
+
+    real_which = wiki_upload.shutil.which
+
+    def fake_which(command, path=None):
+        if command == "mmdc":
+            return None
+        return real_which(command, path=path)
+
+    monkeypatch.setattr(wiki_upload.shutil, "which", fake_which)
+    monkeypatch.setattr(wiki_upload, "_default_skill_dir", lambda: skill_dir)
+    monkeypatch.setattr(wiki_upload, "_install_mermaid_cli", fake_install)
+    monkeypatch.setattr(wiki_upload, "_run_command", fake_run)
+
+    wiki_upload.publish_markdown_to_confluence(
+        markdown,
+        base_url="http://wiki.htzq.htsc.com.cn",
+        token="token",
+        space_key="AI",
+        root_page_id="456",
+        title="需求说明",
+        mode="create",
+    )
+
+    assert len(install_calls) == 1
+    command, cwd, env = install_calls[0]
+    assert Path(command[0]).name in {"npm", "npm.cmd"}
+    assert command[1:] == ["install", "--prefix", str(skill_dir), "@mermaid-js/mermaid-cli"]
+    assert cwd == skill_dir
+    assert env["PATH"].split(os.pathsep)[0] == str(local_bin)
+    assert captured["env"]["PATH"].split(os.pathsep)[0] == str(local_bin)
 
 
 def test_publish_markdown_update_mode_injects_existing_page_id(monkeypatch, tmp_path):
@@ -258,6 +373,36 @@ def test_publish_markdown_removes_temp_source_when_md2conf_fails(monkeypatch, tm
     assert not captured["source"].exists()
 
 
+
+def test_resolve_md2conf_executable_falls_back_to_python_scripts_dir(tmp_path, monkeypatch):
+    scripts_dir = tmp_path / "Scripts"
+    scripts_dir.mkdir()
+    md2conf_exe = scripts_dir / "md2conf.exe"
+    md2conf_exe.write_text("", encoding="utf-8")
+    python_exe = tmp_path / "python.exe"
+    python_exe.write_text("", encoding="utf-8")
+    wiki_upload = _load_wiki_upload()
+
+    monkeypatch.setattr(wiki_upload.sys, "executable", str(python_exe))
+
+    assert wiki_upload.resolve_console_script("md2conf", executable_finder=lambda name: None) == str(md2conf_exe)
+
+
+def test_resolve_md2conf_executable_prefers_exe_over_extensionless_windows_script(tmp_path, monkeypatch):
+    scripts_dir = tmp_path / "Scripts"
+    scripts_dir.mkdir()
+    md2conf_script = scripts_dir / "md2conf"
+    md2conf_script.write_text("#!/usr/bin/env python", encoding="utf-8")
+    md2conf_exe = scripts_dir / "md2conf.exe"
+    md2conf_exe.write_text("", encoding="utf-8")
+    python_exe = tmp_path / "python.exe"
+    python_exe.write_text("", encoding="utf-8")
+    wiki_upload = _load_wiki_upload()
+
+    monkeypatch.setattr(wiki_upload.sys, "executable", str(python_exe))
+
+    assert wiki_upload.resolve_console_script("md2conf", executable_finder=lambda name: str(md2conf_script)) == str(md2conf_exe)
+
 def test_run_command_summarizes_md2conf_title_conflict(monkeypatch):
     wiki_upload = _load_wiki_upload()
 
@@ -307,6 +452,33 @@ def test_run_command_redacts_token_from_failure_message(monkeypatch):
     assert "unauthorized" in message
 
 
+def test_run_command_summarizes_legacy_md2conf_api_conflict(monkeypatch):
+    wiki_upload = _load_wiki_upload()
+
+    def fake_run(*args, **kwargs):
+        raise subprocess.CalledProcessError(
+            1,
+            args[0],
+            stderr=(
+                "AttributeError: 'ScannedDocument' object has no len()\n"
+                "Scanner().scan() -> Scanner().parse() returned ScannedDocument"
+            ),
+        )
+
+    monkeypatch.setattr(wiki_upload.subprocess, "run", fake_run)
+
+    try:
+        wiki_upload._run_command(["md2conf", "需求说明.md"])
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("expected RuntimeError")
+
+    assert "md2conf 命令来自旧版或冲突包" in message
+    assert "markdown-to-confluence" in message
+    assert "旧版 md2conf" in message
+
+
 def test_cli_missing_token_points_to_project_env(monkeypatch, tmp_path, capsys):
     wiki_upload = _load_wiki_upload()
     markdown = tmp_path / "需求说明.md"
@@ -324,9 +496,9 @@ def test_cli_missing_token_points_to_project_env(monkeypatch, tmp_path, capsys):
         raise AssertionError("expected SystemExit")
 
     err = capsys.readouterr().err
-    assert "项目根目录 .env" in err
+    assert "WIKI_TOKEN_REQUIRED=true" in err
     assert "HTSC_WIKI_TOKEN" in err
-
+    assert "不要在对话中回显 Token 明文" in err
 
 def test_cli_create_mode_uses_wiki_target_defaults_from_environment(monkeypatch, tmp_path, capsys):
     wiki_upload = _load_wiki_upload()

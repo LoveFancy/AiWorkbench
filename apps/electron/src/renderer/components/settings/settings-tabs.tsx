@@ -38,7 +38,7 @@ const BASE_TABS: TabItem[] = [
 /** Agent 模式专属 Tab */
 const AGENT_TAB: TabItem = {
   id: 'agent',
-  label: 'Agent 配置',
+  label: 'SKILL/MCP',
   icon: <Plug size={16} />,
 }
 

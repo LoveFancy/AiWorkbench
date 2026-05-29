@@ -2,7 +2,7 @@
 """quick-story：从结构化参数直接创建单条 DPMP Story，无需 [STORY_PLAN].csv。
 
 用法：
-  python <技能根目录>/run.py quick-story \
+  python run.py quick-story \
       --name "【前后端】客户标签管理" \
       --desc "支持对客户添加、删除、查询标签" \
       --iteration "2024-Q2-Sprint3" \

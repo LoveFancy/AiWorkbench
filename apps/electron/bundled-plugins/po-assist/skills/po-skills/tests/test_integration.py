@@ -159,7 +159,7 @@ class TestRunDocToMdCommand:
     def test_doc_to_md_uses_default_output_dir(self, monkeypatch, tmp_path):
         input_file = tmp_path / "考核优化二期需求.pdf"
         input_file.write_bytes(b"%PDF-1.4")
-        output_dir = tmp_path / "考核优化二期需求" / "1.产品设计"
+        output_dir = tmp_path / "考核优化二期需求" / "PRODUCT_DESIGN"
         output_dir.mkdir(parents=True)
 
         captured = {}
@@ -220,7 +220,7 @@ class TestRunDocToMdCommand:
     def test_doc_to_md_enhance_content_forwards_same_argv(self, monkeypatch, tmp_path):
         input_file = tmp_path / "需求说明.docx"
         input_file.write_bytes(b"fake")
-        output_dir = tmp_path / "需求说明" / "1.产品设计"
+        output_dir = tmp_path / "需求说明" / "PRODUCT_DESIGN"
         output_dir.mkdir(parents=True)
         captured = {}
 
@@ -253,7 +253,7 @@ class TestRunDocToMdCommand:
     def test_doc_to_md_enhance_content_emits_marker_from_output_file(self, monkeypatch, tmp_path, capsys):
         input_file = tmp_path / "需求说明.docx"
         input_file.write_bytes(b"fake")
-        output_dir = tmp_path / "custom" / "1.产品设计"
+        output_dir = tmp_path / "custom" / "PRODUCT_DESIGN"
         output_dir.mkdir(parents=True)
 
         fake_doc_to_md = types.SimpleNamespace()
@@ -304,7 +304,7 @@ class TestRunDocConvertCommand:
         assert captured["argv"] == [
             "doc_convert.py",
             "--output-dir",
-            "newreq/REQ-441893759/1.产品设计",
+            "newreq/REQ-441893759/PRODUCT_DESIGN",
             "--url",
             "http://wiki.example.com/pages/viewpage.action?pageId=441893759",
         ]
@@ -335,7 +335,7 @@ class TestRunDocConvertCommand:
         assert captured["argv"] == [
             "doc_convert.py",
             "--output-dir",
-            "newreq/REQ-abcd1234/1.产品设计",
+            "newreq/REQ-abcd1234/PRODUCT_DESIGN",
             "--url",
             "http://wiki.example.com/no-page-id",
         ]
@@ -345,9 +345,9 @@ class TestRunDocConvertCommand:
         fake_doc_convert = types.SimpleNamespace()
 
         def fake_main():
-            output = tmp_path / "newreq" / "REQ-1" / "1.产品设计" / "[PROD_ORI]需求.md"
+            output = tmp_path / "newreq" / "REQ-1" / "PRODUCT_DESIGN" / "[PROD_ORI]需求.md"
             output.write_text("![a](./images/a.png)\n", encoding="utf-8")
-            print("OUTPUT_FILE=newreq/REQ-1/1.产品设计/[PROD_ORI]需求.md")
+            print("OUTPUT_FILE=newreq/REQ-1/PRODUCT_DESIGN/[PROD_ORI]需求.md")
 
         fake_doc_convert.main = fake_main
         fake_doc_convert.extract_page_id = lambda value: "1"
@@ -366,17 +366,17 @@ class TestRunDocConvertCommand:
         captured = capsys.readouterr()
 
         assert "ENHANCE_CONTENT=true" in captured.out
-        assert "ENHANCE_INPUT=newreq/REQ-1/1.产品设计/[PROD_ORI]需求.md" in captured.out
+        assert "ENHANCE_INPUT=newreq/REQ-1/PRODUCT_DESIGN/[PROD_ORI]需求.md" in captured.out
 
     def test_doc_convert_enhance_content_requires_confirmation_for_many_images(self, monkeypatch, capsys, tmp_path):
         monkeypatch.chdir(tmp_path)
         fake_doc_convert = types.SimpleNamespace()
 
         def fake_main():
-            output = tmp_path / "newreq" / "REQ-1" / "1.产品设计" / "[PROD_ORI]需求.md"
+            output = tmp_path / "newreq" / "REQ-1" / "PRODUCT_DESIGN" / "[PROD_ORI]需求.md"
             images = "\n".join(f"![图{i}](./images/image-{i:03d}.png)" for i in range(1, 22))
             output.write_text(images + "\n", encoding="utf-8")
-            print("OUTPUT_FILE=newreq/REQ-1/1.产品设计/[PROD_ORI]需求.md")
+            print("OUTPUT_FILE=newreq/REQ-1/PRODUCT_DESIGN/[PROD_ORI]需求.md")
 
         fake_doc_convert.main = fake_main
         fake_doc_convert.extract_page_id = lambda value: "1"
@@ -454,6 +454,33 @@ class TestRunEnhanceContentCommand:
             "content_enhancer.py",
             "--input", str(prod_ori),
             "--keep", "./images/b.png",
+        ]
+
+    def test_enhance_content_forwards_describe_params(self, monkeypatch, tmp_path):
+        """--describe 参数应原样透传给 content_enhancer。"""
+        prod_ori = tmp_path / "[PROD_ORI]需求.md"
+        prod_ori.write_text("![a](./images/a.png)\n", encoding="utf-8")
+        captured = {}
+
+        fake_content_enhancer = types.SimpleNamespace()
+
+        def fake_main():
+            captured["argv"] = list(sys.argv)
+
+        fake_content_enhancer.main = fake_main
+        monkeypatch.setitem(sys.modules, "content_enhancer", fake_content_enhancer)
+        sys.modules.pop("run", None)
+        run = importlib.import_module("run")
+
+        run.cmd_enhance_content([
+            "--input", str(prod_ori),
+            "--describe", "./images/a.png", "图片中可见客户列表页面。",
+        ])
+
+        assert captured["argv"] == [
+            "content_enhancer.py",
+            "--input", str(prod_ori),
+            "--describe", "./images/a.png", "图片中可见客户列表页面。",
         ]
 
 
