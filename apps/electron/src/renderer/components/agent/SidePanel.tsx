@@ -536,7 +536,7 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                             <p>当前会话的专属文件，仅本次对话的 Agent 可以访问</p>
                           </TooltipContent>
                         </Tooltip>
-                        <span className="text-[10px] text-muted-foreground/75 truncate flex-1" title={sessionPath}>
+                        <span className="min-w-0 flex-1 truncate text-left text-[10px] text-muted-foreground/75" title={sessionPath}>
                           {sessionDisplayPath}
                         </span>
                         <FileCreateButton
@@ -663,9 +663,8 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                           <p>工作区内所有会话可访问的文件和文件夹，每个新对话都可以自动读取</p>
                         </TooltipContent>
                       </Tooltip>
-                      <div className="flex-1" />
                       {workspaceFilesPath && (
-                        <span className="text-[10px] text-muted-foreground/75 truncate flex-1" title={workspaceFilesPath}>
+                        <span className="min-w-0 flex-1 truncate text-left text-[10px] text-muted-foreground/75" title={workspaceFilesPath}>
                           {workspaceDisplayPath}
                         </span>
                       )}
@@ -695,6 +694,22 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                             </TooltipTrigger>
                             <TooltipContent side="bottom">
                               <p>在 Finder 中打开工作区文件目录</p>
+                            </TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-5 w-5 flex-shrink-0"
+                                onClick={handleRefresh}
+                              >
+                                <RefreshCw className="size-2.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom">
+                              <p>刷新文件列表</p>
                             </TooltipContent>
                           </Tooltip>
                         </>

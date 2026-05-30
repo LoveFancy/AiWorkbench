@@ -18,7 +18,6 @@ import {
   Palette,
   Info,
   Wrench,
-  RadioTower,
 } from 'lucide-react'
 import type { SettingsTab } from '@/atoms/settings-tab'
 
@@ -61,12 +60,6 @@ const SHORTCUTS_TAB: TabItem = {
   icon: <Keyboard size={16} />,
 }
 
-const BOTS_TAB: TabItem = {
-  id: 'bots',
-  label: '远程连接',
-  icon: <RadioTower size={16} />,
-}
-
 /** 尾部 Tabs */
 const TAIL_TABS: TabItem[] = [
   { id: 'storage', label: '磁盘管理', icon: <HardDrive size={16} /> },
@@ -76,6 +69,6 @@ const TAIL_TABS: TabItem[] = [
 
 export function getSettingsTabs(appMode: 'chat' | 'agent'): TabItem[] {
   return appMode === 'agent'
-    ? [...BASE_TABS, TOOLS_TAB, AGENT_TAB, BOTS_TAB, TUTORIAL_TAB, SHORTCUTS_TAB, ...TAIL_TABS]
-    : [...BASE_TABS, TOOLS_TAB, BOTS_TAB, TUTORIAL_TAB, SHORTCUTS_TAB, ...TAIL_TABS]
+    ? [...BASE_TABS, TOOLS_TAB, AGENT_TAB, TUTORIAL_TAB, SHORTCUTS_TAB, ...TAIL_TABS]
+    : [...BASE_TABS, TOOLS_TAB, TUTORIAL_TAB, SHORTCUTS_TAB, ...TAIL_TABS]
 }
