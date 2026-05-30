@@ -36,6 +36,20 @@ import {
 
 // ===== 行数计算 =====
 
+export type MentionKind = 'command' | 'skill' | 'mcp' | 'session' | 'file'
+
+export function getMentionChipClass(
+  char: string,
+  mentionKind?: MentionKind,
+  commandText?: string | null,
+): string {
+  if (mentionKind === 'command' || (char === '/' && commandText)) return 'command-mention-chip'
+  if (mentionKind === 'skill' || char === '/') return 'skill-mention-chip'
+  if (mentionKind === 'mcp' || char === '#') return 'mcp-mention-chip'
+  if (mentionKind === 'session' || char === '&') return 'session-mention-chip'
+  return 'mention-chip'
+}
+
 /** 计算编辑器内容的行数 */
 function countEditorLines(editor: ReturnType<typeof useEditor>): number {
   if (!editor) return 0
@@ -266,6 +280,13 @@ export function RichTextInput({
                   'data-mention-suggestion-char': attrs.mentionSuggestionChar,
                 }),
               },
+              mentionKind: {
+                default: null,
+                parseHTML: (el: HTMLElement) => el.getAttribute('data-mention-kind'),
+                renderHTML: (attrs: Record<string, string | null>) => (
+                  attrs.mentionKind ? { 'data-mention-kind': attrs.mentionKind } : {}
+                ),
+              },
               commandText: {
                 default: null,
                 parseHTML: (el: HTMLElement) => el.getAttribute('data-command-text'),
@@ -280,10 +301,11 @@ export function RichTextInput({
           renderHTML({ node, suggestion }) {
             const char = suggestion?.char ?? node.attrs.mentionSuggestionChar ?? '@'
             const label = node.attrs.label ?? node.attrs.id
-            let chipClass = 'mention-chip'
-            if (char === '/') chipClass = 'skill-mention-chip'
-            else if (char === '#') chipClass = 'mcp-mention-chip'
-            else if (char === '&') chipClass = 'session-mention-chip'
+            const chipClass = getMentionChipClass(
+              char,
+              node.attrs.mentionKind as MentionKind | undefined,
+              node.attrs.commandText,
+            )
             return [
               'span',
               {
@@ -291,6 +313,7 @@ export function RichTextInput({
                 'data-id': node.attrs.id,
                 'data-label': node.attrs.label,
                 'data-mention-suggestion-char': char,
+                ...(node.attrs.mentionKind ? { 'data-mention-kind': node.attrs.mentionKind } : {}),
                 ...(node.attrs.commandText ? { 'data-command-text': node.attrs.commandText } : {}),
                 class: chipClass,
               },
@@ -719,6 +742,30 @@ export function RichTextInput({
           height: 12px;
           background-color: currentColor;
           mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z'/%3E%3C/svg%3E");
+          mask-size: contain;
+          mask-repeat: no-repeat;
+          flex-shrink: 0;
+        }
+        .command-mention-chip {
+          background-color: hsl(38 92% 50% / 0.14);
+          color: hsl(35 92% 45%);
+          border-radius: 4px;
+          padding: 1px 4px 1px 2px;
+          font-size: 13px;
+          font-weight: 500;
+          white-space: nowrap;
+          display: inline-flex;
+          align-items: center;
+          gap: 2px;
+          vertical-align: baseline;
+        }
+        .command-mention-chip::before {
+          content: '';
+          display: inline-block;
+          width: 12px;
+          height: 12px;
+          background-color: currentColor;
+          mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 11 2-2-2-2'/%3E%3Cpath d='M11 13h4'/%3E%3Crect width='18' height='18' x='3' y='3' rx='2' ry='2'/%3E%3C/svg%3E");
           mask-size: contain;
           mask-repeat: no-repeat;
           flex-shrink: 0;

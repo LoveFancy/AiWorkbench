@@ -62,6 +62,7 @@ import type {
   HtSkillHubSkill,
   HtSkillHubInstallResult,
   FileEntry,
+  CreateFileEntryInput,
   FileSearchResult,
   EnvironmentCheckResult,
   InstallerManifest,
@@ -111,10 +112,11 @@ import type {
   FileAccessOptions,
   ResolvedFileUrl,
 } from '@proma/shared'
-import type { UserProfile, AppSettings } from '../types'
+import type { UserProfile, AppSettings, ConfigRootInfo } from '../types'
 import { getRuntimeStatus, getGitRepoStatus, reinitializeRuntime } from './lib/runtime-init'
 import { getUnstagedChanges, getFileDiff, getUntrackedContent, revertFile, getDiffContents } from './lib/git-diff-service'
 import { registerPromaFilePath } from './lib/local-file-protocol'
+import { createAgentFileEntry, findManagedFileEntryRoot } from './lib/agent-file-entry-service'
 import { registerUpdaterIpc } from './lib/updater/updater-ipc'
 import {
   listChannels,
@@ -180,7 +182,8 @@ import { permissionService } from './lib/agent-permission-service'
 import { askUserService } from './lib/agent-ask-user-service'
 import { exitPlanService } from './lib/agent-exit-plan-service'
 import { listAgentSlashCommands } from './lib/agent-slash-command-service'
-import { getAgentSessionWorkspacePath, getAgentWorkspacesDir, getWorkspaceSkillsDir, getWorkspaceFilesDir, getScratchPadPath } from './lib/config-paths'
+import { getAgentSessionWorkspacePath, getAgentWorkspacesDir, getWorkspaceSkillsDir, getWorkspaceFilesDir, getScratchPadPath, getConfigDirName } from './lib/config-paths'
+import { getConfigRootInfo, resetConfigRoot, setConfigRoot } from './lib/config-root-service'
 import { calculateStorageStats, cleanupStorage, cleanupTempFiles } from './lib/storage-service'
 import type { CleanupOptions } from './lib/storage-service'
 import {
@@ -1366,6 +1369,48 @@ export function registerIpcHandlers(): void {
       } catch {
         event.returnValue = false
       }
+    }
+  )
+
+  // 获取应用数据目录信息
+  ipcMain.handle(
+    SETTINGS_IPC_CHANNELS.GET_CONFIG_ROOT,
+    async (): Promise<ConfigRootInfo> => {
+      return getConfigRootInfo({ configDirName: getConfigDirName() })
+    }
+  )
+
+  // 选择并设置应用数据目录（重启后生效）
+  ipcMain.handle(
+    SETTINGS_IPC_CHANNELS.CHOOSE_CONFIG_ROOT,
+    async (): Promise<ConfigRootInfo | null> => {
+      const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+      if (!win) return null
+
+      const result = await dialog.showOpenDialog(win, {
+        properties: ['openDirectory', 'createDirectory'],
+        title: '选择数据目录',
+      })
+
+      if (result.canceled || result.filePaths.length === 0) return null
+
+      return setConfigRoot(result.filePaths[0]!, { configDirName: getConfigDirName() })
+    }
+  )
+
+  // 直接设置应用数据目录（重启后生效）
+  ipcMain.handle(
+    SETTINGS_IPC_CHANNELS.SET_CONFIG_ROOT,
+    async (_, dirPath: string): Promise<ConfigRootInfo> => {
+      return setConfigRoot(dirPath, { configDirName: getConfigDirName() })
+    }
+  )
+
+  // 恢复默认应用数据目录（必要时重启后生效）
+  ipcMain.handle(
+    SETTINGS_IPC_CHANNELS.RESET_CONFIG_ROOT,
+    async (): Promise<ConfigRootInfo> => {
+      return resetConfigRoot({ configDirName: getConfigDirName() })
     }
   )
 
@@ -2568,6 +2613,35 @@ export function registerIpcHandlers(): void {
       })
 
       return entries
+    }
+  )
+
+  // 在托管文件目录下创建文件或目录
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.CREATE_FILE_ENTRY,
+    async (_, input: CreateFileEntryInput): Promise<FileEntry> => {
+      const sessionRoots = listAgentSessions()
+        .map((session) => {
+          if (!session.workspaceId) return null
+          const workspace = getAgentWorkspace(session.workspaceId)
+          return workspace ? getAgentSessionWorkspacePath(workspace.slug, session.id) : null
+        })
+        .filter((path): path is string => Boolean(path))
+      const managedRoots = [
+        ...listAgentWorkspaces().map((workspace) => getWorkspaceFilesDir(workspace.slug)),
+        ...sessionRoots,
+      ]
+      const managedRoot = findManagedFileEntryRoot(input.parentDir, managedRoots)
+      if (!managedRoot) {
+        throw new Error('只能在会话文件或工作区文件目录下创建')
+      }
+
+      return createAgentFileEntry({
+        parentDir: input.parentDir,
+        name: input.name,
+        type: input.type,
+        managedRoot,
+      })
     }
   )
 

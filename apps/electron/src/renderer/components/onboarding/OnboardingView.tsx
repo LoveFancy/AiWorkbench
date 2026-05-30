@@ -55,7 +55,7 @@ export function OnboardingView({ onComplete }: OnboardingViewProps) {
       {step === 'welcome' && (
         <>
           <div className="mb-12 text-center">
-            <h1 className="text-4xl font-bold mb-4">欢迎使用华泰 WorkMate 伴行</h1>
+            <h1 className="text-4xl font-bold mb-4">欢迎使用华泰 WorkMate</h1>
             <p className="text-lg text-muted-foreground">
               新一代桌面 AI 软件，让通用 Agent 触手可及，伴你工作同行
             </p>

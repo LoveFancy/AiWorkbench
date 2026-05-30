@@ -18,10 +18,11 @@ import {
   RefreshCw,
   ExternalLink,
   FolderSearch,
-  MoreHorizontal,
   FolderInput,
   Pencil,
   MessageSquarePlus,
+  FilePlus,
+  FolderPlus,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -36,12 +37,12 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu'
 import { cn } from '@/lib/utils'
 import { workspaceFilesVersionAtom, fileBrowserAutoRevealAtom, recentlyModifiedPathsAtom, currentAgentSessionIdAtom } from '@/atoms/agent-atoms'
 import type { FileEntry } from '@proma/shared'
@@ -53,6 +54,7 @@ import {
   STICKY_ROW_BASE_CLASS,
   canBeSticky,
 } from './tree-row-layout'
+import { formatManagedPath, type ManagedPathRoots } from '@/lib/managed-path-display'
 
 /** 计算目标路径相对 rootPath 的祖先目录集合（不含 rootPath 自身、含目标的所有上级） */
 export function computeRevealAncestors(rootPath: string, targetPath: string): Set<string> {
@@ -91,13 +93,19 @@ interface FileBrowserProps {
   embedded?: boolean
   /** 隐藏"目录为空"提示（当外部已有附加目录等内容时使用） */
   hideEmpty?: boolean
+  /** 托管工作区短路径显示上下文；仅影响展示，不影响真实路径操作 */
+  displayRoots?: ManagedPathRoots
   /** 点击添加到聊天（在文件操作菜单中显示） */
   onAddToChat?: (entry: FileEntry) => void
   /** 单击文件时在内联预览面板中显示（替代外部窗口预览） */
   onFilePreview?: (filePath: string) => void
+  /** 当前单选文件夹变化时通知外部；多选、选中文件或清空时传 null */
+  onSelectedDirectoryChange?: (dirPath: string | null) => void
+  /** 在指定目录下新建文件或文件夹 */
+  onCreateEntry?: (parentDir: string, type: 'directory' | 'file') => void
 }
 
-export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, onAddToChat, onFilePreview }: FileBrowserProps): React.ReactElement {
+export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displayRoots, onAddToChat, onFilePreview, onSelectedDirectoryChange, onCreateEntry }: FileBrowserProps): React.ReactElement {
   const [entries, setEntries] = React.useState<FileEntry[]>([])
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
@@ -127,7 +135,8 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, onAddT
     if (revealTs <= consumedSelectTsRef.current) return
     consumedSelectTsRef.current = revealTs
     setSelectedPaths(new Set([revealTarget]))
-  }, [revealTs, revealForThisRoot?.select, revealTarget])
+    onSelectedDirectoryChange?.(null)
+  }, [revealTs, revealForThisRoot?.select, revealTarget, onSelectedDirectoryChange])
 
   // ===== 最近修改的文件路径（60s 内显示左侧竖条） =====
   const recentlyModifiedMap = useAtomValue(recentlyModifiedPathsAtom)
@@ -155,6 +164,10 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, onAddT
   const [moving, setMoving] = React.useState(false)
 
   const selectedCount = selectedPaths.size
+  const clearSelection = React.useCallback(() => {
+    setSelectedPaths(new Set())
+    onSelectedDirectoryChange?.(null)
+  }, [onSelectedDirectoryChange])
 
   /** 加载根目录 */
   const loadRoot = React.useCallback(async () => {
@@ -190,18 +203,20 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, onAddT
         }
         return next
       })
+      onSelectedDirectoryChange?.(null)
     } else {
       setSelectedPaths(new Set([entry.path]))
+      onSelectedDirectoryChange?.(entry.isDirectory ? entry.path : null)
     }
-  }, [])
+  }, [onSelectedDirectoryChange])
 
-  /** 点击空白区域清空选中 */
-  const handleBackgroundClick = React.useCallback((e: React.MouseEvent) => {
-    // 只处理直接点击容器的情况
-    if (e.target === e.currentTarget) {
-      setSelectedPaths(new Set())
-    }
-  }, [])
+  /** 点击文件行以外的空白区域时清空选中 */
+  const handleRootClickCapture = React.useCallback((event: React.MouseEvent) => {
+    const target = event.target
+    if (!(target instanceof HTMLElement)) return
+    if (target.closest('[data-file-tree-item="true"]')) return
+    clearSelection()
+  }, [clearSelection])
 
   /** 在文件夹中显示 */
   const handleShowInFolder = React.useCallback((entry: FileEntry) => {
@@ -292,14 +307,14 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, onAddT
     }
   }, [selectedPaths, loadRoot])
 
-  // 显示根路径最后两段作为面包屑
   const breadcrumb = React.useMemo(() => {
+    if (displayRoots) return formatManagedPath(rootPath, displayRoots)
     const parts = rootPath.split('/').filter(Boolean)
     return parts.length > 2 ? `.../${parts.slice(-2).join('/')}` : rootPath
-  }, [rootPath])
+  }, [displayRoots, rootPath])
 
   const fileTree = (
-    <div className="py-1" onClick={handleBackgroundClick}>
+    <div className={cn('py-1', embedded && 'min-h-full')}>
       {error && (
         <div className="px-3 py-2 text-xs text-destructive">{error}</div>
       )}
@@ -331,16 +346,17 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, onAddT
           onDelete={handleRequestDelete}
           onMove={handleMove}
           onRefresh={loadRoot}
-          onClearSelection={() => setSelectedPaths(new Set())}
+          onClearSelection={clearSelection}
           onAddToChat={onAddToChat}
           onFilePreview={onFilePreview}
+          onCreateEntry={onCreateEntry}
         />
       ))}
     </div>
   )
 
   return (
-    <div className={cn('flex flex-col', !embedded && 'h-full')}>
+    <div className={cn('flex flex-col', embedded ? 'min-h-full' : 'h-full')} onClickCapture={handleRootClickCapture}>
       {/* 顶部工具栏（可由外部接管） */}
       {!hideToolbar && (
         <div className="flex items-center gap-1 px-3 pr-10 h-[48px] border-b flex-shrink-0">
@@ -438,6 +454,7 @@ interface FileTreeItemProps {
   onClearSelection: () => void
   onAddToChat?: (entry: FileEntry) => void
   onFilePreview?: (filePath: string) => void
+  onCreateEntry?: (parentDir: string, type: 'directory' | 'file') => void
 }
 
 function FileTreeItem({
@@ -464,6 +481,7 @@ function FileTreeItem({
   onClearSelection,
   onAddToChat,
   onFilePreview,
+  onCreateEntry,
 }: FileTreeItemProps): React.ReactElement {
   const [expanded, setExpanded] = React.useState(false)
   const [children, setChildren] = React.useState<FileEntry[]>([])
@@ -674,30 +692,109 @@ function FileTreeItem({
   const isSticky = entry.isDirectory && expanded && canBeSticky(depth)
   const showMenu = !isRenaming
   const menuSelectedCount = isSelected ? selectedCount : 1
+  const menuItems = (): React.ReactNode => (
+    <>
+      {onCreateEntry && menuSelectedCount === 1 && entry.isDirectory && (
+        <>
+          <ContextMenuItem
+            className="text-xs py-1 [&>svg]:size-3.5"
+            onSelect={() => onCreateEntry(entry.path, 'file')}
+          >
+            <FilePlus />
+            新建文件
+          </ContextMenuItem>
+          <ContextMenuItem
+            className="text-xs py-1 [&>svg]:size-3.5"
+            onSelect={() => onCreateEntry(entry.path, 'directory')}
+          >
+            <FolderPlus />
+            新建文件夹
+          </ContextMenuItem>
+          <ContextMenuSeparator className="my-0.5" />
+        </>
+      )}
+      {onAddToChat && !entry.isDirectory && menuSelectedCount === 1 && (
+        <ContextMenuItem
+          className="text-xs py-1 [&>svg]:size-3.5"
+          onSelect={() => onAddToChat(entry)}
+        >
+          <MessageSquarePlus />
+          添加到聊天
+        </ContextMenuItem>
+      )}
+      {menuSelectedCount === 1 && (
+        <ContextMenuItem
+          className="text-xs py-1 [&>svg]:size-3.5"
+          onSelect={() => onShowInFolder(entry)}
+        >
+          <FolderSearch />
+          在文件夹中显示
+        </ContextMenuItem>
+      )}
+      {menuSelectedCount === 1 && !entry.isDirectory && (
+        <DefaultAppMenuItem
+          filePath={entry.path}
+          menuKind="context"
+          className="text-xs py-1 [&>svg]:size-3.5"
+        />
+      )}
+      <ContextMenuItem
+        className="text-xs py-1 [&>svg]:size-3.5"
+        disabled={moving}
+        onSelect={() => { void onMove(entry) }}
+      >
+        <FolderInput />
+        {menuSelectedCount > 1 ? `移动选中 (${menuSelectedCount})` : '移动到...'}
+      </ContextMenuItem>
+      {menuSelectedCount === 1 && (
+        <ContextMenuItem
+          className="text-xs py-1 [&>svg]:size-3.5"
+          onSelect={() => onStartRename(entry)}
+        >
+          <Pencil />
+          重命名
+        </ContextMenuItem>
+      )}
+      <ContextMenuSeparator className="my-0.5" />
+      <ContextMenuItem
+        className="text-xs py-1 [&>svg]:size-3.5 text-destructive"
+        onSelect={() => onDelete(entry)}
+      >
+        <Trash2 />
+        {menuSelectedCount > 1 ? `删除选中 (${menuSelectedCount})` : '删除'}
+      </ContextMenuItem>
+    </>
+  )
 
   return (
     <div className="relative" onClick={handleWrapperClick}>
-      <div
-        ref={rowRef}
-        data-sticky-row={isSticky ? 'true' : undefined}
-        className={cn(
-          'relative flex h-8 items-center gap-1 pr-2 text-sm cursor-pointer group transition-colors',
-          isSticky && STICKY_ROW_BASE_CLASS,
-          // sticky 行 hover 用不透明色，避免下方滚动内容透出；普通行保持半透明柔和感
-          isSelected
-            ? 'bg-accent'
-            : isSticky
-              ? 'hover:bg-accent'
-              : 'hover:bg-accent/50',
-          flash && 'file-browser-row-flash',
-        )}
-        style={{
-          paddingLeft,
-          top: isSticky ? stickyTop : undefined,
-          zIndex: isSticky ? stickyZIndex : undefined,
-        }}
-        onClick={handleClick}
-      >
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <div
+            ref={rowRef}
+            data-file-tree-item="true"
+            data-sticky-row={isSticky ? 'true' : undefined}
+            className={cn(
+              'relative flex h-8 items-center gap-1 pr-2 text-sm cursor-pointer group transition-colors',
+              isSticky && STICKY_ROW_BASE_CLASS,
+              // sticky 行 hover 用不透明色，避免下方滚动内容透出；普通行保持半透明柔和感
+              isSelected
+                ? 'bg-accent'
+                : isSticky
+                  ? 'hover:bg-accent'
+                  : 'hover:bg-accent/50',
+              flash && 'file-browser-row-flash',
+            )}
+            style={{
+              paddingLeft,
+              top: isSticky ? stickyTop : undefined,
+              zIndex: isSticky ? stickyZIndex : undefined,
+            }}
+            onClick={handleClick}
+            onContextMenu={(event) => {
+              if (!isSelected) onSelect(entry, event)
+            }}
+          >
         {/* sticky 行祖先链竖线，逻辑见 tree-row-layout.tsx 的 AncestorGuides */}
         {isSticky && <AncestorGuides depth={depth} isSelected={isSelected} />}
         {recentlyModifiedSet.has(entry.path) && (
@@ -748,86 +845,14 @@ function FileTreeItem({
           <span className="truncate text-xs flex-1">{entry.name}</span>
         )}
 
-        {/* 右侧操作按钮占位（始终占位，避免行宽跳动） */}
-        <div
-          className="flex-shrink-0"
-          onClick={(e) => e.stopPropagation()}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          {/* 悬浮/选中状态：三点菜单 */}
-          {showMenu && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className={cn(
-                  'h-6 w-6 rounded flex items-center justify-center hover:bg-accent/70 text-muted-foreground hover:text-foreground',
-                  !isSelected && 'invisible group-hover:visible focus-visible:visible data-[state=open]:visible',
-                )}
-                title="更多操作"
-                aria-label="更多操作"
-                onClick={(e) => {
-                  if (!isSelected) onSelect(entry, e)
-                }}
-              >
-                <MoreHorizontal className="size-3.5" />
-              </button>
-            </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-40 z-[9999] min-w-0 p-0.5">
-                {onAddToChat && !entry.isDirectory && menuSelectedCount === 1 && (
-                  <DropdownMenuItem
-                    className="text-xs py-1 [&>svg]:size-3.5"
-                    onSelect={() => onAddToChat(entry)}
-                  >
-                    <MessageSquarePlus />
-                    添加到聊天
-                  </DropdownMenuItem>
-                )}
-                {menuSelectedCount === 1 && (
-                  <DropdownMenuItem
-                    className="text-xs py-1 [&>svg]:size-3.5"
-                    onSelect={() => onShowInFolder(entry)}
-                  >
-                    <FolderSearch />
-                    在文件夹中显示
-                  </DropdownMenuItem>
-                )}
-                {menuSelectedCount === 1 && !entry.isDirectory && (
-                  <DefaultAppMenuItem
-                    filePath={entry.path}
-                    className="text-xs py-1 [&>svg]:size-3.5"
-                  />
-                )}
-                <DropdownMenuItem
-                  className="text-xs py-1 [&>svg]:size-3.5"
-                  disabled={moving}
-                  onSelect={() => { void onMove(entry) }}
-                >
-                  <FolderInput />
-                  {menuSelectedCount > 1 ? `移动选中 (${menuSelectedCount})` : '移动到...'}
-                </DropdownMenuItem>
-                {menuSelectedCount === 1 && (
-                  <DropdownMenuItem
-                    className="text-xs py-1 [&>svg]:size-3.5"
-                    onSelect={() => onStartRename(entry)}
-                  >
-                    <Pencil />
-                    重命名
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuSeparator className="my-0.5" />
-                <DropdownMenuItem
-                  className="text-xs py-1 [&>svg]:size-3.5 text-destructive"
-                  onSelect={() => onDelete(entry)}
-                >
-                  <Trash2 />
-                  {menuSelectedCount > 1 ? `删除选中 (${menuSelectedCount})` : '删除'}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-          </DropdownMenu>
-          )}
-        </div>
-      </div>
+          </div>
+        </ContextMenuTrigger>
+        {showMenu && (
+          <ContextMenuContent className="w-40 z-[9999] min-w-0 p-0.5">
+            {menuItems()}
+          </ContextMenuContent>
+        )}
+      </ContextMenu>
 
       {/* 子项 */}
       {expanded && (
@@ -871,6 +896,7 @@ function FileTreeItem({
               onClearSelection={onClearSelection}
               onAddToChat={onAddToChat}
               onFilePreview={onFilePreview}
+              onCreateEntry={onCreateEntry}
             />
           ))}
         </div>

@@ -21,4 +21,5 @@ test('Electron 应用品牌名统一为 WorkMate', () => {
   expect(traySource).not.toContain('DevAssist')
   expect(indexHtml).toContain('<title>WorkMate 伴行</title>')
   expect(aboutSource).toContain('关于 WorkMate 伴行')
+  expect(aboutSource).toContain('信息技术部运营管理室AI研发效能管理团队 秦晓012950')
 })

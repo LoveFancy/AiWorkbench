@@ -28,8 +28,8 @@ function getDownloadUrls(platform: NodeJS.Platform): {
       }
     case 'win32':
       return {
-        nodejs: `https://nodejs.org/dist/v${NODEJS_VERSION}/node-v${NODEJS_VERSION}-x64.msi`,
-        git: 'https://github.com/git-for-windows/git/releases/latest',
+        nodejs: 'https://htpan.htsc.com.cn/l/vF2xEX',
+        git: 'https://htpan.htsc.com.cn/l/iFghB9',
       }
     case 'linux':
       return {

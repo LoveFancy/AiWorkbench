@@ -6,24 +6,29 @@
  */
 
 import * as React from 'react'
+import { ContextMenuItem } from '@/components/ui/context-menu'
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { useDefaultAppForFile } from '@/hooks/useDefaultAppForFile'
 
 interface DefaultAppMenuItemProps {
   filePath: string
   className?: string
+  menuKind?: 'context' | 'dropdown'
 }
 
 export function DefaultAppMenuItem({
   filePath,
   className,
+  menuKind = 'dropdown',
 }: DefaultAppMenuItemProps): React.ReactElement | null {
   const info = useDefaultAppForFile(filePath)
 
   if (!info) return null
 
+  const Item = menuKind === 'context' ? ContextMenuItem : DropdownMenuItem
+
   return (
-    <DropdownMenuItem
+    <Item
       className={className}
       onSelect={() => {
         window.electronAPI.systemOpenFile(filePath).catch((err) => {
@@ -38,6 +43,6 @@ export function DefaultAppMenuItem({
         draggable={false}
       />
       <span className="truncate">用 {info.name} 打开</span>
-    </DropdownMenuItem>
+    </Item>
   )
 }

@@ -5,7 +5,14 @@ import { join } from 'node:path'
 
 import { DEFAULT_MAX_LOG_BYTES, attachRendererLogCapture, installFileLogger, resetFileLoggerForTests } from './file-logger.ts'
 
-type ConsoleMessageListener = (event: unknown, level: number, message: string, line: number, sourceId: string) => void
+interface ConsoleMessageDetails {
+  level: 'debug' | 'error' | 'info' | 'warning'
+  message: string
+  lineNumber: number
+  sourceId: string
+}
+
+type ConsoleMessageListener = (details: ConsoleMessageDetails) => void
 
 function createTempLogsDir(): { dir: string; cleanup: () => void } {
   const dir = mkdtempSync(join(tmpdir(), 'proma-file-logger-'))
@@ -102,7 +109,12 @@ describe('文件日志', () => {
       }
 
       attachRendererLogCapture(win, temp.dir)
-      listeners.get('console-message')?.({}, 3, '渲染进程错误', 42, 'renderer.js')
+      listeners.get('console-message')?.({
+        level: 'error',
+        message: '渲染进程错误',
+        lineNumber: 42,
+        sourceId: 'renderer.js',
+      })
 
       const content = readFileSync(join(temp.dir, 'renderer.log'), 'utf-8')
       expect(content).toContain('[ERROR] 渲染进程错误')
@@ -125,7 +137,12 @@ describe('文件日志', () => {
       }
 
       attachRendererLogCapture(win, temp.dir)
-      listeners.get('console-message')?.({}, 0, '渲染 debug 不落盘', 10, 'renderer.js')
+      listeners.get('console-message')?.({
+        level: 'debug',
+        message: '渲染 debug 不落盘',
+        lineNumber: 10,
+        sourceId: 'renderer.js',
+      })
 
       expect(existsSync(join(temp.dir, 'renderer.log'))).toBe(false)
     } finally {

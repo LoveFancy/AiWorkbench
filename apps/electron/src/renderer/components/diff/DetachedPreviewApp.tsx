@@ -10,6 +10,7 @@ import { useSetAtom } from 'jotai'
 import type { DetachedPreviewWindowData } from '@proma/shared'
 import { agentDiffRefreshVersionAtom } from '@/atoms/agent-atoms'
 import { cn } from '@/lib/utils'
+import { formatManagedPath } from '@/lib/managed-path-display'
 import { DiffTabContent } from './DiffTabContent'
 import { DefaultAppOpenButton } from './DefaultAppOpenButton'
 
@@ -60,6 +61,11 @@ export function DetachedPreviewApp(): React.ReactElement {
     })
   }, [data, setRefreshVersionMap])
 
+  const displayPath = React.useMemo(() => {
+    if (!data) return ''
+    return formatManagedPath(data.filePath, { basePaths: data.basePaths })
+  }, [data])
+
   if (loading) {
     return (
       <div className="h-screen w-screen flex items-center justify-center bg-content-area text-xs text-muted-foreground">
@@ -85,7 +91,7 @@ export function DetachedPreviewApp(): React.ReactElement {
         <div className="min-w-0 flex-1">
           <div className="text-xs font-medium truncate">{getFileName(data.filePath)}</div>
           <div className="text-[11px] text-muted-foreground truncate" title={data.filePath}>
-            {data.filePath}
+            {displayPath}
           </div>
         </div>
         <DefaultAppOpenButton

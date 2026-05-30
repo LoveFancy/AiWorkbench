@@ -18,26 +18,71 @@ interface ManifestCache {
 
 let cache: ManifestCache | null = null
 
+const MANAGED_WINDOWS_X64_INSTALLERS: InstallerSource[] = [
+  {
+    id: 'git-for-windows',
+    platform: 'win32',
+    arch: 'x64',
+    version: '2.54.0',
+    downloadUrl: 'https://htpan.htsc.com.cn/l/iFghB9',
+    fallbackUrl: '',
+    sha256: '',
+    sizeBytes: 76000000,
+    filename: 'Git-2.54.0-64-bit.exe',
+  },
+  {
+    id: 'nodejs',
+    platform: 'win32',
+    arch: 'x64',
+    version: '24.15.0',
+    downloadUrl: 'https://htpan.htsc.com.cn/l/vF2xEX',
+    fallbackUrl: '',
+    sha256: '',
+    sizeBytes: 32000000,
+    filename: 'node-v24.15.0-x64.msi',
+  },
+]
+
+function installerKey(source: Pick<InstallerSource, 'id' | 'platform' | 'arch'>): string {
+  return `${source.id}:${source.platform}:${source.arch}`
+}
+
+/**
+ * 对远程清单做本地覆盖，确保 Windows x64 使用内网托管的安装包。
+ */
+function applyManagedInstallerOverrides(manifest: InstallerManifest): InstallerManifest {
+  const managedByKey = new Map(
+    MANAGED_WINDOWS_X64_INSTALLERS.map((source) => [installerKey(source), source]),
+  )
+  const usedKeys = new Set<string>()
+
+  const installers = manifest.installers.map((source) => {
+    const key = installerKey(source)
+    const managed = managedByKey.get(key)
+    if (!managed) return source
+
+    usedKeys.add(key)
+    return managed
+  })
+
+  for (const managed of MANAGED_WINDOWS_X64_INSTALLERS) {
+    const key = installerKey(managed)
+    if (!usedKeys.has(key)) {
+      installers.push(managed)
+    }
+  }
+
+  return { installers }
+}
+
 /**
  * 内置 fallback manifest。
  *
- * 断网或 API 不可达时使用，此时没有 OSS 签名 URL，直接让客户端走 fallbackUrl
- * （官方上游）。sha256 留空，下载器在 sha256 为空时跳过校验并打 warning。
+ * 断网或 API 不可达时使用。sha256 留空时，下载器会跳过校验并打 warning。
  */
 const BUILTIN_FALLBACK: InstallerManifest = {
   installers: [
-    {
-      id: 'git-for-windows',
-      platform: 'win32',
-      arch: 'x64',
-      version: '2.47.1',
-      downloadUrl: '',
-      fallbackUrl:
-        'https://github.com/git-for-windows/git/releases/download/v2.47.1.windows.1/Git-2.47.1-64-bit.exe',
-      sha256: '',
-      sizeBytes: 66000000,
-      filename: 'Git-2.47.1-64-bit.exe',
-    },
+    MANAGED_WINDOWS_X64_INSTALLERS[0]!,
     {
       id: 'git-for-windows',
       platform: 'win32',
@@ -50,17 +95,7 @@ const BUILTIN_FALLBACK: InstallerManifest = {
       sizeBytes: 66000000,
       filename: 'Git-2.47.1-arm64.exe',
     },
-    {
-      id: 'nodejs',
-      platform: 'win32',
-      arch: 'x64',
-      version: '22.13.1',
-      downloadUrl: '',
-      fallbackUrl: 'https://nodejs.org/dist/v22.13.1/node-v22.13.1-x64.msi',
-      sha256: '',
-      sizeBytes: 28000000,
-      filename: 'node-v22.13.1-x64.msi',
-    },
+    MANAGED_WINDOWS_X64_INSTALLERS[1]!,
     {
       id: 'nodejs',
       platform: 'win32',
@@ -100,9 +135,10 @@ export async function fetchInstallerManifest(force = false): Promise<InstallerMa
       throw new Error('Manifest format invalid')
     }
 
-    cache = { data, timestamp: Date.now() }
-    console.log(`[Installer Manifest] 远程清单获取成功，共 ${data.installers.length} 项`)
-    return data
+    const manifest = applyManagedInstallerOverrides(data)
+    cache = { data: manifest, timestamp: Date.now() }
+    console.log(`[Installer Manifest] 远程清单获取成功，共 ${manifest.installers.length} 项`)
+    return manifest
   } catch (error) {
     console.warn(
       `[Installer Manifest] 远程清单获取失败，降级到内置 fallback:`,

@@ -7,7 +7,7 @@
 
 import * as React from 'react'
 import { useAtom } from 'jotai'
-import { Camera, ImagePlus, Volume2 } from 'lucide-react'
+import { Camera, FolderOpen, ImagePlus, Volume2 } from 'lucide-react'
 import Picker from '@emoji-mart/react'
 import data from '@emoji-mart/data'
 import {
@@ -43,7 +43,7 @@ import {
 } from '@/atoms/ui-preferences'
 import { cn } from '@/lib/utils'
 import { Button } from '../ui/button'
-import type { NotificationSoundId, NotificationSoundType, NotificationSoundSettings } from '@/types/settings'
+import type { ConfigRootInfo, NotificationSoundId, NotificationSoundType, NotificationSoundSettings } from '@/types/settings'
 
 /** emoji-mart 选择回调的 emoji 对象类型 */
 interface EmojiMartEmoji {
@@ -65,12 +65,19 @@ export function GeneralSettings(): React.ReactElement {
   const [nameInput, setNameInput] = React.useState(userProfile.userName)
   const [showEmojiPicker, setShowEmojiPicker] = React.useState(false)
   const [archiveAfterDays, setArchiveAfterDays] = React.useState<number>(7)
+  const [configRootInfo, setConfigRootInfo] = React.useState<ConfigRootInfo | null>(null)
+  const [configRootError, setConfigRootError] = React.useState<string | null>(null)
+  const [isConfigRootBusy, setIsConfigRootBusy] = React.useState(false)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
   // 加载归档天数设置
   React.useEffect(() => {
-    window.electronAPI.getSettings().then((settings) => {
+    Promise.all([
+      window.electronAPI.getSettings(),
+      window.electronAPI.getConfigRootInfo(),
+    ]).then(([settings, rootInfo]) => {
       setArchiveAfterDays(settings.archiveAfterDays ?? 7)
+      setConfigRootInfo(rootInfo)
     }).catch(console.error)
   }, [])
 
@@ -121,6 +128,21 @@ export function GeneralSettings(): React.ReactElement {
       setIsEditingName(false)
     } catch (error) {
       console.error('[通用设置] 更新用户名失败:', error)
+    }
+  }
+
+  /** 选择应用数据目录 */
+  const handleChooseConfigRoot = async (): Promise<void> => {
+    setIsConfigRootBusy(true)
+    setConfigRootError(null)
+    try {
+      const info = await window.electronAPI.chooseConfigRoot()
+      if (info) setConfigRootInfo(info)
+    } catch (error) {
+      console.error('[通用设置] 设置数据目录失败:', error)
+      setConfigRootError(error instanceof Error ? error.message : '设置数据目录失败')
+    } finally {
+      setIsConfigRootBusy(false)
     }
   }
 
@@ -243,6 +265,46 @@ export function GeneralSettings(): React.ReactElement {
             description="更多语言支持即将推出"
           >
             <span className="text-[13px] text-foreground/40">简体中文</span>
+          </SettingsRow>
+          <SettingsRow
+            label="数据目录"
+            description="保存会话、工作区、附件、SDK 配置和集成配置"
+          >
+            <div className="flex w-[480px] max-w-[52vw] items-center justify-end gap-3">
+              <div className="flex min-w-0 flex-1 items-center justify-end gap-2 overflow-hidden">
+                <span
+                  className={cn(
+                    'shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium',
+                    configRootInfo?.pendingPath
+                      ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                      : 'bg-foreground/5 text-foreground/50'
+                  )}
+                >
+                  {configRootInfo?.pendingPath ? '待生效' : '当前'}
+                </span>
+                <span
+                  className="min-w-0 truncate font-mono text-[13px] text-foreground/75"
+                  title={configRootInfo?.pendingPath ?? configRootInfo?.currentPath}
+                >
+                  {configRootInfo?.pendingPath ?? configRootInfo?.currentPath ?? '加载中...'}
+                </span>
+                {configRootError ? (
+                  <span className="shrink-0 text-[12px] text-destructive">{configRootError}</span>
+                ) : configRootInfo?.requiresRestart ? (
+                  <span className="shrink-0 text-[12px] text-amber-600 dark:text-amber-400">重启后生效</span>
+                ) : null}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 shrink-0 gap-1.5 rounded-md px-3 text-[12px]"
+                disabled={isConfigRootBusy}
+                onClick={handleChooseConfigRoot}
+              >
+                <FolderOpen size={14} />
+                选择目录
+              </Button>
+            </div>
           </SettingsRow>
           <SettingsToggle
             label="桌面通知"

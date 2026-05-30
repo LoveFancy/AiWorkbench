@@ -56,6 +56,7 @@ import type {
   HtSkillHubSkill,
   HtSkillHubInstallResult,
   FileEntry,
+  CreateFileEntryInput,
   FileSearchResult,
   EnvironmentCheckResult,
   InstallerManifest,
@@ -108,6 +109,7 @@ import type {
 import type {
   UserProfile,
   AppSettings,
+  ConfigRootInfo,
   QuickTaskSubmitInput,
   QuickTaskOpenSessionData,
   VoiceDictationAudioChunkInput,
@@ -316,6 +318,18 @@ export interface ElectronAPI {
 
   /** 同步更新应用设置（用于 beforeunload 场景） */
   updateSettingsSync: (updates: Partial<AppSettings>) => boolean
+
+  /** 获取应用数据目录信息 */
+  getConfigRootInfo: () => Promise<ConfigRootInfo>
+
+  /** 打开目录选择器并设置应用数据目录（重启后生效） */
+  chooseConfigRoot: () => Promise<ConfigRootInfo | null>
+
+  /** 设置应用数据目录（重启后生效） */
+  setConfigRoot: (dirPath: string) => Promise<ConfigRootInfo>
+
+  /** 恢复默认应用数据目录 */
+  resetConfigRoot: () => Promise<ConfigRootInfo>
 
   /** 获取系统主题（是否深色模式） */
   getSystemTheme: () => Promise<boolean>
@@ -676,6 +690,9 @@ export interface ElectronAPI {
 
   /** 列出目录内容 */
   listDirectory: (dirPath: string) => Promise<FileEntry[]>
+
+  /** 在托管文件目录下新建文件或文件夹 */
+  createFileEntry: (input: CreateFileEntryInput) => Promise<FileEntry>
 
   /** 删除文件/目录 */
   deleteFile: (filePath: string) => Promise<void>
@@ -1254,6 +1271,22 @@ const electronAPI: ElectronAPI = {
     return ipcRenderer.sendSync(SETTINGS_IPC_CHANNELS.UPDATE_SYNC, updates)
   },
 
+  getConfigRootInfo: () => {
+    return ipcRenderer.invoke(SETTINGS_IPC_CHANNELS.GET_CONFIG_ROOT)
+  },
+
+  chooseConfigRoot: () => {
+    return ipcRenderer.invoke(SETTINGS_IPC_CHANNELS.CHOOSE_CONFIG_ROOT)
+  },
+
+  setConfigRoot: (dirPath: string) => {
+    return ipcRenderer.invoke(SETTINGS_IPC_CHANNELS.SET_CONFIG_ROOT, dirPath)
+  },
+
+  resetConfigRoot: () => {
+    return ipcRenderer.invoke(SETTINGS_IPC_CHANNELS.RESET_CONFIG_ROOT)
+  },
+
   getSystemTheme: () => {
     return ipcRenderer.invoke(SETTINGS_IPC_CHANNELS.GET_SYSTEM_THEME)
   },
@@ -1757,6 +1790,10 @@ const electronAPI: ElectronAPI = {
 
   listDirectory: (dirPath: string) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.LIST_DIRECTORY, dirPath)
+  },
+
+  createFileEntry: (input: CreateFileEntryInput) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.CREATE_FILE_ENTRY, input)
   },
 
   deleteFile: (filePath: string) => {

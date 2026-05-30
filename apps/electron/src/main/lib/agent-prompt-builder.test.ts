@@ -18,6 +18,19 @@ describe('系统根提示词', () => {
     expect(prompt.indexOf('## 语言规则')).toBeLessThan(prompt.indexOf('## 工具使用指南'))
   })
 
+  test('Agent 根提示词要求缺少 Python 环境时使用内置安装 Skill', () => {
+    const prompt = buildSystemPrompt({
+      sessionId: 'test-session',
+      permissionMode: 'bypassPermissions',
+      memoryEnabled: false,
+      claudeAvailable: true,
+    })
+
+    expect(prompt).toContain('需要 Python 环境')
+    expect(prompt).toContain('install-python')
+    expect(prompt).toContain('不要自行拼装 Python 安装流程')
+  })
+
   test('Chat 内置提示词要求可见思考过程优先使用中文', () => {
     expect(BUILTIN_DEFAULT_PROMPT_STRING).toContain('可见思考过程、推理摘要和最终回复都优先使用中文')
     expect(BUILTIN_DEFAULT_PROMPT_STRING).toContain('`thinking`、`thinking block`、`reasoning`')

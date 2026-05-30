@@ -3,17 +3,22 @@ import { join } from 'node:path'
 import { inspect } from 'node:util'
 
 type ConsoleMethod = 'debug' | 'error' | 'info' | 'log' | 'warn'
+type RendererLogLevel = 'debug' | 'error' | 'info' | 'warning'
 
 interface FileLoggerOptions {
   maxBytes?: number
   mirrorToConsole?: boolean
 }
 
+interface RendererConsoleMessageDetails {
+  level: RendererLogLevel
+  message: string
+  lineNumber: number
+  sourceId: string
+}
+
 interface RendererWebContentsLike {
-  on(
-    eventName: 'console-message',
-    listener: (event: unknown, level: number, message: string, line: number, sourceId: string) => void,
-  ): void
+  on(eventName: 'console-message', listener: (details: RendererConsoleMessageDetails) => void): void
 }
 
 interface RendererWindowLike {
@@ -33,10 +38,10 @@ function levelLabel(method: ConsoleMethod): string {
   return method.toUpperCase()
 }
 
-function rendererLevelLabel(level: number): string {
-  if (level >= 3) return 'ERROR'
-  if (level === 2) return 'WARN'
-  if (level === 1) return 'INFO'
+function rendererLevelLabel(level: RendererLogLevel): string {
+  if (level === 'error') return 'ERROR'
+  if (level === 'warning') return 'WARN'
+  if (level === 'info') return 'INFO'
   return 'DEBUG'
 }
 
@@ -44,8 +49,8 @@ function shouldWriteConsoleMethod(method: ConsoleMethod): boolean {
   return method !== 'debug'
 }
 
-function shouldWriteRendererLevel(level: number): boolean {
-  return level >= 1
+function shouldWriteRendererLevel(level: RendererLogLevel): boolean {
+  return level !== 'debug'
 }
 
 function formatValue(value: unknown): string {
@@ -127,9 +132,9 @@ export function installFileLogger(logsDir: string, options: FileLoggerOptions = 
 }
 
 export function attachRendererLogCapture(win: RendererWindowLike, logsDir: string): void {
-  win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+  win.webContents.on('console-message', ({ level, message, lineNumber, sourceId }) => {
     if (!shouldWriteRendererLevel(level)) return
-    const location = sourceId ? `${sourceId}:${line}` : `line:${line}`
+    const location = sourceId ? `${sourceId}:${lineNumber}` : `line:${lineNumber}`
     appendLog(logsDir, 'renderer.log', rendererLevelLabel(level), [message, `(${location})`], activeMaxBytes)
   })
 }

@@ -21,6 +21,7 @@ import { DiffView } from './DiffView'
 import { MarkdownRichEditor } from './MarkdownRichEditor'
 import { PreviewFindBar } from './PreviewFindBar'
 import { PIERRE_FILE_CSS } from '@/components/agent/tool-result-renderers/pierre-styles'
+import { formatManagedPath } from '@/lib/managed-path-display'
 
 const MD_EXTS = new Set(['.md', '.markdown'])
 const PDF_EXTS = new Set(['.pdf'])
@@ -208,6 +209,10 @@ export function DiffTabContent({ filePath, dirPath, sessionId, gitRoot, previewO
   const [pdfZoom, setPdfZoom] = React.useState(100)
   const pdfIframeRef = React.useRef<HTMLIFrameElement>(null)
   const [imagePath, setImagePath] = React.useState('')
+  const displayPath = React.useMemo(
+    () => formatManagedPath(filePath, { basePaths }),
+    [basePaths, filePath],
+  )
   const [imageDataUrl, setImageDataUrl] = React.useState('')
   // 默认 25%：预览面板空间有限，先展示缩略全貌，用户可手动放大查看细节
   const [imageZoom, setImageZoom] = React.useState(0.25)
@@ -923,7 +928,7 @@ export function DiffTabContent({ filePath, dirPath, sessionId, gitRoot, previewO
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 px-3 py-1.5 flex-shrink-0">
         <span className="text-[12px] text-foreground/60 truncate" title={filePath}>
-          {filePath}
+          {displayPath}
         </span>
 
         {!previewOnly && (

@@ -26,16 +26,19 @@ interface MentionSuggestionConfig<T> {
   fetchItems: (slug: string, query: string) => Promise<T[]>
   /** 提取唯一 key */
   keyExtractor: (item: T) => string
+  /** 提取鼠标悬停时展示的完整说明 */
+  titleExtractor?: (item: T) => string | undefined
   /** 渲染列表项 */
   renderItem: (item: T) => React.ReactNode
   /** 选中后传给 TipTap Suggestion command 的参数 */
-  toCommand: (item: T) => { id: string; label: string; commandText?: string }
+  toCommand: (item: T) => MentionCommandProps
 }
 
 interface MentionCommandProps {
   id: string
   label: string
   commandText?: string
+  mentionKind?: 'command' | 'skill' | 'mcp' | 'session' | 'file'
 }
 
 function insertMentionWithCurrentSchema(char: string): NonNullable<SuggestionOptions<unknown, MentionCommandProps>['command']> {
@@ -95,6 +98,7 @@ function createMentionSuggestion<T>(
               selectedIndex: 0,
               emptyText: config.emptyText,
               keyExtractor: config.keyExtractor,
+              titleExtractor: config.titleExtractor,
               renderItem: config.renderItem,
               onSelect: (item: T) => {
                 const cmd = config.toCommand(item)
@@ -111,6 +115,7 @@ function createMentionSuggestion<T>(
           mentionItemCountRef.current = props.items.length
           renderer?.updateProps({
             items: props.items,
+            titleExtractor: config.titleExtractor,
             onSelect: (item: T) => {
               const cmd = config.toCommand(item)
               props.command(cmd)
@@ -155,7 +160,60 @@ export interface SlashCommandMentionItem {
   sourceLabel: string
 }
 
-type SlashMentionItem = SkillMentionItem | SlashCommandMentionItem
+export type SlashMentionItem = SkillMentionItem | SlashCommandMentionItem
+
+export function sortSlashMentionItems(items: SlashMentionItem[]): SlashMentionItem[] {
+  return [...items].sort((a, b) => {
+    if (a.kind === b.kind) return 0
+    return a.kind === 'skill' ? -1 : 1
+  })
+}
+
+export function formatSlashCommandDisplayLabel(item: SlashCommandMentionItem): string {
+  const sourceLabel = item.sourceLabel.trim()
+  const commandName = item.name || item.command.replace(/^\//, '')
+  if (!sourceLabel) return item.command
+  return `${sourceLabel}: ${commandName}`
+}
+
+export function buildSlashCommandSearchText(command: AgentSlashCommand): string {
+  return [
+    command.sourceLabel,
+    command.name,
+    command.command,
+    command.argumentHint,
+    command.description,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+}
+
+export function formatSlashMentionTooltip(item: SlashMentionItem): string | undefined {
+  if (item.kind === 'command') {
+    return [
+      `命令: ${item.command}`,
+      `来源: ${item.sourceLabel}`,
+      item.argumentHint ? `参数: ${item.argumentHint}` : undefined,
+      item.description ? `说明: ${item.description}` : undefined,
+    ]
+      .filter(Boolean)
+      .join('\n')
+  }
+
+  return [
+    `Skill: ${item.name}`,
+    item.description ? `说明: ${item.description}` : undefined,
+  ]
+    .filter(Boolean)
+    .join('\n')
+}
+
+export function buildSlashMentionCommandProps(item: SlashMentionItem): MentionCommandProps {
+  return item.kind === 'command'
+    ? { id: item.id, label: item.command, commandText: `${item.command} `, mentionKind: 'command' }
+    : { id: item.id, label: item.name, mentionKind: 'skill' }
+}
 
 export function createSkillMentionSuggestion(
   workspaceSlugRef: React.RefObject<string | null>,
@@ -173,7 +231,7 @@ export function createSkillMentionSuggestion(
         ])
         const commandItems: SlashCommandMentionItem[] = commands
           .filter((command: AgentSlashCommand) => {
-            const text = `${command.command} ${command.description ?? ''}`.toLowerCase()
+            const text = buildSlashCommandSearchText(command)
             return !q || text.includes(q)
           })
           .map((command: AgentSlashCommand) => ({
@@ -189,15 +247,18 @@ export function createSkillMentionSuggestion(
           .filter((s) => s.enabled)
           .filter((s) => !q || s.name.toLowerCase().includes(q) || (s.slug ?? '').toLowerCase().includes(q))
           .map((s) => ({ kind: 'skill', id: s.slug, name: s.name, description: s.description }))
-        return [...commandItems, ...skillItems]
+        return sortSlashMentionItems([...skillItems, ...commandItems])
       },
       keyExtractor: (item) => `${item.kind}:${item.id}`,
+      titleExtractor: formatSlashMentionTooltip,
       renderItem: (item) => {
         if (item.kind === 'command') {
           return (
             <>
               <TerminalSquare className="size-3.5 text-amber-500 flex-shrink-0" />
-              <span className="truncate font-medium w-[108px] flex-shrink-0">{item.command}</span>
+              <span className="truncate font-medium w-[158px] flex-shrink-0">
+                {formatSlashCommandDisplayLabel(item)}
+              </span>
               <span className="truncate text-[10px] text-muted-foreground/55 flex-1 min-w-0">
                 {[item.argumentHint, item.description].filter(Boolean).join('  ')}
               </span>
@@ -214,9 +275,7 @@ export function createSkillMentionSuggestion(
           </>
         )
       },
-      toCommand: (item) => item.kind === 'command'
-        ? { id: item.id, label: item.command, commandText: `${item.command} ` }
-        : { id: item.id, label: item.name },
+      toCommand: buildSlashMentionCommandProps,
     },
     workspaceSlugRef,
     mentionActiveRef,

@@ -985,6 +985,12 @@ export interface FileEntry {
   children?: FileEntry[]
 }
 
+export interface CreateFileEntryInput {
+  parentDir: string
+  name: string
+  type: 'directory' | 'file'
+}
+
 /** 文件索引条目（用于 @ 引用搜索） */
 export interface FileIndexEntry {
   /** 文件/目录名称 */
@@ -1395,6 +1401,8 @@ export const AGENT_IPC_CHANNELS = {
   GET_SESSION_PATH: 'agent:get-session-path',
   /** 列出目录内容 */
   LIST_DIRECTORY: 'agent:list-directory',
+  /** 在托管文件目录下新建文件或文件夹 */
+  CREATE_FILE_ENTRY: 'agent:create-file-entry',
   /** 删除文件/空目录 */
   DELETE_FILE: 'agent:delete-file',
   /** 用系统默认应用打开文件 */

@@ -7,9 +7,18 @@
 
 import * as React from 'react'
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
-import { X, FolderOpen, ExternalLink, RefreshCw, ChevronRight, MoreHorizontal, FolderSearch, Pencil, FolderInput, Info, FolderHeart, MessageSquarePlus } from 'lucide-react'
+import { X, FolderOpen, ExternalLink, RefreshCw, ChevronRight, MoreHorizontal, FolderSearch, Pencil, FolderInput, Info, FolderHeart, MessageSquarePlus, FilePlus, FolderPlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,7 +44,14 @@ import {
 } from '@/atoms/agent-atoms'
 import { previewPanelOpenMapAtom, previewFileMapAtom } from '@/atoms/preview-atoms'
 import { detectIsWindows } from '@/lib/platform'
-import type { FileEntry, AgentPendingFile } from '@proma/shared'
+import { formatManagedPath } from '@/lib/managed-path-display'
+import type { CreateFileEntryInput, FileEntry, AgentPendingFile } from '@proma/shared'
+
+type CreateEntryTarget = {
+  parentDir: string
+  type: CreateFileEntryInput['type']
+  scope: 'session' | 'workspace'
+}
 
 function getPathBasename(filePath: string): string {
   return filePath.split(/[\\/]/).filter(Boolean).pop() || filePath
@@ -47,6 +63,45 @@ function getMediaTypeFromFilename(filename: string): string {
   if (!imageExts.has(ext)) return 'application/octet-stream'
   const mimeExt = ext === 'jpg' ? 'jpeg' : ext === 'svg' ? 'svg+xml' : ext
   return `image/${mimeExt}`
+}
+
+function formatCreateEntryError(error: unknown): string {
+  const rawMessage = error instanceof Error ? error.message : String(error)
+  const remotePrefix = "Error invoking remote method 'agent:create-file-entry': Error: "
+  if (rawMessage.startsWith(remotePrefix)) {
+    return rawMessage.slice(remotePrefix.length)
+  }
+  return rawMessage || '创建失败'
+}
+
+function FileCreateButton({
+  label,
+  icon,
+  onClick,
+}: {
+  label: string
+  icon: 'directory' | 'file'
+  onClick: () => void
+}): React.ReactElement {
+  const Icon = icon === 'directory' ? FolderPlus : FilePlus
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-5 w-5 flex-shrink-0"
+          onClick={onClick}
+        >
+          <Icon className="size-2.5" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">
+        <p>{label}</p>
+      </TooltipContent>
+    </Tooltip>
+  )
 }
 
 interface SidePanelProps {
@@ -103,6 +158,7 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
 
   const filesVersion = useAtomValue(workspaceFilesVersionAtom)
   const setFilesVersion = useSetAtom(workspaceFilesVersionAtom)
+  const setAutoReveal = useSetAtom(fileBrowserAutoRevealAtom)
   const diffRefreshVersionMap = useAtomValue(agentDiffRefreshVersionAtom)
   const diffRefreshVersion = diffRefreshVersionMap.get(sessionId) ?? 0
   const hasFileChanges = filesVersion > 0
@@ -341,15 +397,15 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
     setPendingFiles((prev) => [...prev, pending])
   }, [pendingFiles, setPendingFiles])
 
-  // 面包屑：显示根路径最后两段
-  const breadcrumb = React.useMemo(() => {
-    if (!sessionPath) return ''
-    const parts = sessionPath.split('/').filter(Boolean)
-    return parts.length > 2 ? `.../${parts.slice(-2).join('/')}` : sessionPath
-  }, [sessionPath])
-
   // 工作区文件目录路径
   const [workspaceFilesPath, setWorkspaceFilesPath] = React.useState<string | null>(null)
+  const [sessionCreateDir, setSessionCreateDir] = React.useState<string | null>(null)
+  const [workspaceCreateDir, setWorkspaceCreateDir] = React.useState<string | null>(null)
+  const [createTarget, setCreateTarget] = React.useState<CreateEntryTarget | null>(null)
+  const [createName, setCreateName] = React.useState('')
+  const [createError, setCreateError] = React.useState<string | null>(null)
+  const [creatingEntry, setCreatingEntry] = React.useState(false)
+  const createInputRef = React.useRef<HTMLInputElement>(null)
   React.useEffect(() => {
     if (!workspaceSlug) {
       setWorkspaceFilesPath(null)
@@ -358,12 +414,75 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
     window.electronAPI.getWorkspaceFilesPath(workspaceSlug).then(setWorkspaceFilesPath).catch(() => setWorkspaceFilesPath(null))
   }, [workspaceSlug])
 
+  React.useEffect(() => {
+    setSessionCreateDir(null)
+  }, [sessionPath])
+
+  React.useEffect(() => {
+    setWorkspaceCreateDir(null)
+  }, [workspaceFilesPath])
+
+  React.useEffect(() => {
+    if (!createTarget) return
+    const timer = setTimeout(() => {
+      createInputRef.current?.focus()
+      createInputRef.current?.select()
+    }, 50)
+    return () => clearTimeout(timer)
+  }, [createTarget])
+
+  const openCreateDialog = React.useCallback((target: CreateEntryTarget) => {
+    setCreateTarget(target)
+    setCreateName(target.type === 'file' ? 'untitled.md' : '新建文件夹')
+    setCreateError(null)
+  }, [])
+
+  const closeCreateDialog = React.useCallback(() => {
+    if (creatingEntry) return
+    setCreateTarget(null)
+    setCreateName('')
+    setCreateError(null)
+  }, [creatingEntry])
+
+  const handleCreateEntry = React.useCallback(async () => {
+    if (!createTarget) return
+    const trimmed = createName.trim()
+    if (!trimmed) {
+      setCreateError('名称不能为空')
+      return
+    }
+
+    setCreatingEntry(true)
+    setCreateError(null)
+    try {
+      const entry = await window.electronAPI.createFileEntry({
+        parentDir: createTarget.parentDir,
+        name: trimmed,
+        type: createTarget.type,
+      })
+      setFilesVersion((version) => version + 1)
+      setAutoReveal({ sessionId, path: entry.path, ts: Date.now(), select: true })
+      setCreateTarget(null)
+      setCreateName('')
+    } catch (error) {
+      setCreateError(formatCreateEntryError(error))
+    } finally {
+      setCreatingEntry(false)
+    }
+  }, [createName, createTarget, sessionId, setAutoReveal, setFilesVersion])
+
   // RightSidePanel 完全由用户控制，不因 Agent 文件变更自动打开
 
   // 同步 basePaths ref（供 handleFilePreview 使用，避免 hooks 声明顺序问题）
   basePathsRef.current = [sessionPath, workspaceFilesPath, ...fileAccessPathsMemo].filter(Boolean) as string[]
   const hasSessionAttachedItems = attachedDirs.length > 0 || attachedFiles.length > 0
   const hasWorkspaceAttachedItems = wsAttachedDirs.length > 0 || wsAttachedFiles.length > 0
+  const sessionDisplayPath = sessionPath
+    ? formatManagedPath(sessionPath, { sessionPath, workspaceFilesPath })
+    : ''
+  const workspaceDisplayPath = workspaceFilesPath
+    ? formatManagedPath(workspaceFilesPath, { sessionPath, workspaceFilesPath })
+    : ''
 
   return (
     <div
@@ -418,8 +537,18 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                           </TooltipContent>
                         </Tooltip>
                         <span className="text-[10px] text-muted-foreground/75 truncate flex-1" title={sessionPath}>
-                          {breadcrumb}
+                          {sessionDisplayPath}
                         </span>
+                        <FileCreateButton
+                          label="新建文件"
+                          icon="file"
+                          onClick={() => openCreateDialog({ parentDir: sessionCreateDir ?? sessionPath, type: 'file', scope: 'session' })}
+                        />
+                        <FileCreateButton
+                          label="新建文件夹"
+                          icon="directory"
+                          onClick={() => openCreateDialog({ parentDir: sessionCreateDir ?? sessionPath, type: 'directory', scope: 'session' })}
+                        />
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
@@ -493,7 +622,17 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                           {hasSessionAttachedItems && (
                             <div className="text-[11px] font-medium text-muted-foreground mb-1 px-3 pt-2">工作文件（存储于该工作区目录）</div>
                           )}
-                          <FileBrowser rootPath={sessionPath} hideToolbar embedded hideEmpty={hasSessionAttachedItems} onAddToChat={handleAddToChat} onFilePreview={handleFilePreview} />
+                          <FileBrowser
+                            rootPath={sessionPath}
+                            hideToolbar
+                            embedded
+                            hideEmpty={hasSessionAttachedItems}
+                            displayRoots={{ sessionPath, workspaceFilesPath }}
+                            onAddToChat={handleAddToChat}
+                            onFilePreview={handleFilePreview}
+                            onSelectedDirectoryChange={setSessionCreateDir}
+                            onCreateEntry={(parentDir, type) => openCreateDialog({ parentDir, type, scope: 'session' })}
+                          />
                         </>
                         {/* 会话文件拖拽上传区域 */}
                         <FileDropZone
@@ -526,22 +665,39 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                       </Tooltip>
                       <div className="flex-1" />
                       {workspaceFilesPath && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-5 w-5 flex-shrink-0"
-                              onClick={() => window.electronAPI.openFile(workspaceFilesPath).catch(console.error)}
-                            >
-                              <ExternalLink className="size-2.5" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">
-                            <p>在 Finder 中打开工作区文件目录</p>
-                          </TooltipContent>
-                        </Tooltip>
+                        <span className="text-[10px] text-muted-foreground/75 truncate flex-1" title={workspaceFilesPath}>
+                          {workspaceDisplayPath}
+                        </span>
+                      )}
+                      {workspaceFilesPath && (
+                        <>
+                          <FileCreateButton
+                            label="新建文件"
+                            icon="file"
+                            onClick={() => openCreateDialog({ parentDir: workspaceCreateDir ?? workspaceFilesPath, type: 'file', scope: 'workspace' })}
+                          />
+                          <FileCreateButton
+                            label="新建文件夹"
+                            icon="directory"
+                            onClick={() => openCreateDialog({ parentDir: workspaceCreateDir ?? workspaceFilesPath, type: 'directory', scope: 'workspace' })}
+                          />
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-5 w-5 flex-shrink-0"
+                                onClick={() => window.electronAPI.openFile(workspaceFilesPath).catch(console.error)}
+                              >
+                                <ExternalLink className="size-2.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom">
+                              <p>在 Finder 中打开工作区文件目录</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </>
                       )}
                     </div>
                     {/* ===== 文件搜索栏（工作区） ===== */}
@@ -585,7 +741,17 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                           {hasWorkspaceAttachedItems && (
                             <div className="text-[11px] font-medium text-muted-foreground mb-1 px-3 pt-2">工作文件（存储于该工作区目录）</div>
                           )}
-                          <FileBrowser rootPath={workspaceFilesPath} hideToolbar embedded hideEmpty={hasWorkspaceAttachedItems} onAddToChat={handleAddToChat} onFilePreview={handleFilePreview} />
+                          <FileBrowser
+                            rootPath={workspaceFilesPath}
+                            hideToolbar
+                            embedded
+                            hideEmpty={hasWorkspaceAttachedItems}
+                            displayRoots={{ sessionPath, workspaceFilesPath }}
+                            onAddToChat={handleAddToChat}
+                            onFilePreview={handleFilePreview}
+                            onSelectedDirectoryChange={setWorkspaceCreateDir}
+                            onCreateEntry={(parentDir, type) => openCreateDialog({ parentDir, type, scope: 'workspace' })}
+                          />
                         </>
                       )}
                       {/* 工作区文件拖拽上传区域 */}
@@ -601,6 +767,45 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                   </div>
                 </div>
               )}
+          <Dialog open={!!createTarget} onOpenChange={(open) => { if (!open) closeCreateDialog() }}>
+            <DialogContent className="max-w-sm">
+              <DialogHeader>
+                <DialogTitle>{createTarget?.type === 'directory' ? '新建文件夹' : '新建文件'}</DialogTitle>
+                <DialogDescription>
+                  {createTarget?.scope === 'workspace'
+                    ? '创建到工作区文件目录，所有会话都可以访问。'
+                    : '创建到当前会话文件目录，仅本会话可访问。'}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-2">
+                <Input
+                  ref={createInputRef}
+                  value={createName}
+                  onChange={(event) => {
+                    setCreateName(event.target.value)
+                    setCreateError(null)
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      void handleCreateEntry()
+                    }
+                  }}
+                  placeholder={createTarget?.type === 'directory' ? '文件夹名称' : '文件名，例如 notes.md'}
+                  disabled={creatingEntry}
+                />
+                {createError && <p className="text-xs text-destructive">{createError}</p>}
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="ghost" onClick={closeCreateDialog} disabled={creatingEntry}>
+                  取消
+                </Button>
+                <Button type="button" onClick={() => { void handleCreateEntry() }} disabled={creatingEntry}>
+                  创建
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
     </div>
   )

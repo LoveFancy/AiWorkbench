@@ -8,6 +8,7 @@
 import { join, basename } from 'node:path'
 import { mkdirSync, existsSync, cpSync, rmSync, readdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
+import { resolveConfigDir } from './config-root-service'
 
 /**
  * 获取配置目录名称
@@ -46,7 +47,7 @@ export function getConfigDirName(): string {
  * 如果目录不存在则自动创建。
  */
 export function getConfigDir(): string {
-  const configDir = join(homedir(), getConfigDirName())
+  const configDir = resolveConfigDir({ homeDir: homedir(), configDirName: getConfigDirName() })
 
   if (!existsSync(configDir)) {
     mkdirSync(configDir, { recursive: true })
@@ -54,6 +55,13 @@ export function getConfigDir(): string {
   }
 
   return configDir
+}
+
+/**
+ * 获取当前应用数据目录路径，但不创建目录。
+ */
+export function getConfigDirPath(): string {
+  return resolveConfigDir({ homeDir: homedir(), configDirName: getConfigDirName() })
 }
 
 /**

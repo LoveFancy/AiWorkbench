@@ -237,6 +237,20 @@ export interface MainWindowState {
   isMaximized: boolean
 }
 
+/** 应用数据目录信息 */
+export interface ConfigRootInfo {
+  /** 当前运行模式下的默认数据目录 */
+  defaultPath: string
+  /** 当前进程正在使用的数据目录 */
+  currentPath: string
+  /** 引导配置中保存的自定义数据目录 */
+  customPath?: string
+  /** 下次重启后会生效的数据目录 */
+  pendingPath?: string
+  /** 是否需要重启应用后生效 */
+  requiresRestart: boolean
+}
+
 /** 持久化的标签页状态 */
 export interface PersistedTabSettings {
   tabs: import('../renderer/atoms/tab-atoms').TabItem[]
@@ -248,6 +262,10 @@ export const SETTINGS_IPC_CHANNELS = {
   GET: 'settings:get',
   UPDATE: 'settings:update',
   UPDATE_SYNC: 'settings:update-sync',
+  GET_CONFIG_ROOT: 'settings:get-config-root',
+  CHOOSE_CONFIG_ROOT: 'settings:choose-config-root',
+  SET_CONFIG_ROOT: 'settings:set-config-root',
+  RESET_CONFIG_ROOT: 'settings:reset-config-root',
   GET_SYSTEM_THEME: 'settings:get-system-theme',
   ON_SYSTEM_THEME_CHANGED: 'settings:system-theme-changed',
   /** 用户手动切换主题时广播给所有窗口 */

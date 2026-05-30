@@ -24,16 +24,16 @@ import {
   currentAgentWorkspaceIdAtom,
   agentChannelIdAtom,
   agentSessionsAtom,
-  currentAgentSessionIdAtom,
   agentPendingPromptAtom,
   workspaceCapabilitiesVersionAtom,
 } from '@/atoms/agent-atoms'
 import { settingsOpenAtom } from '@/atoms/settings-tab'
-import { appModeAtom } from '@/atoms/app-mode'
+import { activeViewAtom } from '@/atoms/active-view'
 import type { McpServerEntry, SkillMeta, OtherWorkspaceSkillsGroup, WorkspaceMcpConfig, HtSkillHubSkill } from '@proma/shared'
 import { SettingsSection, SettingsCard, SettingsRow } from './primitives'
 import { McpServerForm } from './McpServerForm'
 import { SkillFilesPanel } from './SkillFilesPanel'
+import { useOpenSession } from '@/hooks/useOpenSession'
 
 // ===== Types =====
 
@@ -123,11 +123,11 @@ export function AgentSettings(): React.ReactElement {
   const currentWorkspaceId = useAtomValue(currentAgentWorkspaceIdAtom)
   const agentChannelId = useAtomValue(agentChannelIdAtom)
   const setAgentSessions = useSetAtom(agentSessionsAtom)
-  const setCurrentSessionId = useSetAtom(currentAgentSessionIdAtom)
   const setPendingPrompt = useSetAtom(agentPendingPromptAtom)
   const setSettingsOpen = useSetAtom(settingsOpenAtom)
-  const setAppMode = useSetAtom(appModeAtom)
+  const setActiveView = useSetAtom(activeViewAtom)
   const bumpCapabilitiesVersion = useSetAtom(workspaceCapabilitiesVersionAtom)
+  const openSession = useOpenSession()
 
   const currentWorkspace = workspaces.find((w) => w.id === currentWorkspaceId)
   const workspaceSlug = currentWorkspace?.slug ?? ''
@@ -141,6 +141,7 @@ export function AgentSettings(): React.ReactElement {
   const [mcpConfig, setMcpConfig] = React.useState<WorkspaceMcpConfig>({ servers: {} })
   const [skills, setSkills] = React.useState<SkillMeta[]>([])
   const [skillsDir, setSkillsDir] = React.useState('')
+  const [configRootPath, setConfigRootPath] = React.useState('')
   const [otherWorkspaces, setOtherWorkspaces] = React.useState<OtherWorkspaceSkillsGroup[]>([])
   const [skillHubRefreshKey, setSkillHubRefreshKey] = React.useState(0)
   const [showImportDialog, setShowImportDialog] = React.useState(false)
@@ -157,14 +158,16 @@ export function AgentSettings(): React.ReactElement {
       return
     }
     try {
-      const [config, skillList, dir] = await Promise.all([
+      const [config, skillList, dir, rootInfo] = await Promise.all([
         window.electronAPI.getWorkspaceMcpConfig(workspaceSlug),
         window.electronAPI.getWorkspaceSkills(workspaceSlug),
         window.electronAPI.getWorkspaceSkillsDir(workspaceSlug),
+        window.electronAPI.getConfigRootInfo(),
       ])
       setMcpConfig(config)
       setSkills(skillList)
       setSkillsDir(dir)
+      setConfigRootPath(rootInfo.currentPath)
     } catch (error) {
       console.error('[Agent 设置] 加载工作区配置失败:', error)
     } finally {
@@ -197,10 +200,10 @@ export function AgentSettings(): React.ReactElement {
     )
   }
 
-  const configDirName = import.meta.env.DEV ? '.proma-dev' : '.proma'
-
   const buildMcpPrompt = (): string => {
-    const configPath = `~/${configDirName}/agent-workspaces/${workspaceSlug}/mcp.json`
+    const configPath = configRootPath
+      ? `${configRootPath}/agent-workspaces/${workspaceSlug}/mcp.json`
+      : `agent-workspaces/${workspaceSlug}/mcp.json`
     const currentConfig = JSON.stringify(mcpConfig, null, 2)
     return `请帮我配置当前工作区的 MCP 服务器，你要主动来帮我实现，你可以采用联网搜索深度研究来尝试，当前环境已经有 Claude Agent SDK 了，除非不确定的时候才来问我，否则默认将帮我完成安装，而不是指导我。
 
@@ -212,6 +215,20 @@ export function AgentSettings(): React.ReactElement {
 \`\`\`json
 ${currentConfig}
 \`\`\`
+
+## 可用 MCP 查找来源
+查找可用 MCP 时按以下优先级进行，不要只做泛泛搜索：
+1. 官方 MCP Registry：
+   - https://registry.modelcontextprotocol.io
+   - https://modelcontextprotocol.io/registry
+2. 目标产品或服务的官方文档、官方 GitHub 仓库、官方 npm 包说明。例如用户要 GitHub、Slack、数据库、浏览器、文件系统等能力时，优先找对应官方维护的 MCP Server。
+3. 可信社区目录和市场作为补充参考：
+   - Smithery
+   - Glama
+   - mcp.so
+   - GitHub 上的 awesome-mcp / awesome-mcp-servers 类清单
+
+安装前要核对：维护者可信度、最近更新时间、README 安装方式、所需环境变量或 API Key、是否支持当前平台、stdio/http/sse 传输类型，以及是否需要 Node.js / Python / Docker 等本机运行环境。涉及凭据时不要替用户编造 token，只写环境变量占位符并说明需要用户提供。
 
 ## 配置格式
 mcp.json 格式如下：
@@ -236,7 +253,9 @@ mcp.json 格式如下：
   }
 
   const buildSkillPrompt = (): string => {
-    const skillsDirPath = `~/${configDirName}/agent-workspaces/${workspaceSlug}/skills/`
+    const skillsDirPath = configRootPath
+      ? `${configRootPath}/agent-workspaces/${workspaceSlug}/skills/`
+      : `agent-workspaces/${workspaceSlug}/skills/`
     const skillList = skills.length > 0
       ? skills.map((s) => `- ${s.name}: ${s.description ?? '无描述'}`).join('\n')
       : '暂无 Skill'
@@ -274,9 +293,9 @@ ${skillList}
       const session = await window.electronAPI.createAgentSession(undefined, agentChannelId, currentWorkspaceId ?? undefined)
       const sessions = await window.electronAPI.listAgentSessions()
       setAgentSessions(sessions)
-      setCurrentSessionId(session.id)
+      openSession('agent', session.id, session.title ?? '新 Agent 会话')
       setPendingPrompt({ sessionId: session.id, message: promptMessage })
-      setAppMode('agent')
+      setActiveView('conversations')
       setSettingsOpen(false)
     } catch (error) {
       console.error('[Agent 设置] 创建配置会话失败:', error)

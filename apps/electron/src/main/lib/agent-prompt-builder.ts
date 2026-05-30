@@ -12,7 +12,7 @@
 import type { PromaPermissionMode, AgentDefinition } from '@proma/shared'
 import { getUserProfile } from './user-profile-service'
 import { getWorkspaceMcpConfig, getWorkspaceSkills } from './agent-workspace-manager'
-import { getConfigDirName } from './config-paths'
+import { getConfigDirPath } from './config-paths'
 
 // ===== 内置 SubAgent 定义 =====
 
@@ -126,6 +126,7 @@ export function buildSystemPrompt(ctx: SystemPromptContext): string {
 - 编辑已有文件用 Edit（精确字符串替换），创建新文件用 Write — Edit 的 old_string 必须是文件中唯一匹配的字符串
 - 执行 shell 命令用 Bash — 破坏性操作（rm、git push --force 等）前先确认
 - 通过终端环境（Bash）安装或下载依赖时，如果遇到网络超时或连接失败，先去探索用户的代理设置（检查 HTTP_PROXY、HTTPS_PROXY、http_proxy、https_proxy 环境变量，以及 ~/.zshrc、~/.bashrc 等 shell 配置文件中是否配置了代理），如果存在代理则主动在终端中使用该代理重试，这会大幅提高任务成功率
+- 如果任务需要 Python 环境，但检测到用户当前没有可用的 python / py / pip 环境，必须调用内置 \`install-python\` Skill 来执行安装或修复流程，不要自行拼装 Python 安装流程
 - 文本输出直接写在回复中，不要用 echo/printf
 - 当存在内置工具时，优先采用内置工具完成任务，避免滥用 MCP、shell 等过于通用的工具来完成简单任务
 - **路径规则**：你的 cwd 是会话目录，不是项目源码目录。操作附加工作目录中的文件时，Glob/Grep/Read 的 path 参数必须使用**绝对路径**（如 \`/Users/xxx/project/src\`），不要用相对路径
@@ -256,20 +257,24 @@ Agent 工具支持 \`model\` 参数（可选值：\`sonnet\` / \`opus\` / \`haik
 
   // 工作区信息
   if (ctx.workspaceName && ctx.workspaceSlug) {
-    const configDirName = getConfigDirName()
+    const workspaceRoot = `${getConfigDirPath()}/agent-workspaces/${ctx.workspaceSlug}`
+    const sessionWorkspacePath = `${workspaceRoot}/${ctx.sessionId}`
+    const workspaceMcpPath = `${workspaceRoot}/mcp.json`
+    const workspaceSkillsDir = `${workspaceRoot}/skills`
+    const workspaceContextDir = `${workspaceRoot}/workspace-files/.context/`
     sections.push(`## 工作区
 
 - 工作区名称: ${ctx.workspaceName}
-- 工作区根目录: ~/${configDirName}/agent-workspaces/${ctx.workspaceSlug}/
-- 当前会话目录（cwd）: ~/${configDirName}/agent-workspaces/${ctx.workspaceSlug}/${ctx.sessionId}/
-- MCP 配置: ~/${configDirName}/agent-workspaces/${ctx.workspaceSlug}/mcp.json（顶层 key 是 \`servers\`）
-- Skills 目录: ~/${configDirName}/agent-workspaces/${ctx.workspaceSlug}/skills/（WorkMate 只从此目录加载 skill；npx skills add 等外部命令安装到 .agents/skills/ 不会被加载，需手动 mv 到此目录）
+- 工作区根目录: ${workspaceRoot}/
+- 当前会话目录（cwd）: ${sessionWorkspacePath}/
+- MCP 配置: ${workspaceMcpPath}（顶层 key 是 \`servers\`）
+- Skills 目录: ${workspaceSkillsDir}/（WorkMate 只从此目录加载 skill；npx skills add 等外部命令安装到 .agents/skills/ 不会被加载，需手动 mv 到此目录）
 
 ### .context 目录层级
 
 存在两个 \`.context/\` 目录，用途不同：
 - **会话级** \`.context/\`（当前 cwd 下）：当前会话的临时工作台，存放本次任务的 todo.md、plan/、临时笔记等
-- **工作区级** \`~/${configDirName}/agent-workspaces/${ctx.workspaceSlug}/workspace-files/.context/\`：跨会话共享的持久文档，存放长期 note.md、项目级知识等
+- **工作区级** \`${workspaceContextDir}\`：跨会话共享的持久文档，存放长期 note.md、项目级知识等
 
 选择写入哪个目录时：
 - 只与当前任务相关的内容 → 会话级 \`.context/\`
