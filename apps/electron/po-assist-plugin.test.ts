@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, test } from 'bun:test'
 
@@ -13,14 +13,8 @@ function readText(pluginName: string, path: string): string {
 }
 
 describe('内置 PO/DPMP 插件', () => {
-  test('po-assist 插件同步到插件市场最新版本', () => {
-    const claudeManifest = readJson('po-assist', '.claude-plugin/plugin.json')
-    const codexManifest = readJson('po-assist', '.codex-plugin/plugin.json')
-    const skill = readText('po-assist', 'skills/po-skills/SKILL.md')
-
-    expect(claudeManifest.version).toBe('7.0.147')
-    expect(codexManifest.version).toBe('7.0.147')
-    expect(skill).toContain('version: 7.0.147')
+  test('po-assist 不再作为内置插件打包', () => {
+    expect(existsSync(join(bundledPluginsDir, 'po-assist'))).toBe(false)
   })
 
   test('dpmp-assist 插件同步到插件市场最新版本', () => {
