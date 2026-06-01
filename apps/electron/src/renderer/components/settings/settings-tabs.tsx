@@ -18,6 +18,7 @@ import {
   Palette,
   Info,
   Wrench,
+  ScrollText,
 } from 'lucide-react'
 import type { SettingsTab } from '@/atoms/settings-tab'
 
@@ -48,6 +49,12 @@ const TOOLS_TAB: TabItem = {
   icon: <Wrench size={16} />,
 }
 
+const USAGE_LOG_TAB: TabItem = {
+  id: 'usage-log',
+  label: '用量日志',
+  icon: <ScrollText size={16} />,
+}
+
 const TUTORIAL_TAB: TabItem = {
   id: 'tutorial',
   label: '使用教程',
@@ -69,6 +76,6 @@ const TAIL_TABS: TabItem[] = [
 
 export function getSettingsTabs(appMode: 'chat' | 'agent'): TabItem[] {
   return appMode === 'agent'
-    ? [...BASE_TABS, TOOLS_TAB, AGENT_TAB, TUTORIAL_TAB, SHORTCUTS_TAB, ...TAIL_TABS]
-    : [...BASE_TABS, TOOLS_TAB, TUTORIAL_TAB, SHORTCUTS_TAB, ...TAIL_TABS]
+    ? [...BASE_TABS, TOOLS_TAB, USAGE_LOG_TAB, AGENT_TAB, TUTORIAL_TAB, SHORTCUTS_TAB, ...TAIL_TABS]
+    : [...BASE_TABS, TOOLS_TAB, USAGE_LOG_TAB, TUTORIAL_TAB, SHORTCUTS_TAB, ...TAIL_TABS]
 }

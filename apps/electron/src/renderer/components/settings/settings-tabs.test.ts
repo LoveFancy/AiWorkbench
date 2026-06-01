@@ -30,6 +30,14 @@ test('Chat 工具入口在设置页导航中可见', () => {
   expect(agentTabs.find((tab) => tab.id === 'tools')?.label).toBe('Chat 工具')
 })
 
+test('用量日志入口在设置页导航中可见', () => {
+  const generalTabs = getSettingsTabs('chat')
+  const agentTabs = getSettingsTabs('agent')
+
+  expect(generalTabs.find((tab) => tab.id === 'usage-log')?.label).toBe('用量日志')
+  expect(agentTabs.find((tab) => tab.id === 'usage-log')?.label).toBe('用量日志')
+})
+
 test('Agent 模式下 Skill 和 MCP 配置入口文案正确', () => {
   const agentTabs = getSettingsTabs('agent')
 

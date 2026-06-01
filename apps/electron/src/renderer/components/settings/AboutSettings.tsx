@@ -452,7 +452,7 @@ export function AboutSettings(): React.ReactElement {
         <SettingsRow label="运行时">
           <span className="text-sm text-muted-foreground">Electron + React</span>
         </SettingsRow>
-        <SettingsRow label="作者">
+        <SettingsRow label="联系人">
           <span className="text-sm text-muted-foreground">信息技术部运营管理室AI研发效能管理团队 秦晓012950</span>
         </SettingsRow>
       </SettingsCard>

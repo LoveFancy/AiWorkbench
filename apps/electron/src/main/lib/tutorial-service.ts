@@ -117,7 +117,7 @@ export function createWelcomeConversation(): ConversationMeta | null {
 
 直接在下面回复就好，可以一次说完，也可以分几条慢慢聊。
 
-> **使用过程中遇到任何问题，请联系秦晓 012950。**`,
+> **使用过程中遇到任何问题，请联系信息技术部运营管理室AI研发效能管理团队 秦晓012950。**`,
       createdAt: now + 1,
       model: 'WorkMate',
     }
