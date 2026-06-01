@@ -60,7 +60,6 @@ describe('渠道预置配置', () => {
       models: [
         { id: 'local-glm-47-flash', name: 'local-glm-47-flash', enabled: true },
         { id: 'saas-kimi-k25', name: 'saas-kimi-k25', enabled: true },
-        { id: 'local-deepseek-v4-flash', name: 'local-deepseek-v4-flash', enabled: true },
         { id: 'local-deepseek-v4-pro', name: 'local-deepseek-v4-pro', enabled: true },
       ],
     })
@@ -102,7 +101,6 @@ describe('渠道预置配置', () => {
     expect(result.channels[0]?.models).toEqual([
       { id: 'local-glm-47-flash', name: 'local-glm-47-flash', enabled: true },
       { id: 'saas-kimi-k25', name: 'saas-kimi-k25', enabled: false },
-      { id: 'local-deepseek-v4-flash', name: 'local-deepseek-v4-flash', enabled: false },
       { id: 'local-deepseek-v4-pro', name: 'local-deepseek-v4-pro', enabled: false },
       { id: 'saas-deepseek-v4-flash', name: 'saas-deepseek-v4-flash', enabled: false },
       { id: 'saas-deepseek-v4-pro', name: 'saas-deepseek-v4-pro', enabled: false },
