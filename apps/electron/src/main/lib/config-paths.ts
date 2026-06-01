@@ -394,6 +394,73 @@ export function getDefaultPluginsDir(): string {
 }
 
 /**
+ * 获取用户插件目录路径
+ *
+ * 用户从插件市场安装的完整 Plugin 存放在此目录。
+ *
+ * @returns ~/.proma/user-plugins/
+ */
+export function getUserPluginsDir(): string {
+  const dir = join(getConfigDir(), 'user-plugins')
+
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true })
+  }
+
+  return dir
+}
+
+/**
+ * 获取插件市场缓存目录路径
+ *
+ * @returns ~/.proma/plugin-marketplace-cache/
+ */
+export function getPluginMarketplaceCacheDir(): string {
+  const dir = join(getConfigDir(), 'plugin-marketplace-cache')
+
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true })
+  }
+
+  return dir
+}
+
+/**
+ * 获取插件运行时缓存目录路径
+ *
+ * 用于生成带用户 MCP env overlay 的 local plugin 副本，避免修改原插件目录。
+ *
+ * @returns ~/.proma/plugin-runtime-cache/
+ */
+export function getPluginRuntimeCacheDir(): string {
+  const dir = join(getConfigDir(), 'plugin-runtime-cache')
+
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true })
+  }
+
+  return dir
+}
+
+/**
+ * 获取插件启用状态配置文件路径
+ *
+ * @returns ~/.proma/plugins.json
+ */
+export function getPluginsConfigPath(): string {
+  return join(getConfigDir(), 'plugins.json')
+}
+
+/**
+ * 获取插件市场配置文件路径
+ *
+ * @returns ~/.proma/plugin-marketplaces.json
+ */
+export function getPluginMarketplacesPath(): string {
+  return join(getConfigDir(), 'plugin-marketplaces.json')
+}
+
+/**
  * 从 SKILL.md 的 YAML frontmatter 中解析 version 字段
  *
  * 无 version 字段时返回 '0.0.0'（确保旧 Skill 会被更新）。
@@ -419,6 +486,23 @@ export function parseSkillVersion(skillDir: string): string {
   }
 
   return '0.0.0'
+}
+
+/**
+ * 从插件 .claude-plugin/plugin.json 中解析 version 字段。
+ *
+ * 无 version 字段时返回 '0.0.0'。
+ */
+export function parsePluginVersion(pluginDir: string): string {
+  const manifestPath = join(pluginDir, '.claude-plugin', 'plugin.json')
+  if (!existsSync(manifestPath)) return '0.0.0'
+
+  try {
+    const raw = JSON.parse(readFileSync(manifestPath, 'utf-8')) as { version?: unknown }
+    return typeof raw.version === 'string' && raw.version.trim() ? raw.version.trim() : '0.0.0'
+  } catch {
+    return '0.0.0'
+  }
 }
 
 /** 比较两个 semver 版本字符串
@@ -532,6 +616,21 @@ export function seedDefaultPlugins(): void {
 
   const userDir = getDefaultPluginsDir()
 
+  syncDefaultPluginsFromDir(bundledDir, userDir)
+}
+
+/**
+ * 将 bundled 插件同步到运行时默认插件目录。
+ *
+ * - 缺失：直接复制
+ * - 已存在：仅当 bundled plugin.json version 更高时覆盖
+ */
+export function syncDefaultPluginsFromDir(bundledDir: string, userDir: string): void {
+  if (!existsSync(bundledDir)) {
+    console.log('[配置] 未找到内置 default-plugins 目录，跳过')
+    return
+  }
+
   try {
     const entries = readdirSync(bundledDir, { withFileTypes: true })
 
@@ -545,8 +644,13 @@ export function seedDefaultPlugins(): void {
         cpSync(source, target, { recursive: true })
         console.log(`[配置] 已同步默认插件: ${entry.name}`)
       } else {
-        cpSync(source, target, { recursive: true, force: true })
-        console.log(`[配置] 已刷新默认插件: ${entry.name}`)
+        const bundledVer = parsePluginVersion(source)
+        const existingVer = parsePluginVersion(target)
+        if (compareSemver(bundledVer, existingVer) > 0) {
+          rmSync(target, { recursive: true, force: true })
+          cpSync(source, target, { recursive: true })
+          console.log(`[配置] 已升级默认插件: ${entry.name} (${existingVer} → ${bundledVer})`)
+        }
       }
     }
   } catch (err) {

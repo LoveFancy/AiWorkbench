@@ -55,6 +55,14 @@ import type {
   WorkspaceCapabilities,
   HtSkillHubSkill,
   HtSkillHubInstallResult,
+  AgentPluginInfo,
+  AgentPluginMarketplace,
+  AgentPluginMarketplacePlugin,
+  AgentPluginMarketplaceDetail,
+  AgentPluginCapabilitySummary,
+  AgentPluginInstallInput,
+  AgentPluginInstallResult,
+  AgentPluginMarketplaceType,
   FileEntry,
   CreateFileEntryInput,
   FileSearchResult,
@@ -485,6 +493,35 @@ export interface ElectronAPI {
 
   /** 获取工作区 Slash Command 列表 */
   listAgentSlashCommands: (workspaceSlug: string) => Promise<AgentSlashCommand[]>
+
+  /** 列出 Agent 插件 */
+  listAgentPlugins: () => Promise<AgentPluginInfo[]>
+  /** 设置 Agent 插件启用状态 */
+  setAgentPluginEnabled: (pluginId: string, enabled: boolean) => Promise<void>
+  /** 卸载用户安装的 Agent 插件 */
+  uninstallAgentPlugin: (pluginId: string) => Promise<void>
+  /** 列出插件市场 */
+  listAgentPluginMarketplaces: () => Promise<AgentPluginMarketplace[]>
+  /** 添加插件市场 */
+  addAgentPluginMarketplace: (input: { id: string; name: string; source: string; type: AgentPluginMarketplaceType }) => Promise<AgentPluginMarketplace>
+  /** 更新插件市场 */
+  updateAgentPluginMarketplace: (id: string, updates: Partial<Omit<AgentPluginMarketplace, 'id' | 'addedAt'>>) => Promise<AgentPluginMarketplace>
+  /** 删除插件市场 */
+  removeAgentPluginMarketplace: (id: string) => Promise<void>
+  /** 刷新插件市场 */
+  refreshAgentPluginMarketplace: (id: string) => Promise<AgentPluginMarketplace>
+  /** 搜索插件市场 */
+  searchAgentPluginMarketplace: (query: string) => Promise<AgentPluginMarketplacePlugin[]>
+  /** 获取插件市场插件详情 */
+  getAgentPluginMarketplaceDetail: (marketplaceId: string, pluginName: string) => Promise<AgentPluginMarketplaceDetail>
+  /** 安装插件市场插件 */
+  installAgentMarketplacePlugin: (input: AgentPluginInstallInput) => Promise<AgentPluginInstallResult>
+  /** 获取 Agent 插件能力摘要 */
+  getAgentPluginCapabilities: () => Promise<AgentPluginCapabilitySummary>
+  /** 配置插件 MCP 环境变量 */
+  configureAgentPluginMcpEnv: (serverId: string, env: Record<string, string>) => Promise<void>
+  /** 测试插件 MCP */
+  testAgentPluginMcp: (serverId: string) => Promise<{ success: boolean; message: string }>
 
   // ===== Agent 工作区管理相关 =====
 
@@ -1509,6 +1546,62 @@ const electronAPI: ElectronAPI = {
   // 工作区能力（MCP + Skill）
   listAgentSlashCommands: (workspaceSlug: string) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.LIST_SLASH_COMMANDS, workspaceSlug)
+  },
+
+  listAgentPlugins: () => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.LIST_PLUGINS)
+  },
+
+  setAgentPluginEnabled: (pluginId: string, enabled: boolean) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.SET_PLUGIN_ENABLED, pluginId, enabled)
+  },
+
+  uninstallAgentPlugin: (pluginId: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.UNINSTALL_PLUGIN, pluginId)
+  },
+
+  listAgentPluginMarketplaces: () => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.LIST_PLUGIN_MARKETPLACES)
+  },
+
+  addAgentPluginMarketplace: (input: { id: string; name: string; source: string; type: AgentPluginMarketplaceType }) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.ADD_PLUGIN_MARKETPLACE, input)
+  },
+
+  updateAgentPluginMarketplace: (id: string, updates: Partial<Omit<AgentPluginMarketplace, 'id' | 'addedAt'>>) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.UPDATE_PLUGIN_MARKETPLACE, id, updates)
+  },
+
+  removeAgentPluginMarketplace: (id: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.REMOVE_PLUGIN_MARKETPLACE, id)
+  },
+
+  refreshAgentPluginMarketplace: (id: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.REFRESH_PLUGIN_MARKETPLACE, id)
+  },
+
+  searchAgentPluginMarketplace: (query: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.SEARCH_PLUGIN_MARKETPLACE, query)
+  },
+
+  getAgentPluginMarketplaceDetail: (marketplaceId: string, pluginName: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_PLUGIN_MARKETPLACE_DETAIL, marketplaceId, pluginName)
+  },
+
+  installAgentMarketplacePlugin: (input: AgentPluginInstallInput) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.INSTALL_MARKETPLACE_PLUGIN, input)
+  },
+
+  getAgentPluginCapabilities: () => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_PLUGIN_CAPABILITIES)
+  },
+
+  configureAgentPluginMcpEnv: (serverId: string, env: Record<string, string>) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.CONFIGURE_PLUGIN_MCP_ENV, serverId, env)
+  },
+
+  testAgentPluginMcp: (serverId: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.TEST_PLUGIN_MCP, serverId)
   },
 
   getWorkspaceCapabilities: (workspaceSlug: string) => {
