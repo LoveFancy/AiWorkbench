@@ -47,6 +47,8 @@ interface MarketManifestPlugin {
   source: string
   description?: string
   version?: string
+  strict?: boolean
+  skills?: string[]
 }
 
 interface MarketManifest {
@@ -105,13 +107,15 @@ function normalizeManifest(raw: unknown): MarketManifest {
         source: typeof item.source === 'string' ? item.source : '',
         ...(typeof item.description === 'string' && { description: item.description }),
         ...(typeof item.version === 'string' && { version: item.version }),
+        ...(typeof item.strict === 'boolean' && { strict: item.strict }),
+        ...(Array.isArray(item.skills) && { skills: item.skills.filter((skill): skill is string => typeof skill === 'string' && skill.trim().length > 0) }),
       }))
       .filter((item) => item.name && item.source),
   }
 }
 
 function parseMarketplaceType(value: unknown): AgentPluginMarketplaceType {
-  return value === 'github' || value === 'raw' || value === 'local' ? value : 'raw'
+  return value === 'github' || value === 'gitee' || value === 'raw' || value === 'local' ? value : 'raw'
 }
 
 export function readPluginMarketplacesConfig(input?: Pick<PluginMarketplacePaths, 'marketplacesPath'>): AgentPluginMarketplacesConfig {
@@ -155,8 +159,21 @@ export function addPluginMarketplace(marketplace: AddMarketplaceInput, input?: P
   const resolved = paths(input)
   const config = readPluginMarketplacesConfig({ marketplacesPath: resolved.marketplacesPath })
   const id = slugSafe(marketplace.id, '插件市场 ID')
-  if (config.marketplaces.some((item) => item.id === id)) {
-    throw new Error(`插件市场已存在: ${id}`)
+  const existedIndex = config.marketplaces.findIndex((item) => item.id === id)
+  if (existedIndex !== -1) {
+    const current = config.marketplaces[existedIndex]
+    if (!current) throw new Error(`插件市场不存在: ${id}`)
+    const next: AgentPluginMarketplace = {
+      ...current,
+      name: marketplace.name.trim() || id,
+      source: marketplace.source.trim(),
+      type: marketplace.type,
+      enabled: true,
+      lastError: undefined,
+    }
+    config.marketplaces[existedIndex] = next
+    writeMarketplacesConfig(config, { marketplacesPath: resolved.marketplacesPath })
+    return next
   }
   const entry: AgentPluginMarketplace = {
     id,
@@ -170,6 +187,23 @@ export function addPluginMarketplace(marketplace: AddMarketplaceInput, input?: P
   config.marketplaces.push(entry)
   writeMarketplacesConfig(config, { marketplacesPath: resolved.marketplacesPath })
   return entry
+}
+
+async function readRemoteJson(response: Response, url: string): Promise<unknown> {
+  const contentType = response.headers.get('content-type') ?? ''
+  const text = await response.text()
+  const trimmed = text.trimStart()
+
+  if (contentType.includes('text/html') || trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html')) {
+    throw new Error(`插件市场地址返回的是 HTML，不是插件市场 JSON。请确认市场类型和地址是否匹配，或填写可直接返回 marketplace.json 的 Raw URL。地址: ${url}`)
+  }
+
+  try {
+    return JSON.parse(text) as unknown
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    throw new Error(`插件市场 JSON 解析失败: ${message}`)
+  }
 }
 
 export function updatePluginMarketplace(id: string, updates: Partial<Omit<AgentPluginMarketplace, 'id' | 'addedAt'>>, input?: PluginMarketplacePaths): AgentPluginMarketplace {
@@ -206,14 +240,47 @@ async function readMarketplaceManifest(marketplace: AgentPluginMarketplace): Pro
     return normalizeManifest(readJson(manifestPath))
   }
 
-  const url = marketplace.type === 'github'
-    ? marketplace.source.replace('github.com/', 'raw.githubusercontent.com/').replace(/\/?$/, '/main/.claude-plugin/marketplace.json')
-    : marketplace.source
+  const url = resolveMarketplaceManifestUrl(marketplace)
   const response = await fetch(url)
   if (!response.ok) {
-    throw new Error(`读取插件市场失败 (${response.status}): ${await response.text()}`)
+    throw new Error(formatMarketplaceHttpError(marketplace, url, response.status, await response.text()))
   }
-  return normalizeManifest(await response.json())
+  return normalizeManifest(await readRemoteJson(response, url))
+}
+
+function formatMarketplaceHttpError(marketplace: AgentPluginMarketplace, url: string, status: number, body: string): string {
+  const hints: string[] = []
+  if (marketplace.type === 'github' && /gitee\.com/i.test(marketplace.source)) {
+    hints.push('当前地址是 Gitee 仓库，请将市场类型改为 Gitee。')
+  }
+  if (marketplace.type === 'gitee' && /github\.com/i.test(marketplace.source)) {
+    hints.push('当前地址是 GitHub 仓库，请将市场类型改为 GitHub。')
+  }
+  if (status === 404) {
+    hints.push('未找到 .claude-plugin/marketplace.json，请确认仓库默认分支和文件路径。')
+  }
+
+  const text = body.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+  const excerpt = text ? `返回摘要: ${text.slice(0, 120)}` : ''
+  return [
+    `读取插件市场失败 (${status})。`,
+    ...hints,
+    `请求地址: ${url}`,
+    excerpt,
+  ].filter(Boolean).join(' ')
+}
+
+function resolveMarketplaceManifestUrl(marketplace: AgentPluginMarketplace): string {
+  if (marketplace.type === 'github') {
+    return marketplace.source
+      .replace('github.com/', 'raw.githubusercontent.com/')
+      .replace(/\/?$/, '/main/.claude-plugin/marketplace.json')
+  }
+  if (marketplace.type === 'gitee') {
+    return marketplace.source
+      .replace(/\/?$/, '/raw/main/.claude-plugin/marketplace.json')
+  }
+  return marketplace.source
 }
 
 function cacheManifest(marketplace: AgentPluginMarketplace, manifest: MarketManifest, input: Required<PluginMarketplacePaths>): void {
@@ -294,7 +361,7 @@ export async function searchMarketplacePlugins(query = '', input?: PluginMarketp
 
 function resolvePluginSource(marketplace: AgentPluginMarketplace, source: string): string {
   if (/^https?:\/\//.test(source)) return source
-  if (marketplace.type === 'github') {
+  if (marketplace.type === 'github' || marketplace.type === 'gitee') {
     return `${marketplace.source.replace(/\/$/, '')}/${source.replace(/^\.\//, '')}`
   }
   if (marketplace.type !== 'local') return new URL(source, marketplace.source).toString()
@@ -328,10 +395,10 @@ function copyOrMoveAtomically(sourceDir: string, targetDir: string, overwrite: b
   return existed ? 'overwritten' : 'installed'
 }
 
-function validatePluginSourceDir(sourceDir: string): void {
+function validatePluginSourceDir(sourceDir: string, pluginName: string, marketplaceSource: string): void {
   const manifestPath = join(sourceDir, '.claude-plugin', 'plugin.json')
   if (!existsSync(manifestPath)) {
-    throw new Error('插件缺少 .claude-plugin/plugin.json')
+    throw new Error(`插件 ${pluginName} 的来源目录不是有效的 Proma 插件根目录，缺少 .claude-plugin/plugin.json。请检查插件市场 marketplace.json 中该插件的 source 字段是否指向完整插件目录。当前 source: ${marketplaceSource}`)
   }
   try {
     const raw = readJson(manifestPath)
@@ -343,6 +410,29 @@ function validatePluginSourceDir(sourceDir: string): void {
     const message = error instanceof Error ? error.message : String(error)
     throw new Error(`插件 manifest 校验失败: ${message}`)
   }
+}
+
+function copySelectedSkillsToPlugin(sourceDir: string, targetDir: string, skills: string[]): void {
+  const skillsDir = join(targetDir, 'skills')
+  mkdirSync(skillsDir, { recursive: true })
+  for (const skill of skills) {
+    const sourceSkillDir = resolve(sourceDir, skill)
+    if (!existsSync(sourceSkillDir)) {
+      throw new Error(`插件声明的 Skill 不存在: ${skill}`)
+    }
+    cpSync(sourceSkillDir, join(skillsDir, basename(sourceSkillDir)), { recursive: true })
+  }
+}
+
+function createLoosePluginFromMarketplaceEntry(sourceDir: string, targetDir: string, plugin: MarketManifestPlugin): void {
+  rmSync(targetDir, { recursive: true, force: true })
+  mkdirSync(join(targetDir, '.claude-plugin'), { recursive: true })
+  writeFileSync(join(targetDir, '.claude-plugin', 'plugin.json'), JSON.stringify({
+    name: plugin.name,
+    version: plugin.version ?? '0.0.0',
+    ...(plugin.description && { description: plugin.description }),
+  }, null, 2), 'utf-8')
+  copySelectedSkillsToPlugin(sourceDir, targetDir, plugin.skills ?? [])
 }
 
 async function cloneGitRepo(source: string, targetDir: string): Promise<void> {
@@ -440,8 +530,15 @@ export async function installMarketplacePlugin(input: AgentPluginInstallInput, p
   const targetDir = join(resolved.userPluginsDir, marketplaceId, pluginName)
   let status: 'installed' | 'overwritten'
   try {
-    validatePluginSourceDir(prepared.sourceDir)
-    status = copyOrMoveAtomically(prepared.sourceDir, targetDir, input.overwrite ?? false)
+    if (plugin.strict === false && (plugin.skills?.length ?? 0) > 0) {
+      const existed = existsSync(targetDir)
+      if (existed && !(input.overwrite ?? false)) throw new Error(`插件已安装: ${targetDir}`)
+      createLoosePluginFromMarketplaceEntry(prepared.sourceDir, targetDir, plugin)
+      status = existed ? 'overwritten' : 'installed'
+    } else {
+      validatePluginSourceDir(prepared.sourceDir, pluginName, plugin.source)
+      status = copyOrMoveAtomically(prepared.sourceDir, targetDir, input.overwrite ?? false)
+    }
   } finally {
     prepared.cleanup()
   }

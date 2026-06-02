@@ -19,6 +19,8 @@ import {
   getDefaultSkillsDir,
   parseSkillVersion,
 } from './config-paths'
+import { listInstalledPlugins } from './plugin-registry-service'
+import type { AgentPluginInfo } from '@proma/shared'
 import type { AgentWorkspace, WorkspaceMcpConfig, SkillMeta, SkillImportSource, OtherWorkspaceSkillsGroup, WorkspaceCapabilities, SkillFileNode, SkillFileContent } from '@proma/shared'
 
 interface AgentWorkspacesIndex {
@@ -533,17 +535,58 @@ function parseSkillFrontmatter(content: string, slug: string, enabled: boolean):
 
 // ===== 工作区能力摘要 =====
 
-export function getWorkspaceCapabilities(workspaceSlug: string): WorkspaceCapabilities {
-  const mcpConfig = getWorkspaceMcpConfig(workspaceSlug)
-  const skills = getWorkspaceSkills(workspaceSlug)
+function pluginSkillMeta(capability: AgentPluginInfo['capabilities'][number]): SkillMeta {
+  return {
+    slug: capability.name,
+    name: capability.name,
+    ...(capability.description && { description: capability.description }),
+    enabled: capability.enabled,
+  }
+}
 
-  const mcpServers = Object.entries(mcpConfig.servers ?? {}).map(([name, entry]) => ({
+function mergeSkillsBySlug(skills: SkillMeta[]): SkillMeta[] {
+  const result = new Map<string, SkillMeta>()
+  for (const skill of skills) {
+    if (!result.has(skill.slug)) {
+      result.set(skill.slug, skill)
+      continue
+    }
+    const current = result.get(skill.slug)
+    if (current && !current.enabled && skill.enabled) {
+      result.set(skill.slug, skill)
+    }
+  }
+  return Array.from(result.values()).sort((a, b) => a.slug.localeCompare(b.slug))
+}
+
+export function getWorkspaceCapabilitiesFromSources(input: {
+  workspaceSlug: string
+  mcpConfig: WorkspaceMcpConfig
+  workspaceSkills: SkillMeta[]
+  plugins: AgentPluginInfo[]
+}): WorkspaceCapabilities {
+  const pluginSkills = input.plugins
+    .filter((plugin) => plugin.enabled && plugin.issues.every((issue) => issue.level !== 'error'))
+    .flatMap((plugin) => plugin.capabilities.filter((capability) => capability.type === 'skill' && capability.enabled).map(pluginSkillMeta))
+  const skills = mergeSkillsBySlug([...input.workspaceSkills, ...pluginSkills])
+
+  const mcpServers = Object.entries(input.mcpConfig.servers ?? {}).map(([name, entry]) => ({
     name,
     enabled: entry.enabled,
     type: entry.type,
   }))
 
   return { mcpServers, skills }
+}
+
+export function getWorkspaceCapabilities(workspaceSlug: string): WorkspaceCapabilities {
+  const mcpConfig = getWorkspaceMcpConfig(workspaceSlug)
+  return getWorkspaceCapabilitiesFromSources({
+    workspaceSlug,
+    mcpConfig,
+    workspaceSkills: getWorkspaceSkills(workspaceSlug),
+    plugins: listInstalledPlugins(),
+  })
 }
 
 export function deleteWorkspaceSkill(workspaceSlug: string, skillSlug: string): void {

@@ -113,6 +113,7 @@ import type {
   ResolvedFileUrl,
   AgentPluginInfo,
   AgentPluginMarketplace,
+  AgentPluginMarketplaceType,
   AgentPluginMarketplacePlugin,
   AgentPluginMarketplaceDetail,
   AgentPluginCapabilitySummary,
@@ -2095,7 +2096,7 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(
     AGENT_IPC_CHANNELS.ADD_PLUGIN_MARKETPLACE,
-    async (_, input: { id: string; name: string; source: string; type: 'github' | 'raw' | 'local' }): Promise<AgentPluginMarketplace> => {
+    async (_, input: { id: string; name: string; source: string; type: AgentPluginMarketplaceType }): Promise<AgentPluginMarketplace> => {
       const { addPluginMarketplace } = await import('./lib/plugin-marketplace-service')
       return addPluginMarketplace(input)
     }

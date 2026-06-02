@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -10,6 +10,12 @@ import {
   refreshPluginMarketplace,
   searchMarketplacePlugins,
 } from './plugin-marketplace-service.ts'
+
+const originalFetch = globalThis.fetch
+
+afterEach(() => {
+  globalThis.fetch = originalFetch
+})
 
 function tempRoot(): { root: string; cleanup: () => void } {
   const root = mkdtempSync(join(tmpdir(), 'proma-plugin-marketplace-'))
@@ -124,6 +130,153 @@ describe('插件市场服务', () => {
     }
   })
 
+  test('安装 strict=false 的 Skill 集合条目时生成轻量插件目录', async () => {
+    const temp = tempRoot()
+    try {
+      const marketDir = join(temp.root, 'market')
+      mkdirSync(join(marketDir, 'skills', 'claude-api'), { recursive: true })
+      writeFileSync(join(marketDir, 'skills', 'claude-api', 'SKILL.md'), '# Claude API', 'utf-8')
+      writeFileSync(
+        join(marketDir, 'marketplace.json'),
+        JSON.stringify({
+          name: 'anthropic-agent-skills',
+          plugins: [
+            {
+              name: 'claude-api',
+              source: './',
+              strict: false,
+              skills: ['./skills/claude-api'],
+              description: 'Claude API documentation',
+            },
+          ],
+        }),
+        'utf-8',
+      )
+      const marketplacesPath = join(temp.root, 'plugin-marketplaces.json')
+      const cacheDir = join(temp.root, 'cache')
+      const userPluginsDir = join(temp.root, 'user-plugins')
+      const pluginsConfigPath = join(temp.root, 'plugins.json')
+      const servicePaths = { marketplacesPath, cacheDir, userPluginsDir, pluginsConfigPath }
+
+      addPluginMarketplace({
+        id: 'anthropic-agent-skills',
+        name: '',
+        source: join(marketDir, 'marketplace.json'),
+        type: 'local',
+      }, servicePaths)
+      await refreshPluginMarketplace('anthropic-agent-skills', servicePaths)
+
+      await installMarketplacePlugin({
+        marketplaceId: 'anthropic-agent-skills',
+        pluginName: 'claude-api',
+        enable: true,
+      }, servicePaths)
+
+      const installedRoot = join(userPluginsDir, 'anthropic-agent-skills', 'claude-api')
+      expect(existsSync(join(installedRoot, '.claude-plugin', 'plugin.json'))).toBe(true)
+      expect(existsSync(join(installedRoot, 'skills', 'claude-api', 'SKILL.md'))).toBe(true)
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('重复添加同 ID 插件市场时更新已有配置而不是抛错', () => {
+    const temp = tempRoot()
+    try {
+      const marketplacesPath = join(temp.root, 'plugin-marketplaces.json')
+      const servicePaths = {
+        marketplacesPath,
+        cacheDir: join(temp.root, 'cache'),
+        userPluginsDir: join(temp.root, 'user-plugins'),
+        pluginsConfigPath: join(temp.root, 'plugins.json'),
+      }
+
+      addPluginMarketplace({
+        id: 'ECC',
+        name: 'ECC',
+        source: 'https://github.com/affaan-m/ecc',
+        type: 'raw',
+      }, servicePaths)
+      addPluginMarketplace({
+        id: 'ECC',
+        name: 'ECC GitHub',
+        source: 'https://github.com/affaan-m/ecc',
+        type: 'github',
+      }, servicePaths)
+
+      const marketplaces = listPluginMarketplaces({ marketplacesPath })
+      expect(marketplaces).toHaveLength(1)
+      expect(marketplaces[0]?.name).toBe('ECC GitHub')
+      expect(marketplaces[0]?.type).toBe('github')
+      expect(marketplaces[0]?.enabled).toBe(true)
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('远端插件市场返回 HTML 时提示选择 GitHub 类型或 raw JSON URL', async () => {
+    const temp = tempRoot()
+    try {
+      const marketplacesPath = join(temp.root, 'plugin-marketplaces.json')
+      const servicePaths = {
+        marketplacesPath,
+        cacheDir: join(temp.root, 'cache'),
+        userPluginsDir: join(temp.root, 'user-plugins'),
+        pluginsConfigPath: join(temp.root, 'plugins.json'),
+      }
+      globalThis.fetch = (async () => new Response('<!DOCTYPE html><html></html>', {
+        status: 200,
+        headers: { 'content-type': 'text/html; charset=utf-8' },
+      })) as unknown as typeof fetch
+
+      addPluginMarketplace({
+        id: 'ECC',
+        name: 'ECC',
+        source: 'https://github.com/affaan-m/ecc',
+        type: 'raw',
+      }, servicePaths)
+
+      await expect(refreshPluginMarketplace('ECC', servicePaths))
+        .rejects
+        .toThrow('返回的是 HTML，不是插件市场 JSON')
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('Gitee 地址误选 GitHub 类型时返回简短错误提示', async () => {
+    const temp = tempRoot()
+    try {
+      const marketplacesPath = join(temp.root, 'plugin-marketplaces.json')
+      const servicePaths = {
+        marketplacesPath,
+        cacheDir: join(temp.root, 'cache'),
+        userPluginsDir: join(temp.root, 'user-plugins'),
+        pluginsConfigPath: join(temp.root, 'plugins.json'),
+      }
+      globalThis.fetch = (async () => new Response('<!DOCTYPE html><html><title>你所访问的页面不存在 (404)</title><body>很长的 HTML</body></html>', {
+        status: 404,
+        headers: { 'content-type': 'text/html; charset=utf-8' },
+      })) as unknown as typeof fetch
+
+      addPluginMarketplace({
+        id: 'ECC',
+        name: 'ECC',
+        source: 'https://gitee.com/topsecwp/ECC',
+        type: 'github',
+      }, servicePaths)
+
+      await expect(refreshPluginMarketplace('ECC', servicePaths))
+        .rejects
+        .toThrow('当前地址是 Gitee 仓库，请将市场类型改为 Gitee')
+      const marketplace = listPluginMarketplaces({ marketplacesPath })[0]
+      expect(marketplace?.lastError).toContain('读取插件市场失败 (404)')
+      expect(marketplace?.lastError).not.toContain('<!DOCTYPE html>')
+    } finally {
+      temp.cleanup()
+    }
+  })
+
   test('安装远端插件时通过 cloneRepo 获取临时插件目录', async () => {
     const temp = tempRoot()
     try {
@@ -229,6 +382,96 @@ describe('插件市场服务', () => {
     }
   })
 
+  test('Gitee 市场仓库地址会解析到 raw marketplace.json', async () => {
+    const temp = tempRoot()
+    try {
+      const marketplacesPath = join(temp.root, 'plugin-marketplaces.json')
+      const servicePaths = {
+        marketplacesPath,
+        cacheDir: join(temp.root, 'cache'),
+        userPluginsDir: join(temp.root, 'user-plugins'),
+        pluginsConfigPath: join(temp.root, 'plugins.json'),
+      }
+      const requestedUrls: string[] = []
+      globalThis.fetch = (async (input: Parameters<typeof fetch>[0]) => {
+        requestedUrls.push(String(input))
+        return new Response(JSON.stringify({
+          name: 'ECC',
+          plugins: [{ name: 'frontend-design', source: './plugins/frontend-design' }],
+        }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }) as unknown as typeof fetch
+
+      addPluginMarketplace({
+        id: 'ecc',
+        name: '',
+        source: 'https://gitee.com/topsecwp/ECC',
+        type: 'gitee',
+      }, servicePaths)
+
+      await refreshPluginMarketplace('ecc', servicePaths)
+
+      expect(requestedUrls).toEqual(['https://gitee.com/topsecwp/ECC/raw/main/.claude-plugin/marketplace.json'])
+      expect(listPluginMarketplaces({ marketplacesPath })[0]?.type).toBe('gitee')
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('Gitee 市场的相对插件路径解析为仓库内路径', async () => {
+    const temp = tempRoot()
+    try {
+      const sourcePlugin = join(temp.root, 'remote-source')
+      mkdirSync(join(sourcePlugin, '.claude-plugin'), { recursive: true })
+      writeFileSync(
+        join(sourcePlugin, '.claude-plugin', 'plugin.json'),
+        JSON.stringify({ name: 'frontend-design', version: '1.0.0' }),
+        'utf-8',
+      )
+      const marketplacesPath = join(temp.root, 'plugin-marketplaces.json')
+      const cacheDir = join(temp.root, 'cache')
+      const userPluginsDir = join(temp.root, 'user-plugins')
+      const pluginsConfigPath = join(temp.root, 'plugins.json')
+      const servicePaths = { marketplacesPath, cacheDir, userPluginsDir, pluginsConfigPath }
+      const cloneCalls: string[] = []
+
+      addPluginMarketplace({
+        id: 'gitee-market',
+        name: 'Gitee 插件市场',
+        source: 'https://gitee.com/topsecwp/ECC',
+        type: 'gitee',
+      }, servicePaths)
+      mkdirSync(join(cacheDir, 'gitee-market'), { recursive: true })
+      writeFileSync(
+        join(cacheDir, 'gitee-market', 'manifest.json'),
+        JSON.stringify({
+          plugins: [{ name: 'frontend-design', source: './plugins/frontend-design', version: '1.0.0' }],
+        }),
+        'utf-8',
+      )
+
+      await installMarketplacePlugin({
+        marketplaceId: 'gitee-market',
+        pluginName: 'frontend-design',
+        enable: true,
+      }, {
+        ...servicePaths,
+        cloneRepo: async (source, target) => {
+          cloneCalls.push(source)
+          mkdirSync(target, { recursive: true })
+          return undefined
+        },
+        copyClonedFixture: sourcePlugin,
+      })
+
+      expect(cloneCalls).toEqual(['https://gitee.com/topsecwp/ECC/plugins/frontend-design'])
+    } finally {
+      temp.cleanup()
+    }
+  })
+
   test('拒绝安装缺少 plugin.json 的目录', async () => {
     const temp = tempRoot()
     try {
@@ -257,7 +500,7 @@ describe('插件市场服务', () => {
         marketplaceId: 'local',
         pluginName: 'bad-plugin',
         enable: true,
-      }, servicePaths)).rejects.toThrow('缺少 .claude-plugin/plugin.json')
+      }, servicePaths)).rejects.toThrow('source 字段是否指向完整插件目录')
       expect(existsSync(join(userPluginsDir, 'local', 'bad-plugin'))).toBe(false)
     } finally {
       temp.cleanup()
