@@ -792,9 +792,156 @@ export interface HtSkillHubInstallResult {
   enabled: boolean
 }
 
+// ===== Agent Plugins =====
+
+export type AgentPluginKind = 'builtin' | 'user'
+
+export type AgentPluginCapabilityType = 'skill' | 'command' | 'agent' | 'mcp'
+
+export type AgentPluginIssueLevel = 'warning' | 'error'
+
+export interface AgentPluginIdParts {
+  kind: AgentPluginKind
+  /** 内置插件为插件名；用户插件为 marketplaceId/pluginName */
+  id: string
+}
+
+export interface AgentPluginManifest {
+  name: string
+  version: string
+  description?: string
+  author?: {
+    name?: string
+    email?: string
+  }
+  homepage?: string
+  repository?: string
+  license?: string
+  keywords?: string[]
+}
+
+export interface AgentPluginCapability {
+  type: AgentPluginCapabilityType
+  name: string
+  sourcePluginId: string
+  sourceLabel: string
+  relativePath?: string
+  description?: string
+  enabled: boolean
+  conflict?: boolean
+  conflictWith?: string[]
+  /** MCP 能力对应的 Proma 配置 ID，格式为 {pluginId}/{serverName} */
+  mcpServerId?: string
+  /** MCP 用户配置的环境变量，仅用于设置页展示和编辑 */
+  configuredEnv?: Record<string, string>
+  lastTestAt?: string
+  lastTestSuccess?: boolean
+  lastTestMessage?: string
+  issue?: {
+    level: AgentPluginIssueLevel
+    message: string
+  }
+}
+
+export interface AgentPluginInfo {
+  id: string
+  kind: AgentPluginKind
+  name: string
+  version: string
+  description?: string
+  author?: string
+  homepage?: string
+  repository?: string
+  license?: string
+  keywords: string[]
+  path: string
+  enabled: boolean
+  installedAt?: string
+  updatedAt?: string
+  sourceMarketplaceId?: string
+  capabilities: AgentPluginCapability[]
+  issues: Array<{
+    level: AgentPluginIssueLevel
+    message: string
+  }>
+}
+
+export interface AgentPluginMcpServerState {
+  env?: Record<string, string>
+  lastTestAt?: string
+  lastTestSuccess?: boolean
+  lastTestMessage?: string
+}
+
+export interface AgentPluginsConfig {
+  version: 1
+  plugins: Record<string, {
+    enabled: boolean
+    installedAt?: string
+    updatedAt?: string
+    sourceMarketplaceId?: string
+    version?: string
+  }>
+  mcpServers: Record<string, AgentPluginMcpServerState>
+}
+
+export type AgentPluginMarketplaceType = 'github' | 'gitee' | 'raw' | 'local'
+
+export interface AgentPluginMarketplace {
+  id: string
+  name: string
+  source: string
+  type: AgentPluginMarketplaceType
+  enabled: boolean
+  addedAt: string
+  lastRefreshAt?: string | null
+  lastError?: string
+}
+
+export interface AgentPluginMarketplacesConfig {
+  version: 1
+  marketplaces: AgentPluginMarketplace[]
+}
+
+export interface AgentPluginMarketplacePlugin {
+  marketplaceId: string
+  marketplaceName: string
+  name: string
+  source: string
+  description?: string
+  version?: string
+  installed: boolean
+  enabled?: boolean
+  localPluginId?: string
+}
+
+export interface AgentPluginMarketplaceDetail extends AgentPluginMarketplacePlugin {
+  manifest?: AgentPluginManifest
+  capabilities?: AgentPluginCapability[]
+  readme?: string
+}
+
+export interface AgentPluginCapabilitySummary {
+  plugins: AgentPluginInfo[]
+  capabilities: AgentPluginCapability[]
+}
+
+export interface AgentPluginInstallInput {
+  marketplaceId: string
+  pluginName: string
+  enable: boolean
+  overwrite?: boolean
+}
+
+export interface AgentPluginInstallResult {
+  pluginId: string
+  status: 'installed' | 'overwritten' | 'updated'
+  enabled: boolean
+}
+
 // ===== Agent Slash Command =====
 
-export type AgentSlashCommandSource = 'workspace' | 'builtin'
+export type AgentSlashCommandSource = 'workspace' | 'builtin' | 'user'
 
 export interface AgentSlashCommand {
   /** 命令名称，不含开头斜杠；子目录命令使用 path/name 格式 */
@@ -1357,6 +1504,34 @@ export const AGENT_IPC_CHANNELS = {
   READ_HT_SKILLHUB_SKILL: 'agent:read-ht-skillhub-skill',
   /** 安装华泰 SkillHub Skill */
   INSTALL_HT_SKILLHUB_SKILL: 'agent:install-ht-skillhub-skill',
+  /** 列出 Agent 插件 */
+  LIST_PLUGINS: 'agent:list-plugins',
+  /** 设置 Agent 插件启用状态 */
+  SET_PLUGIN_ENABLED: 'agent:set-plugin-enabled',
+  /** 卸载用户安装的 Agent 插件 */
+  UNINSTALL_PLUGIN: 'agent:uninstall-plugin',
+  /** 列出插件市场 */
+  LIST_PLUGIN_MARKETPLACES: 'agent:list-plugin-marketplaces',
+  /** 添加插件市场 */
+  ADD_PLUGIN_MARKETPLACE: 'agent:add-plugin-marketplace',
+  /** 更新插件市场 */
+  UPDATE_PLUGIN_MARKETPLACE: 'agent:update-plugin-marketplace',
+  /** 删除插件市场 */
+  REMOVE_PLUGIN_MARKETPLACE: 'agent:remove-plugin-marketplace',
+  /** 刷新插件市场 */
+  REFRESH_PLUGIN_MARKETPLACE: 'agent:refresh-plugin-marketplace',
+  /** 搜索插件市场 */
+  SEARCH_PLUGIN_MARKETPLACE: 'agent:search-plugin-marketplace',
+  /** 获取插件市场插件详情 */
+  GET_PLUGIN_MARKETPLACE_DETAIL: 'agent:get-plugin-marketplace-detail',
+  /** 安装插件市场插件 */
+  INSTALL_MARKETPLACE_PLUGIN: 'agent:install-marketplace-plugin',
+  /** 获取 Agent 插件能力摘要 */
+  GET_PLUGIN_CAPABILITIES: 'agent:get-plugin-capabilities',
+  /** 配置插件 MCP 环境变量 */
+  CONFIGURE_PLUGIN_MCP_ENV: 'agent:configure-plugin-mcp-env',
+  /** 测试插件 MCP */
+  TEST_PLUGIN_MCP: 'agent:test-plugin-mcp',
 
   // 流式事件（主进程 → 渲染进程推送）
   /** Agent 流式事件 */

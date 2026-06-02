@@ -40,7 +40,7 @@ import { getFetchFn } from './proxy-fetch'
 import { getEffectiveProxyUrl } from './proxy-settings-service'
 import { appendSDKMessages, updateAgentSessionMeta, getAgentSessionMeta, getAgentSessionMessages, getAgentSessionSDKMessages, truncateSDKMessages, resolveUserUuidFromSDK, rewindFilesFromSnapshot } from './agent-session-manager'
 import { getAgentWorkspace, getWorkspaceMcpConfig, ensurePluginManifest } from './agent-workspace-manager'
-import { getAgentWorkspacePath, getAgentSessionWorkspacePath, getSdkConfigDir, getWorkspaceFilesDir, getConfigDirName, getDefaultPluginsDir } from './config-paths'
+import { getAgentWorkspacePath, getAgentSessionWorkspacePath, getSdkConfigDir, getWorkspaceFilesDir, getConfigDirName } from './config-paths'
 import { getWorkspaceAttachedDirectories, getWorkspaceAttachedFiles } from './agent-workspace-manager'
 import { getRuntimeStatus } from './runtime-init'
 import { getSettings } from './settings-service'
@@ -53,6 +53,7 @@ import { getMemoryConfig } from './memory-service'
 import { searchMemory, addMemory, formatSearchResult } from './memos-client'
 import { validateToolInput } from './agent-tool-input-validator'
 import { estimateTokenCount, WRITE_CONTENT_TOKEN_THRESHOLD } from './agent-tool-token-estimator'
+import { buildPluginRuntimePaths } from './plugin-registry-service'
 
 // ===== 类型定义 =====
 
@@ -261,30 +262,11 @@ function resolveSDKCliPath(): string {
   return binaryPath
 }
 
-/**
- * 构建内置插件路径列表
- *
- * 读取 ~/.proma/default-plugins/ 下的内置插件，作为 SDK local plugin 注入。
- */
-function getBuiltinPluginPaths(): Array<{ type: 'local'; path: string }> {
-  const dir = getDefaultPluginsDir()
-  if (!existsSync(dir)) return []
-
-  try {
-    return readdirSync(dir, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => ({ type: 'local' as const, path: join(dir, entry.name) }))
-  } catch (err) {
-    console.warn('[Agent 编排] 读取内置插件目录失败:', err)
-    return []
-  }
-}
-
-/** 构建 SDK local plugin 列表：当前工作区插件 + 应用内置插件 */
+/** 构建 SDK local plugin 列表：当前工作区插件 + 已启用的全局插件 */
 function getAgentPluginPaths(workspaceSlug?: string): Array<{ type: 'local'; path: string }> {
   return [
     ...(workspaceSlug ? [{ type: 'local' as const, path: getAgentWorkspacePath(workspaceSlug) }] : []),
-    ...getBuiltinPluginPaths(),
+    ...buildPluginRuntimePaths(),
   ]
 }
 

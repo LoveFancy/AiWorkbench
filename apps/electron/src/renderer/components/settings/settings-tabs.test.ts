@@ -44,6 +44,14 @@ test('Agent 模式下 Skill 和 MCP 配置入口文案正确', () => {
   expect(agentTabs.find((tab) => tab.id === 'agent')?.label).toBe('SKILL/MCP')
 })
 
+test('Agent 模式下插件管理入口可见', () => {
+  const generalTabs = getSettingsTabs('chat')
+  const agentTabs = getSettingsTabs('agent')
+
+  expect(generalTabs.some((tab) => tab.id === 'plugins')).toBe(false)
+  expect(agentTabs.find((tab) => tab.id === 'plugins')?.label).toBe('插件管理')
+})
+
 test('隐藏非公开设置入口', () => {
   const hiddenTabIds = ['voice-input', 'bots', 'migration']
   const generalTabs = getSettingsTabs('chat')

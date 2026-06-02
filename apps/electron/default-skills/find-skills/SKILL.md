@@ -1,13 +1,11 @@
 ---
 name: find-skills
 description: Helps users discover and install agent skills when they ask questions like "how do I do X", "find a skill for X", "is there a skill that can...", or express interest in extending capabilities. This skill should be used when the user is looking for functionality that might exist as an installable skill.
-version: "1.0.0"
----
-version: "1.0.0"
+version: "1.0.1"
 ---
 # Find Skills
 
-This skill helps you discover and install skills from the open agent skills ecosystem.
+This skill helps you discover and install skills with the standard Skills CLI. In WorkMate, prefer the Huatai SkillHub source first, then fall back to the open agent skills ecosystem.
 
 ## When to Use This Skill
 
@@ -18,32 +16,63 @@ Use this skill when the user:
 - Asks "can you do X" where X is a specialized capability
 - Expresses interest in extending agent capabilities
 - Wants to search for tools, templates, or workflows
-- Mentions they wish they had help with a specific domain (design, testing, deployment, etc.)
+- Mentions they wish they had help with a specific domain
 
-## What is the Skills CLI?
+## Skill Sources
 
-The Skills CLI (`npx skills`) is the package manager for the open agent skills ecosystem. Skills are modular packages that extend agent capabilities with specialized knowledge, workflows, and tools.
+### Huatai SkillHub
 
-**Key commands:**
+Huatai SkillHub is the preferred source for internal WorkMate skills:
 
-- `npx skills find [query]` - Search for skills interactively or by keyword
-- `npx skills add <package>` - Install a skill from GitHub or other sources
-- `npx skills check` - Check for skill updates
-- `npx skills update` - Update all installed skills
+```text
+http://skillhub.uat.saas.htsc
+```
 
-**Browse skills at:** https://skills.sh/
+Use the standard Skills CLI install command:
+
+```bash
+npx skills add http://skillhub.uat.saas.htsc --skill <skill-name>
+```
+
+Example:
+
+```bash
+npx skills add http://skillhub.uat.saas.htsc --skill frontend-design
+```
+
+### Open Skills Ecosystem
+
+Use the public skills ecosystem when Huatai SkillHub has no suitable match:
+
+```bash
+npx skills find [query]
+npx skills add <owner/repo@skill> -g -y
+```
+
+Browse skills at https://skills.sh/.
 
 ## How to Help Users Find Skills
 
 ### Step 1: Understand What They Need
 
-When a user asks for help with something, identify:
+Identify:
 
-1. The domain (e.g., React, testing, design, deployment)
-2. The specific task (e.g., writing tests, creating animations, reviewing PRs)
-3. Whether this is a common enough task that a skill likely exists
+1. The domain, such as React, testing, design, deployment, document processing, or workflow automation
+2. The specific task, such as writing tests, creating animations, reviewing PRs, or generating reports
+3. Whether the task is internal to Huatai WorkMate or a general-purpose skill need
 
-### Step 2: Search for Skills
+### Step 2: Prefer Huatai SkillHub
+
+If the user asks for an internal capability or gives a likely skill name, suggest the Huatai SkillHub install command first.
+
+Examples:
+
+- User asks for frontend design help -> `npx skills add http://skillhub.uat.saas.htsc --skill frontend-design`
+- User names a known internal skill -> `npx skills add http://skillhub.uat.saas.htsc --skill <skill-name>`
+
+If the exact skill name is unclear, ask for the intended domain or search the public ecosystem as a fallback.
+
+### Step 3: Fall Back to Public Search
 
 Run the find command with a relevant query:
 
@@ -53,52 +82,57 @@ npx skills find [query]
 
 For example:
 
-- User asks "how do I make my React app faster?" → `npx skills find react performance`
-- User asks "can you help me with PR reviews?" → `npx skills find pr review`
-- User asks "I need to create a changelog" → `npx skills find changelog`
+- User asks "how do I make my React app faster?" -> `npx skills find react performance`
+- User asks "can you help me with PR reviews?" -> `npx skills find pr review`
+- User asks "I need to create a changelog" -> `npx skills find changelog`
 
-The command will return results like:
+The command returns installable packages like:
 
-```
+```text
 Install with npx skills add <owner/repo@skill>
 
 vercel-labs/agent-skills@vercel-react-best-practices
 └ https://skills.sh/vercel-labs/agent-skills/vercel-react-best-practices
 ```
 
-### Step 3: Present Options to the User
+### Step 4: Present Options to the User
 
-When you find relevant skills, present them to the user with:
+Present:
 
 1. The skill name and what it does
-2. The install command they can run
-3. A link to learn more at skills.sh
+2. The install command
+3. The source, either Huatai SkillHub or skills.sh
 
-Example response:
+Example:
 
-```
-I found a skill that might help! The "vercel-react-best-practices" skill provides
-React and Next.js performance optimization guidelines from Vercel Engineering.
+```text
+I found a skill that might help: frontend-design.
 
-To install it:
-npx skills add vercel-labs/agent-skills@vercel-react-best-practices
-
-Learn more: https://skills.sh/vercel-labs/agent-skills/vercel-react-best-practices
+To install it from Huatai SkillHub:
+npx skills add http://skillhub.uat.saas.htsc --skill frontend-design
 ```
 
-### Step 4: Offer to Install
+### Step 5: Install After Confirmation
 
-If the user wants to proceed, you can install the skill for them:
+If the user wants to proceed, run the standard install command.
+
+For Huatai SkillHub:
+
+```bash
+npx skills add http://skillhub.uat.saas.htsc --skill <skill-name>
+```
+
+For the public ecosystem:
 
 ```bash
 npx skills add <owner/repo@skill> -g -y
 ```
 
-The `-g` flag installs globally (user-level) and `-y` skips confirmation prompts.
+## WorkMate Loading Note
+
+WorkMate loads skills from the current workspace skills directory. If the Skills CLI installs a skill into a global or external directory, move or copy the installed skill into the WorkMate workspace skills directory before expecting it to be available in that workspace.
 
 ## Common Skill Categories
-
-When searching, consider these common categories:
 
 | Category        | Example Queries                          |
 | --------------- | ---------------------------------------- |
@@ -110,26 +144,10 @@ When searching, consider these common categories:
 | Design          | ui, ux, design-system, accessibility     |
 | Productivity    | workflow, automation, git                |
 
-## Tips for Effective Searches
-
-1. **Use specific keywords**: "react testing" is better than just "testing"
-2. **Try alternative terms**: If "deploy" doesn't work, try "deployment" or "ci-cd"
-3. **Check popular sources**: Many skills come from `vercel-labs/agent-skills` or `ComposioHQ/awesome-claude-skills`
-
 ## When No Skills Are Found
 
 If no relevant skills exist:
 
 1. Acknowledge that no existing skill was found
-2. Offer to help with the task directly using your general capabilities
-3. Suggest the user could create their own skill with `npx skills init`
-
-Example:
-
-```
-I searched for skills related to "xyz" but didn't find any matches.
-I can still help you with this task directly! Would you like me to proceed?
-
-If this is something you do often, you could create your own skill:
-npx skills init my-xyz-skill
-```
+2. Offer to help with the task directly using general capabilities
+3. Suggest creating a custom skill with `npx skills init`

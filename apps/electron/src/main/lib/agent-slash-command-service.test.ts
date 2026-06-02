@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { scanSlashCommandsInDir } from './agent-slash-command-service.ts'
+import { listAgentSlashCommandsFromPaths, scanSlashCommandsInDir } from './agent-slash-command-service.ts'
 
 function createTempRoot(): { root: string; cleanup: () => void } {
   const root = mkdtempSync(join(tmpdir(), 'proma-slash-command-'))
@@ -69,6 +69,36 @@ describe('Agent slash command 服务', () => {
       expect(commands.map((command) => command.command)).toEqual(['/commit'])
       expect(commands[0]?.sourceLabel).toBe('当前工作区:git')
       expect(commands[0]?.description).toBe('生成提交信息')
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('列出工作区、内置插件和用户插件命令', () => {
+    const temp = createTempRoot()
+    try {
+      const workspaceDir = join(temp.root, 'workspace')
+      const builtinPluginDir = join(temp.root, 'default-plugins', 'superpowers')
+      const userPluginDir = join(temp.root, 'user-plugins', 'market', 'frontend-design')
+      mkdirSync(join(workspaceDir, 'commands'), { recursive: true })
+      mkdirSync(join(builtinPluginDir, 'commands'), { recursive: true })
+      mkdirSync(join(userPluginDir, 'commands'), { recursive: true })
+      writeFileSync(join(workspaceDir, 'commands', 'release.md'), '发布', 'utf-8')
+      writeFileSync(join(builtinPluginDir, 'commands', 'brainstorming.md'), '头脑风暴', 'utf-8')
+      writeFileSync(join(userPluginDir, 'commands', 'design.md'), '设计', 'utf-8')
+
+      const commands = listAgentSlashCommandsFromPaths({
+        workspaceSlug: 'default',
+        workspacePath: workspaceDir,
+        builtinPluginPaths: [{ id: 'builtin:superpowers', name: 'superpowers', path: builtinPluginDir }],
+        userPluginPaths: [{ id: 'user:market/frontend-design', name: 'frontend-design', path: userPluginDir }],
+      })
+
+      expect(commands.map((command) => `${command.source}:${command.command}:${command.sourceLabel}`)).toEqual([
+        'builtin:/brainstorming:superpowers',
+        'user:/design:frontend-design',
+        'workspace:/release:default',
+      ])
     } finally {
       temp.cleanup()
     }

@@ -1,0 +1,214 @@
+import { describe, expect, test } from 'bun:test'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+import {
+  buildPluginMcpServers,
+  buildPluginRuntimePaths,
+  getPluginCapabilitySummary,
+  listInstalledPlugins,
+  readPluginsConfig,
+  setPluginEnabled,
+  testPluginMcpServer,
+  uninstallUserPlugin,
+  updatePluginMcpEnv,
+} from './plugin-registry-service.ts'
+
+function tempRoot(): { root: string; cleanup: () => void } {
+  const root = mkdtempSync(join(tmpdir(), 'proma-plugin-registry-'))
+  return {
+    root,
+    cleanup: () => rmSync(root, { recursive: true, force: true }),
+  }
+}
+
+function createPlugin(root: string, name: string, version = '1.0.0', mcpCommand = 'drawio'): string {
+  const pluginDir = join(root, name)
+  mkdirSync(join(pluginDir, '.claude-plugin'), { recursive: true })
+  mkdirSync(join(pluginDir, 'skills', 'demo-skill'), { recursive: true })
+  mkdirSync(join(pluginDir, 'commands'), { recursive: true })
+  mkdirSync(join(pluginDir, 'agents'), { recursive: true })
+  writeFileSync(
+    join(pluginDir, '.claude-plugin', 'plugin.json'),
+    JSON.stringify({
+      name,
+      version,
+      description: `${name} 描述`,
+      author: { name: 'Qinxiao' },
+      keywords: ['demo'],
+    }),
+    'utf-8',
+  )
+  writeFileSync(join(pluginDir, 'skills', 'demo-skill', 'SKILL.md'), '---\nname: demo-skill\n---\n# Demo', 'utf-8')
+  writeFileSync(join(pluginDir, 'commands', 'demo.md'), '---\ndescription: Demo command\n---\nRun demo', 'utf-8')
+  writeFileSync(join(pluginDir, 'agents', 'reviewer.md'), '---\ndescription: Demo agent\n---\nReview code', 'utf-8')
+  writeFileSync(join(pluginDir, '.mcp.json'), JSON.stringify({ mcpServers: { drawio: { type: 'stdio', command: mcpCommand, env: { BASE: '1' } } } }), 'utf-8')
+  return pluginDir
+}
+
+describe('插件注册表服务', () => {
+  test('扫描内置和用户插件并汇总能力', () => {
+    const temp = tempRoot()
+    try {
+      const builtinDir = join(temp.root, 'default-plugins')
+      const userDir = join(temp.root, 'user-plugins')
+      const configPath = join(temp.root, 'plugins.json')
+      createPlugin(builtinDir, 'dpmp-assist', '0.1.0')
+      createPlugin(join(userDir, 'market'), 'frontend-design', '1.2.3')
+
+      const plugins = listInstalledPlugins({ builtinDir, userDir, configPath })
+
+      expect(plugins.map((plugin) => plugin.id)).toEqual([
+        'builtin:dpmp-assist',
+        'user:market/frontend-design',
+      ])
+      expect(plugins.every((plugin) => plugin.enabled)).toBe(true)
+      expect(plugins[0]?.capabilities.map((capability) => capability.type).sort()).toEqual(['agent', 'command', 'mcp', 'skill'])
+      expect(plugins[1]?.sourceMarketplaceId).toBe('market')
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('启用状态控制 runtime plugin path', () => {
+    const temp = tempRoot()
+    try {
+      const builtinDir = join(temp.root, 'default-plugins')
+      const userDir = join(temp.root, 'user-plugins')
+      const configPath = join(temp.root, 'plugins.json')
+      const builtinPluginPath = createPlugin(builtinDir, 'superpowers')
+      const userPluginPath = createPlugin(join(userDir, 'market'), 'frontend-design')
+
+      setPluginEnabled('builtin:superpowers', false, { builtinDir, userDir, configPath })
+
+      const paths = buildPluginRuntimePaths({ builtinDir, userDir, configPath })
+
+      expect(paths).toEqual([{ type: 'local', path: userPluginPath }])
+      expect(paths.some((plugin) => plugin.path === builtinPluginPath)).toBe(false)
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('runtime plugin path 使用缓存副本承载插件 MCP env，不修改原插件目录', () => {
+    const temp = tempRoot()
+    try {
+      const builtinDir = join(temp.root, 'default-plugins')
+      const userDir = join(temp.root, 'user-plugins')
+      const configPath = join(temp.root, 'plugins.json')
+      const runtimeDir = join(temp.root, 'runtime-plugins')
+      const pluginPath = createPlugin(builtinDir, 'dpmp-assist')
+      updatePluginMcpEnv('builtin:dpmp-assist/drawio', { TOKEN: 'abc' }, { configPath })
+
+      const paths = buildPluginRuntimePaths({ builtinDir, userDir, configPath, runtimeDir })
+      const runtimePath = paths[0]?.path
+
+      expect(runtimePath).not.toBe(pluginPath)
+      expect(runtimePath?.startsWith(runtimeDir)).toBe(true)
+      const runtimeMcp = JSON.parse(readFileSync(join(runtimePath ?? '', '.mcp.json'), 'utf-8')) as { mcpServers: { drawio: { env: Record<string, string> } } }
+      const originalMcp = JSON.parse(readFileSync(join(pluginPath, '.mcp.json'), 'utf-8')) as { mcpServers: { drawio: { env: Record<string, string> } } }
+      expect(runtimeMcp.mcpServers.drawio.env).toEqual({ BASE: '1', TOKEN: 'abc' })
+      expect(originalMcp.mcpServers.drawio.env).toEqual({ BASE: '1' })
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('保存插件 MCP 环境变量到 plugins.json', () => {
+    const temp = tempRoot()
+    try {
+      const configPath = join(temp.root, 'plugins.json')
+
+      updatePluginMcpEnv('builtin:dpmp-assist/drawio', { TOKEN: 'abc' }, { configPath })
+
+      const config = readPluginsConfig({ configPath })
+      expect(config.version).toBe(1)
+      expect(config.mcpServers['builtin:dpmp-assist/drawio']?.env).toEqual({ TOKEN: 'abc' })
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('能力摘要标记 command 冲突', () => {
+    const temp = tempRoot()
+    try {
+      const builtinDir = join(temp.root, 'default-plugins')
+      const userDir = join(temp.root, 'user-plugins')
+      const configPath = join(temp.root, 'plugins.json')
+      createPlugin(builtinDir, 'dpmp-assist')
+      createPlugin(join(userDir, 'market'), 'frontend-design')
+
+      const summary = getPluginCapabilitySummary({ builtinDir, userDir, configPath })
+      const commands = summary.capabilities.filter((capability) => capability.type === 'command' && capability.name === 'demo')
+
+      expect(commands).toHaveLength(2)
+      expect(commands.every((command) => command.conflict)).toBe(true)
+      expect(commands.flatMap((command) => command.conflictWith ?? [])).toContain('builtin:dpmp-assist')
+      expect(commands.flatMap((command) => command.conflictWith ?? [])).toContain('user:market/frontend-design')
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('构建插件 MCP 运行时配置时只包含已启用插件并合并用户 env', () => {
+    const temp = tempRoot()
+    try {
+      const builtinDir = join(temp.root, 'default-plugins')
+      const userDir = join(temp.root, 'user-plugins')
+      const configPath = join(temp.root, 'plugins.json')
+      createPlugin(builtinDir, 'dpmp-assist')
+      createPlugin(builtinDir, 'disabled-plugin')
+
+      setPluginEnabled('builtin:disabled-plugin', false, { builtinDir, userDir, configPath })
+      updatePluginMcpEnv('builtin:dpmp-assist/drawio', { TOKEN: 'abc' }, { configPath })
+
+      const servers = buildPluginMcpServers({ builtinDir, userDir, configPath })
+
+      expect(Object.keys(servers)).toEqual(['builtin_dpmp-assist__drawio'])
+      expect(servers['builtin_dpmp-assist__drawio']).toMatchObject({
+        type: 'stdio',
+        command: 'drawio',
+        env: {
+          BASE: '1',
+          TOKEN: 'abc',
+        },
+      })
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('测试插件 MCP 会写回最近一次测试结果', async () => {
+    const temp = tempRoot()
+    try {
+      const builtinDir = join(temp.root, 'default-plugins')
+      const userDir = join(temp.root, 'user-plugins')
+      const configPath = join(temp.root, 'plugins.json')
+      createPlugin(builtinDir, 'dpmp-assist', '1.0.0', '/path/not-exists-proma-mcp')
+
+      const result = await testPluginMcpServer('builtin:dpmp-assist/drawio', { builtinDir, userDir, configPath })
+      const config = readPluginsConfig({ configPath })
+
+      expect(result.success).toBe(false)
+      expect(result.message).toContain('命令不存在或不可执行')
+      expect(config.mcpServers['builtin:dpmp-assist/drawio']?.lastTestSuccess).toBe(false)
+      expect(config.mcpServers['builtin:dpmp-assist/drawio']?.lastTestMessage).toContain('命令不存在或不可执行')
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('卸载用户插件时拒绝路径穿越 ID', () => {
+    const temp = tempRoot()
+    try {
+      expect(() => uninstallUserPlugin('user:market/../secret', {
+        builtinDir: join(temp.root, 'default-plugins'),
+        userDir: join(temp.root, 'user-plugins'),
+        configPath: join(temp.root, 'plugins.json'),
+      })).toThrow('非法插件 ID')
+    } finally {
+      temp.cleanup()
+    }
+  })
+})

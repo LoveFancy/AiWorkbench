@@ -111,6 +111,14 @@ import type {
   RevertFileInput,
   FileAccessOptions,
   ResolvedFileUrl,
+  AgentPluginInfo,
+  AgentPluginMarketplace,
+  AgentPluginMarketplaceType,
+  AgentPluginMarketplacePlugin,
+  AgentPluginMarketplaceDetail,
+  AgentPluginCapabilitySummary,
+  AgentPluginInstallInput,
+  AgentPluginInstallResult,
 } from '@proma/shared'
 import type { UserProfile, AppSettings, ConfigRootInfo } from '../types'
 import { getRuntimeStatus, getGitRepoStatus, reinitializeRuntime } from './lib/runtime-init'
@@ -2049,6 +2057,120 @@ export function registerIpcHandlers(): void {
       const skill = skills.find((item) => item.name === skillName)
       if (!skill) throw new Error(`华泰 SkillHub 未找到 Skill: ${skillName}`)
       return installHtSkillHubSkill({ workspaceSlug, skill, overwrite })
+    }
+  )
+
+  // ===== Agent 插件 =====
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.LIST_PLUGINS,
+    async (): Promise<AgentPluginInfo[]> => {
+      const { listInstalledPlugins } = await import('./lib/plugin-registry-service')
+      return listInstalledPlugins()
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.SET_PLUGIN_ENABLED,
+    async (_, pluginId: string, enabled: boolean): Promise<void> => {
+      const { setPluginEnabled } = await import('./lib/plugin-registry-service')
+      setPluginEnabled(pluginId, enabled)
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.UNINSTALL_PLUGIN,
+    async (_, pluginId: string): Promise<void> => {
+      const { uninstallUserPlugin } = await import('./lib/plugin-registry-service')
+      uninstallUserPlugin(pluginId)
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.LIST_PLUGIN_MARKETPLACES,
+    async (): Promise<AgentPluginMarketplace[]> => {
+      const { listPluginMarketplaces } = await import('./lib/plugin-marketplace-service')
+      return listPluginMarketplaces()
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.ADD_PLUGIN_MARKETPLACE,
+    async (_, input: { id: string; name: string; source: string; type: AgentPluginMarketplaceType }): Promise<AgentPluginMarketplace> => {
+      const { addPluginMarketplace } = await import('./lib/plugin-marketplace-service')
+      return addPluginMarketplace(input)
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.UPDATE_PLUGIN_MARKETPLACE,
+    async (_, id: string, updates: Partial<Omit<AgentPluginMarketplace, 'id' | 'addedAt'>>): Promise<AgentPluginMarketplace> => {
+      const { updatePluginMarketplace } = await import('./lib/plugin-marketplace-service')
+      return updatePluginMarketplace(id, updates)
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.REMOVE_PLUGIN_MARKETPLACE,
+    async (_, id: string): Promise<void> => {
+      const { removePluginMarketplace } = await import('./lib/plugin-marketplace-service')
+      removePluginMarketplace(id)
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.REFRESH_PLUGIN_MARKETPLACE,
+    async (_, id: string): Promise<AgentPluginMarketplace> => {
+      const { refreshPluginMarketplace } = await import('./lib/plugin-marketplace-service')
+      return refreshPluginMarketplace(id)
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.SEARCH_PLUGIN_MARKETPLACE,
+    async (_, query: string): Promise<AgentPluginMarketplacePlugin[]> => {
+      const { searchMarketplacePlugins } = await import('./lib/plugin-marketplace-service')
+      return searchMarketplacePlugins(query)
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.GET_PLUGIN_MARKETPLACE_DETAIL,
+    async (_, marketplaceId: string, pluginName: string): Promise<AgentPluginMarketplaceDetail> => {
+      const { getMarketplacePluginDetail } = await import('./lib/plugin-marketplace-service')
+      return getMarketplacePluginDetail(marketplaceId, pluginName)
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.INSTALL_MARKETPLACE_PLUGIN,
+    async (_, input: AgentPluginInstallInput): Promise<AgentPluginInstallResult> => {
+      const { installMarketplacePlugin } = await import('./lib/plugin-marketplace-service')
+      return installMarketplacePlugin(input)
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.GET_PLUGIN_CAPABILITIES,
+    async (): Promise<AgentPluginCapabilitySummary> => {
+      const { getPluginCapabilitySummary } = await import('./lib/plugin-registry-service')
+      return getPluginCapabilitySummary()
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.CONFIGURE_PLUGIN_MCP_ENV,
+    async (_, serverId: string, env: Record<string, string>): Promise<void> => {
+      const { updatePluginMcpEnv } = await import('./lib/plugin-registry-service')
+      updatePluginMcpEnv(serverId, env)
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.TEST_PLUGIN_MCP,
+    async (_, serverId: string): Promise<{ success: boolean; message: string }> => {
+      const { testPluginMcpServer } = await import('./lib/plugin-registry-service')
+      return testPluginMcpServer(serverId)
     }
   )
 

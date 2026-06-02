@@ -1,7 +1,8 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { basename, dirname, join, relative, sep } from 'node:path'
 import type { AgentSlashCommand, AgentSlashCommandSource } from '@proma/shared'
-import { getAgentWorkspacePath, getDefaultPluginsDir } from './config-paths'
+import { getAgentWorkspacePath } from './config-paths'
+import { listInstalledPlugins } from './plugin-registry-service'
 
 interface ScanSlashCommandOptions {
   source: AgentSlashCommandSource
@@ -96,25 +97,54 @@ export function scanSlashCommandsInDir(
     .sort((a, b) => a.command.localeCompare(b.command))
 }
 
-export function listAgentSlashCommands(workspaceSlug: string): AgentSlashCommand[] {
-  const workspaceCommandsDir = join(getAgentWorkspacePath(workspaceSlug), 'commands')
-  const commands = scanSlashCommandsInDir(workspaceCommandsDir, {
+interface PluginCommandPath {
+  id: string
+  name: string
+  path: string
+}
+
+interface ListSlashCommandsFromPathsInput {
+  workspaceSlug: string
+  workspacePath: string
+  builtinPluginPaths: PluginCommandPath[]
+  userPluginPaths: PluginCommandPath[]
+}
+
+export function listAgentSlashCommandsFromPaths(input: ListSlashCommandsFromPathsInput): AgentSlashCommand[] {
+  const commands = scanSlashCommandsInDir(join(input.workspacePath, 'commands'), {
     source: 'workspace',
-    sourceLabel: workspaceSlug,
+    sourceLabel: input.workspaceSlug,
   })
 
-  const defaultPluginsDir = getDefaultPluginsDir()
-  if (!existsSync(defaultPluginsDir)) return commands
-
-  for (const entry of readdirSync(defaultPluginsDir, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue
-    const pluginName = basename(entry.name)
-    const pluginCommands = scanSlashCommandsInDir(join(defaultPluginsDir, entry.name, 'commands'), {
+  for (const plugin of input.builtinPluginPaths) {
+    commands.push(...scanSlashCommandsInDir(join(plugin.path, 'commands'), {
       source: 'builtin',
-      sourceLabel: pluginName,
-    })
-    commands.push(...pluginCommands)
+      sourceLabel: plugin.name,
+    }))
+  }
+
+  for (const plugin of input.userPluginPaths) {
+    commands.push(...scanSlashCommandsInDir(join(plugin.path, 'commands'), {
+      source: 'user',
+      sourceLabel: plugin.name,
+    }))
   }
 
   return commands.sort((a, b) => a.command.localeCompare(b.command))
+}
+
+export function listAgentSlashCommands(workspaceSlug: string): AgentSlashCommand[] {
+  const plugins = listInstalledPlugins()
+    .filter((plugin) => plugin.enabled && plugin.issues.every((issue) => issue.level !== 'error'))
+
+  return listAgentSlashCommandsFromPaths({
+    workspaceSlug,
+    workspacePath: getAgentWorkspacePath(workspaceSlug),
+    builtinPluginPaths: plugins
+      .filter((plugin) => plugin.kind === 'builtin')
+      .map((plugin) => ({ id: plugin.id, name: plugin.name, path: plugin.path })),
+    userPluginPaths: plugins
+      .filter((plugin) => plugin.kind === 'user')
+      .map((plugin) => ({ id: plugin.id, name: plugin.name, path: plugin.path })),
+  })
 }

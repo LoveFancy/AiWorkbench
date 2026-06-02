@@ -9,6 +9,14 @@ test('内置教程使用华泰自研 Agent 工具口径', () => {
   expect(tutorial).toContain('秦晓012950')
 })
 
+test('内置教程包含非信息技术部首次使用前置申请说明', () => {
+  expect(tutorial).toContain('168.63.65.40:8090')
+  expect(tutorial).toContain('firewallapply')
+  expect(tutorial).toContain('http://eip.htsc.com.cn/modelPlatform/#/apiManage/list')
+  expect(tutorial).toContain('数智中台')
+  expect(tutorial).toContain('黄宇海019543')
+})
+
 test('内置教程不暴露 Proma 开源和商业版来源信息', () => {
   expect(tutorial).not.toContain('Proma')
   expect(tutorial).not.toContain('Erlich')
