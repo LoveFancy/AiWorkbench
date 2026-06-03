@@ -22,7 +22,7 @@ describe('observability.service', () => {
         type: 'chat_question',
         userName: '张三',
         timestamp: Date.now(),
-        question: '如何使用',
+        question: '如何使用', 
         questionLength: 4,
         modelId: 'gpt-4',
         result: 'success',

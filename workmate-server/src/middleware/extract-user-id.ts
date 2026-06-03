@@ -42,6 +42,12 @@ export function extractUserId(req: Request, res: Response, next: NextFunction): 
   const encrypted = req.headers['x-eipgw-userid'] as string | undefined
 
   if (!encrypted) {
+    if (!config.requireUserId) {
+      req.jobId = config.defaultUserId
+      logger.debug('用户身份校验已关闭，使用默认用户', { userId: config.defaultUserId })
+      next()
+      return
+    }
     res.status(403).json({ code: 403, message: '缺少用户身份信息', timestamp: Date.now() })
     return
   }
@@ -50,6 +56,12 @@ export function extractUserId(req: Request, res: Response, next: NextFunction): 
     req.jobId = decryptJobId(encrypted)
     next()
   } catch (error) {
+    if (!config.requireUserId) {
+      req.jobId = config.defaultUserId
+      logger.debug('用户身份解密失败，使用默认用户', { userId: config.defaultUserId, error })
+      next()
+      return
+    }
     logger.error('解密用户身份失败', { error })
     res.status(403).json({ code: 403, message: '用户身份验证失败', timestamp: Date.now() })
   }

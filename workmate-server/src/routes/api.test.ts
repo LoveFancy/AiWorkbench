@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import request from 'supertest'
 import app from '../app'
 import { PrismaClient } from '@prisma/client'
-import { createDecipheriv, createCipheriv } from 'node:crypto'
+import { createCipheriv } from 'node:crypto'
+import { config } from '../config'
 
 const prisma = new PrismaClient()
 
@@ -24,6 +25,7 @@ function authHeader(jobId = '022480'): Record<string, string> {
 
 describe('API Routes', () => {
   beforeAll(async () => {
+    process.env.USER_ID_ENCRYPTION_KEY = KEY_HEX
     await prisma.adminWhitelist.deleteMany()
     await prisma.upgradeWhitelist.deleteMany()
     await prisma.upgradeRelease.deleteMany()
@@ -32,6 +34,11 @@ describe('API Routes', () => {
     await prisma.adminWhitelist.create({
       data: { ruleType: 'list', ruleValue: '022480', remark: '测试管理员' },
     })
+  })
+
+  beforeEach(() => {
+    // 默认关闭身份校验，各测试可按需开启
+    config.requireUserId = false
   })
 
   afterAll(async () => {
@@ -52,6 +59,7 @@ describe('API Routes', () => {
 
   describe('GET /workmate/models', () => {
     it('应在缺少认证时返回 403', async () => {
+      config.requireUserId = true
       const res = await request(app).get('/workmate/models')
       expect(res.status).toBe(403)
     })
@@ -115,6 +123,7 @@ describe('API Routes', () => {
     })
 
     it('非管理员应被拒绝', async () => {
+      config.requireUserId = true
       const res = await request(app)
         .get('/workmate-console/dashboard')
         .set(authHeader('999999'))

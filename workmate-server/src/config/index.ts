@@ -8,6 +8,8 @@ interface Config {
   host: string
   databaseUrl: string
   userIdEncryptionKey: string
+  requireUserId: boolean
+  defaultUserId: string
   modelPlatformApiUrl: string
   modelPlatformTimeoutMs: number
   observabilitySampleRate: number
@@ -24,6 +26,9 @@ function loadConfig(): Config {
     databaseUrl: process.env.DATABASE_URL ?? '',
 
     userIdEncryptionKey: process.env.USER_ID_ENCRYPTION_KEY ?? '',
+
+    requireUserId: process.env.REQUIRE_USER_ID !== 'false',
+    defaultUserId: process.env.DEFAULT_USER_ID ?? 'test_user',
 
     modelPlatformApiUrl:
       process.env.MODEL_PLATFORM_API_URL ?? 'http://model-platform.htsc.com/api/v1',

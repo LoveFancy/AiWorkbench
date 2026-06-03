@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { matchAnyRule } from '../utils/whitelist-matcher'
 import { logger } from '../utils/logger'
+import { config } from '../config'
 
 const prisma = new PrismaClient()
 
@@ -32,6 +33,11 @@ async function getAdminWhitelistRules() {
 export function adminWhitelistGuard() {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const jobId = req.jobId
+
+    if (!config.requireUserId) {
+      next()
+      return
+    }
 
     if (!jobId) {
       res.status(403).json({ code: 403, message: '缺少用户身份信息', timestamp: Date.now() })
