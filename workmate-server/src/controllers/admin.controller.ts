@@ -16,6 +16,7 @@ import {
   createStrategy,
   activateStrategy,
   advanceStrategyStage,
+  retreatStrategyStage,
   pauseStrategy,
   resumeStrategy,
   finishStrategy,
@@ -221,6 +222,21 @@ export async function advanceStrategyStageHandler(
   }
 }
 
+export async function retreatStrategyStageHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const id = parseInt(req.params.id)
+    if (isNaN(id)) throw new AppError(400, '无效的策略ID')
+    const strategy = await retreatStrategyStage(id)
+    sendSuccess(res, strategy, '阶段回撤成功')
+  } catch (error) {
+    next(error)
+  }
+}
+
 export async function pauseStrategyHandler(
   req: Request,
   res: Response,
@@ -259,8 +275,10 @@ export async function finishStrategyHandler(
   try {
     const id = parseInt(req.params.id)
     if (isNaN(id)) throw new AppError(400, '无效的策略ID')
-    const strategy = await finishStrategy(id)
-    sendSuccess(res, strategy, '策略已完成')
+    const { nextStrategyId } = req.body
+    if (!nextStrategyId) throw new AppError(400, '必须指定下一个升级策略')
+    const strategy = await finishStrategy(id, nextStrategyId)
+    sendSuccess(res, strategy, '策略已完成，下一个策略已激活')
   } catch (error) {
     next(error)
   }

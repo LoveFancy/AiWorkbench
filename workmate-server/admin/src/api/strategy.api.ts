@@ -77,6 +77,10 @@ export function advanceStrategyStage(id: number): Promise<{ data: StrategyStage 
   return apiClient.post(`/strategies/${id}/advance-stage`)
 }
 
+export function retreatStrategyStage(id: number): Promise<{ data: StrategyDetail }> {
+  return apiClient.post(`/strategies/${id}/retreat-stage`)
+}
+
 export function pauseStrategy(id: number): Promise<{ data: UpgradeStrategy }> {
   return apiClient.post(`/strategies/${id}/pause`)
 }
@@ -85,8 +89,8 @@ export function resumeStrategy(id: number): Promise<{ data: UpgradeStrategy }> {
   return apiClient.post(`/strategies/${id}/resume`)
 }
 
-export function finishStrategy(id: number): Promise<{ data: UpgradeStrategy }> {
-  return apiClient.post(`/strategies/${id}/finish`)
+export function finishStrategy(id: number, nextStrategyId: number): Promise<{ data: UpgradeStrategy }> {
+  return apiClient.post(`/strategies/${id}/finish`, { nextStrategyId })
 }
 
 export function editStrategyStages(id: number, data: {

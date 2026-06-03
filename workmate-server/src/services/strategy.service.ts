@@ -242,6 +242,67 @@ export async function advanceStrategyStage(strategyId: number) {
   return result
 }
 
+/**
+ * 回撤到上一个阶段：currentStage - 1
+ * 重新同步白名单为上一阶段的累积规则，让不在上一阶段白名单中的用户不再收到升级提示
+ */
+export async function retreatStrategyStage(strategyId: number) {
+  const strategy = await prisma.upgradeStrategy.findUnique({
+    where: { id: strategyId },
+    include: { stages: { include: { rules: true }, orderBy: { stageOrder: 'asc' } } },
+  })
+
+  if (!strategy) throw new Error('策略不存在')
+  if (strategy.status !== 'ACTIVE') throw new Error('只有进行中的策略可以回撤')
+  if (strategy.currentStage <= 1) throw new Error('已在第一阶段，无法回撤')
+
+  const prevStageOrder = strategy.currentStage - 1
+  const prevStage = strategy.stages.find((s) => s.stageOrder === prevStageOrder)
+  if (!prevStage) throw new Error('上一阶段不存在')
+
+  // 判断上一阶段是否为全量阶段（rules 为空）
+  const isPrevFullRollout = prevStage.rules.length === 0
+
+  await prisma.$transaction(async (tx) => {
+    // 清理当前白名单
+    await tx.upgradeWhitelist.deleteMany({
+      where: { sourceStrategyId: strategyId },
+    })
+
+    // 重新写入上一阶段的累积规则
+    if (!isPrevFullRollout) {
+      const prevAllRules = strategy.stages
+        .filter((s) => s.stageOrder <= prevStageOrder)
+        .flatMap((s) => s.rules)
+
+      if (prevAllRules.length > 0) {
+        await tx.upgradeWhitelist.createMany({
+          data: prevAllRules.map((rule) => ({
+            sourceStrategyId: strategyId,
+            ruleType: rule.ruleType,
+            ruleValue: rule.ruleValue,
+            targetVersion: strategy.targetVersion,
+            platform: strategy.platform,
+            isActive: true,
+          })),
+        })
+      }
+    }
+    // 全量阶段：白名单为空 = 全员可用，不写规则
+
+    // 更新策略当前阶段
+    await tx.upgradeStrategy.update({
+      where: { id: strategyId },
+      data: { currentStage: prevStageOrder },
+    })
+  })
+
+  return prisma.upgradeStrategy.findUnique({
+    where: { id: strategyId },
+    include: { stages: { include: { rules: true } } },
+  })
+}
+
 async function getStageErrorCount(
   platform: string,
   targetVersion: string,
@@ -329,17 +390,76 @@ export async function resumeStrategy(strategyId: number) {
   return strategy
 }
 
-export async function finishStrategy(strategyId: number) {
+/**
+ * 完成策略：必须指定下一个要激活的策略（同平台 DRAFT），
+ * 在同一个事务中完成当前策略并激活下一个，保证升级服务不中断。
+ */
+export async function finishStrategy(strategyId: number, nextStrategyId?: number) {
   const strategy = await prisma.upgradeStrategy.findUnique({ where: { id: strategyId } })
   if (!strategy) throw new Error('策略不存在')
+  if (strategy.status !== 'ACTIVE' && strategy.status !== 'PAUSED') {
+    throw new Error('只有进行中或已暂停的策略可以完成')
+  }
+  if (!nextStrategyId) {
+    throw new Error('必须指定下一个升级策略，以保证升级服务不中断')
+  }
 
-  await prisma.upgradeWhitelist.deleteMany({
-    where: { sourceStrategyId: strategyId },
+  const nextStrategy = await prisma.upgradeStrategy.findUnique({
+    where: { id: nextStrategyId },
+    include: { stages: { orderBy: { stageOrder: 'asc' }, include: { rules: true } } },
+  })
+  if (!nextStrategy) throw new Error('下一个策略不存在')
+  if (nextStrategy.platform !== strategy.platform) {
+    throw new Error(`下一个策略平台不匹配（当前: ${strategy.platform}，目标: ${nextStrategy.platform}）`)
+  }
+  if (nextStrategy.status !== 'DRAFT') {
+    throw new Error('下一个策略必须为草稿状态')
+  }
+
+  const now = new Date()
+  const firstStage = nextStrategy.stages[0]
+
+  await prisma.$transaction(async (tx) => {
+    // 1. 完成当前策略，清理白名单
+    await tx.upgradeWhitelist.deleteMany({
+      where: { sourceStrategyId: strategyId },
+    })
+    await tx.upgradeStrategy.update({
+      where: { id: strategyId },
+      data: { status: 'FINISHED' },
+    })
+
+    // 2. 激活下一个策略
+    await tx.upgradeStrategy.update({
+      where: { id: nextStrategyId },
+      data: { status: 'ACTIVE', currentStage: 1 },
+    })
+
+    if (firstStage) {
+      await tx.upgradeStrategyStage.update({
+        where: { id: firstStage.id },
+        data: { advancedAt: now },
+      })
+
+      const rules = firstStage.rules
+      if (rules && rules.length > 0) {
+        await tx.upgradeWhitelist.createMany({
+          data: rules.map(rule => ({
+            sourceStrategyId: nextStrategyId!,
+            ruleType: rule.ruleType,
+            ruleValue: rule.ruleValue,
+            targetVersion: nextStrategy.targetVersion,
+            platform: nextStrategy.platform,
+            isActive: true,
+          })),
+        })
+      }
+    }
   })
 
-  return prisma.upgradeStrategy.update({
+  return prisma.upgradeStrategy.findUnique({
     where: { id: strategyId },
-    data: { status: 'FINISHED' },
+    include: { stages: { include: { rules: true } } },
   })
 }
 
