@@ -46,6 +46,7 @@ model UpgradeWhitelist {
 model UpgradeStrategy {
   id                 Int            @id @default(autoincrement())
   name               String         @db.VarChar(128)
+  releaseType        ReleaseType    @default(UPGRADE) @map("release_type")
   targetVersion      String         @map("target_version") @db.VarChar(32)
   downloadUrl        String         @map("download_url") @db.VarChar(512)
   releaseNotes       String?        @map("release_notes") @db.Text

@@ -18,6 +18,17 @@ const menuItems = [
   { key: '/settings', icon: <SettingOutlined />, label: '权限设置' },
 ]
 
+function getSelectedKey(pathname: string): string {
+  // 从最长匹配开始，避免 '/' 总是匹配所有路径
+  const sorted = [...menuItems].sort((a, b) => b.key.length - a.key.length)
+  for (const item of sorted) {
+    if (pathname === item.key || pathname.startsWith(item.key + '/')) {
+      return item.key
+    }
+  }
+  return '/'
+}
+
 interface AppLayoutProps {
   children: React.ReactNode
 }
@@ -26,9 +37,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const navigate = useNavigate()
   const location = useLocation()
 
-  const selectedKey = menuItems.find((item) =>
-    location.pathname.startsWith(item.key)
-  )?.key ?? '/'
+  const selectedKey = getSelectedKey(location.pathname)
 
   return (
     <Layout style={{ minHeight: '100vh' }}>

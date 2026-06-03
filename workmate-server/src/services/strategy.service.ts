@@ -5,6 +5,7 @@ const prisma = new PrismaClient()
 
 export interface CreateStrategyInput {
   name: string
+  releaseType: 'UPGRADE' | 'ROLLBACK'
   targetVersion: string
   downloadUrl: string
   releaseNotes?: string
@@ -29,6 +30,7 @@ export async function createStrategy(input: CreateStrategyInput) {
     const st = await tx.upgradeStrategy.create({
       data: {
         name: input.name,
+        releaseType: input.releaseType,
         targetVersion: input.targetVersion,
         downloadUrl: input.downloadUrl,
         releaseNotes: input.releaseNotes ?? null,
@@ -68,13 +70,82 @@ export async function createStrategy(input: CreateStrategyInput) {
 }
 
 export async function activateStrategy(strategyId: number) {
-  const strategy = await prisma.upgradeStrategy.findUnique({ where: { id: strategyId } })
+  const strategy = await prisma.upgradeStrategy.findUnique({
+    where: { id: strategyId },
+    include: { stages: { orderBy: { stageOrder: 'asc' }, include: { rules: true } } },
+  })
   if (!strategy) throw new Error('策略不存在')
   if (strategy.status !== 'DRAFT') throw new Error('只有草稿状态的策略可以启动')
 
-  return prisma.upgradeStrategy.update({
+  // 同一平台同一时间只能有一个激活策略
+  const existingActive = await prisma.upgradeStrategy.findFirst({
+    where: { platform: strategy.platform, status: 'ACTIVE' },
+  })
+  if (existingActive) {
+    throw new Error(`平台 ${strategy.platform} 已有激活策略「${existingActive.name}」（ID: ${existingActive.id}），请先完成或暂停该策略`)
+  }
+
+  const now = new Date()
+  const firstStage = strategy.stages[0]
+
+  await prisma.upgradeStrategy.update({
     where: { id: strategyId },
-    data: { status: 'ACTIVE' },
+    data: { status: 'ACTIVE', currentStage: 1 },
+  })
+
+  if (firstStage) {
+    await prisma.upgradeStrategyStage.update({
+      where: { id: firstStage.id },
+      data: { advancedAt: now },
+    })
+
+    const rules = firstStage.rules
+    if (rules && rules.length > 0) {
+      await prisma.upgradeWhitelist.createMany({
+        data: rules.map(rule => ({
+          sourceStrategyId: strategyId,
+          ruleType: rule.ruleType,
+          ruleValue: rule.ruleValue,
+          targetVersion: strategy.targetVersion,
+          platform: strategy.platform,
+          isActive: true,
+        })),
+      })
+    }
+  }
+
+  return prisma.upgradeStrategy.findUnique({
+    where: { id: strategyId },
+    include: { stages: { include: { rules: true } } },
+  })
+}
+
+/**
+ * 激活策略时同步写入/更新 upgrade_releases 表
+ * 供其他需要从 releases 表查询的场景使用
+ */
+async function syncStrategyToReleases(strategyId: number) {
+  const strategy = await prisma.upgradeStrategy.findUnique({
+    where: { id: strategyId },
+  })
+  if (!strategy) return
+
+  await prisma.$transaction(async (tx) => {
+    await tx.upgradeRelease.updateMany({
+      where: { platform: strategy.platform, isActive: true },
+      data: { isActive: false },
+    })
+    await tx.upgradeRelease.create({
+      data: {
+        version: strategy.targetVersion,
+        releaseType: strategy.releaseType as 'UPGRADE' | 'ROLLBACK',
+        releaseNotes: strategy.releaseNotes ?? '',
+        downloadUrl: strategy.downloadUrl,
+        platform: strategy.platform,
+        minVersion: strategy.minVersion,
+        isActive: true,
+      },
+    })
   })
 }
 
@@ -269,6 +340,88 @@ export async function finishStrategy(strategyId: number) {
   return prisma.upgradeStrategy.update({
     where: { id: strategyId },
     data: { status: 'FINISHED' },
+  })
+}
+
+export async function editStrategyStages(
+  strategyId: number,
+  stages: Array<{
+    name: string
+    rules: Array<{ ruleType: string; ruleValue: string }>
+  }>,
+  totalStages: number,
+) {
+  const strategy = await prisma.upgradeStrategy.findUnique({
+    where: { id: strategyId },
+  })
+  if (!strategy) throw new Error('策略不存在')
+  // 允许 DRAFT / ACTIVE / PAUSED 状态编辑
+  if (strategy.status === 'FINISHED') throw new Error('已完成的策略不可编辑')
+
+  return prisma.$transaction(async (tx) => {
+    // 保留现有阶段的 advancedAt，按 stageOrder 匹配
+    const existingStages = await tx.upgradeStrategyStage.findMany({
+      where: { strategyId },
+      orderBy: { stageOrder: 'asc' },
+    })
+
+    // 删除所有旧阶段（Cascade 会删除关联的 rules）
+    await tx.upgradeStrategyStage.deleteMany({
+      where: { strategyId },
+    })
+
+    // 插入新阶段（保留已有阶段的 advancedAt）
+    for (let i = 0; i < stages.length; i++) {
+      const stageInput = stages[i]
+      const existingStage = existingStages.find(es => es.stageOrder === i + 1)
+      const stage = await tx.upgradeStrategyStage.create({
+        data: {
+          strategyId,
+          stageOrder: i + 1,
+          name: stageInput.name,
+          releaseNotes: null,
+          advancedAt: existingStage?.advancedAt ?? null,
+        },
+      })
+
+      await tx.upgradeStrategyStageRule.createMany({
+        data: stageInput.rules.map(rule => ({
+          stageId: stage.id,
+          ruleType: rule.ruleType,
+          ruleValue: rule.ruleValue,
+        })),
+      })
+    }
+
+    await tx.upgradeStrategy.update({
+      where: { id: strategyId },
+      data: { totalStages },
+    })
+
+    // 重新同步当前活跃阶段的白名单
+    if (strategy.status === 'ACTIVE') {
+      const currentStage = stages[strategy.currentStage - 1]
+      if (currentStage && currentStage.rules.length > 0) {
+        await tx.upgradeWhitelist.deleteMany({
+          where: { sourceStrategyId: strategyId },
+        })
+        await tx.upgradeWhitelist.createMany({
+          data: currentStage.rules.map(rule => ({
+            sourceStrategyId: strategyId,
+            ruleType: rule.ruleType,
+            ruleValue: rule.ruleValue,
+            targetVersion: strategy.targetVersion,
+            platform: strategy.platform,
+            isActive: true,
+          })),
+        })
+      }
+    }
+
+    return tx.upgradeStrategy.findUnique({
+      where: { id: strategyId },
+      include: { stages: { include: { rules: true } } },
+    })
   })
 }
 

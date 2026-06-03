@@ -19,6 +19,7 @@ import {
   pauseStrategy,
   resumeStrategy,
   finishStrategy,
+  editStrategyStages,
   listStrategies,
   getStrategyDetail,
 } from '../services/strategy.service'
@@ -260,6 +261,25 @@ export async function finishStrategyHandler(
     if (isNaN(id)) throw new AppError(400, '无效的策略ID')
     const strategy = await finishStrategy(id)
     sendSuccess(res, strategy, '策略已完成')
+  } catch (error) {
+    next(error)
+  }
+}
+
+export async function editStrategyStagesHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const id = parseInt(req.params.id)
+    if (isNaN(id)) throw new AppError(400, '无效的策略ID')
+    const { stages, totalStages } = req.body
+    if (!Array.isArray(stages) || stages.length === 0 || !totalStages) {
+      throw new AppError(400, 'stages 和 totalStages 不能为空')
+    }
+    const strategy = await editStrategyStages(id, stages, totalStages)
+    sendSuccess(res, strategy, '阶段已更新')
   } catch (error) {
     next(error)
   }

@@ -20,15 +20,18 @@ app.use(requestLogger)
 app.use('/workmate', generalLimiter, extractUserId)
 app.use('/workmate', routes)
 
-// 管理台接口 - /workmate-console
-app.use('/workmate-console', adminLimiter, extractUserId)
-app.use('/workmate-console', adminWhitelistGuard())
-app.use('/workmate-console', adminRoutes)
+// 管理台接口 - /workmate/console
+app.use('/workmate/console', adminLimiter, extractUserId)
+app.use('/workmate/console', adminWhitelistGuard())
+app.use('/workmate/console', adminRoutes)
 
 // 健康检查（无需认证）
-app.get('/health', (_req, res) => {
+app.get('/workmate/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() })
 })
+
+// 管理台前端静态文件
+app.use('/workmate/admin', express.static('admin/dist'))
 
 app.use(errorHandler)
 

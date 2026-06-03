@@ -49,9 +49,9 @@ describe('API Routes', () => {
     await prisma.$disconnect()
   })
 
-  describe('GET /health', () => {
+  describe('GET /workmate/health', () => {
     it('应返回健康状态', async () => {
-      const res = await request(app).get('/health')
+      const res = await request(app).get('/workmate/health')
       expect(res.status).toBe(200)
       expect(res.body.status).toBe('ok')
     })
@@ -112,10 +112,10 @@ describe('API Routes', () => {
     })
   })
 
-  describe('GET /workmate-console/dashboard', () => {
+  describe('GET /workmate/console/dashboard', () => {
     it('管理员应能访问管理台', async () => {
       const res = await request(app)
-        .get('/workmate-console/dashboard')
+        .get('/workmate/console/dashboard')
         .set(authHeader('022480'))
 
       expect(res.status).toBe(200)
@@ -125,17 +125,17 @@ describe('API Routes', () => {
     it('非管理员应被拒绝', async () => {
       config.requireUserId = true
       const res = await request(app)
-        .get('/workmate-console/dashboard')
+        .get('/workmate/console/dashboard')
         .set(authHeader('999999'))
 
       expect(res.status).toBe(403)
     })
   })
 
-  describe('GET /workmate-console/admin-whitelist', () => {
+  describe('GET /workmate/console/admin-whitelist', () => {
     it('应返回管理员白名单列表', async () => {
       const res = await request(app)
-        .get('/workmate-console/admin-whitelist')
+        .get('/workmate/console/admin-whitelist')
         .set(authHeader('022480'))
 
       expect(res.status).toBe(200)
@@ -143,10 +143,10 @@ describe('API Routes', () => {
     })
   })
 
-  describe('POST /workmate-console/admin-whitelist', () => {
+  describe('POST /workmate/console/admin-whitelist', () => {
     it('应添加管理员白名单', async () => {
       const res = await request(app)
-        .post('/workmate-console/admin-whitelist')
+        .post('/workmate/console/admin-whitelist')
         .set(authHeader('022480'))
         .send({
           ruleType: 'list',

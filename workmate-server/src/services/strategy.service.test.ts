@@ -75,9 +75,16 @@ describe('strategy.service', () => {
   })
 
   describe('activateStrategy', () => {
-    it('应激活草稿策略', async () => {
+    it('应激活草稿策略并同步第一阶段规则', async () => {
       const strategy = await activateStrategy(strategyId)
       expect(strategy.status).toBe('ACTIVE')
+      expect(strategy.currentStage).toBe(1)
+
+      // 激活时同步了 Stage 1 的规则
+      const rules = await prisma.upgradeWhitelist.findMany({
+        where: { sourceStrategyId: strategyId },
+      })
+      expect(rules.length).toBe(1)
     })
 
     it('不应激活非草稿策略', async () => {
@@ -86,17 +93,7 @@ describe('strategy.service', () => {
   })
 
   describe('advanceStrategyStage', () => {
-    it('第一阶段推进应同步白名单规则', async () => {
-      const stage = await advanceStrategyStage(strategyId)
-      expect(stage.stageOrder).toBe(1)
-
-      const rules = await prisma.upgradeWhitelist.findMany({
-        where: { sourceStrategyId: strategyId },
-      })
-      expect(rules.length).toBe(1)
-    })
-
-    it('第二阶段推进应累加白名单规则', async () => {
+    it('推进到第二阶段应累加白名单规则', async () => {
       const stage = await advanceStrategyStage(strategyId)
       expect(stage.stageOrder).toBe(2)
 
@@ -106,7 +103,7 @@ describe('strategy.service', () => {
       expect(rules.length).toBe(2)
     })
 
-    it('第三阶段推进应累加所有规则', async () => {
+    it('推进到第三阶段应累加所有规则', async () => {
       const stage = await advanceStrategyStage(strategyId)
       expect(stage.stageOrder).toBe(3)
 
@@ -114,6 +111,10 @@ describe('strategy.service', () => {
         where: { sourceStrategyId: strategyId },
       })
       expect(rules.length).toBe(3)
+    })
+
+    it('不应推进超出最终阶段', async () => {
+      await expect(advanceStrategyStage(strategyId)).rejects.toThrow('已到达最终阶段')
     })
   })
 

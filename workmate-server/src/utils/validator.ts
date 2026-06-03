@@ -56,6 +56,7 @@ export const observabilityEventSchema = z.object({
 
 export const strategyCreateSchema = z.object({
   name: z.string().min(1).max(128),
+  releaseType: z.enum(['UPGRADE', 'ROLLBACK']).default('UPGRADE'),
   targetVersion: z.string().min(1).max(32),
   downloadUrl: z.string().min(1).max(512),
   releaseNotes: z.string().optional(),

@@ -5,9 +5,6 @@ import {
   removeAdminWhitelistHandler,
   toggleAdminWhitelistHandler,
   listAdminWhitelistHandler,
-  addUpgradeWhitelistHandler,
-  removeUpgradeWhitelistHandler,
-  toggleUpgradeWhitelistHandler,
   listUpgradeWhitelistHandler,
   createStrategyHandler,
   activateStrategyHandler,
@@ -15,6 +12,7 @@ import {
   pauseStrategyHandler,
   resumeStrategyHandler,
   finishStrategyHandler,
+  editStrategyStagesHandler,
   listStrategiesHandler,
   getStrategyDetailHandler,
 } from '../controllers/admin.controller'
@@ -35,11 +33,8 @@ router.post('/admin-whitelist', addAdminWhitelistHandler)
 router.delete('/admin-whitelist/:id', removeAdminWhitelistHandler)
 router.patch('/admin-whitelist/:id', toggleAdminWhitelistHandler)
 
-// 升级白名单
+// 升级白名单（仅查询，CRUD 由策略内部管理）
 router.get('/upgrade-whitelist', listUpgradeWhitelistHandler)
-router.post('/upgrade-whitelist', addUpgradeWhitelistHandler)
-router.delete('/upgrade-whitelist/:id', removeUpgradeWhitelistHandler)
-router.patch('/upgrade-whitelist/:id', toggleUpgradeWhitelistHandler)
 
 // 升级发布
 router.get('/releases', listReleasesHandler)
@@ -55,6 +50,7 @@ router.post('/strategies/:id/advance-stage', advanceStrategyStageHandler)
 router.post('/strategies/:id/pause', pauseStrategyHandler)
 router.post('/strategies/:id/resume', resumeStrategyHandler)
 router.post('/strategies/:id/finish', finishStrategyHandler)
+router.put('/strategies/:id/edit-stages', editStrategyStagesHandler)
 
 // 观测数据
 router.get('/observability/events', queryEventsHandler)

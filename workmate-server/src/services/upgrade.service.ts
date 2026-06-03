@@ -1,8 +1,7 @@
 import { PrismaClient } from '@prisma/client'
 import { matchAnyRule } from '../utils/whitelist-matcher'
-import { getActiveWhitelistRules } from './whitelist.service'
 import { logger } from '../utils/logger'
-import type { UpgradeCheckRequest, UpgradeCheckResponse } from '../types'
+import type { UpgradeCheckRequest, UpgradeCheckResponse, ReleaseType } from '../types'
 
 const prisma = new PrismaClient()
 
@@ -20,106 +19,128 @@ function compareVersion(v1: string, v2: string): number {
   return 0
 }
 
+/**
+ * 升级检测核心逻辑（策略优先）：
+ *
+ * 1. 查找 ACTIVE 策略 → 无则返回 hasUpdate=false
+ * 2. 白名单校验：
+ *    - 全量阶段（当前阶段 rules 为空）→ 全员可用
+ *    - 非全量阶段 → 合并已执行阶段的规则，匹配用户工号
+ * 3. 版本比较：
+ *    - UPGRADE: targetVersion > currentVersion 才提示
+ *    - ROLLBACK: targetVersion < currentVersion 才提示
+ * 4. 返回结果（releaseType 供端侧做二次版本判断）
+ */
 export async function checkUpgrade(
   req: UpgradeCheckRequest,
   userId: string
 ): Promise<UpgradeCheckResponse> {
   const { currentVersion, platform } = req
+  const noUpdate: UpgradeCheckResponse = {
+    hasUpdate: false,
+    forceUpdate: false,
+    releaseType: null,
+    latestVersion: null,
+    downloadUrl: null,
+    releaseNotes: null,
+    minVersion: null,
+    hint: null,
+  }
 
-  const activeRelease = await prisma.upgradeRelease.findFirst({
-    where: {
-      platform,
-      isActive: true,
+  // ===== Step 1: 查找激活的升级策略 =====
+
+  const activeStrategy = await prisma.upgradeStrategy.findFirst({
+    where: { platform, status: 'ACTIVE' },
+    orderBy: { updatedAt: 'desc' },
+    include: {
+      stages: {
+        orderBy: { stageOrder: 'asc' },
+        include: { rules: true },
+      },
     },
   })
 
-  if (!activeRelease) {
-    return {
-      hasUpdate: false,
-      forceUpdate: false,
-      releaseType: null,
-      latestVersion: null,
-      downloadUrl: null,
-      releaseNotes: null,
-      minVersion: null,
-      hint: null,
-    }
+  if (!activeStrategy) {
+    logger.info('升级检测：无激活策略', { platform })
+    return noUpdate
   }
 
-  const isRollback = activeRelease.releaseType === 'ROLLBACK'
-
-  if (isRollback) {
-    if (compareVersion(currentVersion, activeRelease.version) <= 0) {
-      return {
-        hasUpdate: false,
-        forceUpdate: false,
-        releaseType: null,
-        latestVersion: null,
-        downloadUrl: null,
-        releaseNotes: null,
-        minVersion: null,
-        hint: null,
-      }
-    }
-  } else {
-    if (activeRelease.minVersion) {
-      if (compareVersion(currentVersion, activeRelease.minVersion) < 0) {
-        return {
-          hasUpdate: false,
-          forceUpdate: false,
-          releaseType: null,
-          latestVersion: null,
-          downloadUrl: null,
-          releaseNotes: null,
-          minVersion: null,
-          hint: `当前版本过低，建议先升级到 ${activeRelease.minVersion}`,
-        }
-      }
-    }
-
-    if (compareVersion(currentVersion, activeRelease.version) >= 0) {
-      return {
-        hasUpdate: false,
-        forceUpdate: false,
-        releaseType: null,
-        latestVersion: null,
-        downloadUrl: null,
-        releaseNotes: null,
-        minVersion: null,
-        hint: null,
-      }
-    }
-  }
-
-  const whitelistRules = await getActiveWhitelistRules({
+  const { targetVersion, releaseType, downloadUrl, releaseNotes, minVersion } = activeStrategy
+  logger.info('升级检测：找到激活策略', {
+    strategyId: activeStrategy.id,
+    strategyName: activeStrategy.name,
+    targetVersion,
+    releaseType,
+    currentStage: activeStrategy.currentStage,
     platform,
-    targetVersion: activeRelease.version,
   })
 
-  const inWhitelist = whitelistRules.length > 0 ? matchAnyRule(userId, whitelistRules) : false
+  // ===== Step 2: 白名单校验 =====
 
-  if (!inWhitelist) {
-    return {
-      hasUpdate: false,
-      forceUpdate: false,
-      releaseType: null,
-      latestVersion: null,
-      downloadUrl: null,
-      releaseNotes: null,
-      minVersion: null,
-      hint: null,
+  // 获取已执行阶段（stageOrder <= currentStage）
+  const executedStages = activeStrategy.stages.filter(
+    (s) => s.stageOrder <= activeStrategy.currentStage
+  )
+  const currentStageData = executedStages[executedStages.length - 1]
+  // 全量阶段判定：当前阶段无白名单规则 → 全量放开，所有用户均可升级/回退
+  const isFullRollout = currentStageData && currentStageData.rules.length === 0
+
+  if (!isFullRollout) {
+    // 非全量阶段：合并所有已执行阶段的规则，匹配用户工号
+    const allRules = executedStages.flatMap((s) => s.rules)
+    if (allRules.length > 0) {
+      const inWhitelist = matchAnyRule(userId, allRules.map((r) => ({
+        ruleType: r.ruleType as 'list' | 'range' | 'prefix' | 'suffix',
+        ruleValue: r.ruleValue,
+      })))
+      if (!inWhitelist) {
+        logger.info('升级检测：用户不在白名单', { userId, targetVersion, platform })
+        return noUpdate
+      }
     }
   }
+
+  // ===== Step 3: 版本比较 =====
+
+  const currentCmp = compareVersion(currentVersion, targetVersion)
+
+  if (releaseType === 'UPGRADE') {
+    // 升级：当前版本必须 < 目标版本
+    if (currentCmp >= 0) {
+      logger.debug('升级检测：当前版本已是最新', { currentVersion, targetVersion })
+      return noUpdate
+    }
+    if (minVersion && compareVersion(currentVersion, minVersion) < 0) {
+      return {
+        hasUpdate: true,
+        forceUpdate: false,
+        releaseType: releaseType as ReleaseType,
+        latestVersion: targetVersion,
+        downloadUrl: null,
+        releaseNotes,
+        minVersion,
+        hint: `当前版本过低，请先升级到 ${minVersion}`,
+      }
+    }
+  } else if (releaseType === 'ROLLBACK') {
+    // 回退：当前版本必须 > 目标版本
+    if (currentCmp <= 0) {
+      logger.debug('升级检测：当前版本不高于回退目标', { currentVersion, targetVersion })
+      return noUpdate
+    }
+  }
+
+  // ===== Step 4: 返回升级/回退参数 =====
 
   return {
     hasUpdate: true,
     forceUpdate: false,
-    releaseType: activeRelease.releaseType as 'UPGRADE' | 'ROLLBACK',
-    latestVersion: activeRelease.version,
-    downloadUrl: activeRelease.downloadUrl,
-    releaseNotes: activeRelease.releaseNotes,
-    minVersion: activeRelease.minVersion ?? null,
-    hint: isRollback ? `当前版本将回退到 ${activeRelease.version}` : null,
+    releaseType: releaseType as ReleaseType,
+    latestVersion: targetVersion,
+    downloadUrl,
+    releaseNotes,
+    minVersion,
+    hint: releaseType === 'ROLLBACK' ? `当前版本将回退到 ${targetVersion}` : null,
   }
 }
 

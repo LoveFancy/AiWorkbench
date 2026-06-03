@@ -60,6 +60,7 @@ export function fetchUpgradeWhitelist(params: {
   pageSize: number
   platform?: string
   targetVersion?: string
+  strategyId?: number
 }): Promise<{ data: { total: number; rules: UpgradeWhitelistRule[] } }> {
   return apiClient.get('/upgrade-whitelist', { params })
 }
