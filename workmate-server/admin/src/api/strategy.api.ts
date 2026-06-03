@@ -88,3 +88,10 @@ export function resumeStrategy(id: number): Promise<{ data: UpgradeStrategy }> {
 export function finishStrategy(id: number): Promise<{ data: UpgradeStrategy }> {
   return apiClient.post(`/strategies/${id}/finish`)
 }
+
+export function editStrategyStages(id: number, data: {
+  stages: Array<{ name: string; rules: Array<{ ruleType: string; ruleValue: string }> }>
+  totalStages: number
+}): Promise<{ data: StrategyDetail }> {
+  return apiClient.put(`/strategies/${id}/edit-stages`, data)
+}

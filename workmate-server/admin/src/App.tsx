@@ -20,7 +20,7 @@ export default function App() {
       }}
     >
       <AntdApp>
-        <BrowserRouter>
+        <BrowserRouter basename="/workmate/admin">
           <AppLayout>
           <Routes>
             <Route path="/" element={<DashboardPage />} />

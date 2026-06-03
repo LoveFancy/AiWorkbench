@@ -11,8 +11,8 @@ app.listen(port, host, () => {
     env: process.env.NODE_ENV ?? 'development',
     endpoints: {
       client: `http://${host}:${port}/workmate`,
-      console: `http://${host}:${port}/workmate-console`,
-      health: `http://${host}:${port}/health`,
+      console: `http://${host}:${port}/workmate/console`,
+      health: `http://${host}:${port}/workmate/health`,
     },
   })
 })

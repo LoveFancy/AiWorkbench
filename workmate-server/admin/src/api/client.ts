@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 const apiClient = axios.create({
-  baseURL: '/workmate-console',
+  baseURL: '/workmate/console',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
