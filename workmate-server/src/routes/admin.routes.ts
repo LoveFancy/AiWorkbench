@@ -9,6 +9,7 @@ import {
   createStrategyHandler,
   activateStrategyHandler,
   advanceStrategyStageHandler,
+  retreatStrategyStageHandler,
   pauseStrategyHandler,
   resumeStrategyHandler,
   finishStrategyHandler,
@@ -47,6 +48,7 @@ router.post('/strategies', createStrategyHandler)
 router.get('/strategies/:id', getStrategyDetailHandler)
 router.post('/strategies/:id/activate', activateStrategyHandler)
 router.post('/strategies/:id/advance-stage', advanceStrategyStageHandler)
+router.post('/strategies/:id/retreat-stage', retreatStrategyStageHandler)
 router.post('/strategies/:id/pause', pauseStrategyHandler)
 router.post('/strategies/:id/resume', resumeStrategyHandler)
 router.post('/strategies/:id/finish', finishStrategyHandler)

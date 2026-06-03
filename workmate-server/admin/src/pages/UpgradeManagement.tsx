@@ -12,7 +12,7 @@ import {
 } from '../api/upgrade.api'
 import {
   fetchStrategies, fetchStrategyDetail, createStrategy,
-  activateStrategy, advanceStrategyStage, pauseStrategy, resumeStrategy, finishStrategy,
+  activateStrategy, advanceStrategyStage, retreatStrategyStage, pauseStrategy, resumeStrategy, finishStrategy,
   type UpgradeStrategy, type StrategyDetail,
   editStrategyStages,
 } from '../api/strategy.api'
@@ -145,6 +145,14 @@ function StrategiesTab() {
   const [rollbackTargetVersion, setRollbackTargetVersion] = useState<string | null>(null)
   const [rollbackSubmitting, setRollbackSubmitting] = useState(false)
 
+  // 完成策略弹窗（必须选择下一个策略）
+  const [finishOpen, setFinishOpen] = useState(false)
+  const [finishStrategyId, setFinishStrategyId] = useState<number | null>(null)
+  const [finishNextId, setFinishNextId] = useState<number | null>(null)
+  const [finishSubmitting, setFinishSubmitting] = useState(false)
+  const [draftStrategies, setDraftStrategies] = useState<UpgradeStrategy[]>([])
+  const [finishPlatform, setFinishPlatform] = useState<string>('')
+
   // 编辑阶段弹窗
   const [editOpen, setEditOpen] = useState(false)
   const [editStrategyId, setEditStrategyId] = useState<number | null>(null)
@@ -216,9 +224,9 @@ function StrategiesTab() {
     setSubmitting(false)
   }
 
-  const handleAction = async (id: number, action: 'activate' | 'advance' | 'pause' | 'resume' | 'finish') => {
+  const handleAction = async (id: number, action: 'activate' | 'advance' | 'retreat' | 'pause' | 'resume') => {
     try {
-      const fn = { activate: activateStrategy, advance: advanceStrategyStage, pause: pauseStrategy, resume: resumeStrategy, finish: finishStrategy }[action]
+      const fn = { activate: activateStrategy, advance: advanceStrategyStage, retreat: retreatStrategyStage, pause: pauseStrategy, resume: resumeStrategy }[action]
       await fn(id)
       message.success('操作成功'); load()
     } catch (err: any) { message.error(err.message) }
@@ -234,6 +242,33 @@ function StrategiesTab() {
       setAllReleases(res.data.releases)
     } catch { setAllReleases([]) }
     setRollbackOpen(true)
+  }
+
+  // 打开完成策略弹窗（需选择下一个策略）
+  const openFinishModal = async (strategy: UpgradeStrategy) => {
+    setFinishStrategyId(strategy.id)
+    setFinishNextId(null)
+    setFinishPlatform(strategy.platform)
+    setFinishSubmitting(false)
+    // 加载同平台的草稿策略
+    try {
+      const res = await fetchStrategies({ page: 1, pageSize: 100 })
+      setDraftStrategies(res.data.strategies.filter(
+        (s: UpgradeStrategy) => s.platform === strategy.platform && s.status === 'DRAFT' && s.id !== strategy.id
+      ))
+    } catch { setDraftStrategies([]) }
+    setFinishOpen(true)
+  }
+
+  const handleFinish = async () => {
+    if (!finishStrategyId || !finishNextId) return
+    setFinishSubmitting(true)
+    try {
+      await finishStrategy(finishStrategyId, finishNextId)
+      message.success('策略已完成，下一个策略已激活')
+      setFinishOpen(false); load()
+    } catch (err: any) { message.error(err.message) }
+    setFinishSubmitting(false)
   }
 
   // 打开编辑阶段弹窗
@@ -284,10 +319,8 @@ function StrategiesTab() {
     setRollbackSubmitting(true)
     try {
       const strategy = data.find(s => s.id === rollbackStrategyId)!
-      // 1. 先暂停/完成策略
-      await finishStrategy(rollbackStrategyId).catch(() =>
-        pauseStrategy(rollbackStrategyId)
-      )
+      // 1. 先暂停策略
+      await pauseStrategy(rollbackStrategyId)
       // 2. 创建回退发布
       await rollbackRelease({ platform: strategy.platform, targetVersion: rollbackTargetVersion })
       message.success(`已回退到 ${rollbackTargetVersion}`)
@@ -363,14 +396,15 @@ function StrategiesTab() {
           <Button size="small" icon={<EyeOutlined />} onClick={() => handleViewDetail(r.id)}>详情</Button>
           {r.status === 'DRAFT' && <Button size="small" type="primary" onClick={() => handleAction(r.id, 'activate')} disabled={activePlatforms.has(r.platform)} title={activePlatforms.has(r.platform) ? '该平台已有激活策略' : ''}>激活</Button>}
           {r.status === 'ACTIVE' && <>
-            <Button size="small" onClick={() => handleAction(r.id, 'advance')}>推进</Button>
+            {r.currentStage < r.totalStages && <Button size="small" onClick={() => handleAction(r.id, 'advance')}>推进</Button>}
+            {r.currentStage > 1 && <Button size="small" danger onClick={() => handleAction(r.id, 'retreat')}>回撤</Button>}
             <Button size="small" onClick={() => handleAction(r.id, 'pause')}>暂停</Button>
-            <Button size="small" onClick={() => handleAction(r.id, 'finish')}>完成</Button>
+            {r.currentStage === r.totalStages && <Button size="small" type="primary" onClick={() => openFinishModal(r)}>完成</Button>}
             <Button size="small" onClick={() => openEditModal(r)}>编辑阶段</Button>
           </>}
           {r.status === 'PAUSED' && <>
             <Button size="small" onClick={() => handleAction(r.id, 'resume')}>恢复</Button>
-            <Button size="small" onClick={() => handleAction(r.id, 'finish')}>完成</Button>
+            <Button size="small" type="primary" onClick={() => openFinishModal(r)}>完成</Button>
             <Button size="small" onClick={() => openEditModal(r)}>编辑阶段</Button>
           </>}
         </Space>
@@ -473,6 +507,25 @@ function StrategiesTab() {
             value: r.version,
           }))}
         />
+      </Modal>
+
+      {/* ========== 完成策略 Modal ========== */}
+      <Modal title="完成策略" open={finishOpen} onOk={handleFinish} onCancel={() => setFinishOpen(false)}
+        confirmLoading={finishSubmitting} okButtonProps={{ disabled: !finishNextId }} destroyOnClose>
+        <p style={{ marginBottom: 16, color: '#666' }}>
+          完成当前策略前，必须指定下一个要激活的升级策略，以保证升级服务不中断。
+        </p>
+        {draftStrategies.length === 0 ? (
+          <p style={{ color: '#ff4d4f' }}>当前平台（{finishPlatform}）没有草稿策略，请先创建下一个版本的升级策略。</p>
+        ) : (
+          <Select placeholder="选择下一个升级策略" value={finishNextId} onChange={setFinishNextId}
+            style={{ width: '100%' }}
+            options={draftStrategies.map(s => ({
+              label: `${s.name}（目标版本: ${s.targetVersion}）`,
+              value: s.id,
+            }))}
+          />
+        )}
       </Modal>
 
       {/* ========== 编辑阶段 Modal ========== */}

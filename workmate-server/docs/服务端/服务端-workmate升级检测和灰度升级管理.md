@@ -18,8 +18,8 @@
 │   - status: DRAFT→ACTIVE→FINISHED  │
 │   - 多阶段(stages) + 白名单规则     │
 └───────────┬───────────┬────────────┘
-            │ 激活时     │ 阶段推进时
-            │ 同步       │ 同步
+            │ 激活/推进/ │ 回撤时
+            │ 回撤时同步 │ 同步
             ▼           ▼
 ┌──────────────────┐ ┌──────────────────────┐
 │ upgrade_releases │ │  upgrade_whitelist   │
@@ -32,8 +32,9 @@
 
 - **版本管理**只录入升级包（releaseType 固定为 UPGRADE），不区分回退
 - **升级策略**从版本管理中选目标版本，配置灰度阶段（白名单规则）
-- 策略激活后自动同步白名单到 `upgrade_whitelist` 表，`sourceStrategyId` 指向策略
-- **回退**是策略运行期间的紧急操作：从版本管理选一个历史版本，调用 rollback API
+- 策略激活/推进/回撤时自动同步白名单到 `upgrade_whitelist` 表，`sourceStrategyId` 指向策略
+- **同一平台同一时间只能有一个 ACTIVE 策略**（互斥约束）
+- **策略完成必须指定下一个草稿策略**，在同一个事务中完成当前并激活下一个，保证升级服务不中断
 - 白名单规则的 CRUD 由策略内部管理，前端不再暴露独立的白名单管理页面
 
 ---
@@ -142,35 +143,18 @@ function matchSingleRule(jobId: string, rule: WhitelistRule): boolean {
 }
 ```
 
-### 1.3 whitelist.service.ts 服务封装
+### 1.3 白名单规则来源
 
-```typescript
-// services/whitelist.service.ts
+> 白名单规则通过策略内部阶段管理（创建/编辑/推进/回撤），不再有独立的前端白名单 CRUD 页面。`sourceStrategyId` 区分策略同步规则（非 NULL）和手动规则（NULL）。
 
-import { PrismaClient } from '@prisma/client'
-import { matchJobId, type WhitelistRule } from '../utils/whitelist-matcher'
+前端规则输入框根据规则类型显示不同的 placeholder：
 
-const prisma = new PrismaClient()
-
-export async function isInUpgradeWhitelist(
-  jobId: string,
-  targetVersion?: string,
-  platform?: string,
-): Promise<boolean> {
-  const rules = await prisma.upgradeWhitelist.findMany({
-    where: {
-      isActive: true,
-      ...(targetVersion ? { targetVersion } : {}),
-      ...(platform ? { platform } : {}),
-    },
-    select: { id: true, ruleType: true, ruleValue: true },
-  }) as WhitelistRule[]
-
-  return matchJobId(jobId, rules)
-}
-```
-
-> 白名单规则通过策略内部阶段管理（创建/编辑/推进），不再有独立的前端白名单 CRUD 页面。`sourceStrategyId` 区分策略同步规则（非 NULL）和手动规则（NULL）。
+| 规则类型 | placeholder |
+|---------|------------|
+| list | 工号列表，逗号分隔，如 022480,021220 |
+| range | 工号区间，如 022480-023480 |
+| prefix | 前缀匹配，如 022* |
+| suffix | 后缀匹配，如 *022 |
 
 ---
 
@@ -179,17 +163,25 @@ export async function isInUpgradeWhitelist(
 ### 2.1 策略生命周期
 
 ```
-DRAFT → [激活] → ACTIVE → [推进阶段] → ... → [完成] → FINISHED
-                 ↓  ↕
-                [暂停]/[恢复] → PAUSED
+DRAFT → [激活] → ACTIVE → [推进/回撤阶段] → ... → [完成(需指定下一策略)] → FINISHED
+                 ↓  ↕                ↑
+                [暂停]/[恢复] → PAUSED  |
+                     ↑                 |
+                     └──── 回撤 ───────┘
 ```
 
 | 状态 | 含义 | 可用操作 |
 |------|------|----------|
-| DRAFT | 草稿 | 激活 |
-| ACTIVE | 进行中，客户端可检测到更新 | 推进 / 暂停 / 完成 / 编辑阶段 / 回退 |
-| PAUSED | 已暂停，白名单已清理，客户端检测不到 | 恢复 / 完成 / 编辑阶段 / 回退 |
+| DRAFT | 草稿 | 激活（同平台互斥） |
+| ACTIVE | 进行中，客户端可检测到更新 | 推进¹ / 回撤² / 暂停 / 完成³ / 编辑阶段 |
+| PAUSED | 已暂停，白名单已清理，客户端检测不到 | 恢复 / 完成³ / 编辑阶段 |
 | FINISHED | 已完成，白名单已清理 | 仅查看 |
+
+> ¹ 推进：仅在 `currentStage < totalStages` 时可用（全量阶段不可推进）
+> 
+> ² 回撤：仅在 `currentStage > 1` 时可用（第一阶段不可回撤）
+> 
+> ³ 完成：仅在 `currentStage === totalStages` 时可用（必须推进到全量阶段才可完成），且必须指定下一个草稿策略
 
 ### 2.2 策略创建
 
@@ -200,7 +192,7 @@ DRAFT → [激活] → ACTIVE → [推进阶段] → ... → [完成] → FINISH
 3. 系统自动追加一个 **全量放开** 阶段（`rules: []`），无需额外配置
 4. 策略固定为 UPGRADE 类型，`releaseType` 字段在 DB 中默认 `UPGRADE`
 
-**全量阶段含义**：当策略推进到全量阶段时，白名单规则为空（`rules.length === 0`），所有客户端均可升级。
+**全量阶段含义**：当策略推进到全量阶段时，白名单规则为空（`rules.length === 0`），所有客户端均可升级。全量阶段不可再推进，只可回撤或完成。
 
 ### 2.3 策略激活
 
@@ -226,7 +218,31 @@ await prisma.upgradeWhitelist.createMany({
 })
 ```
 
-### 2.4 阶段编辑（ACTIVE/PAUSED 状态下）
+### 2.4 阶段推进
+
+`advanceStrategyStage` — 推进前检查：
+- 浸泡时间：`now() - advancedAt >= soakTimeMinutes * 60s`
+- 错误率：`autoPauseEnabled` 时检查是否超过阈值
+- **仅在 `currentStage < totalStages` 时可推进**（全量阶段不可推进）
+
+推进后：
+- 删除旧白名单，重新计算累积规则（Stage 1 到当前 Stage）写入 `upgrade_whitelist`
+
+### 2.5 阶段回撤
+
+`retreatStrategyStage` — 将策略回撤到上一阶段（`currentStage - 1`）：
+
+- **仅在 `currentStage > 1` 时可回撤**（第一阶段不可回撤）
+- 只有 ACTIVE 状态的策略可以回撤
+- 清理当前白名单，重新写入上一阶段的累积规则
+- 如果上一阶段为全量阶段（`rules.length === 0`），则不写规则（全员可用）
+
+回撤的效果：
+- 不在上一阶段白名单中的用户将**不再收到升级提示**
+- 已升级的用户不受影响（不会强制回退）
+- 适用于灰度放量范围扩大后发现问题的场景：回撤缩量，让新用户不再升级
+
+### 2.6 阶段编辑（ACTIVE/PAUSED 状态下）
 
 `PUT /strategies/:id/edit-stages` — `editStrategyStages()`
 
@@ -234,23 +250,27 @@ await prisma.upgradeWhitelist.createMany({
 - 删除旧阶段，插入新阶段，**保留已有阶段的 `advancedAt`**（按 `stageOrder` 匹配）
 - 编辑后自动重新同步当前活跃阶段的白名单
 
-### 2.5 阶段推进
+### 2.7 策略完成（必须指定下一策略）
 
-`advanceStrategyStage` — 推进前检查：
-- 浸泡时间：`now() - advancedAt >= soakTimeMinutes * 60s`
-- 错误率：`autoPauseEnabled` 时检查是否超过阈值
+`finishStrategy(strategyId, nextStrategyId)` — 完成策略必须指定下一个要激活的草稿策略：
 
-推进后：
-- 删除旧白名单，重新计算累积规则（Stage 1 到当前 Stage）写入 `upgrade_whitelist`
+**为什么必须指定下一策略？** 策略完成后白名单会被清理，如果不立即激活下一个策略，长时间未开机的客户端将无法检测到升级。因此在同一个事务中完成当前策略并激活下一个，保证升级服务不中断。
 
-### 2.6 回退
+校验规则：
+- 当前策略必须是 ACTIVE 或 PAUSED 状态
+- 必须传入 `nextStrategyId`
+- 下一策略必须存在、同平台、草稿状态
 
-仅在 ACTIVE 或 PAUSED 状态下可操作：
-1. 弹窗选择回退目标版本（同平台、`version < strategy.targetVersion`）
-2. 调用 `rollbackRelease(platform, targetVersion)` 激活该历史版本
-3. 调用 `finishStrategy` 结束当前策略
+事务内的操作：
+1. 完成当前策略：清理白名单，状态设为 FINISHED
+2. 激活下一策略：状态设为 ACTIVE，`currentStage = 1`，记录 `advancedAt`，同步第一阶段白名单
 
-### 2.7 浸泡时间（Soak Time）
+前端交互：
+- 点击「完成」弹出对话框，选择同平台的草稿策略
+- 没有草稿策略时显示红色提示："请先创建下一个版本的升级策略"
+- 仅在 `currentStage === totalStages`（全量阶段）时才显示「完成」按钮
+
+### 2.8 浸泡时间（Soak Time）
 
 | 字段 | 表 | 说明 |
 |------|-----|------|
@@ -259,7 +279,7 @@ await prisma.upgradeWhitelist.createMany({
 
 推进前校验：`now() - currentStage.advancedAt >= strategy.soakTimeMinutes * 60s`
 
-### 2.8 健康度检查与自动暂停
+### 2.9 健康度检查与自动暂停
 
 | 指标 | 来源 | 说明 |
 |------|------|------|
@@ -269,13 +289,14 @@ await prisma.upgradeWhitelist.createMany({
 
 自动暂停：定时任务（每 10 分钟）检查 ACTIVE 策略，错误率 >= `autoPauseErrorRate` → PAUSED
 
-### 2.9 阶段推进前置条件汇总
+### 2.10 阶段推进前置条件汇总
 
 | 检查项 | 条件 | 不通过时 |
 |--------|------|----------|
 | 浸泡时间 | `now() - advancedAt >= soakTimeMinutes * 60s` | 返回剩余时间 |
 | 错误率 | 当前阶段错误率 < `autoPauseErrorRate` | 返回警告，允许强制推进 |
 | 上一阶段用户数 | >= N 名用户成功升级 | 返回已升级人数，允许强制推进 |
+| 阶段限制 | `currentStage < totalStages` | 已到达最终阶段，不可推进 |
 
 ---
 
@@ -286,6 +307,8 @@ await prisma.upgradeWhitelist.createMany({
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/workmate/upgrade/check?currentVersion=X&platform=Y` | 检查是否有可用更新 |
+
+**请求参数**：`currentVersion`（当前版本号）、`platform`（win32/darwin/linux）
 
 **响应字段**：`hasUpdate`, `forceUpdate`, `releaseType`, `latestVersion`, `downloadUrl`, `releaseNotes`, `minVersion`, `hint`
 
@@ -316,13 +339,19 @@ await prisma.upgradeWhitelist.createMany({
 | GET | `/workmate/console/strategies` | 获取策略列表 |
 | POST | `/workmate/console/strategies` | 创建策略（自动追加全量阶段） |
 | GET | `/workmate/console/strategies/:id` | 获取策略详情（含阶段和规则） |
-| POST | `/workmate/console/strategies/:id/activate` | 激活策略（currentStage=1 + 同步规则 + 记录时间） |
-| POST | `/workmate/console/strategies/:id/advance-stage` | 推进到下一阶段 |
+| POST | `/workmate/console/strategies/:id/activate` | 激活策略（互斥校验 + currentStage=1 + 同步规则 + 记录时间） |
+| POST | `/workmate/console/strategies/:id/advance-stage` | 推进到下一阶段（currentStage < totalStages 时可用） |
+| POST | `/workmate/console/strategies/:id/retreat-stage` | 回撤到上一阶段（currentStage > 1 时可用） |
 | POST | `/workmate/console/strategies/:id/pause` | 暂停策略（清理白名单） |
 | POST | `/workmate/console/strategies/:id/resume` | 恢复策略（重新同步白名单） |
-| POST | `/workmate/console/strategies/:id/finish` | 完成策略（清理白名单） |
+| POST | `/workmate/console/strategies/:id/finish` | 完成策略（需 body: { nextStrategyId }，事务完成当前+激活下一） |
 | PUT | `/workmate/console/strategies/:id/edit-stages` | 编辑阶段配置（ACTIVE/PAUSED 可用） |
-| POST | `/workmate/console/rollback` | 回退到历史版本 |
+
+### 3.4 升级白名单接口
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/workmate/console/upgrade-whitelist` | 查询升级白名单（仅查询，CRUD 由策略内部管理） |
 
 ---
 

@@ -5,6 +5,7 @@ import {
   activateStrategy,
   advanceStrategyStage,
   pauseStrategy,
+  resumeStrategy,
   finishStrategy,
   listStrategies,
   getStrategyDetail,
@@ -131,9 +132,54 @@ describe('strategy.service', () => {
   })
 
   describe('finishStrategy', () => {
-    it('应完成策略', async () => {
-      const strategy = await finishStrategy(strategyId)
+    it('应完成策略并激活下一个策略', async () => {
+      // 先恢复当前策略
+      await resumeStrategy(strategyId)
+
+      // 创建下一个草稿策略
+      const nextStrategy = await createStrategy({
+        name: 'v1.1.0 灰度升级',
+        targetVersion: '1.1.0',
+        downloadUrl: 'https://example.com/download',
+        releaseNotes: '下一个版本',
+        platform: 'win32',
+        totalStages: 1,
+        stages: [
+          {
+            name: '阶段1',
+            rules: [{ ruleType: 'list', ruleValue: '033333' }],
+          },
+        ],
+      })
+
+      const strategy = await finishStrategy(strategyId, nextStrategy.id)
       expect(strategy.status).toBe('FINISHED')
+
+      // 验证下一个策略已被激活
+      const next = await prisma.upgradeStrategy.findUnique({ where: { id: nextStrategy.id } })
+      expect(next?.status).toBe('ACTIVE')
+      expect(next?.currentStage).toBe(1)
+
+      // 验证下一个策略的白名单已同步
+      const rules = await prisma.upgradeWhitelist.findMany({
+        where: { sourceStrategyId: nextStrategy.id },
+      })
+      expect(rules.length).toBe(1)
+    })
+
+    it('不指定下一个策略应报错', async () => {
+      // 创建一个策略来测试
+      const testStrategy = await createStrategy({
+        name: 'v2.0.0 测试',
+        targetVersion: '2.0.0',
+        downloadUrl: 'https://example.com/download',
+        platform: 'darwin',
+        totalStages: 1,
+        stages: [{ name: '阶段1', rules: [{ ruleType: 'list', ruleValue: '022480' }] }],
+      })
+      await activateStrategy(testStrategy.id)
+
+      await expect(finishStrategy(testStrategy.id)).rejects.toThrow('必须指定下一个升级策略')
     })
   })
 
