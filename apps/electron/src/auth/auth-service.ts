@@ -31,8 +31,8 @@ export async function loginWithEipGateway(
     return { success: false, message: '获取长期 Token 失败' }
   }
 
-  // Step 3: 安全存储长期 Token
-  saveToken(longTerm.token, loginResult.jobId, longTermDays)
+  // Step 3: 安全存储长期 + 短期 Token
+  saveToken(longTerm.token, loginResult.shortToken, loginResult.jobId, longTermDays)
 
   return {
     success: true,
@@ -99,20 +99,25 @@ async function getLongTermToken(
 
 // ===== Step 3: 本地安全存储 =====
 
-function saveToken(token: string, jobId: string, days: number): void {
+function saveToken(longTermToken: string, shortTermToken: string, jobId: string, days: number): void {
   const now = Date.now()
   const expiresAt = now + days * 24 * 60 * 60 * 1000
+  // 短期 Token 有效期 4 小时
+  const shortTokenExpiresAt = now + 4 * 60 * 60 * 1000
   const authData: PersistedAuthData = {
     jobId,
     expiresAt,
     createdAt: now,
     lastLoginAt: now,
+    shortTokenExpiresAt,
   }
 
   if (safeStorage.isEncryptionAvailable()) {
-    authData.encryptedToken = safeStorage.encryptString(token).toString('base64')
+    authData.encryptedToken = safeStorage.encryptString(longTermToken).toString('base64')
+    authData.encryptedShortToken = safeStorage.encryptString(shortTermToken).toString('base64')
   } else {
-    authData.token = token
+    authData.token = longTermToken
+    authData.shortToken = shortTermToken
   }
 
   writeFileSync(getAuthFilePath(), JSON.stringify(authData, null, 2), 'utf-8')
@@ -132,6 +137,23 @@ export function getToken(): string | null {
       return safeStorage.decryptString(Buffer.from(data.encryptedToken, 'base64'))
     }
     return data.token ?? null
+  } catch { return null }
+}
+
+/** 获取短期 Token（EIP 网关直接下发，有效期 4 小时），用于需要短期凭证的场景 */
+export function getShortToken(): string | null {
+  const filePath = getAuthFilePath()
+  if (!existsSync(filePath)) return null
+
+  try {
+    const data: PersistedAuthData = JSON.parse(readFileSync(filePath, 'utf-8'))
+    // 短期 Token 已过期
+    if (data.shortTokenExpiresAt && Date.now() > data.shortTokenExpiresAt) return null
+
+    if (data.encryptedShortToken && safeStorage.isEncryptionAvailable()) {
+      return safeStorage.decryptString(Buffer.from(data.encryptedShortToken, 'base64'))
+    }
+    return data.shortToken ?? null
   } catch { return null }
 }
 
@@ -163,9 +185,19 @@ export function getAuthInfo(): AuthInfo | null {
       token = data.token
     }
 
-    // Token 自身已过期
+    // 长期 Token 自身已过期
     if (!token || (data.expiresAt && Date.now() > data.expiresAt)) {
       return null
+    }
+
+    // 读取短期 Token（过期则返回 undefined）
+    let shortToken: string | undefined
+    if (data.shortTokenExpiresAt && Date.now() <= data.shortTokenExpiresAt) {
+      if (data.encryptedShortToken && safeStorage.isEncryptionAvailable()) {
+        shortToken = safeStorage.decryptString(Buffer.from(data.encryptedShortToken, 'base64'))
+      } else if (data.shortToken) {
+        shortToken = data.shortToken
+      }
     }
 
     const now = Date.now()
@@ -174,10 +206,12 @@ export function getAuthInfo(): AuthInfo | null {
 
     return {
       token,
+      shortToken,
       jobId: data.jobId,
       displayName: data.displayName,
       lastLoginAt: data.lastLoginAt,
       expiresAt: data.expiresAt,
+      shortTokenExpiresAt: data.shortTokenExpiresAt,
       createdAt,
       needsReauth,
     }

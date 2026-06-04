@@ -7,6 +7,7 @@ export type { AuthElectronAPI } from './preload-bridge'
 export {
   loginWithEipGateway,
   getToken,
+  getShortToken,
   getJobId,
   isLoggedIn,
   needsReauth,
