@@ -5,7 +5,8 @@ import { getConfigDir } from '../main/lib/config-paths'
 import type { LoginResult, PersistedAuthData, AuthInfo } from './types'
 
 const AUTH_FILE = 'auth.json'
-const EIP_GATEWAY_BASE = 'http://eip.htsc.com.cn/gateway'
+// const EIP_GATEWAY_BASE = 'http://eip.htsc.com.cn/gateway'
+const EIP_GATEWAY_BASE = 'http://localhost:6173/gateway'
 
 /** 强制重新登录天数：自 Token 初始签发起超过此天数必须重新登录 */
 const FORCED_REAUTH_DAYS = 180

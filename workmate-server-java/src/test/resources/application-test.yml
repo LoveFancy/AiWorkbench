@@ -1,0 +1,35 @@
+server:
+  port: 6173
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;MODE=MYSQL
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  flyway:
+    enabled: false
+
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.workmate.server.entity
+  configuration:
+    map-underscore-to-camel-case: true
+
+pagehelper:
+  helper-dialect: mysql
+  reasonable: true
+
+workmate:
+  user-id-encryption-key: ""
+  require-user-id: false
+  default-user-id: test_user
+  model-platform-api-url: http://localhost:9999/api/v1
+  model-platform-timeout-ms: 5000
+  observability-sample-rate: 1.0
+  observability-max-events-per-minute: 60
+
+logging:
+  level:
+    root: warn
+    com.workmate.server: debug

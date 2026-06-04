@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.workmate.server.mapper.UpgradeStrategyMapper">
+
+    <resultMap id="BaseResultMap" type="com.workmate.server.entity.UpgradeStrategy">
+        <id column="id" property="id"/>
+        <result column="name" property="name"/>
+        <result column="release_type" property="releaseType"/>
+        <result column="target_version" property="targetVersion"/>
+        <result column="download_url" property="downloadUrl"/>
+        <result column="release_notes" property="releaseNotes"/>
+        <result column="platform" property="platform"/>
+        <result column="min_version" property="minVersion"/>
+        <result column="total_stages" property="totalStages"/>
+        <result column="current_stage" property="currentStage"/>
+        <result column="soak_time_minutes" property="soakTimeMinutes"/>
+        <result column="auto_pause_error_rate" property="autoPauseErrorRate"/>
+        <result column="auto_pause_enabled" property="autoPauseEnabled"/>
+        <result column="status" property="status"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <resultMap id="WithStagesMap" type="com.workmate.server.entity.UpgradeStrategy" extends="BaseResultMap">
+        <collection property="stages" column="id" select="com.workmate.server.mapper.UpgradeStrategyStageMapper.findByStrategyIdOrderByStageOrderAsc"/>
+    </resultMap>
+
+    <select id="findById" resultMap="WithStagesMap">
+        SELECT * FROM upgrade_strategies WHERE id = #{id}
+    </select>
+
+    <select id="findFirstByPlatformAndStatus" resultMap="WithStagesMap">
+        SELECT * FROM upgrade_strategies
+        WHERE platform = #{platform} AND status = #{status}
+        ORDER BY updated_at DESC LIMIT 1
+    </select>
+
+    <select id="countByStatus" resultType="long">
+        SELECT COUNT(*) FROM upgrade_strategies WHERE status = #{status}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO upgrade_strategies (name, release_type, target_version, download_url, release_notes,
+            platform, min_version, total_stages, current_stage, soak_time_minutes,
+            auto_pause_error_rate, auto_pause_enabled, status, created_at, updated_at)
+        VALUES (#{name}, #{releaseType}, #{targetVersion}, #{downloadUrl}, #{releaseNotes},
+            #{platform}, #{minVersion}, #{totalStages}, #{currentStage}, #{soakTimeMinutes},
+            #{autoPauseErrorRate}, #{autoPauseEnabled}, #{status}, #{createdAt}, #{updatedAt})
+    </insert>
+
+    <update id="update">
+        UPDATE upgrade_strategies
+        SET name = #{name}, release_type = #{releaseType}, target_version = #{targetVersion},
+            download_url = #{downloadUrl}, release_notes = #{releaseNotes}, platform = #{platform},
+            min_version = #{minVersion}, total_stages = #{totalStages}, current_stage = #{currentStage},
+            soak_time_minutes = #{soakTimeMinutes}, auto_pause_error_rate = #{autoPauseErrorRate},
+            auto_pause_enabled = #{autoPauseEnabled}, status = #{status}, updated_at = #{updatedAt}
+        WHERE id = #{id}
+    </update>
+
+    <select id="findAll" resultMap="BaseResultMap">
+        SELECT * FROM upgrade_strategies ORDER BY created_at DESC
+    </select>
+
+    <select id="count" resultType="long">
+        SELECT COUNT(*) FROM upgrade_strategies
+    </select>
+
+</mapper>

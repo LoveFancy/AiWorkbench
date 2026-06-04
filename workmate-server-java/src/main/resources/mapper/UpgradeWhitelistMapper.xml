@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.workmate.server.mapper.UpgradeWhitelistMapper">
+
+    <resultMap id="BaseResultMap" type="com.workmate.server.entity.UpgradeWhitelist">
+        <id column="id" property="id"/>
+        <result column="source_strategy_id" property="sourceStrategyId"/>
+        <result column="rule_type" property="ruleType"/>
+        <result column="rule_value" property="ruleValue"/>
+        <result column="target_version" property="targetVersion"/>
+        <result column="platform" property="platform"/>
+        <result column="is_active" property="isActive"/>
+        <result column="created_at" property="createdAt"/>
+    </resultMap>
+
+    <select id="findByIsActiveTrue" resultMap="BaseResultMap">
+        SELECT * FROM upgrade_whitelist WHERE is_active = true
+    </select>
+
+    <select id="findActiveByPlatform" resultMap="BaseResultMap">
+        SELECT * FROM upgrade_whitelist
+        WHERE is_active = true AND (platform = #{platform} OR platform IS NULL)
+    </select>
+
+    <delete id="deleteByStrategyId">
+        DELETE FROM upgrade_whitelist WHERE source_strategy_id = #{strategyId}
+    </delete>
+
+    <delete id="deleteByPlatformWithStrategy">
+        DELETE FROM upgrade_whitelist WHERE platform = #{platform} AND source_strategy_id IS NOT NULL
+    </delete>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO upgrade_whitelist (source_strategy_id, rule_type, rule_value, target_version, platform, is_active, created_at)
+        VALUES (#{sourceStrategyId}, #{ruleType}, #{ruleValue}, #{targetVersion}, #{platform}, #{isActive}, #{createdAt})
+    </insert>
+
+    <update id="update">
+        UPDATE upgrade_whitelist
+        SET rule_type = #{ruleType}, rule_value = #{ruleValue}, target_version = #{targetVersion},
+            platform = #{platform}, is_active = #{isActive}
+        WHERE id = #{id}
+    </update>
+
+    <select id="findById" resultMap="BaseResultMap">
+        SELECT * FROM upgrade_whitelist WHERE id = #{id}
+    </select>
+
+    <delete id="deleteById">
+        DELETE FROM upgrade_whitelist WHERE id = #{id}
+    </delete>
+
+    <select id="findByPlatform" resultMap="BaseResultMap">
+        SELECT * FROM upgrade_whitelist WHERE platform = #{platform} ORDER BY created_at DESC
+    </select>
+
+    <select id="findByTargetVersion" resultMap="BaseResultMap">
+        SELECT * FROM upgrade_whitelist WHERE target_version = #{targetVersion} ORDER BY created_at DESC
+    </select>
+
+    <select id="findByPlatformAndTargetVersion" resultMap="BaseResultMap">
+        SELECT * FROM upgrade_whitelist
+        WHERE platform = #{platform} AND target_version = #{targetVersion}
+        ORDER BY created_at DESC
+    </select>
+
+</mapper>
