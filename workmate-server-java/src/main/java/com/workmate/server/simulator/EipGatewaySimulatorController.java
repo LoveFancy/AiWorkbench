@@ -3,6 +3,7 @@ package com.workmate.server.simulator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,6 +17,7 @@ import java.util.UUID;
  * <p>
  * 客户端原本请求 {@code http://eip.htsc.com.cn/gateway}，开发时改为请求本服务即可。
  */
+@Slf4j
 @RestController
 @CrossOrigin(origins = "*", allowCredentials = "false")
 public class EipGatewaySimulatorController {
@@ -45,6 +47,8 @@ public class EipGatewaySimulatorController {
         String username = body.getOrDefault("username", "test_user");
         String token = generateJwt(username, SHORT_TTL_MS);
 
+        log.info("[EIP模拟] 登录请求 username={}, jobId={}", username, parseMidFromJwt(token));
+
         response.addHeader("Set-Cookie",
                 "EIPGW-TOKEN=" + token + "; Path=/; HttpOnly");
 
@@ -72,7 +76,9 @@ public class EipGatewaySimulatorController {
         long ttlMs = days * 24L * 60 * 60 * 1000;
         String token = generateJwt(jobId, ttlMs);
 
-        String body = "EIPGW-TOKEN:您的token为：" + token + "\n有效期 " + days + "天";
+        log.info("[EIP模拟] 生成长期Token jobId={}, days={}", jobId, days);
+
+        String body = "您的token为：" + token + ", 有效期 " + days + "天（可通过 ?days=" + days + " 传参）。请谨慎使用，token为您的个人令牌。若token泄露，您的隐私将会泄露。";
         return ResponseEntity.ok(body);
     }
 
