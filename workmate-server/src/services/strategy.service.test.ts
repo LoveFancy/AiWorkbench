@@ -35,6 +35,7 @@ describe('strategy.service', () => {
     it('应成功创建策略', async () => {
       const strategy = await createStrategy({
         name: 'v1.0.0 灰度升级',
+        releaseType: 'UPGRADE',
         targetVersion: '1.0.0',
         downloadUrl: 'https://example.com/download',
         releaseNotes: '测试策略',
@@ -78,8 +79,8 @@ describe('strategy.service', () => {
   describe('activateStrategy', () => {
     it('应激活草稿策略并同步第一阶段规则', async () => {
       const strategy = await activateStrategy(strategyId)
-      expect(strategy.status).toBe('ACTIVE')
-      expect(strategy.currentStage).toBe(1)
+      expect(strategy!.status).toBe('ACTIVE')
+      expect(strategy!.currentStage).toBe(1)
 
       // 激活时同步了 Stage 1 的规则
       const rules = await prisma.upgradeWhitelist.findMany({
@@ -139,6 +140,7 @@ describe('strategy.service', () => {
       // 创建下一个草稿策略
       const nextStrategy = await createStrategy({
         name: 'v1.1.0 灰度升级',
+        releaseType: 'UPGRADE',
         targetVersion: '1.1.0',
         downloadUrl: 'https://example.com/download',
         releaseNotes: '下一个版本',
@@ -153,7 +155,7 @@ describe('strategy.service', () => {
       })
 
       const strategy = await finishStrategy(strategyId, nextStrategy.id)
-      expect(strategy.status).toBe('FINISHED')
+      expect(strategy!.status).toBe('FINISHED')
 
       // 验证下一个策略已被激活
       const next = await prisma.upgradeStrategy.findUnique({ where: { id: nextStrategy.id } })
@@ -171,6 +173,7 @@ describe('strategy.service', () => {
       // 创建一个策略来测试
       const testStrategy = await createStrategy({
         name: 'v2.0.0 测试',
+        releaseType: 'UPGRADE',
         targetVersion: '2.0.0',
         downloadUrl: 'https://example.com/download',
         platform: 'darwin',

@@ -31,7 +31,7 @@ app.get('/workmate/health', (_req, res) => {
 })
 
 // 管理台前端静态文件
-app.use('/workmate/admin', express.static('admin/dist'))
+app.use('/workmate/admin', express.static('public/admin'))
 
 app.use(errorHandler)
 

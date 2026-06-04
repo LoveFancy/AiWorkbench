@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express'
-import { getUserModels } from '../services/model-platform.service'
-import { sendSuccess, sendError } from '../utils/response'
+import { getUserCredentials } from '../services/model-platform.service'
+import { sendSuccess } from '../utils/response'
 import { logger } from '../utils/logger'
 
 export async function getUserModelsHandler(
@@ -10,8 +10,8 @@ export async function getUserModelsHandler(
 ): Promise<void> {
   try {
     const jobId = req.jobId!
-    const models = await getUserModels(jobId)
-    sendSuccess(res, { models, total: models.length })
+    const { apiKey, models } = await getUserCredentials(jobId)
+    sendSuccess(res, { apiKey, models, total: models.length })
   } catch (error) {
     logger.error('获取模型列表失败', { error })
     next(error)

@@ -82,6 +82,8 @@ export interface ModelInfo {
 }
 
 export interface ModelListResponse {
+  /** 用户的大模型平台 API Key */
+  apiKey: string
   models: ModelInfo[]
   total: number
 }

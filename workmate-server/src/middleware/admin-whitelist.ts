@@ -1,12 +1,13 @@
 import { Request, Response, NextFunction } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { matchAnyRule } from '../utils/whitelist-matcher'
+import type { WhitelistRule } from '../utils/whitelist-matcher'
 import { logger } from '../utils/logger'
 import { config } from '../config'
 
 const prisma = new PrismaClient()
 
-let cachedRules: { ruleType: string; ruleValue: string }[] = []
+let cachedRules: WhitelistRule[] = []
 let lastCacheTime = 0
 const CACHE_TTL_MS = 60_000
 
@@ -22,7 +23,7 @@ async function getAdminWhitelistRules() {
   })
 
   cachedRules = rules.map((r) => ({
-    ruleType: r.ruleType,
+    ruleType: r.ruleType as import('../types').RuleType,
     ruleValue: r.ruleValue,
   }))
   lastCacheTime = now

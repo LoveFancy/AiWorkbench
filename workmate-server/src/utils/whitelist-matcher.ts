@@ -1,5 +1,7 @@
 import type { RuleType } from '../types'
 
+export type { RuleType }
+
 export interface WhitelistRule {
   ruleType: RuleType
   ruleValue: string

@@ -16,6 +16,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "pack": "bash scripts/pack.sh",
+    "pack:lite": "bash scripts/pack.sh 1.0.0 lite",
+    "pack:win": "powershell -ExecutionPolicy Bypass -File scripts/pack.ps1",
+    "pack:win:lite": "powershell -ExecutionPolicy Bypass -File scripts/pack.ps1 1.0.0 lite",
     "lint": "eslint src --ext .ts"
   },
   "prisma": {
