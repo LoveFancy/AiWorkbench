@@ -1,48 +1,60 @@
-# dependencies (bun install)
+# ===== Dependencies =====
 node_modules
 
-# output
+# ===== Build Output =====
 out
 dist
+dist-pack
 *.tgz
-
-# code coverage
+target
+# ===== Code Coverage =====
 coverage
 *.lcov
 
-# logs
+# ===== Logs =====
 logs
 _.log
 report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
-# dotenv environment variable files
+# ===== Environment Variables =====
 .env
 .env.development.local
 .env.test.local
 .env.production.local
 .env.local
 
-# caches
+# ===== Caches =====
 .eslintcache
 .cache
 *.tsbuildinfo
 
+# ===== Runtime Config =====
 .npmrc
 
-# IntelliJ based IDEs
+# ===== IDEs & Editors =====
 .idea
+.vscode
 
-# Finder (MacOS) folder config
+# ===== AI / LLM Tools =====
+.claude
+.cursor
+.codemap
+.github/copilot
+.continue
+.aider
+.windsurf
+.copilot
+
+# ===== OS Files =====
 .DS_Store
+Thumbs.db
 
-# ignore craft-agents-oss folder
+# ===== Project-specific =====
 craft-agents-oss
-
-# ignore what_are_humans_thinking folder
 what_are_humans_thinking
 
-# vendor binaries
+# ===== Vendor =====
 vendor
 
-# git worktrees (managed by proma-worktree skill)
+# ===== Git Worktrees =====
 .worktrees

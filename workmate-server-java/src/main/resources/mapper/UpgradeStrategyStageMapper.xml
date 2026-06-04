@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.workmate.server.mapper.UpgradeStrategyStageMapper">
+
+    <resultMap id="BaseResultMap" type="com.workmate.server.entity.UpgradeStrategyStage">
+        <id column="id" property="id"/>
+        <result column="strategy_id" property="strategyId"/>
+        <result column="stage_order" property="stageOrder"/>
+        <result column="name" property="name"/>
+        <result column="release_notes" property="releaseNotes"/>
+        <result column="advanced_at" property="advancedAt"/>
+        <result column="created_at" property="createdAt"/>
+    </resultMap>
+
+    <resultMap id="WithRulesMap" type="com.workmate.server.entity.UpgradeStrategyStage" extends="BaseResultMap">
+        <collection property="rules" column="id" select="com.workmate.server.mapper.UpgradeStrategyStageRuleMapper.findByStageId"/>
+    </resultMap>
+
+    <select id="findByStrategyIdOrderByStageOrderAsc" resultMap="WithRulesMap">
+        SELECT * FROM upgrade_strategy_stages
+        WHERE strategy_id = #{strategyId}
+        ORDER BY stage_order ASC
+    </select>
+
+    <delete id="deleteByStrategyId">
+        DELETE FROM upgrade_strategy_stages WHERE strategy_id = #{strategyId}
+    </delete>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO upgrade_strategy_stages (strategy_id, stage_order, name, release_notes, advanced_at, created_at)
+        VALUES (#{strategyId}, #{stageOrder}, #{name}, #{releaseNotes}, #{advancedAt}, #{createdAt})
+    </insert>
+
+    <update id="update">
+        UPDATE upgrade_strategy_stages
+        SET name = #{name}, release_notes = #{releaseNotes}, advanced_at = #{advancedAt}
+        WHERE id = #{id}
+    </update>
+
+    <select id="findById" resultMap="BaseResultMap">
+        SELECT * FROM upgrade_strategy_stages WHERE id = #{id}
+    </select>
+
+</mapper>
