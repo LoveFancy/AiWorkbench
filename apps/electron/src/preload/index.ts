@@ -136,11 +136,15 @@ import type {
   TrayOpenAgentSessionData,
 } from '../types'
 import { QUICK_TASK_IPC_CHANNELS, TRAY_IPC_CHANNELS, VOICE_DICTATION_IPC_CHANNELS } from '../types'
+import { createAuthPreloadApi } from '../auth'
 
 /**
  * 暴露给渲染进程的 API 接口定义
  */
 export interface ElectronAPI {
+  // ===== WorkMate 认证 =====
+  auth: ReturnType<typeof createAuthPreloadApi>['auth']
+
   // ===== 运行时相关 =====
 
   /**
@@ -2424,6 +2428,9 @@ const electronAPI: ElectronAPI = {
   migrationCancelImport: (tempDir: string) => {
     return ipcRenderer.invoke('migration:cancelImport', tempDir)
   },
+
+  // ===== WorkMate 认证 =====
+  ...createAuthPreloadApi(),
 }
 
 // 将 API 暴露到渲染进程的 window 对象上
