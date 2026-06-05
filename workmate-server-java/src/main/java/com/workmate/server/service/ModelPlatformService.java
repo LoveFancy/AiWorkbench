@@ -32,6 +32,13 @@ public class ModelPlatformService {
     }
 
     public UserCredentials getUserCredentials(String userId) {
+        // 本地开发模式：直接返回预定义模型列表，不请求真实平台
+        if (appProperties.getLocalDev().isEnabled()) {
+            log.info("[本地开发模式] 返回预定义模型列表, userId={}, modelCount={}",
+                    userId, appProperties.getLocalDev().getModels().size());
+            return buildLocalDevCredentials();
+        }
+
         String url = appProperties.getModelPlatformApiUrl() + "/users/" + userId + "/credentials";
         log.info("查询用户凭证和模型列表, userId={}, url={}", userId, url);
 
@@ -79,5 +86,25 @@ public class ModelPlatformService {
             log.error("查询大模型平台失败, userId={}", userId, e);
             return new UserCredentials("", List.of());
         }
+    }
+
+    /**
+     * 从 application-localdev.yml 构建本地开发模式的凭证。
+     * 仅返回 enabled=true 的模型。
+     */
+    private UserCredentials buildLocalDevCredentials() {
+        AppProperties.LocalDev localDev = appProperties.getLocalDev();
+        List<ModelInfo> models = localDev.getModels().stream()
+                .filter(AppProperties.LocalDevModel::isEnabled)
+                .map(m -> new ModelInfo(
+                        m.getId(),
+                        m.getName(),
+                        m.getDescription(),
+                        m.getProvider(),
+                        m.getMaxTokens(),
+                        true
+                ))
+                .toList();
+        return new UserCredentials(localDev.getApiKey(), models);
     }
 }

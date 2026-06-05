@@ -1,0 +1,82 @@
+# ============================================================
+# 本地开发环境配置 (spring.profiles.active=localdev)
+# ============================================================
+# 启动方式:
+#   mvn spring-boot:run -Dspring-boot.run.profiles=localdev
+#   或
+#   java -jar target/xxx.jar --spring.profiles.active=localdev
+#   或设置环境变量 SPRING_PROFILES_ACTIVE=localdev
+# ============================================================
+
+spring:
+  config:
+    activate:
+      on-profile: localdev
+
+workmate:
+  # 本地开发模式：跳过真实大模型平台查询，直接返回预定义模型列表
+  local-dev:
+    # 是否启用本地开发模式（默认 false，不配置即为关闭）
+    enabled: true
+    # 模拟的 API Key（客户端拿到后用于调用大模型 API）
+    api-key: "sk-local-dev-mock-key-not-for-production"
+    # 各协议的 Base URL（客户端根据模型的 provider 选择对应地址）
+    base-urls:
+      anthropic: "https://api.anthropic.com"
+      openai: "https://api.openai.com/v1"
+    # 预定义的模型列表（模拟大模型平台返回）
+    models:
+      - id: "claude-sonnet-4-5"
+        name: "Claude Sonnet 4.5"
+        description: "Anthropic 最新旗舰模型"
+        provider: "anthropic"
+        max-tokens: 200000
+        enabled: true
+      - id: "claude-opus-4-1"
+        name: "Claude Opus 4.1"
+        description: "Anthropic 最强推理模型"
+        provider: "anthropic"
+        max-tokens: 200000
+        enabled: true
+      - id: "deepseek-v4-pro"
+        name: "DeepSeek V4 Pro"
+        description: "DeepSeek 旗舰模型（Anthropic 协议）"
+        provider: "anthropic"
+        max-tokens: 128000
+        enabled: true
+      - id: "deepseek-v4-flash"
+        name: "DeepSeek V4 Flash"
+        description: "DeepSeek 快速模型（Anthropic 协议）"
+        provider: "anthropic"
+        max-tokens: 128000
+        enabled: true
+      - id: "gpt-4o"
+        name: "GPT-4o"
+        description: "OpenAI 多模态旗舰模型"
+        provider: "openai"
+        max-tokens: 128000
+        enabled: true
+      - id: "gpt-4o-mini"
+        name: "GPT-4o Mini"
+        description: "OpenAI 轻量快速模型"
+        provider: "openai"
+        max-tokens: 128000
+        enabled: true
+      - id: "kimi-k2.6"
+        name: "Kimi K2.6"
+        description: "月之暗面最新模型（Anthropic 协议）"
+        provider: "anthropic"
+        max-tokens: 128000
+        enabled: true
+      - id: "local-glm-47-flash"
+        name: "GLM 4.7 Flash"
+        description: "华泰本地部署 GLM 模型（Anthropic 协议）"
+        provider: "huatai-anthropic"
+        max-tokens: 131072
+        enabled: true
+      - id: "local-deepseek-v4-pro"
+        name: "DeepSeek V4 Pro（本地）"
+        description: "华泰本地部署 DeepSeek 模型（OpenAI 协议）"
+        provider: "huatai-openai"
+        max-tokens: 128000
+        enabled: true
