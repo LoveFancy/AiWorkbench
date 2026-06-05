@@ -1243,7 +1243,7 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
               ) : (
                 <DropdownMenuItem onSelect={handleLogin}>
                   <LogIn className="mr-2 size-4" />
-                  登录 EIP 网关
+                  登录
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
@@ -1709,7 +1709,7 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
             ) : (
               <DropdownMenuItem onSelect={handleLogin}>
                 <LogIn className="mr-2 size-4" />
-                登录 EIP 网关
+                登录
               </DropdownMenuItem>
             )}
           </DropdownMenuContent>
