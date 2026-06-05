@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.workmate.server.mapper.UpgradeStrategyStageRuleMapper">
+
+    <resultMap id="BaseResultMap" type="com.workmate.server.entity.UpgradeStrategyStageRule">
+        <id column="id" property="id"/>
+        <result column="stage_id" property="stageId"/>
+        <result column="rule_type" property="ruleType"/>
+        <result column="rule_value" property="ruleValue"/>
+    </resultMap>
+
+    <select id="findByStageId" resultMap="BaseResultMap">
+        SELECT * FROM upgrade_strategy_stage_rules WHERE stage_id = #{stageId}
+    </select>
+
+    <delete id="deleteByStageIdIn">
+        DELETE FROM upgrade_strategy_stage_rules WHERE stage_id IN
+        <foreach collection="stageIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO upgrade_strategy_stage_rules (stage_id, rule_type, rule_value)
+        VALUES (#{stageId}, #{ruleType}, #{ruleValue})
+    </insert>
+
+</mapper>

@@ -26,10 +26,12 @@ export default defineConfig({
       'prosemirror-transform',
       'prosemirror-view',
     ],
-    alias: {
-      '@/types': resolve(__dirname, 'src/types'),
-      '@': resolve(__dirname, 'src/renderer'),
-    },
+    alias: [
+      { find: '@/types', replacement: resolve(__dirname, 'src/types') },
+      // @/auth/renderer 等子路径映射到 src/auth/
+      { find: /^@\/auth\/(.*)/, replacement: resolve(__dirname, 'src/auth/$1') },
+      { find: '@', replacement: resolve(__dirname, 'src/renderer') },
+    ],
   },
   server: {
     host: '127.0.0.1',

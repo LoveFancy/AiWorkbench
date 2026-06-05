@@ -6,7 +6,9 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/renderer/*"],
-      "@/types/*": ["./src/types/*"]
+      "@/types/*": ["./src/types/*"],
+      "@/auth": ["./src/auth"],
+      "@/auth/*": ["./src/auth/*"]
     }
   },
   "include": ["src/**/*"]

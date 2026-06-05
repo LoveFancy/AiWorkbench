@@ -6,6 +6,8 @@ import { TutorialBanner } from './components/tutorial/TutorialBanner'
 import { EnvironmentCheckDialog } from './components/environment/EnvironmentCheckDialog'
 import { MigrationImportDialog } from './components/migration/MigrationImportDialog'
 import { TooltipProvider } from './components/ui/tooltip'
+import { LoginView } from '@/auth/renderer'
+import { loginDialogOpenAtom, authStateAtom } from '@/auth/renderer'
 import { conversationsAtom } from './atoms/chat-atoms'
 import { environmentCheckDialogOpenAtom } from './atoms/environment'
 import { tabsAtom, activeTabIdAtom, openTab } from './atoms/tab-atoms'
@@ -101,7 +103,38 @@ export default function App(): React.ReactElement {
       <TutorialBanner />
       <GlobalEnvironmentCheckDialog />
       <MigrationImportDialog />
+      <LoginDialog />
     </TooltipProvider>
+  )
+}
+
+/** 登录对话框：由 LeftSidebar 底部用户菜单触发 */
+function LoginDialog(): React.ReactElement {
+  const [open, setOpen] = useAtom(loginDialogOpenAtom)
+  const [, setAuthState] = useAtom(authStateAtom)
+
+  if (!open) return <></>
+
+  const handleLoginSuccess = async () => {
+    setOpen(false)
+    try {
+      const state = await window.electronAPI.auth.getAuthState()
+      setAuthState(state)
+    } catch {
+      // 静默
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[9999] bg-black/50 flex items-center justify-center" onClick={() => setOpen(false)}>
+      <div onClick={(e) => e.stopPropagation()}>
+        <LoginView
+          onLoginSuccess={handleLoginSuccess}
+          onClose={() => setOpen(false)}
+          allowSkip={false}
+        />
+      </div>
+    </div>
   )
 }
 

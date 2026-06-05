@@ -11,7 +11,7 @@
 import * as React from 'react'
 import { useAtom, useSetAtom, useAtomValue, useStore } from 'jotai'
 import { toast } from 'sonner'
-import { Pin, PinOff, Settings, Plus, Trash2, Pencil, ChevronDown, ChevronRight, Plug, Zap, PanelLeftClose, PanelLeftOpen, ArrowRightLeft, Search, Archive, ArchiveRestore, ArrowLeft, Hammer, Bot, MessageSquare, MoreHorizontal } from 'lucide-react'
+import { Pin, PinOff, Settings, Plus, Trash2, Pencil, ChevronDown, ChevronRight, Plug, Zap, PanelLeftClose, PanelLeftOpen, ArrowRightLeft, Search, Archive, ArchiveRestore, ArrowLeft, Hammer, Bot, MessageSquare, MoreHorizontal, LogOut, LogIn, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { ModeSwitcher } from './ModeSwitcher'
@@ -60,6 +60,7 @@ import {
   updateTabTitle,
 } from '@/atoms/tab-atoms'
 import { userProfileAtom } from '@/atoms/user-profile'
+import { authStateAtom, loginDialogOpenAtom } from '@/auth/renderer'
 import { sidebarViewModeAtom, agentSidebarTopHeightAtom } from '@/atoms/sidebar-atoms'
 import { searchDialogOpenAtom } from '@/atoms/search-atoms'
 import { hasUpdateAtom } from '@/atoms/updater'
@@ -228,6 +229,22 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
   /** Agent 上区子 Tab：'working' | 'pinned'，默认 working 在前 */
   const [agentSubTab, setAgentSubTab] = React.useState<'working' | 'pinned'>('working')
   const [userProfile, setUserProfile] = useAtom(userProfileAtom)
+  const [authState, setAuthState] = useAtom(authStateAtom)
+  const setLoginDialogOpen = useSetAtom(loginDialogOpenAtom)
+
+  const handleLogin = React.useCallback(() => {
+    setLoginDialogOpen(true)
+  }, [setLoginDialogOpen])
+
+  const handleLogout = React.useCallback(async () => {
+    try {
+      await (window.electronAPI as any).auth.logout()
+      setAuthState({ isLoggedIn: false, jobId: undefined })
+      toast.success('已退出登录')
+    } catch {
+      toast.error('退出登录失败')
+    }
+  }, [setAuthState])
   const selectedModel = useAtomValue(selectedModelAtom)
   const streamingIds = useAtomValue(streamingConversationIdsAtom)
   const mode = useAtomValue(appModeAtom)
@@ -1192,24 +1209,50 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
           </div>
         </div>
 
-        {/* 用户头像（点击打开设置） */}
+        {/* 用户菜单（收起状态） */}
         <div className="pt-3 pb-3">
-          <Tooltip>
-            <TooltipTrigger asChild>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                aria-label="打开设置"
-                onClick={() => setSettingsOpen(true)}
+                aria-label="用户菜单"
                 className="relative size-10 flex items-center justify-center rounded-[12px] transition-colors titlebar-no-drag hover:bg-foreground/5"
               >
                 <UserAvatar avatar={userProfile.avatar} size={28} />
                 {(hasUpdate || hasEnvironmentIssues) && (
                   <span className="absolute top-0 right-0 w-2 h-2 rounded-full bg-red-500" />
                 )}
+                {authState.isLoggedIn && (
+                  <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-green-500 border-2 border-background" />
+                )}
               </button>
-            </TooltipTrigger>
-            <TooltipContent side="right">设置</TooltipContent>
-          </Tooltip>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="right" align="end" className="w-48 z-[9999]">
+              <div className="px-3 py-2">
+                <p className="text-sm font-medium">{userProfile.userName}</p>
+                {authState.isLoggedIn && (
+                  <p className="text-xs text-muted-foreground">工号: {authState.jobId}</p>
+                )}
+              </div>
+              <DropdownMenuSeparator />
+              {authState.isLoggedIn ? (
+                <DropdownMenuItem onSelect={handleLogout} className="text-red-500">
+                  <LogOut className="mr-2 size-4" />
+                  退出登录
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem onSelect={handleLogin}>
+                  <LogIn className="mr-2 size-4" />
+                  登录 EIP 网关
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => setSettingsOpen(true)}>
+                <Settings className="mr-2 size-4" />
+                设置
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {deleteDialog}
@@ -1629,21 +1672,64 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
         </div>
       )}
 
-      {/* 底部：用户资料 + 设置入口 */}
-      <div className="px-3 pb-3">
-        <button
-          onClick={() => setSettingsOpen(true)}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-[10px] transition-colors titlebar-no-drag text-foreground/70 hover:bg-foreground/[0.04] hover:text-foreground"
-        >
-          <UserAvatar avatar={userProfile.avatar} size={28} />
-          <span className="flex-1 text-sm truncate text-left">{userProfile.userName}</span>
-          <div className="relative flex-shrink-0 text-foreground/40">
-            <Settings size={16} />
-            {(hasUpdate || hasEnvironmentIssues) && (
-              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-500" />
+      {/* 底部：用户菜单 + 设置入口 */}
+      <div className="px-3 pb-3 flex items-center gap-1">
+        {/* 用户头像 → 弹出登录/登出菜单 */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className="flex-1 flex items-center gap-3 min-w-0 px-3 py-2 rounded-[10px] transition-colors titlebar-no-drag text-foreground/70 hover:bg-foreground/[0.04] hover:text-foreground"
+            >
+              <div className="relative flex-shrink-0">
+                <UserAvatar avatar={userProfile.avatar} size={28} />
+                {authState.isLoggedIn && (
+                  <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-green-500 border-2 border-background" />
+                )}
+              </div>
+              <span className="flex-1 text-sm truncate text-left">
+                {authState.isLoggedIn ? (authState.jobId ?? userProfile.userName) : userProfile.userName}
+              </span>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="right" align="start" className="w-48 z-[9999]">
+            <div className="px-3 py-2">
+              <p className="text-sm font-medium">{userProfile.userName}</p>
+              {authState.isLoggedIn ? (
+                <p className="text-xs text-muted-foreground">工号: {authState.jobId}</p>
+              ) : (
+                <p className="text-xs text-muted-foreground">未登录</p>
+              )}
+            </div>
+            <DropdownMenuSeparator />
+            {authState.isLoggedIn ? (
+              <DropdownMenuItem onSelect={handleLogout} className="text-red-500">
+                <LogOut className="mr-2 size-4" />
+                退出登录
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem onSelect={handleLogin}>
+                <LogIn className="mr-2 size-4" />
+                登录 EIP 网关
+              </DropdownMenuItem>
             )}
-          </div>
-        </button>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* 设置按钮 */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={() => setSettingsOpen(true)}
+              className="relative flex-shrink-0 size-10 flex items-center justify-center rounded-[10px] transition-colors titlebar-no-drag text-foreground/40 hover:bg-foreground/[0.04] hover:text-foreground"
+            >
+              <Settings size={16} />
+              {(hasUpdate || hasEnvironmentIssues) && (
+                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500" />
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top">设置</TooltipContent>
+        </Tooltip>
       </div>
 
       {deleteDialog}
