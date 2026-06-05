@@ -88,16 +88,19 @@ export function getModels(): ModelInfo[] {
 /**
  * 构建 __platform__ 虚拟渠道，供 channel-manager 的 getChannelById/listChannels 注入。
  * 返回 null 表示无平台模型数据或数据已清除。
+ *
+ * baseUrl 取第一个有 baseUrl 的模型的地址；若均无则回退到空字符串。
  */
 export function getPlatformChannel(): import('@proma/shared').Channel | null {
   if (!l1ApiKey || l1Models.length === 0) return null
   const allEnabled = l1Models.filter((m) => m.enabled)
   if (allEnabled.length === 0) return null
+  const firstBaseUrl = allEnabled.find((m) => m.baseUrl)?.baseUrl ?? ''
   return {
     id: '__platform__',
     name: '泰为平台模型',
     provider: 'anthropic',
-    baseUrl: '',
+    baseUrl: firstBaseUrl,
     apiKey: l1ApiKey,
     apiKeyConfigured: true,
     models: allEnabled.map((m) => ({ id: m.id, name: m.name, enabled: true })),

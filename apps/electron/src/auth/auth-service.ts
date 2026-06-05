@@ -67,15 +67,26 @@ export async function loginWithEipGateway(
 async function login(
   username: string, password: string,
 ): Promise<{ success: boolean; message: string; jobId?: string; shortToken?: string }> {
-  const url = `${getEipGatewayBase()}/login`
+  const base = getEipGatewayBase()
+  const url = `${base}/login`
   console.log('[Auth] POST %s', url)
+
+  // 从 base URL 解析 Origin / Host，避免写死
+  let origin = 'http://eip.htsc.com.cn'
+  let host = 'eip.htsc.com.cn'
+  try {
+    const parsed = new URL(base)
+    origin = parsed.origin
+    host = parsed.host
+  } catch { /* 保持回退值 */ }
+
   try {
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Origin': 'http://eip.htsc.com.cn',
-        'Host': 'eip.htsc.com.cn',
+        'Origin': origin,
+        'Host': host,
       },
       body: JSON.stringify({ username, password }),
       redirect: 'manual',

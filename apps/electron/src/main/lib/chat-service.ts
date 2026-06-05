@@ -221,6 +221,8 @@ export async function sendMessage(
     })
     return
   }
+  console.log(`[Chat] 渠道信息: channelId=${channelId}, modelId=${modelId}, provider=${channel.provider}, baseUrl="${channel.baseUrl || '(default)'}", apiKey=${apiKey ? apiKey.slice(0, 8) + '...' + apiKey.slice(-4) : '(empty)'}`)
+
 
   // 3. 先读取历史消息（在追加用户消息之前，避免 adapter 重复发送当前消息）
   const fullHistory = getConversationMessages(conversationId)

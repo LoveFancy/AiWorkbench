@@ -243,7 +243,7 @@ export function ChannelSettings(): React.ReactElement {
       id: '__platform__',
       name: '泰为平台模型',
       provider: 'anthropic',
-      baseUrl: '',
+      baseUrl: agentCompatiblePlatformModels.find((m) => m.baseUrl)?.baseUrl ?? '',
       apiKey: platformApiKey ?? '',
       apiKeyConfigured: true,
       models: agentCompatiblePlatformModels.map((m) => ({

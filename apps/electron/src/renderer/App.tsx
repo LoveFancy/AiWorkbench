@@ -216,7 +216,7 @@ function PlatformChannelSync(): React.ReactElement {
       id: '__platform__',
       name: '泰为平台模型',
       provider: 'anthropic',
-      baseUrl: '',
+      baseUrl: allEnabled.find((m) => m.baseUrl)?.baseUrl ?? '',
       apiKey: platformApiKey,
       apiKeyConfigured: true,
       models: allEnabled.map((m) => ({ id: m.id, name: m.name, enabled: true })),

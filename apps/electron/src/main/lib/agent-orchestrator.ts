@@ -998,6 +998,9 @@ export class AgentOrchestrator {
       return
     }
 
+    // 诊断日志：输出渠道认证信息，方便排查 403/401 问题
+    console.log(`[Agent 编排] 渠道信息: channelId=${channelId}, modelId=${modelId}, provider=${channel.provider}, baseUrl="${channel.baseUrl || '(default)'}", apiKey=${apiKey ? apiKey.slice(0, 8) + '...' + apiKey.slice(-4) : '(empty)'}`)
+
     // 2.1 立即抢占会话槽位（在所有同步检查通过后、第一个 await 之前）
     // 防止 buildSdkEnv 等 await 期间并发调用绕过上方的检查，导致多条重复消息写入 JSONL
     // finally 块会通过 generation 匹配来安全清理，不影响正常流程
