@@ -1,12 +1,24 @@
 import { safeStorage } from 'electron'
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { getConfigDir } from '../main/lib/config-paths'
+import { getConfigDir, getSettingsPath } from '../main/lib/config-paths'
 import type { LoginResult, PersistedAuthData, AuthInfo } from './types'
 
 const AUTH_FILE = 'auth.json'
-// const EIP_GATEWAY_BASE = 'http://eip.htsc.com.cn/gateway'
-const EIP_GATEWAY_BASE = 'http://localhost:6173/gateway'
+
+/** 从 settings.json 读取 eipGatewayBase，未配置时回退到生产地址 */
+function getEipGatewayBase(): string {
+  const settingsPath = getSettingsPath()
+  try {
+    if (existsSync(settingsPath)) {
+      const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'))
+      if (typeof settings.eipGatewayBase === 'string' && settings.eipGatewayBase.trim()) {
+        return settings.eipGatewayBase.trim()
+      }
+    }
+  } catch { /* settings.json 损坏时走默认 */ }
+  return 'http://eip.htsc.com.cn/gateway'
+}
 
 /** 强制重新登录天数：自 Token 初始签发起超过此天数必须重新登录 */
 const FORCED_REAUTH_DAYS = 180
@@ -20,20 +32,27 @@ function getAuthFilePath(): string {
 export async function loginWithEipGateway(
   username: string, password: string, longTermDays: number = 365,
 ): Promise<LoginResult> {
+  console.log('[Auth] 开始登录流程 username=%s days=%d base=%s', username, longTermDays, getEipGatewayBase())
+
   // Step 1: EIP 网关登录
   const loginResult = await login(username, password)
   if (!loginResult.success || !loginResult.jobId || !loginResult.shortToken) {
+    console.error('[Auth] Step 1 登录失败: %s', loginResult.message)
     return { success: false, message: loginResult.message }
   }
+  console.log('[Auth] Step 1 登录成功 jobId=%s', loginResult.jobId)
 
   // Step 2: 换取长期 Token
   const longTerm = await getLongTermToken(loginResult.shortToken, longTermDays)
   if (!longTerm) {
+    console.error('[Auth] Step 2 获取长期Token失败')
     return { success: false, message: '获取长期 Token 失败' }
   }
+  console.log('[Auth] Step 2 长期Token获取成功 days=%d', longTerm.days)
 
-  // Step 3: 安全存储长期 + 短期 Token
-  saveToken(longTerm.token, loginResult.shortToken, loginResult.jobId, longTermDays)
+  // Step 3: 安全存储长期 Token
+  saveToken(longTerm.token, loginResult.jobId, longTermDays)
+  console.log('[Auth] Step 3 Token已存储到 %s', getAuthFilePath())
 
   return {
     success: true,
@@ -48,8 +67,10 @@ export async function loginWithEipGateway(
 async function login(
   username: string, password: string,
 ): Promise<{ success: boolean; message: string; jobId?: string; shortToken?: string }> {
+  const url = `${getEipGatewayBase()}/login`
+  console.log('[Auth] POST %s', url)
   try {
-    const response = await fetch(`${EIP_GATEWAY_BASE}/login`, {
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -61,18 +82,21 @@ async function login(
     })
 
     if (response.status !== 200) {
+      console.error('[Auth] 登录响应 HTTP %d', response.status)
       return { success: false, message: `登录失败: HTTP ${response.status}` }
     }
 
     const setCookie = response.headers.get('set-cookie') ?? ''
     const token = extractToken(setCookie)
     if (!token) {
+      console.error('[Auth] 未从响应中提取到 EIPGW-TOKEN, set-cookie=%s', setCookie)
       return { success: false, message: '登录失败: 未获取到 EIPGW-TOKEN' }
     }
 
     const jobId = parseJobId(token)
     return { success: true, message: '登录成功', jobId: jobId ?? username, shortToken: token }
   } catch (error) {
+    console.error('[Auth] 登录请求异常: %s', (error as Error).message)
     return { success: false, message: `登录请求异常: ${(error as Error).message}` }
   }
 }
@@ -82,43 +106,48 @@ async function login(
 async function getLongTermToken(
   shortTermToken: string, days: number = 365,
 ): Promise<{ token: string; days: number } | null> {
+  const url = `${getEipGatewayBase()}/manage/user/token/generate?days=${days}`
+  console.log('[Auth] GET %s', url)
   try {
-    const response = await fetch(
-      `${EIP_GATEWAY_BASE}/manage/user/token/generate?days=${days}`,
+    const response = await fetch(url,
       { headers: { 'Cookie': `EIPGW-TOKEN=${shortTermToken}` } },
     )
-    if (!response.ok) return null
+    if (!response.ok) {
+      console.error('[Auth] 长期Token请求失败 HTTP %d', response.status)
+      return null
+    }
 
     const text = await response.text()
-    const match = text.match(/EIPGW-TOKEN[：:]\s*您的token为[：:]\s*([A-Za-z0-9\-_.]+)/)
-    if (!match) return null
+    // 匹配 "您的token为：<token>" — token 后紧跟逗号或空白，用 [^,\s]+ 兜底捕获
+    // JWT 字符集为 base64url：A-Za-z0-9 - _ . 但用排除法更鲁棒
+    const match = text.match(/您的token为[：:]\s*([^,\s]+)/)
+    if (!match) {
+      console.error('[Auth] 长期Token响应格式不匹配: %s', text.substring(0, 200))
+      return null
+    }
     return { token: match[1], days }
-  } catch {
+  } catch (err) {
+    console.error('[Auth] 长期Token请求异常: %s', (err as Error).message)
     return null
   }
 }
 
 // ===== Step 3: 本地安全存储 =====
 
-function saveToken(longTermToken: string, shortTermToken: string, jobId: string, days: number): void {
+function saveToken(token: string, jobId: string, days: number): void {
   const now = Date.now()
   const expiresAt = now + days * 24 * 60 * 60 * 1000
-  // 短期 Token 有效期 4 小时
-  const shortTokenExpiresAt = now + 4 * 60 * 60 * 1000
   const authData: PersistedAuthData = {
     jobId,
     expiresAt,
     createdAt: now,
     lastLoginAt: now,
-    shortTokenExpiresAt,
   }
 
   if (safeStorage.isEncryptionAvailable()) {
-    authData.encryptedToken = safeStorage.encryptString(longTermToken).toString('base64')
-    authData.encryptedShortToken = safeStorage.encryptString(shortTermToken).toString('base64')
+    authData.encryptedToken = safeStorage.encryptString(token).toString('base64')
   } else {
-    authData.token = longTermToken
-    authData.shortToken = shortTermToken
+    authData.token = token
   }
 
   writeFileSync(getAuthFilePath(), JSON.stringify(authData, null, 2), 'utf-8')
@@ -138,23 +167,6 @@ export function getToken(): string | null {
       return safeStorage.decryptString(Buffer.from(data.encryptedToken, 'base64'))
     }
     return data.token ?? null
-  } catch { return null }
-}
-
-/** 获取短期 Token（EIP 网关直接下发，有效期 4 小时），用于需要短期凭证的场景 */
-export function getShortToken(): string | null {
-  const filePath = getAuthFilePath()
-  if (!existsSync(filePath)) return null
-
-  try {
-    const data: PersistedAuthData = JSON.parse(readFileSync(filePath, 'utf-8'))
-    // 短期 Token 已过期
-    if (data.shortTokenExpiresAt && Date.now() > data.shortTokenExpiresAt) return null
-
-    if (data.encryptedShortToken && safeStorage.isEncryptionAvailable()) {
-      return safeStorage.decryptString(Buffer.from(data.encryptedShortToken, 'base64'))
-    }
-    return data.shortToken ?? null
   } catch { return null }
 }
 
@@ -186,19 +198,9 @@ export function getAuthInfo(): AuthInfo | null {
       token = data.token
     }
 
-    // 长期 Token 自身已过期
+    // Token 自身已过期
     if (!token || (data.expiresAt && Date.now() > data.expiresAt)) {
       return null
-    }
-
-    // 读取短期 Token（过期则返回 undefined）
-    let shortToken: string | undefined
-    if (data.shortTokenExpiresAt && Date.now() <= data.shortTokenExpiresAt) {
-      if (data.encryptedShortToken && safeStorage.isEncryptionAvailable()) {
-        shortToken = safeStorage.decryptString(Buffer.from(data.encryptedShortToken, 'base64'))
-      } else if (data.shortToken) {
-        shortToken = data.shortToken
-      }
     }
 
     const now = Date.now()
@@ -207,12 +209,10 @@ export function getAuthInfo(): AuthInfo | null {
 
     return {
       token,
-      shortToken,
       jobId: data.jobId,
       displayName: data.displayName,
       lastLoginAt: data.lastLoginAt,
       expiresAt: data.expiresAt,
-      shortTokenExpiresAt: data.shortTokenExpiresAt,
       createdAt,
       needsReauth,
     }
