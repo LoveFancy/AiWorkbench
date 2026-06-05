@@ -228,6 +228,8 @@ export interface AppSettings {
   mainWindowState?: MainWindowState
   /** EIP 网关地址。开发环境可设为 http://localhost:6173/gateway，不配置则使用生产地址 */
   eipGatewayBase?: string
+  /** WorkMate Server 地址。开发环境默认 http://localhost:6173 */
+  workmateServerUrl?: string
 }
 
 /** 主窗口大小、位置和最大化状态 */

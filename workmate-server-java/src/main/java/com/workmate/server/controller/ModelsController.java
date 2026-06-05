@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @RestController
@@ -19,10 +20,12 @@ public class ModelsController {
     public ApiResponse<Map<String, Object>> getUserModels(HttpServletRequest httpRequest) {
         String jobId = (String) httpRequest.getAttribute("jobId");
         ModelPlatformService.UserCredentials credentials = modelPlatformService.getUserCredentials(jobId);
-        return ApiResponse.ok(Map.of(
-                "apiKey", credentials.apiKey(),
-                "models", credentials.models(),
-                "total", credentials.models().size()
-        ));
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("apiKey", credentials.apiKey());
+        data.put("models", credentials.models());
+        data.put("total", credentials.models().size());
+
+        return ApiResponse.ok(data);
     }
 }

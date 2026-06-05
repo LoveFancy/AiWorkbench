@@ -31,6 +31,7 @@ import {
   resolveOpenAIModelsUrl,
 } from '@proma/core'
 import { ensurePresetChannels } from './channel-presets.ts'
+import { getPlatformChannel } from '../../models/model-service'
 
 /** 当前配置版本 */
 const CONFIG_VERSION = 1
@@ -154,7 +155,14 @@ export function listChannels(): Channel[] {
     console.log(`[渠道管理] 已自动创建预设渠道: ${presets.addedNames.join('、')}`)
   }
 
-  return config.channels.map(withApiKeyConfigured)
+  const result = config.channels.map(withApiKeyConfigured)
+
+  // 注入 __platform__ 虚拟渠道（泰为平台模型）
+  const platformChannel = getPlatformChannel()
+  if (platformChannel) {
+    return [...result, platformChannel]
+  }
+  return result
 }
 
 /**
@@ -163,6 +171,11 @@ export function listChannels(): Channel[] {
  * 返回的渠道中 apiKey 保持加密状态。
  */
 export function getChannelById(id: string): Channel | undefined {
+  // 先检查 __platform__ 虚拟渠道
+  if (id === '__platform__') {
+    const platformChannel = getPlatformChannel()
+    if (platformChannel) return platformChannel
+  }
   const config = readConfig()
   return config.channels.find((c) => c.id === id)
 }
@@ -254,6 +267,12 @@ export function deleteChannel(id: string): void {
  * 仅在用户需要查看时调用。
  */
 export function decryptApiKey(channelId: string): string {
+  // __platform__ 虚拟渠道：API Key 为明文，直接返回
+  if (channelId === '__platform__') {
+    const platformChannel = getPlatformChannel()
+    if (platformChannel) return platformChannel.apiKey
+    throw new Error(`渠道不存在: ${channelId}`)
+  }
   const config = readConfig()
   const channel = config.channels.find((c) => c.id === channelId)
 

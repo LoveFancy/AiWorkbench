@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { useAtom, useStore } from 'jotai'
+import { useAtom, useAtomValue, useSetAtom, useStore } from 'jotai'
 import { AppShell } from './components/app-shell/AppShell'
 import { OnboardingView } from './components/onboarding/OnboardingView'
 import { TutorialBanner } from './components/tutorial/TutorialBanner'
@@ -8,10 +8,17 @@ import { MigrationImportDialog } from './components/migration/MigrationImportDia
 import { TooltipProvider } from './components/ui/tooltip'
 import { LoginView } from '@/auth/renderer'
 import { loginDialogOpenAtom, authStateAtom } from '@/auth/renderer'
-import { conversationsAtom } from './atoms/chat-atoms'
+import { conversationsAtom, channelsAtom } from './atoms/chat-atoms'
+import { agentChannelIdsAtom } from './atoms/agent-atoms'
 import { environmentCheckDialogOpenAtom } from './atoms/environment'
 import { tabsAtom, activeTabIdAtom, openTab } from './atoms/tab-atoms'
+import { platformModelsAtom, platformApiKeyAtom } from '@/platform-models/renderer'
+import type { Channel } from '@proma/shared'
 import type { AppShellContextType } from './contexts/AppShellContext'
+
+// useLayoutEffect 同步执行：ModelSelector.listChannels() 覆盖 channelsAtom 后
+// 在同一帧内补回 __platform__，避免"暂无可用模型"闪烁。
+const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? React.useLayoutEffect : React.useEffect
 
 export default function App(): React.ReactElement {
   // [FLASH-DEBUG] 监控 App 组件重渲染（如果看到频繁日志，说明根组件被频繁重渲染）
@@ -104,6 +111,7 @@ export default function App(): React.ReactElement {
       <GlobalEnvironmentCheckDialog />
       <MigrationImportDialog />
       <LoginDialog />
+      <PlatformChannelSync />
     </TooltipProvider>
   )
 }
@@ -144,4 +152,87 @@ function LoginDialog(): React.ReactElement {
 function GlobalEnvironmentCheckDialog(): React.ReactElement {
   const [open, setOpen] = useAtom(environmentCheckDialogOpenAtom)
   return <EnvironmentCheckDialog open={open} onOpenChange={setOpen} />
+}
+
+/**
+ * 平台模型同步组件（无 UI）。
+ *
+ * 职责：
+ * 1. 登录后自动拉取平台模型
+ * 2. 将结果同步为虚拟渠道 __platform__ 到 channelsAtom / agentChannelIds
+ * 3. 监听 channels 变化，抵抗 ModelSelector.listChannels() 的覆盖写入
+ * 4. 退出登录后清除
+ */
+function PlatformChannelSync(): React.ReactElement {
+  const authState = useAtomValue(authStateAtom)
+  const [platformModels, setPlatformModels] = useAtom(platformModelsAtom)
+  const [platformApiKey, setPlatformApiKey] = useAtom(platformApiKeyAtom)
+  const channels = useAtomValue(channelsAtom)
+  const setGlobalChannels = useSetAtom(channelsAtom)
+  const [, setAgentChannelIds] = useAtom(agentChannelIdsAtom)
+  const hasFetchedRef = React.useRef(false)
+  const restoringRef = React.useRef(false)
+
+  // 登录后自动拉取
+  React.useEffect(() => {
+    if (authState.isLoggedIn && !hasFetchedRef.current) {
+      hasFetchedRef.current = true
+      window.electronAPI.platformModels.fetchModels(true).then((result: any) => {
+        setPlatformModels(result.models ?? [])
+        setPlatformApiKey(result.apiKey || null)
+      }).catch(() => {})
+    }
+    if (!authState.isLoggedIn) {
+      hasFetchedRef.current = false
+      setPlatformModels([])
+      setPlatformApiKey(null)
+    }
+  }, [authState.isLoggedIn])
+
+  // 同步虚拟渠道。
+  // 监听 channels：当 ModelSelector.listChannels() 覆盖掉 __platform__ 时自动补回。
+  // restoringRef 阻断自身 setGlobalChannels 触发的回流，避免无限循环。
+  useIsomorphicLayoutEffect(() => {
+    if (restoringRef.current) {
+      restoringRef.current = false
+      return
+    }
+
+    const allEnabled = platformModels.filter((m) => m.enabled)
+    const hasPlatform = channels.some((c) => c.id === '__platform__')
+
+    // 无平台数据：移除虚拟渠道（如果存在）
+    if (allEnabled.length === 0 || !platformApiKey) {
+      if (hasPlatform) {
+        restoringRef.current = true
+        setGlobalChannels((prev) => prev.filter((c) => c.id !== '__platform__'))
+        setAgentChannelIds((ids) => ids.filter((id) => id !== '__platform__'))
+      }
+      return
+    }
+
+    // 有平台数据：确保虚拟渠道存在且内容最新
+    const platformChannel: Channel = {
+      id: '__platform__',
+      name: '泰为平台模型',
+      provider: 'anthropic',
+      baseUrl: allEnabled.find((m) => m.baseUrl)?.baseUrl ?? '',
+      apiKey: platformApiKey,
+      apiKeyConfigured: true,
+      models: allEnabled.map((m) => ({ id: m.id, name: m.name, enabled: true })),
+      enabled: true,
+    } as Channel
+
+    restoringRef.current = true
+    setGlobalChannels((prev) => {
+      const others = prev.filter((c) => c.id !== '__platform__')
+      return [...others, platformChannel]
+    })
+    setAgentChannelIds((ids) => {
+      if (ids.includes('__platform__')) return ids
+      return [...ids, '__platform__']
+    })
+  }, [platformModels, platformApiKey, channels, setGlobalChannels, setAgentChannelIds])
+
+  return <></>
 }
