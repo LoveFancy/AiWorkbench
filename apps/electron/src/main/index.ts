@@ -102,6 +102,8 @@ import { stopAllGenerations } from './lib/chat-service'
 import { initAutoUpdater, cleanupUpdater } from './lib/updater/auto-updater'
 import { startWorkspaceWatcher, stopWorkspaceWatcher } from './lib/workspace-watcher'
 import { registerAuthIpcHandlers } from '../auth'
+import { initModelService, loadCacheFromDisk, initModelRefresh } from '../models'
+import { registerPlatformModelsIpcHandlers } from '../platform-models'
 import { startChatToolsWatcher, stopChatToolsWatcher } from './lib/chat-tools-watcher'
 import { getIsQuitting, setQuitting } from './lib/app-lifecycle'
 import { registerBridge, startAllBridges, stopAllBridges } from './lib/bridge-registry'
@@ -427,6 +429,13 @@ async function bootstrap(): Promise<void> {
   // Register IPC handlers
   registerIpcHandlers()
   registerAuthIpcHandlers()
+  initModelService()
+  registerPlatformModelsIpcHandlers()
+
+  // 从磁盘加载模型缓存
+  loadCacheFromDisk()
+  // 启动定期模型刷新
+  initModelRefresh()
 
   // Set dock icon on macOS (required for dev mode, bundled apps use Info.plist)
   // 如果用户有保存的图标偏好则使用，否则用默认图标

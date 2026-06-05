@@ -8,7 +8,7 @@
  */
 
 import * as React from 'react'
-import { useAtom, useSetAtom } from 'jotai'
+import { useAtom, useAtomValue, useSetAtom } from 'jotai'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
@@ -19,6 +19,8 @@ import { agentChannelIdAtom, agentModelIdAtom, agentChannelIdsAtom } from '@/ato
 import { channelsAtom, selectedModelAtom } from '@/atoms/chat-atoms'
 import { applySavedChannelSnapshot } from '@/lib/channel-sync'
 import { hasConfiguredApiKey, resolveAgentSelectedModel, resolveSelectedModel } from '@/lib/model-selection'
+import { PlatformModelsSection } from '@/platform-models/renderer'
+import { platformModelsAtom, platformApiKeyAtom } from '@/platform-models/renderer'
 import { SettingsSection, SettingsCard, SettingsRow } from './primitives'
 import {
   AlertDialog,
@@ -82,9 +84,11 @@ export function ChannelSettings(): React.ReactElement {
   const loadChannels = React.useCallback(async (): Promise<Channel[]> => {
     try {
       const list = await window.electronAPI.listChannels()
-      setChannels(list)
-      setGlobalChannels(list) // 同步到全局缓存
-      const nextModel = resolveSelectedModel(list, selectedModel)
+      // 排除 __platform__ 虚拟渠道（由 PlatformModelsSection 独立管理）
+      const filtered = list.filter((c) => c.id !== '__platform__')
+      setChannels(filtered)
+      setGlobalChannels(list) // 全局缓存包含 __platform__，供 ModelSelector 使用
+      const nextModel = resolveSelectedModel(filtered, selectedModel)
       if (nextModel?.channelId !== selectedModel?.channelId || nextModel?.modelId !== selectedModel?.modelId) {
         setSelectedModel(nextModel)
       }
@@ -221,6 +225,44 @@ export function ChannelSettings(): React.ReactElement {
     setEditingChannel(null)
   }
 
+  // Agent 兼容渠道（已启用）：Anthropic / DeepSeek / Kimi API / Kimi Coding Plan / MiniMax
+  const agentCapableChannels = channels.filter(
+    (c) => isAgentCompatibleProvider(c.provider) && c.enabled
+  )
+
+  // 从平台模型构建虚拟渠道（用于 Agent 供应商）
+  const platformModels = useAtomValue(platformModelsAtom)
+  const platformApiKey = useAtomValue(platformApiKeyAtom)
+  const agentCompatiblePlatformModels = React.useMemo(
+    () => platformModels.filter((m) => m.enabled && m.provider && isAgentCompatibleProvider(m.provider as any)),
+    [platformModels],
+  )
+  const platformAgentChannel: Channel | null = React.useMemo(() => {
+    if (agentCompatiblePlatformModels.length === 0) return null
+    return {
+      id: '__platform__',
+      name: '泰为平台模型',
+      provider: 'anthropic',
+      baseUrl: '',
+      apiKey: platformApiKey ?? '',
+      apiKeyConfigured: true,
+      models: agentCompatiblePlatformModels.map((m) => ({
+        id: m.id,
+        name: m.name,
+        enabled: true,
+      })),
+      enabled: true,
+    } as Channel
+  }, [agentCompatiblePlatformModels, platformApiKey])
+
+  // 合并本地渠道和平台模型虚拟渠道
+  const allAgentCapableChannels = React.useMemo(() => {
+    if (platformAgentChannel) {
+      return [platformAgentChannel, ...agentCapableChannels]
+    }
+    return agentCapableChannels
+  }, [platformAgentChannel, agentCapableChannels])
+
   // 表单视图
   if (viewMode === 'create' || viewMode === 'edit') {
     return (
@@ -234,18 +276,16 @@ export function ChannelSettings(): React.ReactElement {
     )
   }
 
-  // Agent 兼容渠道（已启用）：Anthropic / DeepSeek / Kimi API / Kimi Coding Plan / MiniMax
-  const agentCapableChannels = channels.filter(
-    (c) => isAgentCompatibleProvider(c.provider) && c.enabled
-  )
-
   // 列表视图
   return (
     <div className="space-y-8">
-      {/* 区块一：模型配置 */}
+      {/* 区块零：泰为平台模型（位于模型配置和 Agent 供应商之前） */}
+      <PlatformModelsSection />
+
+      {/* 区块一：自定义模型配置 */}
       <SettingsSection
-        title="模型配置"
-        description="管理 AI 供应商连接，配置 API Key 和可用模型。Anthropic 渠道同时可用于 Agent 模式"
+        title="自定义模型配置"
+        description="手动配置 AI 供应商连接、API Key 和模型。支持 Anthropic / OpenAI 等协议"
         action={
           <Button size="sm" onClick={() => setViewMode('create')}>
             <Plus size={16} />
@@ -286,22 +326,31 @@ export function ChannelSettings(): React.ReactElement {
       >
         {loading ? (
           <div className="text-sm text-muted-foreground py-8 text-center">加载中...</div>
-        ) : agentCapableChannels.length === 0 ? (
+        ) : allAgentCapableChannels.length === 0 ? (
           <SettingsCard divided={false}>
             <div className="text-sm text-muted-foreground py-8 text-center">
-              暂无可用的 Anthropic 兼容渠道，请先在上方添加 Anthropic / DeepSeek / Kimi / MiniMax 渠道并启用
+              暂无可用的 Anthropic 兼容渠道，请先在上方添加 Anthropic / DeepSeek / Kimi / MiniMax 渠道并启用，或登录 OA 获取平台模型
             </div>
           </SettingsCard>
         ) : (
           <SettingsCard>
-            {agentCapableChannels.map((channel) => (
-              <AgentProviderRow
-                key={channel.id}
-                channel={channel}
-                enabled={agentChannelIds.includes(channel.id)}
-                onToggle={(enabled) => handleToggleAgentProvider(channel.id, enabled)}
-              />
-            ))}
+            {allAgentCapableChannels.map((channel) =>
+              channel.id === '__platform__' ? (
+                <AgentProviderRow
+                  key="__platform__"
+                  channel={channel}
+                  enabled={true}
+                  onToggle={() => {}}
+                />
+              ) : (
+                <AgentProviderRow
+                  key={channel.id}
+                  channel={channel}
+                  enabled={agentChannelIds.includes(channel.id)}
+                  onToggle={(enabled) => handleToggleAgentProvider(channel.id, enabled)}
+                />
+              ),
+            )}
           </SettingsCard>
         )}
       </SettingsSection>

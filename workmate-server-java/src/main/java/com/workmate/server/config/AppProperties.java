@@ -27,18 +27,8 @@ public class AppProperties {
         private boolean enabled = false;
         /** 模拟的 API Key */
         private String apiKey = "";
-        /** 各协议的 Base URL */
-        private BaseUrls baseUrls = new BaseUrls();
         /** 预定义的模型列表 */
         private List<LocalDevModel> models = new ArrayList<>();
-    }
-
-    @Data
-    public static class BaseUrls {
-        /** Anthropic 协议 Base URL */
-        private String anthropic = "https://api.anthropic.com";
-        /** OpenAI 协议 Base URL */
-        private String openai = "https://api.openai.com/v1";
     }
 
     @Data
@@ -48,6 +38,8 @@ public class AppProperties {
         private String description;
         /** 模型协议：anthropic / openai / huatai-anthropic / huatai-openai */
         private String provider;
+        /** 调用地址，如 https://api.deepseek.com/anthropic */
+        private String baseUrl;
         private Integer maxTokens;
         private boolean enabled = true;
     }

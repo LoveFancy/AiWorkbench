@@ -25,7 +25,7 @@ public class ModelPlatformService {
     private final ObjectMapper objectMapper;
 
     public record ModelInfo(String id, String name, String description, String provider,
-                            Integer maxTokens, boolean enabled) {
+                            String baseUrl, Integer maxTokens, boolean enabled) {
     }
 
     public record UserCredentials(String apiKey, List<ModelInfo> models) {
@@ -74,6 +74,7 @@ public class ModelPlatformService {
                                 m.has("name") ? m.get("name").asText() : null,
                                 m.has("description") ? m.get("description").asText() : null,
                                 m.has("provider") ? m.get("provider").asText() : null,
+                                m.has("baseUrl") ? m.get("baseUrl").asText() : null,
                                 m.has("maxTokens") && !m.get("maxTokens").isNull() ? m.get("maxTokens").asInt() : null,
                                 enabled
                         ));
@@ -90,7 +91,7 @@ public class ModelPlatformService {
 
     /**
      * 从 application-localdev.yml 构建本地开发模式的凭证。
-     * 仅返回 enabled=true 的模型。
+     * 仅返回 enabled=true 的模型。baseUrl 由每个模型独立配置。
      */
     private UserCredentials buildLocalDevCredentials() {
         AppProperties.LocalDev localDev = appProperties.getLocalDev();
@@ -101,6 +102,7 @@ public class ModelPlatformService {
                         m.getName(),
                         m.getDescription(),
                         m.getProvider(),
+                        m.getBaseUrl(),
                         m.getMaxTokens(),
                         true
                 ))
