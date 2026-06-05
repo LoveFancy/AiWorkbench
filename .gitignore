@@ -45,7 +45,13 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .windsurf
 .copilot
 .trae
-
+.trae-cn
+.workbuddy
+.codebuddy
+.copilot
+.openclaw
+.qclaw
+.qwen
 # ===== OS Files =====
 .DS_Store
 Thumbs.db
