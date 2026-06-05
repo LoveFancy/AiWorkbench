@@ -67,15 +67,26 @@ export async function loginWithEipGateway(
 async function login(
   username: string, password: string,
 ): Promise<{ success: boolean; message: string; jobId?: string; shortToken?: string }> {
-  const url = `${getEipGatewayBase()}/login`
+  const base = getEipGatewayBase()
+  const url = `${base}/login`
   console.log('[Auth] POST %s', url)
+
+  // 从 base URL 解析 Origin / Host，避免写死
+  let origin = 'http://eip.htsc.com.cn'
+  let host = 'eip.htsc.com.cn'
+  try {
+    const parsed = new URL(base)
+    origin = parsed.origin
+    host = parsed.host
+  } catch { /* 保持回退值 */ }
+
   try {
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Origin': 'http://eip.htsc.com.cn',
-        'Host': 'eip.htsc.com.cn',
+        'Origin': origin,
+        'Host': host,
       },
       body: JSON.stringify({ username, password }),
       redirect: 'manual',
@@ -121,7 +132,7 @@ async function getLongTermToken(
     // 匹配 "您的token为：<token>" — token 后紧跟逗号或空白，用 [^,\s]+ 兜底捕获
     // JWT 字符集为 base64url：A-Za-z0-9 - _ . 但用排除法更鲁棒
     const match = text.match(/您的token为[：:]\s*([^,\s]+)/)
-    if (!match) {
+    if (!match || !match[1]) {
       console.error('[Auth] 长期Token响应格式不匹配: %s', text.substring(0, 200))
       return null
     }
@@ -164,7 +175,7 @@ export function getToken(): string | null {
     if (data.expiresAt && Date.now() > data.expiresAt) return null
 
     if (data.encryptedToken && safeStorage.isEncryptionAvailable()) {
-      return safeStorage.decryptString(Buffer.from(data.encryptedToken, 'base64'))
+      return safeStorage.decryptString(Buffer.from(data.encryptedToken!, 'base64'))
     }
     return data.token ?? null
   } catch { return null }
@@ -193,7 +204,7 @@ export function getAuthInfo(): AuthInfo | null {
 
     let token: string | null = null
     if (data.encryptedToken && safeStorage.isEncryptionAvailable()) {
-      token = safeStorage.decryptString(Buffer.from(data.encryptedToken, 'base64'))
+      token = safeStorage.decryptString(Buffer.from(data.encryptedToken!, 'base64'))
     } else if (data.token) {
       token = data.token
     }
@@ -202,13 +213,15 @@ export function getAuthInfo(): AuthInfo | null {
     if (!token || (data.expiresAt && Date.now() > data.expiresAt)) {
       return null
     }
+    // TS 窄化：此时 token 一定非 null
+    const safeToken: string = token
 
     const now = Date.now()
     const createdAt = data.createdAt ?? data.lastLoginAt  // 兼容旧数据（无 createdAt 字段）
     const needsReauth = (now - createdAt) > FORCED_REAUTH_DAYS * 24 * 60 * 60 * 1000
 
     return {
-      token,
+      token: safeToken,
       jobId: data.jobId,
       displayName: data.displayName,
       lastLoginAt: data.lastLoginAt,
@@ -249,14 +262,14 @@ export function buildAuthHeaders(): Record<string, string> {
 
 export function extractToken(header: string): string | null {
   const match = header.match(/EIPGW-TOKEN=([^;]+)/)
-  return match ? match[1] : null
+  return match ? (match[1] ?? null) : null
 }
 
 export function parseJobId(jwt: string): string | null {
   try {
     const parts = jwt.split('.')
     if (parts.length !== 3) return null
-    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8'))
+    const payload = JSON.parse(Buffer.from(parts[1]!, 'base64').toString('utf-8'))
     return payload.mid ?? null
   } catch { return null }
 }

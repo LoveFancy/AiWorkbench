@@ -137,6 +137,8 @@ import type {
 } from '../types'
 import { QUICK_TASK_IPC_CHANNELS, TRAY_IPC_CHANNELS, VOICE_DICTATION_IPC_CHANNELS } from '../types'
 import { createAuthPreloadApi } from '../auth'
+import { createPlatformModelsPreloadApi } from '../platform-models/preload-bridge'
+import type { PlatformModelsElectronAPI } from '../platform-models/preload-bridge'
 
 /**
  * 暴露给渲染进程的 API 接口定义
@@ -144,6 +146,8 @@ import { createAuthPreloadApi } from '../auth'
 export interface ElectronAPI {
   // ===== WorkMate 认证 =====
   auth: ReturnType<typeof createAuthPreloadApi>['auth']
+  // ===== WorkMate 平台模型 =====
+  platformModels: PlatformModelsElectronAPI
 
   // ===== 运行时相关 =====
 
@@ -2431,6 +2435,9 @@ const electronAPI: ElectronAPI = {
 
   // ===== WorkMate 认证 =====
   ...createAuthPreloadApi(),
+
+  // ===== WorkMate 平台模型 =====
+  ...createPlatformModelsPreloadApi(),
 }
 
 // 将 API 暴露到渲染进程的 window 对象上

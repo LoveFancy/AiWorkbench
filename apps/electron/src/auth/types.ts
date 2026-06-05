@@ -17,7 +17,7 @@ export interface PersistedAuthData {
   // —— 短期 Token（EIP 网关 Set-Cookie 下发，有效期 4 小时）——
   encryptedShortToken?: string  // safeStorage 加密后的短期 Token（base64）
   shortToken?: string           // 短期 Token 明文（加密不可用时回退）
-  shortTokenExpiresAt: number   // 短期 Token 过期时间（签发时间 + 4 小时）
+  shortTokenExpiresAt?: number  // 短期 Token 过期时间（签发时间 + 4 小时）
 
   jobId: string
   displayName?: string
