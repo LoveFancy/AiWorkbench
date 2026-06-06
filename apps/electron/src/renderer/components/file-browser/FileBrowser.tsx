@@ -314,7 +314,7 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
   }, [displayRoots, rootPath])
 
   const fileTree = (
-    <div className={cn('py-1', embedded && 'min-h-full')}>
+    <div className="py-1">
       {error && (
         <div className="px-3 py-2 text-xs text-destructive">{error}</div>
       )}
@@ -356,7 +356,7 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
   )
 
   return (
-    <div className={cn('flex flex-col', embedded ? 'min-h-full' : 'h-full')} onClickCapture={handleRootClickCapture}>
+    <div className={cn('flex flex-col', embedded ? 'min-h-0' : 'h-full')} onClickCapture={handleRootClickCapture}>
       {/* 顶部工具栏（可由外部接管） */}
       {!hideToolbar && (
         <div className="flex items-center gap-1 px-3 pr-10 h-[48px] border-b flex-shrink-0">
