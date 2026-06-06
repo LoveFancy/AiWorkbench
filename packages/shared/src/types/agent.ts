@@ -936,6 +936,8 @@ export interface AgentPluginMarketplace {
   name: string
   source: string
   type: AgentPluginMarketplaceType
+  /** 仓库型市场读取 .claude-plugin/marketplace.json 的分支，默认 main */
+  branch?: string
   enabled: boolean
   addedAt: string
   lastRefreshAt?: string | null

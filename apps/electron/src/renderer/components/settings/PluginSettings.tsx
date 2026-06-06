@@ -166,6 +166,11 @@ interface InferredMarketplaceInput {
   name: string
   source: string
   type: AgentPluginMarketplaceType
+  branch?: string
+}
+
+function supportsMarketplaceBranch(type: AgentPluginMarketplaceType): boolean {
+  return type === 'github' || type === 'gitee' || type === 'gitlab'
 }
 
 function slugFromMarketplaceSource(source: string): string {
@@ -183,6 +188,23 @@ function slugFromMarketplaceSource(source: string): string {
   if (gitSshMatch?.[1]) return gitSshMatch[1].split('/').at(-1)?.replace(/\.git$/, '') ?? 'marketplace'
   const last = trimmed.split(/[\\/]/).filter(Boolean).at(-1) ?? 'marketplace'
   return last.replace(/\.git$/, '').replace(/\.json$/, '') || 'marketplace'
+}
+
+function inferMarketplaceBranchFromSource(source: string, type: AgentPluginMarketplaceType): string | undefined {
+  if (type !== 'github' && type !== 'gitee' && type !== 'gitlab') return undefined
+  if (!/^https?:\/\//i.test(source)) return undefined
+
+  try {
+    const url = new URL(source)
+    const segments = url.pathname.split('/').filter(Boolean)
+    const treeIndex = type === 'gitlab'
+      ? segments.findIndex((segment, index) => segment === 'tree' && segments[index - 1] === '-')
+      : segments.indexOf('tree')
+    const branch = treeIndex >= 0 ? segments[treeIndex + 1] : undefined
+    return branch ? decodeURIComponent(branch) : undefined
+  } catch {
+    return undefined
+  }
 }
 
 export function inferMarketplaceInput(sourceText: string): InferredMarketplaceInput {
@@ -206,11 +228,13 @@ export function inferMarketplaceInput(sourceText: string): InferredMarketplaceIn
 
   const rawId = slugFromMarketplaceSource(source)
   const id = rawId.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'marketplace'
+  const branch = inferMarketplaceBranchFromSource(source, type)
   return {
     id,
     name: id,
     source,
     type,
+    ...(branch && { branch }),
   }
 }
 
@@ -230,6 +254,7 @@ export function PluginSettings(): React.ReactElement {
   const [editingMcp, setEditingMcp] = React.useState<AgentPluginCapability | null>(null)
   const [mcpEnvText, setMcpEnvText] = React.useState('')
   const [marketplaceSourceInput, setMarketplaceSourceInput] = React.useState('')
+  const [marketplaceBranchInput, setMarketplaceBranchInput] = React.useState('main')
   const [pendingPluginOperations, setPendingPluginOperations] = React.useState<Set<string>>(new Set())
 
   const capabilities = React.useMemo(() => {
@@ -419,9 +444,14 @@ export function PluginSettings(): React.ReactElement {
   const handleAddMarketplace = async (): Promise<void> => {
     try {
       const inferred = inferMarketplaceInput(marketplaceSourceInput)
-      await window.electronAPI.addAgentPluginMarketplace(inferred)
+      const branch = marketplaceBranchInput.trim()
+      await window.electronAPI.addAgentPluginMarketplace({
+        ...inferred,
+        ...(supportsMarketplaceBranch(inferred.type) && branch ? { branch } : {}),
+      })
       await window.electronAPI.refreshAgentPluginMarketplace(inferred.id)
       setMarketplaceSourceInput('')
+      setMarketplaceBranchInput('main')
       setAddMarketplaceOpen(false)
       toast.success('插件市场已添加')
       await loadAll()
@@ -456,6 +486,20 @@ export function PluginSettings(): React.ReactElement {
       await loadAll()
     } catch (error) {
       toast.error('更新插件市场失败', { description: error instanceof Error ? error.message : '未知错误' })
+    }
+  }
+
+  const handleUpdateMarketplaceBranch = async (marketplace: AgentPluginMarketplace, branch: string): Promise<void> => {
+    try {
+      const trimmed = branch.trim()
+      await window.electronAPI.updateAgentPluginMarketplace(marketplace.id, {
+        branch: trimmed || undefined,
+        lastError: undefined,
+      })
+      toast.success('插件市场分支已更新')
+      await loadAll()
+    } catch (error) {
+      toast.error('更新插件市场分支失败', { description: error instanceof Error ? error.message : '未知错误' })
     }
   }
 
@@ -712,6 +756,7 @@ export function PluginSettings(): React.ReactElement {
               installedPlugins={selectedMarketplace ? installedPluginsByMarketplace.get(selectedMarketplace.id) ?? [] : []}
               loading={loading}
               onToggle={handleToggleMarketplace}
+              onUpdateBranch={handleUpdateMarketplaceBranch}
               onBrowse={handleBrowseMarketplace}
               onRefresh={handleRefreshMarketplace}
               onRemove={handleRemoveMarketplace}
@@ -748,16 +793,36 @@ export function PluginSettings(): React.ReactElement {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <div className="mb-2 text-sm font-medium">Marketplace source</div>
+              <div className="mb-2 text-sm font-medium">市场来源</div>
               <Input
                 value={marketplaceSourceInput}
-                onChange={(event) => setMarketplaceSourceInput(event.target.value)}
+                onChange={(event) => {
+                  const nextSource = event.target.value
+                  setMarketplaceSourceInput(nextSource)
+                  try {
+                    const inferred = nextSource.trim() ? inferMarketplaceInput(nextSource) : null
+                    if (inferred && !supportsMarketplaceBranch(inferred.type)) setMarketplaceBranchInput('')
+                    if (inferred?.branch) setMarketplaceBranchInput(inferred.branch)
+                    if (inferred && supportsMarketplaceBranch(inferred.type) && !inferred.branch && !marketplaceBranchInput.trim()) setMarketplaceBranchInput('main')
+                  } catch {
+                    // 输入过程中允许暂时不可解析
+                  }
+                }}
                 placeholder="owner/repo、GitLab/Gitee/GitHub 仓库、https://.../marketplace.json 或 ./path/to/marketplace"
                 autoFocus
               />
             </div>
+            <div>
+              <div className="mb-2 text-sm font-medium">读取分支</div>
+              <Input
+                value={marketplaceBranchInput}
+                onChange={(event) => setMarketplaceBranchInput(event.target.value)}
+                placeholder="main 或 master"
+                disabled={!inferredMarketplacePreview || !supportsMarketplaceBranch(inferredMarketplacePreview.type)}
+              />
+            </div>
             <div className="rounded-md bg-zinc-950 px-4 py-3 font-mono text-sm text-zinc-100 dark:bg-zinc-900">
-              <div className="font-semibold">Examples:</div>
+              <div className="font-semibold">示例：</div>
               <div className="mt-2 space-y-1 text-zinc-400">
                 <div>· owner/repo (GitHub)</div>
                 <div>· http://gitlab.htzq.htsc.com.cn/aidev/ht-dev-plugins/claudecode-plugin-marketplace</div>
@@ -774,7 +839,16 @@ export function PluginSettings(): React.ReactElement {
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAddMarketplaceOpen(false)}>取消</Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setMarketplaceSourceInput('')
+                setMarketplaceBranchInput('main')
+                setAddMarketplaceOpen(false)
+              }}
+            >
+              取消
+            </Button>
             <Button disabled={!marketplaceSourceInput.trim()} onClick={() => void handleAddMarketplace()}>
               <FolderPlus size={16} className="mr-2" />
               添加
@@ -1090,6 +1164,7 @@ function MarketplaceDetailPanel({
   installedPlugins,
   loading,
   onToggle,
+  onUpdateBranch,
   onBrowse,
   onRefresh,
   onRemove,
@@ -1099,13 +1174,22 @@ function MarketplaceDetailPanel({
   installedPlugins: AgentPluginInfo[]
   loading: boolean
   onToggle: (marketplace: AgentPluginMarketplace, enabled: boolean) => Promise<void>
+  onUpdateBranch: (marketplace: AgentPluginMarketplace, branch: string) => Promise<void>
   onBrowse: (marketplace: AgentPluginMarketplace) => void
   onRefresh: (id: string) => Promise<void>
   onRemove: (id: string) => Promise<void>
 }): React.ReactElement {
+  const [branchDraft, setBranchDraft] = React.useState('main')
+
+  React.useEffect(() => {
+    setBranchDraft(marketplace?.branch ?? 'main')
+  }, [marketplace?.id, marketplace?.branch])
+
   if (!marketplace) {
     return <EmptyState text="选择一个插件市场查看详情" />
   }
+  const canConfigureBranch = supportsMarketplaceBranch(marketplace.type)
+
   return (
     <aside className="rounded-lg bg-card p-4 shadow-sm xl:sticky xl:top-4 xl:self-start">
       <div className="flex items-start justify-between gap-3">
@@ -1121,10 +1205,32 @@ function MarketplaceDetailPanel({
 
       <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
         <DetailField label="类型" value={marketplace.type} />
+        <DetailField label="分支" value={marketplace.branch ?? 'main'} />
         <DetailField label="可用插件" value={String(availablePlugins.length)} />
         <DetailField label="已安装" value={String(installedPlugins.length)} />
         <DetailField label="最近刷新" value={formatDateTime(marketplace.lastRefreshAt)} />
       </div>
+
+      {canConfigureBranch && (
+        <div className="mt-4 space-y-2 border-t pt-4">
+          <div className="text-sm font-medium">读取分支</div>
+          <div className="flex gap-2">
+            <Input
+              value={branchDraft}
+              onChange={(event) => setBranchDraft(event.target.value)}
+              placeholder="main 或 master"
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void onUpdateBranch(marketplace, branchDraft)}
+              disabled={branchDraft.trim() === (marketplace.branch ?? 'main')}
+            >
+              保存
+            </Button>
+          </div>
+        </div>
+      )}
 
       <div className="mt-4 flex flex-wrap gap-2">
         <Button size="sm" variant="outline" onClick={() => onBrowse(marketplace)}>

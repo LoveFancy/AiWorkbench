@@ -2179,7 +2179,7 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(
     AGENT_IPC_CHANNELS.ADD_PLUGIN_MARKETPLACE,
-    async (_, input: { id: string; name: string; source: string; type: AgentPluginMarketplaceType }): Promise<AgentPluginMarketplace> => {
+    async (_, input: { id: string; name: string; source: string; type: AgentPluginMarketplaceType; branch?: string }): Promise<AgentPluginMarketplace> => {
       const { addPluginMarketplace } = await import('./lib/plugin-marketplace-service')
       return addPluginMarketplace(input)
     }
