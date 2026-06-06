@@ -45,7 +45,7 @@ import { getAgentWorkspacePath, getAgentSessionWorkspacePath, getSdkConfigDir, g
 import { getWorkspaceAttachedDirectories, getWorkspaceAttachedFiles } from './agent-workspace-manager'
 import { getRuntimeStatus } from './runtime-init'
 import { getSettings } from './settings-service'
-import { buildSystemPrompt, buildDynamicContext, buildBuiltinAgents } from './agent-prompt-builder'
+import { buildSystemPrompt, buildDynamicContext, buildAgentsForSession } from './agent-prompt-builder'
 import { permissionService } from './agent-permission-service'
 import type { PermissionResult, CanUseToolOptions } from './agent-permission-service'
 import { askUserService } from './agent-ask-user-service'
@@ -56,6 +56,7 @@ import { searchMemory, addMemory, formatSearchResult } from './memos-client'
 import { validateToolInput } from './agent-tool-input-validator'
 import { estimateTokenCount, WRITE_CONTENT_TOKEN_THRESHOLD } from './agent-tool-token-estimator'
 import { buildPluginRuntimePaths } from './plugin-registry-service'
+import { resolveExpertGroupRuntime } from './agent-expert-group-manager'
 
 // ===== 类型定义 =====
 
@@ -1239,6 +1240,16 @@ export class AgentOrchestrator {
       await this.injectMemoryTools(sdk, mcpServers)
       await this.injectNanoBananaTools(sdk, mcpServers, sessionId, agentCwd)
 
+      const expertRuntime = resolveExpertGroupRuntime({
+        expertGroupId: sessionMeta?.expertGroupId,
+        expertPluginId: sessionMeta?.expertPluginId,
+      })
+
+      if (expertRuntime) {
+        Object.assign(mcpServers, expertRuntime.mcpServers)
+        console.log(`[Agent 编排] 已加载专家团: ${expertRuntime.group.name}`)
+      }
+
       // 合并外部注入的自定义 MCP 服务器（如飞书群聊工具）
       if (customMcpServers) {
         Object.assign(mcpServers, customMcpServers)
@@ -1544,6 +1555,7 @@ export class AgentOrchestrator {
             memoryEnabled: (() => { const mc = getMemoryConfig(); return mc.enabled && !!mc.apiKey })(),
             claudeAvailable,
             deepSeekSubagentModel: modelRouting.subagentModel,
+            expertRuntime,
           }),
         },
         resumeSessionId: existingSdkSessionId,
@@ -1551,7 +1563,10 @@ export class AgentOrchestrator {
         ...(rewindResumeAt && { resumeSessionAt: rewindResumeAt }),
         ...(Object.keys(mcpServers).length > 0 && { mcpServers }),
         ...(() => {
-          const plugins = getAgentPluginPaths(workspaceSlug)
+          const plugins = [
+            ...getAgentPluginPaths(workspaceSlug),
+            ...(expertRuntime?.pluginPaths ?? []),
+          ]
           return plugins.length > 0 ? { plugins } : {}
         })(),
         // 合并附加目录：用户当次输入 + 会话级 + 工作区级（详见 collectAttachedDirectories）
@@ -1579,7 +1594,7 @@ export class AgentOrchestrator {
         // 内置 SubAgent 定义（code-reviewer / explorer / researcher）
         // SubAgent 模型最终由 CLAUDE_CODE_SUBAGENT_MODEL 兜底控制：
         // DeepSeek 系列固定 deepseek-v4-flash，其它模型删除该 env，保留 SDK 默认解析。
-        agents: buildBuiltinAgents(claudeAvailable),
+        agents: buildAgentsForSession({ claudeAvailable, expertRuntime }),
         onStderr: (data: string) => {
           stderrChunks.push(data)
           console.error(`[Agent SDK stderr] ${data}`)

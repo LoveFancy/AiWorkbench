@@ -47,6 +47,36 @@ function createPlugin(root: string, name: string, version = '1.0.0', mcpCommand 
   return pluginDir
 }
 
+function createExpertPlugin(root: string, name: string): string {
+  const pluginDir = createPlugin(root, name)
+  mkdirSync(join(pluginDir, 'expert-groups'), { recursive: true })
+  writeFileSync(
+    join(pluginDir, '.claude-plugin', 'plugin.json'),
+    JSON.stringify({
+      name,
+      version: '1.0.0',
+      description: `${name} 描述`,
+      author: { name: 'Qinxiao' },
+      keywords: ['expert'],
+      expertGroups: ['product-team'],
+    }),
+    'utf-8',
+  )
+  writeFileSync(
+    join(pluginDir, 'expert-groups', 'product-team.json'),
+    JSON.stringify({
+      id: 'product-team',
+      name: '产品专家团',
+      mainRole: {
+        name: '产品负责人',
+        prompt: '你是产品专家团的主角色。',
+      },
+    }),
+    'utf-8',
+  )
+  return pluginDir
+}
+
 describe('插件注册表服务', () => {
   test('扫描内置和用户插件并汇总能力', () => {
     const temp = tempRoot()
@@ -66,6 +96,33 @@ describe('插件注册表服务', () => {
       expect(plugins.every((plugin) => plugin.enabled)).toBe(true)
       expect(plugins[0]?.capabilities.map((capability) => capability.type).sort()).toEqual(['agent', 'command', 'mcp', 'skill'])
       expect(plugins[1]?.sourceMarketplaceId).toBe('market')
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('扫描插件声明的专家团能力', () => {
+    const temp = tempRoot()
+    try {
+      const builtinDir = join(temp.root, 'default-plugins')
+      const userDir = join(temp.root, 'user-plugins')
+      const configPath = join(temp.root, 'plugins.json')
+      createExpertPlugin(builtinDir, 'workmate-experts')
+
+      const plugins = listInstalledPlugins({ builtinDir, userDir, configPath })
+      const expertCapabilities = plugins[0]?.capabilities.filter((capability) => capability.type === 'expert-group')
+
+      expect(expertCapabilities).toEqual([
+        {
+          type: 'expert-group',
+          name: 'product-team',
+          sourcePluginId: 'builtin:workmate-experts',
+          sourceLabel: 'workmate-experts',
+          relativePath: 'expert-groups/product-team.json',
+          description: '产品专家团',
+          enabled: true,
+        },
+      ])
     } finally {
       temp.cleanup()
     }
