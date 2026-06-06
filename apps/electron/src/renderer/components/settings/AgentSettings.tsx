@@ -8,7 +8,7 @@
 
 import * as React from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
-import { Plus, Plug, Pencil, Trash2, Sparkles, FolderOpen, MessageSquare, ShieldCheck, ChevronDown, ChevronRight, Search, RefreshCw, Save, X, Download, RotateCw } from 'lucide-react'
+import { Plus, Plug, Pencil, Trash2, Sparkles, FolderOpen, MessageSquare, ShieldCheck, ChevronDown, ChevronRight, Search, RefreshCw, Save, X, Download, RotateCw, Info, Upload, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -146,6 +146,7 @@ export function AgentSettings(): React.ReactElement {
   const [skillHubRefreshKey, setSkillHubRefreshKey] = React.useState(0)
   const [showImportDialog, setShowImportDialog] = React.useState(false)
   const [importingSkill, setImportingSkill] = React.useState<string | null>(null)
+  const [installingZipSkill, setInstallingZipSkill] = React.useState(false)
   const [updatingSkill, setUpdatingSkill] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [selectedSkillSlug, setSelectedSkillSlug] = React.useState<string | null>(null)
@@ -375,6 +376,26 @@ ${skillList}
     }
   }
 
+  const handleInstallSkillZip = async (): Promise<void> => {
+    if (!workspaceSlug || installingZipSkill) return
+    setInstallingZipSkill(true)
+    try {
+      const installed = await window.electronAPI.installSkillZip(workspaceSlug)
+      if (!installed) return
+
+      setSkills((prev) => prev.some((skill) => skill.slug === installed.slug) ? prev : [...prev, installed])
+      setSelectedSkillSlug(installed.slug)
+      bumpCapabilitiesVersion((v) => v + 1)
+      toast.success(`已安装 Skill: ${installed.name}`)
+    } catch (error) {
+      console.error('[Agent 设置] 上传安装 Skill 失败:', error)
+      const message = error instanceof Error ? error.message : '未知错误'
+      toast.error('安装 Skill 失败', { description: message })
+    } finally {
+      setInstallingZipSkill(false)
+    }
+  }
+
   const handleUpdateSkill = async (skillSlug: string): Promise<void> => {
     if (!workspaceSlug || updatingSkill) return
     setUpdatingSkill(skillSlug)
@@ -486,6 +507,15 @@ ${skillList}
                 <Button size="sm" variant="outline" onClick={() => setShowImportDialog(true)}>
                   <Plus size={16} />
                   <span>从其他工作区导入</span>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void handleInstallSkillZip()}
+                  disabled={installingZipSkill}
+                >
+                  {installingZipSkill ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+                  <span>上传 Zip</span>
                 </Button>
                 {skillsDir && (
                   <Tooltip>
@@ -1133,7 +1163,24 @@ function HtSkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInstalled
 
   return (
     <SettingsSection
-      title="华泰 SkillHub"
+      title={
+        <span className="inline-flex items-center gap-1.5">
+          华泰 SkillHub
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                aria-label="华泰 SkillHub 说明"
+                className="inline-flex cursor-help text-muted-foreground hover:text-foreground"
+              >
+                <Info size={15} />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="max-w-sm text-xs leading-6">
+              SkillHub 是泰为平台提供的公司级技能中枢平台，提供 Skills 元数据管理，权限管理，版本管理，开发调试，上传下载等全生命周期管理能力。
+            </TooltipContent>
+          </Tooltip>
+        </span>
+      }
       description={`当前工作区: ${workspaceName}`}
       action={
         <Button size="sm" variant="outline" onClick={() => void loadSkills()} disabled={loading}>

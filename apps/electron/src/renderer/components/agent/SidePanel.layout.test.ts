@@ -31,3 +31,16 @@ test('工作区文件的添加入口紧跟在文件树后面', () => {
     '{/* 工作区文件拖拽上传区域 */}',
   )
 })
+
+test('会话和工作区文件空白区点击会清空文件树选中状态', () => {
+  const sessionMarker = '{/* 会话文件内容区（独立滚动） */}'
+  const workspaceMarker = '{/* 工作区文件内容区（独立滚动） */}'
+  const sessionStart = sidePanelSource.indexOf(sessionMarker)
+  const workspaceStart = sidePanelSource.indexOf(workspaceMarker)
+
+  expect(sessionStart).toBeGreaterThanOrEqual(0)
+  expect(workspaceStart).toBeGreaterThanOrEqual(0)
+
+  expect(sidePanelSource.slice(sessionStart, workspaceStart)).toContain('onClick={handleSessionFilesBlankClick}')
+  expect(sidePanelSource.slice(workspaceStart)).toContain('onClick={handleWorkspaceFilesBlankClick}')
+})

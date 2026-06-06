@@ -103,6 +103,12 @@ import type { AgentSendInput, AgentPendingFile, FileDialogLargeFile, ModelOption
 import { MAX_ATTACHMENT_SIZE } from '@proma/shared'
 import { fileToBase64, formatFileNames, getFileParentPath } from '@/lib/file-utils'
 import { createClipboardPendingFile, createClipboardTextDraft, makeUniqueAttachmentName } from '@/lib/clipboard-text-attachment'
+import {
+  agentModelSupportsMultimodal,
+  extractPngFileMentions,
+  findBlockedPngFiles,
+  isPngAttachment,
+} from '@/lib/agent-multimodal-guard'
 
 /** 稳定的空 SDKMessage 数组引用，避免 ?? [] 每次创建新引用 */
 const EMPTY_SDK_MESSAGES: SDKMessage[] = []
@@ -460,6 +466,10 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
 
   // 渠道已选但模型未选时，自动选择第一个可用模型
   const globalChannels = useAtomValue(channelsAtom)
+  const currentAgentModelSupportsMultimodal = React.useMemo(
+    () => agentModelSupportsMultimodal(globalChannels, agentChannelId, agentModelId),
+    [globalChannels, agentChannelId, agentModelId],
+  )
 
   // 检查 Agent 渠道列表中是否存在可用的模型（渠道 enabled + 模型 enabled）
   const hasAvailableModel = React.useMemo(() => {
@@ -612,6 +622,22 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
     }
     return dirs
   }, [attachedDirs, workspaceDirs, attachedFiles, wsAttachedFiles])
+
+  const showBlockedPngToast = React.useCallback((filenames: string[]): void => {
+    if (filenames.length === 0) return
+    toast.warning('当前 Agent 模型不支持多模态，不能添加 PNG 图片。', {
+      description: `如需处理图片，请申请或切换到 saas-kimi-k25、saas-qwen35-397b、local-qwen36-27b、saas-glm-51、saas-kimi-k26。已跳过：${formatFileNames(filenames)}`,
+    })
+  }, [])
+
+  const filterBlockedPngFiles = React.useCallback(function filterBlockedPngFiles<T extends { filename?: string; name?: string; mediaType?: string }>(
+    files: T[],
+  ): T[] {
+    const blocked = findBlockedPngFiles(files, currentAgentModelSupportsMultimodal)
+    showBlockedPngToast(blocked)
+    if (blocked.length === 0) return files
+    return files.filter((file) => !isPngAttachment(file))
+  }, [currentAgentModelSupportsMultimodal, showBlockedPngToast])
 
   // 监听消息刷新版本号
   const refreshMap = useAtomValue(agentMessageRefreshAtom)
@@ -828,13 +854,16 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
 
   /** 将 File 对象列表添加为待发送附件 */
   const addFilesAsAttachments = React.useCallback(async (files: File[], sourcePaths?: Map<File, string>): Promise<void> => {
+    const allowedFiles = filterBlockedPngFiles(files)
+    if (allowedFiles.length === 0) return
+
     // 收集已有的 pending 文件名，用于去重
     const usedNames: string[] = pendingFilesRef.current.map((f) => f.filename)
 
     const pathBackedFiles: string[] = []
     const rejectedLargeFiles: string[] = []
 
-    for (const file of files) {
+    for (const file of allowedFiles) {
       try {
         if (file.size > MAX_ATTACHMENT_SIZE) {
           const sourcePath = sourcePaths?.get(file)
@@ -892,15 +921,18 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
     if (rejectedLargeFiles.length > 0) {
       toast.error(`以下文件超过 100MB 且无法取得本地路径，已跳过：${formatFileNames(rejectedLargeFiles)}`)
     }
-  }, [attachSessionFile, makeUniqueFilename, setPendingFiles])
+  }, [attachSessionFile, filterBlockedPngFiles, makeUniqueFilename, setPendingFiles])
 
   const addLargeDialogFilesAsReferences = React.useCallback(async (files: FileDialogLargeFile[]): Promise<void> => {
     if (files.length === 0) return
+    const allowedFiles = filterBlockedPngFiles(files)
+    if (allowedFiles.length === 0) return
+
     const usedNames: string[] = pendingFilesRef.current.map((f) => f.filename)
     const added: string[] = []
     const rejected: string[] = []
 
-    for (const file of files) {
+    for (const file of allowedFiles) {
       try {
         await attachSessionFile(file.path)
         const uniqueFilename = makeUniqueFilename(file.filename, usedNames)
@@ -928,7 +960,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
     if (rejected.length > 0) {
       toast.error(`以下文件附加失败，已跳过：${formatFileNames(rejected)}`)
     }
-  }, [attachSessionFile, makeUniqueFilename, setPendingFiles])
+  }, [attachSessionFile, filterBlockedPngFiles, makeUniqueFilename, setPendingFiles])
 
   /** 打开文件选择对话框 */
   const handleOpenFileDialog = React.useCallback(async (): Promise<void> => {
@@ -940,7 +972,9 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
 
       const oversized: string[] = []
 
-      for (const fileInfo of result.files) {
+      const allowedFiles = filterBlockedPngFiles(result.files)
+
+      for (const fileInfo of allowedFiles) {
         if (fileInfo.size > MAX_ATTACHMENT_SIZE) {
           oversized.push(fileInfo.filename)
           continue
@@ -975,7 +1009,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
     } catch (error) {
       console.error('[AgentView] 文件选择对话框失败:', error)
     }
-  }, [addLargeDialogFilesAsReferences, setPendingFiles])
+  }, [addLargeDialogFilesAsReferences, filterBlockedPngFiles, setPendingFiles])
 
   /** 附加文件夹（不复制，仅记录路径） */
   const handleAttachFolder = React.useCallback(async (): Promise<void> => {
@@ -1224,6 +1258,14 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
     const effectiveText = text || suggestion || ''
     const pendingFilesSnapshot = pendingFilesRef.current
     if (!messagesLoaded || (!effectiveText && pendingFilesSnapshot.length === 0) || !agentChannelId || !hasAvailableModel) return
+
+    const blockedPendingPngFiles = findBlockedPngFiles(pendingFilesSnapshot, currentAgentModelSupportsMultimodal)
+    const blockedMentionPngFiles = currentAgentModelSupportsMultimodal ? [] : extractPngFileMentions(effectiveText)
+    if (blockedPendingPngFiles.length > 0 || blockedMentionPngFiles.length > 0) {
+      showBlockedPngToast([...blockedPendingPngFiles, ...blockedMentionPngFiles])
+      return
+    }
+
     const additionalDirectoriesForRun = new Set(attachedDirs)
     for (const dir of attachedFileDirectories) {
       additionalDirectoriesForRun.add(dir)
@@ -1519,7 +1561,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
         return map
       })
     })
-  }, [inputContent, attachedDirs, attachedFileDirectories, sessionId, agentChannelId, agentModelId, currentWorkspaceId, workspaces, streaming, suggestion, hasAvailableModel, store, setStreamingStates, setPendingFiles, setAgentStreamErrors, setPromptSuggestions, setInputContent, setLiveMessagesMap, permissionMode, messagesLoaded])
+  }, [inputContent, attachedDirs, attachedFileDirectories, sessionId, agentChannelId, agentModelId, currentWorkspaceId, workspaces, streaming, suggestion, hasAvailableModel, currentAgentModelSupportsMultimodal, showBlockedPngToast, store, setStreamingStates, setPendingFiles, setAgentStreamErrors, setPromptSuggestions, setInputContent, setLiveMessagesMap, permissionMode, messagesLoaded])
 
   /** 停止生成 */
   const handleStop = React.useCallback((): void => {
@@ -2129,6 +2171,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
               sessionId={sessionId}
               attachedDirs={workspaceMentionPaths}
               sessionAttachedDirs={sessionMentionPaths}
+              allowFileMention={(entry) => currentAgentModelSupportsMultimodal || !isPngAttachment({ filename: entry.path })}
               htmlValue={inputHtmlContent}
               onHtmlChange={setInputHtmlContent}
               sendWithCmdEnter={sendWithCmdEnter}

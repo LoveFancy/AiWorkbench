@@ -570,6 +570,14 @@ interface AnthropicModelItem {
   id: string
   display_name?: string
   type?: string
+  supportsMultimodal?: boolean
+  supports_multimodal?: boolean
+}
+
+function readSupportsMultimodal(item: { supportsMultimodal?: boolean; supports_multimodal?: boolean }): boolean | undefined {
+  if (typeof item.supportsMultimodal === 'boolean') return item.supportsMultimodal
+  if (typeof item.supports_multimodal === 'boolean') return item.supports_multimodal
+  return undefined
 }
 
 /**
@@ -626,6 +634,7 @@ async function fetchAnthropicCompatibleModels(
     id: item.id,
     name: item.display_name || item.id,
     enabled: true,
+    supportsMultimodal: readSupportsMultimodal(item),
   }))
 
   return {
@@ -641,6 +650,8 @@ async function fetchAnthropicCompatibleModels(
 interface OpenAIModelItem {
   id: string
   owned_by?: string
+  supportsMultimodal?: boolean
+  supports_multimodal?: boolean
 }
 
 /**
@@ -675,6 +686,7 @@ async function fetchOpenAICompatibleModels(baseUrl: string, apiKey: string, prox
     id: item.id,
     name: item.id,
     enabled: true,
+    supportsMultimodal: readSupportsMultimodal(item),
   }))
 
   // 按模型 ID 字母排序，方便用户查找
@@ -695,6 +707,8 @@ interface GoogleModelItem {
   displayName?: string
   description?: string
   supportedGenerationMethods?: string[]
+  supportsMultimodal?: boolean
+  supports_multimodal?: boolean
 }
 
 /**
@@ -735,6 +749,7 @@ async function fetchGoogleModels(baseUrl: string, apiKey: string, proxyUrl?: str
       id,
       name: item.displayName || id,
       enabled: true,
+      supportsMultimodal: readSupportsMultimodal(item),
     }
   })
 

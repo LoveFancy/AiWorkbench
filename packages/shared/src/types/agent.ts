@@ -1544,6 +1544,8 @@ export const AGENT_IPC_CHANNELS = {
   GET_OTHER_WORKSPACE_SKILLS: 'agent:get-other-workspace-skills',
   /** 从其他工作区导入 Skill 到当前工作区 */
   IMPORT_SKILL_FROM_WORKSPACE: 'agent:import-skill-from-workspace',
+  /** 上传 zip 包安装 Skill 到当前工作区 */
+  INSTALL_SKILL_ZIP: 'agent:install-skill-zip',
   /** 从源工作区同步更新已导入的 Skill */
   UPDATE_SKILL_FROM_SOURCE: 'agent:update-skill-from-source',
   /** 读取 SKILL.md 全文内容 */

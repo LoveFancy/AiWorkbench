@@ -10,6 +10,8 @@ import { readFileSync, writeFileSync, existsSync, readdirSync, cpSync, rmSync, m
 import { writeJsonFileAtomic, readJsonFileSafe } from './safe-file'
 import { randomUUID } from 'node:crypto'
 import { join, resolve, relative, isAbsolute, dirname, basename } from 'node:path'
+import { tmpdir } from 'node:os'
+import AdmZip from 'adm-zip'
 import {
   getAgentWorkspacesIndexPath,
   getAgentWorkspacePath,
@@ -29,6 +31,12 @@ interface AgentWorkspacesIndex {
 }
 
 const INDEX_VERSION = 2
+
+interface InstallSkillZipOptions {
+  activeDir?: string
+  inactiveDir?: string
+  tempRoot?: string
+}
 
 /** 读取工作区索引文件，自动执行版本迁移 */
 function readIndex(): AgentWorkspacesIndex {
@@ -647,6 +655,104 @@ export function getAllWorkspaceSkills(workspaceSlug: string): SkillMeta[] {
   const activeSkills = scanSkillsInDir(getWorkspaceSkillsDir(workspaceSlug), true)
   const inactiveSkills = scanSkillsInDir(getInactiveSkillsDir(workspaceSlug), false)
   return [...activeSkills, ...inactiveSkills]
+}
+
+export function installSkillZipToWorkspace(
+  workspaceSlug: string,
+  zipPath: string,
+  options: InstallSkillZipOptions = {},
+): SkillMeta {
+  if (!zipPath.toLowerCase().endsWith('.zip')) {
+    throw new Error('请选择 .zip 格式的 Skill 包')
+  }
+  if (!existsSync(zipPath)) {
+    throw new Error(`Skill zip 包不存在: ${zipPath}`)
+  }
+
+  const activeDir = options.activeDir ?? getWorkspaceSkillsDir(workspaceSlug)
+  const inactiveDir = options.inactiveDir ?? getInactiveSkillsDir(workspaceSlug)
+  const tempRoot = options.tempRoot ?? tmpdir()
+  mkdirSync(activeDir, { recursive: true })
+  mkdirSync(inactiveDir, { recursive: true })
+  mkdirSync(tempRoot, { recursive: true })
+
+  const extractDir = join(tempRoot, `proma-skill-${randomUUID()}`)
+
+  try {
+    mkdirSync(extractDir, { recursive: true })
+    extractSkillZipSafely(zipPath, extractDir)
+
+    const skillRoot = resolveExtractedSkillRoot(extractDir, zipPath)
+    const slug = normalizeSkillSlug(skillRoot.slug)
+    const targetPath = join(activeDir, slug)
+    const inactivePath = join(inactiveDir, slug)
+
+    if (!isPathInside(activeDir, targetPath) || !isPathInside(inactiveDir, inactivePath)) {
+      throw new Error('Skill 名称包含不安全路径')
+    }
+    if (existsSync(targetPath) || existsSync(inactivePath)) {
+      throw new Error(`当前工作区已存在同名 Skill: ${slug}`)
+    }
+
+    cpSync(skillRoot.path, targetPath, { recursive: true })
+    const content = readFileSync(join(targetPath, 'SKILL.md'), 'utf-8')
+    console.log(`[Agent 工作区] 已安装上传 Skill: ${workspaceSlug}/${slug}`)
+    return parseSkillFrontmatter(content, slug, true)
+  } finally {
+    rmSync(extractDir, { recursive: true, force: true })
+  }
+}
+
+function extractSkillZipSafely(zipPath: string, extractDir: string): void {
+  const zip = new AdmZip(zipPath)
+
+  for (const entry of zip.getEntries()) {
+    const entryName = entry.entryName
+    const targetPath = resolve(extractDir, entryName)
+
+    if (!entryName || entryName.startsWith('/') || !isPathInside(extractDir, targetPath)) {
+      throw new Error('Skill zip 包包含不安全路径')
+    }
+
+    if (entry.isDirectory) {
+      mkdirSync(targetPath, { recursive: true })
+      continue
+    }
+
+    mkdirSync(dirname(targetPath), { recursive: true })
+    writeFileSync(targetPath, entry.getData())
+  }
+}
+
+function resolveExtractedSkillRoot(extractDir: string, zipPath: string): { path: string; slug: string } {
+  const rootSkillMdPath = join(extractDir, 'SKILL.md')
+  if (existsSync(rootSkillMdPath)) {
+    return { path: extractDir, slug: basename(zipPath).replace(/\.zip$/i, '') }
+  }
+
+  const skillDirs = readdirSync(extractDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .filter((entry) => existsSync(join(extractDir, entry.name, 'SKILL.md')))
+
+  if (skillDirs.length === 1) {
+    const skillDir = skillDirs[0]!
+    return { path: join(extractDir, skillDir.name), slug: skillDir.name }
+  }
+
+  throw new Error('Skill zip 包必须在根目录或唯一顶层目录中包含 SKILL.md')
+}
+
+function normalizeSkillSlug(slug: string): string {
+  const trimmed = slug.trim()
+  if (!trimmed || trimmed === '.' || trimmed === '..' || trimmed.includes('/') || trimmed.includes('\\')) {
+    throw new Error('Skill 名称包含不安全路径')
+  }
+  return trimmed
+}
+
+function isPathInside(parentDir: string, targetPath: string): boolean {
+  const rel = relative(resolve(parentDir), resolve(targetPath))
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
 }
 
 /** 在 skills/ 和 skills-inactive/ 之间移动来切换启用/禁用 */

@@ -213,6 +213,7 @@ import {
   getAgentWorkspace,
   deleteWorkspaceSkill,
   importSkillFromWorkspace,
+  installSkillZipToWorkspace,
   updateSkillFromSource,
   readWorkspaceSkillContent,
   writeWorkspaceSkillContent,
@@ -2022,6 +2023,28 @@ export function registerIpcHandlers(): void {
     AGENT_IPC_CHANNELS.IMPORT_SKILL_FROM_WORKSPACE,
     async (_, targetSlug: string, sourceSlug: string, skillSlug: string): Promise<SkillMeta> => {
       return importSkillFromWorkspace(targetSlug, sourceSlug, skillSlug)
+    }
+  )
+
+  // 上传 zip 包安装 Skill
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.INSTALL_SKILL_ZIP,
+    async (_, workspaceSlug: string): Promise<SkillMeta | null> => {
+      const win = BrowserWindow.getFocusedWindow()
+      const result = win
+        ? await dialog.showOpenDialog(win, {
+          title: '选择 Skill zip 包',
+          properties: ['openFile'],
+          filters: [{ name: 'Skill zip 包', extensions: ['zip'] }],
+        })
+        : await dialog.showOpenDialog({
+          title: '选择 Skill zip 包',
+          properties: ['openFile'],
+          filters: [{ name: 'Skill zip 包', extensions: ['zip'] }],
+        })
+
+      if (result.canceled || result.filePaths.length === 0) return null
+      return installSkillZipToWorkspace(workspaceSlug, result.filePaths[0]!)
     }
   )
 

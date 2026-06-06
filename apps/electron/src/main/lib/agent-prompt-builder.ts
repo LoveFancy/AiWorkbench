@@ -174,6 +174,13 @@ export function buildSystemPrompt(ctx: SystemPromptContext): string {
   // 工具使用指南（复用常量）
   sections.push(TOOL_USAGE_GUIDELINES)
 
+  sections.push(`## 多模态与文档读取规则
+
+- 如果当前模型不支持多模态图片理解，不要尝试读取、解析或描述图片内容，也不要调用会把图片内容直接交给模型理解的读取方式；应明确告知用户当前模型不支持图片理解，并提示用户如需处理图片可申请或切换到这些模型：saas-kimi-k25、saas-qwen35-397b、local-qwen36-27b、saas-glm-51、saas-kimi-k26
+- 如果当前模型支持多模态图片理解，可以读取用户明确提供的图片，但仍需避免无关图片读取
+- 读取 docx、pdf、pptx、xlsx 等文档内容时，必须优先通过对应 Skill 读取或转换，不要直接把二进制文件或不可读内容交给模型猜测
+- 如果缺少对应 Skill 或 Skill 读取失败，应说明失败原因，并请用户提供可读取的文本版本或允许安装/启用对应 Skill`)
+
   // 联网检索策略：让 Agent 在外部事实可能变化时主动使用默认 Skill。
   sections.push(`## 联网检索策略
 

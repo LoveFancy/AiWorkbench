@@ -58,9 +58,9 @@ describe('渠道预置配置', () => {
       apiKey: 'encrypted:',
       enabled: false,
       models: [
-        { id: 'local-glm-47-flash', name: 'local-glm-47-flash', enabled: true },
+        { id: 'saas-doubao-15-pro-32k', name: 'saas-doubao-15-pro-32k', enabled: true },
         { id: 'saas-kimi-k25', name: 'saas-kimi-k25', enabled: true },
-        { id: 'local-deepseek-v4-pro', name: 'local-deepseek-v4-pro', enabled: true },
+        { id: 'saas-deepseek-v4-pro', name: 'saas-deepseek-v4-pro', enabled: true },
       ],
     })
 
@@ -85,7 +85,7 @@ describe('渠道预置配置', () => {
       apiKey: 'encrypted:user-key',
       enabled: true,
       models: [
-        { id: 'local-glm-47-flash', name: 'local-glm-47-flash', enabled: true },
+        { id: 'saas-doubao-15-pro-32k', name: 'saas-doubao-15-pro-32k', enabled: true },
       ],
     })
 
@@ -98,13 +98,13 @@ describe('渠道预置配置', () => {
     })
 
     expect(result.changed).toBe(true)
-    expect(result.channels[0]?.models).toEqual([
-      { id: 'local-glm-47-flash', name: 'local-glm-47-flash', enabled: true },
-      { id: 'saas-kimi-k25', name: 'saas-kimi-k25', enabled: false },
-      { id: 'local-deepseek-v4-pro', name: 'local-deepseek-v4-pro', enabled: false },
-      { id: 'saas-deepseek-v4-flash', name: 'saas-deepseek-v4-flash', enabled: false },
-      { id: 'saas-deepseek-v4-pro', name: 'saas-deepseek-v4-pro', enabled: false },
-    ])
+    expect(result.channels[0]?.models[0]).toEqual({
+      id: 'saas-doubao-15-pro-32k',
+      name: 'saas-doubao-15-pro-32k',
+      enabled: true,
+      supportsMultimodal: false,
+    })
+    expect(result.channels[0]?.models.slice(1)).toEqual(PROVIDER_DEFAULT_MODELS['huatai-anthropic']?.slice(1))
   })
 
   test('补齐华泰 Anthropic 默认模型时保留用户自定义模型', () => {
@@ -116,7 +116,7 @@ describe('渠道预置配置', () => {
       apiKey: 'encrypted:user-key',
       enabled: true,
       models: [
-        { id: 'local-glm-47-flash', name: 'local-glm-47-flash', enabled: true },
+        { id: 'saas-doubao-15-pro-32k', name: 'saas-doubao-15-pro-32k', enabled: true },
         { id: 'custom-extra-model', name: '自定义模型', enabled: true },
       ],
     })

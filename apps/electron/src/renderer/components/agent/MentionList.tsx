@@ -10,6 +10,10 @@ import * as React from 'react'
 import { cn } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
+export const MENTION_LIST_WIDTH_CLASS = 'w-[560px]'
+export const MENTION_LIST_EMPTY_WIDTH_CLASS = 'w-[560px]'
+export const MENTION_LIST_TOOLTIP_WIDTH_CLASS = 'max-w-[560px]'
+
 export interface MentionListProps<T> {
   items: T[]
   onSelect: (item: T) => void
@@ -77,7 +81,15 @@ export function normalizeMentionTooltipTitle(title: string | undefined): string 
 
 function renderTooltipContent(title: string): React.ReactElement {
   return (
-    <TooltipContent side="right" align="start" sideOffset={8} className="z-[10000] max-w-[360px] whitespace-pre-wrap break-words leading-relaxed">
+    <TooltipContent
+      side="right"
+      align="start"
+      sideOffset={8}
+      className={cn(
+        'z-[10000] whitespace-pre-wrap break-words leading-relaxed',
+        MENTION_LIST_TOOLTIP_WIDTH_CLASS,
+      )}
+    >
       {title}
     </TooltipContent>
   )
@@ -114,7 +126,7 @@ function MentionListInner<T>(
 
   if (items.length === 0) {
     return (
-      <div className="rounded-lg border bg-popover p-2 shadow-lg text-[11px] text-muted-foreground w-[280px]">
+      <div className={cn('rounded-lg border bg-popover p-2 shadow-lg text-[11px] text-muted-foreground', MENTION_LIST_EMPTY_WIDTH_CLASS)}>
         {emptyText}
       </div>
     )
@@ -123,7 +135,7 @@ function MentionListInner<T>(
   return (
     <div
       ref={containerRef}
-      className="rounded-lg border bg-popover shadow-lg overflow-y-auto max-h-[240px] w-[280px]"
+      className={cn('rounded-lg border bg-popover shadow-lg overflow-y-auto max-h-[240px]', MENTION_LIST_WIDTH_CLASS)}
     >
       {items.map((item, index) => {
         const title = normalizeMentionTooltipTitle(titleExtractor?.(item))

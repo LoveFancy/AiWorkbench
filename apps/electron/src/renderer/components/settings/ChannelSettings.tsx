@@ -250,6 +250,7 @@ export function ChannelSettings(): React.ReactElement {
         id: m.id,
         name: m.name,
         enabled: true,
+        supportsMultimodal: m.supportsMultimodal,
       })),
       enabled: true,
     } as Channel

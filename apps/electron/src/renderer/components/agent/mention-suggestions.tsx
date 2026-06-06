@@ -187,6 +187,32 @@ export interface SlashCommandMentionItem {
 
 export type SlashMentionItem = SkillMentionItem | SlashCommandMentionItem
 
+interface SlashMentionItemLayoutClasses {
+  content: string
+  name: string
+  description: string
+}
+
+export function getSlashMentionItemLayoutClasses(kind: SlashMentionItem['kind']): SlashMentionItemLayoutClasses {
+  return kind === 'command'
+    ? {
+        content: 'grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] items-center gap-2 min-w-0 flex-1',
+        name: 'truncate font-medium min-w-0',
+        description: 'truncate text-[10px] text-muted-foreground/55 min-w-0',
+      }
+    : {
+        content: 'grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] items-center gap-2 min-w-0 flex-1',
+        name: 'truncate font-medium min-w-0',
+        description: 'truncate text-[10px] text-muted-foreground/50 min-w-0',
+      }
+}
+
+export function truncateSkillMentionName(name: string): string {
+  const chars = Array.from(name)
+  if (chars.length <= 20) return name
+  return `${chars.slice(0, 19).join('')}…`
+}
+
 export function sortSlashMentionItems(items: SlashMentionItem[]): SlashMentionItem[] {
   return [...items].sort((a, b) => {
     if (a.kind === b.kind) return 0
@@ -277,15 +303,16 @@ export function createSkillMentionSuggestion(
       keyExtractor: (item) => `${item.kind}:${item.id}`,
       titleExtractor: formatSlashMentionTooltip,
       renderItem: (item) => {
+        const layout = getSlashMentionItemLayoutClasses(item.kind)
         if (item.kind === 'command') {
           return (
             <>
               <TerminalSquare className="size-3.5 text-amber-500 flex-shrink-0" />
-              <span className="truncate font-medium w-[158px] flex-shrink-0">
-                {formatSlashCommandDisplayLabel(item)}
-              </span>
-              <span className="truncate text-[10px] text-muted-foreground/55 flex-1 min-w-0">
-                {[item.argumentHint, item.description].filter(Boolean).join('  ')}
+              <span className={layout.content}>
+                <span className={layout.name}>{formatSlashCommandDisplayLabel(item)}</span>
+                <span className={layout.description}>
+                  {[item.argumentHint, item.description].filter(Boolean).join('  ')}
+                </span>
               </span>
             </>
           )
@@ -293,10 +320,12 @@ export function createSkillMentionSuggestion(
         return (
           <>
             <Sparkles className="size-3.5 text-violet-500 flex-shrink-0" />
-            <span className="truncate font-medium flex-1 min-w-0">{item.name}</span>
-            {item.description && (
-              <span className="truncate text-[10px] text-muted-foreground/50 max-w-[120px]">{item.description}</span>
-            )}
+            <span className={layout.content}>
+              <span className={layout.name}>{truncateSkillMentionName(item.name)}</span>
+              {item.description && (
+                <span className={layout.description}>{item.description}</span>
+              )}
+            </span>
           </>
         )
       },

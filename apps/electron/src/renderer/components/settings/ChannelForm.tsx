@@ -320,6 +320,13 @@ export function ChannelForm({ channel, onSaved, onAutoSaved, onAgentEligibilityC
     )
   }
 
+  /** 手工调整模型是否支持多模态图片理解 */
+  const handleToggleModelMultimodal = (modelId: string): void => {
+    setModels((prev) =>
+      prev.map((m) => (m.id === modelId ? { ...m, supportsMultimodal: !m.supportsMultimodal } : m))
+    )
+  }
+
   /** 从供应商 API 拉取可用模型列表 */
   const handleFetchModels = async (): Promise<void> => {
     if (!apiKey.trim() || !baseUrl.trim()) return
@@ -634,6 +641,21 @@ export function ChannelForm({ channel, onSaved, onAutoSaved, onAgentEligibilityC
                       <span className="text-muted-foreground ml-1">({model.id})</span>
                     )}
                   </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    type="button"
+                    onClick={() => handleToggleModelMultimodal(model.id)}
+                    className={cn(
+                      'h-7 min-w-[72px] flex-shrink-0 text-xs',
+                      model.supportsMultimodal
+                        ? 'border-emerald-500/35 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-300'
+                        : 'text-muted-foreground'
+                    )}
+                    title="切换模型是否支持多模态图片理解"
+                  >
+                    {model.supportsMultimodal ? '多模态' : '纯文本'}
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"

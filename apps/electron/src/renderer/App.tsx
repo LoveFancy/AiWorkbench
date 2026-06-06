@@ -221,7 +221,12 @@ function PlatformChannelSync(): React.ReactElement {
       baseUrl: allEnabled.find((m) => m.baseUrl)?.baseUrl ?? '',
       apiKey: platformApiKey,
       apiKeyConfigured: true,
-      models: allEnabled.map((m) => ({ id: m.id, name: m.name, enabled: true })),
+      models: allEnabled.map((m) => ({
+        id: m.id,
+        name: m.name,
+        enabled: true,
+        supportsMultimodal: m.supportsMultimodal,
+      })),
       enabled: true,
     } as Channel
 

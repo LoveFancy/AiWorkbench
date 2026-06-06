@@ -437,6 +437,8 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
   const [workspaceFilesPath, setWorkspaceFilesPath] = React.useState<string | null>(null)
   const [sessionCreateDir, setSessionCreateDir] = React.useState<string | null>(null)
   const [workspaceCreateDir, setWorkspaceCreateDir] = React.useState<string | null>(null)
+  const [sessionSelectionClearSignal, setSessionSelectionClearSignal] = React.useState(0)
+  const [workspaceSelectionClearSignal, setWorkspaceSelectionClearSignal] = React.useState(0)
   const [createTarget, setCreateTarget] = React.useState<CreateEntryTarget | null>(null)
   const [createName, setCreateName] = React.useState('')
   const [createError, setCreateError] = React.useState<string | null>(null)
@@ -471,6 +473,18 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
     setCreateTarget(target)
     setCreateName(target.type === 'file' ? 'untitled.md' : '新建文件夹')
     setCreateError(null)
+  }, [])
+
+  const handleSessionFilesBlankClick = React.useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget) return
+    setSessionCreateDir(null)
+    setSessionSelectionClearSignal((signal) => signal + 1)
+  }, [])
+
+  const handleWorkspaceFilesBlankClick = React.useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget) return
+    setWorkspaceCreateDir(null)
+    setWorkspaceSelectionClearSignal((signal) => signal + 1)
   }, [])
 
   const closeCreateDialog = React.useCallback(() => {
@@ -636,7 +650,7 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                     onFilePreview={handleFilePreview}
                   />
                   {/* 会话文件内容区（独立滚动） */}
-                  <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin">
+                  <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin" onClick={handleSessionFilesBlankClick}>
                     {attachedFiles.length > 0 && (
                       <AttachedFilesSection
                         attachedFiles={attachedFiles}
@@ -668,6 +682,7 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                         embedded
                         hideEmpty={hasSessionAttachedItems}
                         displayRoots={{ sessionPath, workspaceFilesPath }}
+                        clearSelectionSignal={sessionSelectionClearSignal}
                         onAddToChat={handleAddToChat}
                         onFilePreview={handleFilePreview}
                         onSelectedDirectoryChange={setSessionCreateDir}
@@ -768,7 +783,7 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                   onFilePreview={handleFilePreview}
                 />
                 {/* 工作区文件内容区（独立滚动） */}
-                <div className="flex-1 min-h-0 overflow-y-auto pb-1 scrollbar-thin">
+                <div className="flex-1 min-h-0 overflow-y-auto pb-1 scrollbar-thin" onClick={handleWorkspaceFilesBlankClick}>
                   {wsAttachedFiles.length > 0 && (
                     <AttachedFilesSection
                       attachedFiles={wsAttachedFiles}
@@ -801,6 +816,7 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                         embedded
                         hideEmpty={hasWorkspaceAttachedItems}
                         displayRoots={{ sessionPath, workspaceFilesPath }}
+                        clearSelectionSignal={workspaceSelectionClearSignal}
                         onAddToChat={handleAddToChat}
                         onFilePreview={handleFilePreview}
                         onSelectedDirectoryChange={setWorkspaceCreateDir}

@@ -75,11 +75,20 @@ export const PROVIDER_DEFAULT_MODELS: Partial<Record<ProviderType, ChannelModel[
     { id: 'glm-5.1', name: 'GLM-5.1', enabled: true },
   ],
   'huatai-anthropic': [
-    { id: 'local-glm-47-flash', name: 'local-glm-47-flash', enabled: false },
-    { id: 'saas-kimi-k25', name: 'saas-kimi-k25', enabled: false },
-    { id: 'local-deepseek-v4-pro', name: 'local-deepseek-v4-pro', enabled: false },
-    { id: 'saas-deepseek-v4-flash', name: 'saas-deepseek-v4-flash', enabled: false },
-    { id: 'saas-deepseek-v4-pro', name: 'saas-deepseek-v4-pro', enabled: false },
+    { id: 'saas-doubao-15-pro-32k', name: 'saas-doubao-15-pro-32k', enabled: false, supportsMultimodal: false },
+    { id: 'saas-deepseek-v32', name: 'saas-deepseek-v32', enabled: false, supportsMultimodal: false },
+    { id: 'local-deepseek-v32', name: 'local-deepseek-v32', enabled: false, supportsMultimodal: false },
+    { id: 'local-qwen36-27b', name: 'local-qwen36-27b', enabled: false, supportsMultimodal: true },
+    { id: 'local-qwen3-235b-nothink-moe', name: 'local-qwen3-235b-nothink-moe', enabled: false, supportsMultimodal: false },
+    { id: 'saas-doubao-seed-20-pro', name: 'saas-doubao-seed-20-pro', enabled: false, supportsMultimodal: true },
+    { id: 'saas-kimi-k25', name: 'saas-kimi-k25', enabled: false, supportsMultimodal: true },
+    { id: 'saas-kimi-k26', name: 'saas-kimi-k26', enabled: false, supportsMultimodal: true },
+    { id: 'saas-qwen35-397b', name: 'saas-qwen35-397b', enabled: false, supportsMultimodal: true },
+    { id: 'local-qwen3-vl-30b', name: 'local-qwen3-vl-30b', enabled: false, supportsMultimodal: true },
+    { id: 'saas-glm-51', name: 'saas-glm-51', enabled: false, supportsMultimodal: true },
+    { id: 'saas-qwen36-plus', name: 'saas-qwen36-plus', enabled: false, supportsMultimodal: false },
+    { id: 'saas-deepseek-v4-flash', name: 'saas-deepseek-v4-flash', enabled: false, supportsMultimodal: false },
+    { id: 'saas-deepseek-v4-pro', name: 'saas-deepseek-v4-pro', enabled: false, supportsMultimodal: false },
   ],
   'huatai-openai': [
     { id: 'local-deepseek-v4-pro', name: 'local-deepseek-v4-pro', enabled: true },
@@ -160,6 +169,8 @@ export interface ChannelModel {
   name: string
   /** 是否启用 */
   enabled: boolean
+  /** 是否支持多模态图片理解 */
+  supportsMultimodal?: boolean
 }
 
 /**

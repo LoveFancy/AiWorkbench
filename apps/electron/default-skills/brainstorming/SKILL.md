@@ -1,9 +1,9 @@
 ---
 name: brainstorming
-description: "You MUST use this before any creative work - creating features, building components, adding functionality, or modifying behavior. Explores user intent, requirements and design before implementation."
-version: "1.0.0"
+description: "用于任何创意或需求探索类工作，包括创建功能、构建组件、增加能力或修改行为。在动手实现前先澄清用户意图、约束、成功标准，并形成可执行设计。"
+version: "1.0.1"
 ---
-version: "1.0.0"
+version: "1.0.1"
 ---
 # Brainstorming Ideas Into Designs
 

@@ -18,3 +18,17 @@ test('MCP AI 配置提示词指定可用 MCP 的查找来源和安全校验', ()
   expect(source).toContain('mcp.so')
   expect(source).toContain('安装前要核对')
 })
+
+test('华泰 SkillHub 平台能力说明收纳到标题旁 tooltip', () => {
+  expect(source).toContain('SkillHub 是泰为平台提供的公司级技能中枢平台')
+  expect(source).toContain('Skills 元数据管理，权限管理，版本管理，开发调试，上传下载等全生命周期管理能力')
+  expect(source).toContain('华泰 SkillHub 说明')
+  expect(source).not.toContain('mb-3 flex items-start gap-2 rounded-lg bg-muted/50')
+})
+
+test('Skills 设置支持上传 zip 包安装到当前工作区', () => {
+  expect(source).toContain('installSkillZip')
+  expect(source).toContain('上传 Zip')
+  expect(source).toContain('installingZipSkill')
+  expect(source).toContain('已安装 Skill')
+})

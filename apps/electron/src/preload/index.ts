@@ -592,6 +592,9 @@ export interface ElectronAPI {
   /** 从其他工作区导入 Skill */
   importSkillFromWorkspace: (targetSlug: string, sourceSlug: string, skillSlug: string) => Promise<SkillMeta>
 
+  /** 上传 zip 包安装 Skill */
+  installSkillZip: (workspaceSlug: string) => Promise<SkillMeta | null>
+
   /** 从源工作区同步更新已导入的 Skill */
   updateSkillFromSource: (targetSlug: string, skillSlug: string) => Promise<SkillMeta>
 
@@ -1689,6 +1692,10 @@ const electronAPI: ElectronAPI = {
       sourceSlug,
       skillSlug,
     )
+  },
+
+  installSkillZip: (workspaceSlug: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.INSTALL_SKILL_ZIP, workspaceSlug)
   },
 
   updateSkillFromSource: (targetSlug: string, skillSlug: string) => {

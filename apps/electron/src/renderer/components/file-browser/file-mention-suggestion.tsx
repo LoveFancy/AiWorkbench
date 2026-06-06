@@ -21,6 +21,7 @@ export function createFileMentionSuggestion(
   attachedDirsRef?: React.RefObject<string[]>,
   mentionItemCountRef?: React.MutableRefObject<number>,
   sessionAttachedDirsRef?: React.RefObject<string[]>,
+  allowEntry?: (entry: FileIndexEntry) => boolean,
 ): Omit<SuggestionOptions<FileIndexEntry>, 'editor'> {
   let lastResult: FileSearchResult | null = null
   let missingWorkspaceToastShown = false
@@ -55,8 +56,16 @@ export function createFileMentionSuggestion(
           additionalPaths.length > 0 ? additionalPaths : undefined,
           sessionPaths.length > 0 ? sessionPaths : undefined,
         )
-        lastResult = result
-        return result.entries
+        const filteredResult = allowEntry
+          ? {
+              ...result,
+              entries: result.entries.filter(allowEntry),
+              sessionEntries: result.sessionEntries.filter(allowEntry),
+              workspaceEntries: result.workspaceEntries.filter(allowEntry),
+            }
+          : result
+        lastResult = filteredResult
+        return filteredResult.entries
       } catch(e) {
         console.error('[FileMention] search failed:', e)
         lastResult = null

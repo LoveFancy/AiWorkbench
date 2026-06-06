@@ -23,11 +23,11 @@ describe('内置联网检索 Skill', () => {
     const script = readFileSync(scriptPath, 'utf-8')
 
     expect(content).toContain('name: web-search')
-    expect(content).toContain('version: "1.0.1"')
+    expect(content).toContain('version: "1.0.2"')
     expect(content).toContain('node scripts/search.mjs')
     expect(content).toContain('--time-range OneWeek')
     expect(content).toContain('--max-content-chars 2000')
-    expect(content).toContain('ignores proxy environment variables')
+    expect(content).toContain('忽略代理环境变量')
     expect(script).toContain('agent: false')
     expect(script).toContain("DEFAULT_TIME_RANGE = 'OneMonth'")
     expect(script).toContain('DEFAULT_MAX_CONTENT_CHARS = 600')

@@ -1,7 +1,7 @@
 ---
 name: drawio
-description: Always use when user asks to create, generate, draw, or design a diagram, flowchart, architecture diagram, ER diagram, sequence diagram, class diagram, network diagram, mockup, wireframe, or UI sketch, or mentions draw.io, drawio, drawoi, .drawio files, or diagram export to PNG/SVG/PDF.
-version: "1.0.0"
+description: 当用户需要创建、生成、绘制或设计图表时使用，包括流程图、架构图、ER 图、时序图、类图、网络图、原型图、线框图、UI 草图，或提到 draw.io、drawio、.drawio 文件，以及导出 PNG/SVG/PDF。
+version: "1.0.1"
 ---
 
 # Draw.io Diagram Skill
