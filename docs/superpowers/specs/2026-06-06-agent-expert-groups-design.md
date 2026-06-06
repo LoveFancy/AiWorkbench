@@ -492,13 +492,210 @@ mode: 'inherit' | 'restrict'
 
 ## UI 设计
 
-Agent 模式增加“召唤专家”入口：
+专家团 UI 参考 WorkBuddy 的三段式体验，但适配 WorkMate 的 Agent 会话模型：
 
-- 位置：`AgentHeader` 或输入区左侧快捷入口。
-- 默认状态显示“通用 Agent”。
-- 点击后展示专家团列表。
-- 选择专家团后创建新 Agent 会话，并切换到该会话。
-- 会话列表展示专家团标签。
+```text
+看到专家团 -> 理解它能做什么 -> 点击召唤 -> 自动新建专家会话
+```
+
+第一版提供两个入口：
+
+1. **Agent 主界面：召唤专家**，用于快速创建专家团会话。
+2. **设置页：专家团**，用于查看内置和插件提供的专家团、诊断配置问题、从详情页召唤专家团。
+
+两个入口使用同一套专家团数据，不区分两套发现逻辑。
+
+### Agent 主界面入口
+
+Agent 模式增加“召唤专家”入口，位置可以在 `AgentHeader` 或输入区左侧快捷入口：
+
+```text
+[ 通用 Agent ▾ ]    [召唤专家]    [当前工作区]    [模型选择]
+```
+
+默认状态显示“通用 Agent”。点击“召唤专家”后打开专家团选择面板。
+
+### 专家团目录面板
+
+目录面板参考 WorkBuddy 的专家卡片网格，但视觉上保持 WorkMate 工具型产品的信息密度。顶部提供分类、搜索和“我的专家”入口：
+
+```text
+[专家团] [技能] [连接器]                         [搜索专家团/角色/描述] [我的专家]
+
+┌──────────────────────────────┐ ┌──────────────────────────────┐
+│ 产品专家团                    │ │ 研发专家团                    │
+│ 主角色：产品负责人             │ │ 主角色：技术负责人             │
+│ 拆需求、写 PRD、生成 Story...   │ │ 架构设计、代码实现、Review...   │
+│ [PRD] [Story] [需求分析]       │ │ [架构] [代码] [质量]           │
+│ 3 SubAgents · 2 Skills · 1 MCP │ │ 4 SubAgents · 3 Skills         │
+└──────────────────────────────┘ └──────────────────────────────┘
+```
+
+卡片字段：
+
+- 专家团名称。
+- 来源：`内置` / `插件：dpmp-assist`。
+- 主角色名称。
+- 一句话简介。
+- 能力标签。
+- 能力摘要：`3 SubAgents · 2 Skills · 1 MCP`。
+- 状态：`可用` / `插件已禁用` / `配置异常`。
+
+第一版只需要实现 `专家团` 分类。`技能`、`连接器` 和 `我的专家` 可以先显示为未来扩展入口或不展示，不进入 MVP 必须交付范围。
+
+### 专家详情弹窗
+
+点击专家团卡片后打开详情弹窗。详情弹窗用于解释能力、依赖和召唤后会发生什么：
+
+```text
+┌────────────────────────────────────────────┐
+│ [图标] 产品专家团                         X │
+│ 主角色：产品负责人   [内置] [产品协作]       │
+│ 来源：workmate-experts                     │
+│ 状态：可用                                 │
+│                                            │
+│ 能力介绍                                   │
+│ 适合将模糊想法拆成需求、PRD、Story 和任务。 │
+│                                            │
+│ 适用场景                                   │
+│ [需求澄清] [PRD 编写] [Story 创建]          │
+│                                            │
+│ 专家成员                                   │
+│ 产品负责人 · requirement-analyst · ux...   │
+│                                            │
+│ 依赖能力                                   │
+│ Skills: prd-writer, story-mapper           │
+│ MCP: dpmp                                  │
+│                                            │
+│ 试试这样问                                 │
+│ > 帮我把这个想法整理成 PRD                 │
+│ > 基于这份需求创建 DPMP Story              │
+│ > 帮我评审这个交互方案                     │
+│                                            │
+│              [召唤产品专家团]              │
+└────────────────────────────────────────────┘
+```
+
+详情弹窗必须展示来源和状态，因为专家团来自 plugin，运行可用性依赖 plugin 状态和配置完整性。
+
+异常态示例：
+
+```text
+状态：不可用
+原因：来源插件已禁用
+操作：[去插件管理启用]
+```
+
+### 召唤中状态
+
+点击“召唤专家团”后进入召唤中状态，不在当前会话切换角色，而是创建新会话：
+
+```text
+正在召唤产品专家团...
+正在创建专家会话
+正在加载 SubAgent / Skills / MCP
+```
+
+召唤流程：
+
+```text
+点击召唤
+  -> 创建新 Agent 会话
+  -> 写入 expertGroupId / expertPluginId
+  -> 切换到新会话
+  -> 显示专家团模式欢迎状态
+```
+
+加载态可以使用轻量居中遮罩，避免长时间全屏阻塞。创建成功后进入新会话，标题临时为 `{专家团名称} · 新任务`，首轮用户消息后复用现有自动标题生成逻辑。
+
+### 设置页专家团菜单
+
+设置页新增 Agent 模式专属菜单：
+
+```text
+SKILL/MCP
+专家团
+插件管理
+```
+
+`专家团` 设置页是 catalog 和诊断入口，不是唯一召唤入口。页面按来源和状态分组：
+
+```text
+专家团
+[搜索专家团/角色/描述]
+
+内置专家团
+- 产品专家团       可用     workmate-experts
+- 研发专家团       可用     workmate-experts
+
+插件专家团
+- DPMP 交付专家团  可用     dpmp-assist
+- 数据分析专家团   异常     data-plugin
+
+异常
+- 运营专家团       插件已禁用
+```
+
+每个条目展示：
+
+- 名称。
+- 来源 plugin。
+- 来源类型：内置 / 用户安装。
+- 状态。
+- SubAgent / Skill / MCP 数量。
+- 操作：`查看详情`、`召唤`、`打开来源插件`。
+
+### 专家团状态
+
+UI 状态模型：
+
+```ts
+type ExpertGroupStatus =
+  | 'available'
+  | 'plugin_disabled'
+  | 'plugin_uninstalled'
+  | 'invalid_manifest'
+  | 'missing_subagent'
+  | 'missing_skill'
+  | 'mcp_conflict'
+```
+
+展示文案：
+
+```text
+可用
+插件已禁用
+来源插件已卸载
+配置错误
+缺少子专家
+缺少技能
+连接器冲突
+```
+
+### 视觉风格
+
+- 参考 WorkBuddy 的“卡片目录 + 详情弹窗 + 召唤中状态”，但不照搬大圆角和营销式卡片。
+- WorkMate 采用工具型布局，信息密度略高，卡片圆角控制在 8px 左右。
+- 使用 `lucide-react` 图标，例如 `Users`、`Bot`、`Puzzle`、`Plug`、`ShieldCheck`。
+- 状态颜色保持克制：可用用中性/绿色，异常用橙/红。
+- 卡片只放摘要，详情弹窗承载完整说明和依赖诊断。
+
+### 推荐组件拆分
+
+```text
+apps/electron/src/renderer/components/agent/
+  ExpertSummonButton.tsx
+  ExpertGroupPicker.tsx
+  ExpertSummoningOverlay.tsx
+
+apps/electron/src/renderer/components/settings/
+  ExpertGroupSettings.tsx
+
+apps/electron/src/renderer/components/expert-groups/
+  ExpertGroupCard.tsx
+  ExpertGroupDetailDialog.tsx
+  ExpertGroupStatusBadge.tsx
+```
 
 交互规则：
 
@@ -546,6 +743,22 @@ createExpertSessionAtom
 ```
 
 状态使用 Jotai，符合项目约束。
+
+`settings-tab.ts` 新增：
+
+```ts
+'experts'
+```
+
+`settings-tabs.tsx` 在 Agent 模式下新增 `专家团` 菜单，位置放在 `SKILL/MCP` 和 `插件管理` 之间：
+
+```ts
+const EXPERTS_TAB: TabItem = {
+  id: 'experts',
+  label: '专家团',
+  icon: <Users size={16} />,
+}
+```
 
 ## 兼容性
 
@@ -628,9 +841,15 @@ Plugin 兼容：
 ### UI 测试
 
 - 专家团列表加载。
+- Agent 主界面“召唤专家”入口可打开专家团目录。
+- 专家团卡片可打开详情弹窗。
+- 详情弹窗展示来源、状态、SubAgent、Skills、MCP。
 - 点击专家团后创建新会话。
+- 召唤中状态展示，并在创建完成后切换到新会话。
 - 当前会话不被原地切换。
 - 会话列表显示专家团标签。
+- 设置页新增 `专家团` 菜单。
+- 设置页按内置、插件、异常状态展示专家团。
 
 ### 回归测试
 
@@ -650,7 +869,8 @@ Plugin 兼容：
 7. 增加 IPC 和 preload API。
 8. 增加 Jotai atoms。
 9. 增加 Agent UI 选择入口。
-10. 增加测试。
+10. 增加设置页 `专家团` 菜单。
+11. 增加测试。
 
 ## 推荐 MVP
 
@@ -659,6 +879,10 @@ Plugin 兼容：
 - plugin 下 `expert-groups/*.json` 扫描。
 - `plugin.json` 可选 `expertGroups` 快速索引。
 - 专家团列表 UI。
+- Agent 主界面“召唤专家”入口。
+- 专家团详情弹窗。
+- 召唤中状态。
+- 设置页 `专家团` 菜单。
 - 选择专家团新建会话。
 - 会话绑定 `expertGroupId/expertPluginId`。
 - 后端强制专家团绑定不可变。
@@ -676,6 +900,7 @@ Plugin 兼容：
 - 专家团导入导出。
 - 复杂权限矩阵。
 - 专家团运行统计。
+- `技能`、`连接器` 和 `我的专家` 独立页面。
 
 ## 设计结论
 
