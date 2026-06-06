@@ -6,9 +6,26 @@ import type { LoginResult, PersistedAuthData, AuthInfo } from './types'
 
 const AUTH_FILE = 'auth.json'
 
+export interface AuthPathProvider {
+  getConfigDir(): string
+  getSettingsPath(): string
+}
+
+const defaultPathProvider: AuthPathProvider = {
+  getConfigDir,
+  getSettingsPath,
+}
+
+let pathProvider = defaultPathProvider
+
+/** 测试专用：避免全局 mock config-paths 影响同一进程里的其他测试。 */
+export function setAuthPathProviderForTest(provider: AuthPathProvider | null): void {
+  pathProvider = provider ?? defaultPathProvider
+}
+
 /** 从 settings.json 读取 eipGatewayBase，未配置时回退到生产地址 */
 function getEipGatewayBase(): string {
-  const settingsPath = getSettingsPath()
+  const settingsPath = pathProvider.getSettingsPath()
   try {
     if (existsSync(settingsPath)) {
       const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'))
@@ -24,7 +41,7 @@ function getEipGatewayBase(): string {
 const FORCED_REAUTH_DAYS = 180
 
 function getAuthFilePath(): string {
-  return join(getConfigDir(), AUTH_FILE)
+  return join(pathProvider.getConfigDir(), AUTH_FILE)
 }
 
 // ===== 总入口：完整登录流程 =====

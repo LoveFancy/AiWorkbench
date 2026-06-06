@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 const mockEncryptStore = new Map<string, string>()
 let encryptCounter = 0
 
-vi.mock('electron', () => ({
+mock.module('electron', () => ({
   safeStorage: {
     isEncryptionAvailable: () => true,
     encryptString: (s: string) => {
@@ -22,13 +22,10 @@ vi.mock('electron', () => ({
   },
 }))
 
-// ============ Mock getConfigDir → 使用临时目录 ============
+// ============ 临时配置目录 ============
 
 let tempDir: string
-
-vi.mock('../../main/lib/config-paths', () => ({
-  getConfigDir: () => tempDir,
-}))
+let setAuthPathProviderForTest: (provider: import('../auth-service').AuthPathProvider | null) => void
 
 // ============ 辅助函数 ============
 
@@ -52,7 +49,7 @@ function mockEipGateway(scenario: Partial<MockScenario> = {}) {
   }
   const s = { ...defaults, ...scenario }
 
-  return vi.fn().mockImplementation(async (url: string | URL | Request, init?: RequestInit) => {
+  return mock(async (url: string | URL | Request, init?: RequestInit) => {
     const urlStr = url.toString()
     if (urlStr.includes('/gateway/login')) {
       return new Response(null, {
@@ -79,15 +76,20 @@ function setMockFetch(fetchFn: unknown): void {
 // ============ 测试 ============
 
 describe('auth-service 集成测试', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    ;({ setAuthPathProviderForTest } = await import('../auth-service'))
     tempDir = mkdtempSync(join(tmpdir(), 'workmate-test-auth-'))
+    setAuthPathProviderForTest({
+      getConfigDir: () => tempDir,
+      getSettingsPath: () => join(tempDir, 'settings.json'),
+    })
     mockEncryptStore.clear()
     encryptCounter = 0
   })
 
   afterEach(() => {
+    setAuthPathProviderForTest(null)
     rmSync(tempDir, { recursive: true, force: true })
-    vi.restoreAllMocks()
   })
 
   describe('loginWithEipGateway - 完整流程', () => {
@@ -121,12 +123,17 @@ describe('auth-service 集成测试', () => {
 
     it('登录成功但获取长期 Token 失败 → 返回失败', async () => {
       const shortToken = createTestJwt({ mid: '022480' })
-      const mockFetch = vi.fn()
-        .mockResolvedValueOnce(new Response(null, {
+      let callCount = 0
+      const mockFetch = mock(async () => {
+        callCount += 1
+        if (callCount === 1) {
+          return new Response(null, {
           status: 200,
           headers: { 'set-cookie': `EIPGW-TOKEN=${shortToken}; Path=/` },
-        }))
-        .mockResolvedValueOnce(new Response('Internal Error', { status: 500 }))
+          })
+        }
+        return new Response('Internal Error', { status: 500 })
+      })
 
       setMockFetch(mockFetch)
 
@@ -138,7 +145,9 @@ describe('auth-service 集成测试', () => {
     })
 
     it('网络异常 → 返回异常信息', async () => {
-      setMockFetch(vi.fn().mockRejectedValue(new Error('Network error')))
+      setMockFetch(mock(async () => {
+        throw new Error('Network error')
+      }))
 
       const { loginWithEipGateway } = await import('../auth-service')
       const result = await loginWithEipGateway('022480', 'pass')

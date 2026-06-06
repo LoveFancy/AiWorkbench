@@ -46,6 +46,8 @@ import type {
   ProviderType,
   ChannelModelTestResult,
 } from '@proma/shared'
+import { normalizeAnthropicProviderUrl } from '@proma/core'
+import { getProviderLogo } from '@/lib/model-logo'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   AlertDialog,
@@ -82,66 +84,61 @@ interface ChannelFormProps {
 }
 
 /** 所有可选供应商 */
-const PROVIDER_OPTIONS: ProviderType[] = ['anthropic', 'openai', 'huatai-anthropic', 'huatai-openai', 'deepseek', 'google', 'kimi-api', 'kimi-coding', 'zhipu', 'minimax', 'doubao', 'qwen', 'custom']
+const PROVIDER_OPTIONS: ProviderType[] = ['anthropic', 'anthropic-compatible', 'openai', 'huatai-anthropic', 'huatai-openai', 'deepseek', 'google', 'kimi-api', 'kimi-coding', 'zhipu', 'zhipu-coding', 'minimax', 'doubao', 'qwen', 'xiaomi', 'xiaomi-token-plan', 'custom']
 
 /** 供应商选项（用于 SettingsSelect） */
 const PROVIDER_SELECT_OPTIONS = PROVIDER_OPTIONS.map((p) => ({
   value: p,
   label: PROVIDER_LABELS[p],
+  icon: getProviderLogo(p),
 }))
 
 /** 各供应商的 Chat 端点路径，用于 Base URL 预览 */
 const PROVIDER_CHAT_PATHS: Record<ProviderType, string> = {
   anthropic: '/v1/messages',
+  'anthropic-compatible': '/v1/messages',
   openai: '/chat/completions',
   deepseek: '/messages',
   google: '/v1beta/models/{model}:generateContent',
   'kimi-api': '/messages',
   'kimi-coding': '/messages',
   zhipu: '/chat/completions',
+  'zhipu-coding': '/messages',
   minimax: '/v1/messages',
   'huatai-anthropic': '/v1/messages',
   'huatai-openai': '/chat/completions',
   doubao: '/chat/completions',
   qwen: '/chat/completions',
+  xiaomi: '/v1/messages',
+  'xiaomi-token-plan': '/v1/messages',
   custom: '/chat/completions',
 }
+
+/** 走 Anthropic 协议的供应商集合（共用 /v1/messages 端点） */
+const ANTHROPIC_PROTOCOL_PROVIDERS: ReadonlySet<ProviderType> = new Set<ProviderType>([
+  'anthropic',
+  'anthropic-compatible',
+  'deepseek',
+  'kimi-api',
+  'kimi-coding',
+  'zhipu-coding',
+  'minimax',
+  'huatai-anthropic',
+  'xiaomi',
+  'xiaomi-token-plan',
+])
 
 /**
  * 生成 API 端点预览 URL
  *
- * Anthropic 特殊处理：如果 baseUrl 已包含 /v1，则不重复添加。
+ * Anthropic 协议供应商：复用 normalizeAnthropicProviderUrl 计算 base，再拼 /messages，
+ * 与运行时 channel-manager / AnthropicAdapter 的规范化逻辑保持一致。
  */
 function buildPreviewUrl(baseUrl: string, provider: ProviderType): string {
-  let trimmed = baseUrl.trim().replace(/\/+$/, '')
-
-  if (provider === 'anthropic' || provider === 'huatai-anthropic' || provider === 'deepseek' || provider === 'kimi-api' || provider === 'kimi-coding' || provider === 'minimax') {
-    // 去除用户误填的 /messages 后缀，与 normalizeAnthropicBaseUrl 保持一致
-    trimmed = trimmed.replace(/\/messages$/, '')
-    // MiniMax 的 Anthropic 协议根路径为 /anthropic，实际 API 位于 /v1/messages
-    if (provider === 'minimax') {
-      if (trimmed.match(/\/v\d+$/)) {
-        return `${trimmed}/messages`
-      }
-      return `${trimmed}/v1/messages`
-    }
-    // DeepSeek / Kimi 的 baseUrl 已带非版本路径（/anthropic、/coding/v1），直接拼 /messages
-    if (provider === 'deepseek' || provider === 'kimi-api' || provider === 'kimi-coding') {
-      return `${trimmed}/messages`
-    }
-    if (trimmed.match(/\/v\d+$/)) {
-      return `${trimmed}/messages`
-    }
-    // 已有非根路径时不追加 /v1
-    try {
-      const pathname = new URL(trimmed).pathname
-      if (pathname !== '/' && pathname !== '') {
-        return `${trimmed}/messages`
-      }
-    } catch {}
-    return `${trimmed}/v1/messages`
+  if (ANTHROPIC_PROTOCOL_PROVIDERS.has(provider)) {
+    return `${normalizeAnthropicProviderUrl(baseUrl, provider)}/messages`
   }
-
+  const trimmed = baseUrl.trim().replace(/\/+$/, '')
   return `${trimmed}${PROVIDER_CHAT_PATHS[provider]}`
 }
 
@@ -535,19 +532,19 @@ export function ChannelForm({ channel, onSaved, onAutoSaved, onAgentEligibilityC
       {/* 基本信息卡片 */}
       <SettingsSection title="基本信息">
         <SettingsCard>
-          <SettingsInput
-            label="配置名称"
-            value={name}
-            onChange={setName}
-            placeholder="例如: My Anthropic"
-            required
-          />
           <SettingsSelect
             label="供应商类型"
             value={provider}
             onValueChange={handleProviderChange}
             options={PROVIDER_SELECT_OPTIONS}
             placeholder="选择供应商"
+          />
+          <SettingsInput
+            label="供应商名称"
+            value={name}
+            onChange={setName}
+            placeholder="例如: My Anthropic"
+            required
           />
           <SettingsInput
             label="Base URL"

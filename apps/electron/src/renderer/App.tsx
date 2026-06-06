@@ -6,6 +6,7 @@ import { TutorialBanner } from './components/tutorial/TutorialBanner'
 import { EnvironmentCheckDialog } from './components/environment/EnvironmentCheckDialog'
 import { MigrationImportDialog } from './components/migration/MigrationImportDialog'
 import { TooltipProvider } from './components/ui/tooltip'
+import { SettingsDialog } from './components/settings/SettingsDialog'
 import { LoginView } from '@/auth/renderer'
 import { loginDialogOpenAtom, authStateAtom } from '@/auth/renderer'
 import { conversationsAtom, channelsAtom } from './atoms/chat-atoms'
@@ -107,6 +108,7 @@ export default function App(): React.ReactElement {
   return (
     <TooltipProvider delayDuration={200}>
       <AppShell contextValue={contextValue} />
+      <SettingsDialog />
       <TutorialBanner />
       <GlobalEnvironmentCheckDialog />
       <MigrationImportDialog />
