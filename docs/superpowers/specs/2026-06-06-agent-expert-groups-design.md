@@ -2,15 +2,15 @@
 
 ## 背景
 
-Proma 当前 Agent 模式已经具备以下基础能力：
+WorkMate 当前 Agent 模式已经具备以下基础能力：
 
 - 通过 `agent-orchestrator.ts` 统一构建 SDK query options。
-- 通过 `agent-prompt-builder.ts` 追加 Proma 自定义系统提示词。
+- 通过 `agent-prompt-builder.ts` 追加 WorkMate 自定义系统提示词。
 - 通过 SDK `agents` 选项注册内置 SubAgent。
 - 通过工作区 `skills/`、`.claude-plugin/plugin.json`、全局 plugin registry 注入 Skills、Agent、Command、MCP 能力。
 - 通过 `AgentSessionMeta` 记录会话的 workspace、channel、permission mode 等运行上下文。
 
-用户希望实现类似 WorkBuddy 的“专家团”能力：在 Agent 模式下召唤某个专家团，专家团包含主角色、多个辅角色、Skills、Tools、MCP 等能力；召唤专家团时必须新建会话，并在新会话中替换当前 Proma Agent 的主角色提示词，由主角色调度辅角色完成任务。
+用户希望实现类似 WorkBuddy 的“专家团”能力：在 Agent 模式下召唤某个专家团，专家团包含主角色、多个辅角色、Skills、Tools、MCP 等能力；召唤专家团时必须新建会话，并在新会话中替换当前 WorkMate Agent 的主角色提示词，由主角色调度辅角色完成任务。
 
 ## 核心判断
 
@@ -27,7 +27,7 @@ plugin = 能力包 / 分发包
 - expert group 负责把 plugin 中的主角色、SubAgent、Skills、MCP、Tools 组织成一个可召唤的 Agent 运行画像。
 - Agent session 负责绑定某一次专家团运行实例。
 
-因此，专家团应该建立在 Proma 现有 plugin registry、SDK plugins、SDK agents、workspace skills、MCP 注入机制之上。
+因此，专家团应该建立在 WorkMate 现有 plugin registry、SDK plugins、SDK agents、workspace skills、MCP 注入机制之上。
 
 ## 目标
 
@@ -41,8 +41,8 @@ plugin = 能力包 / 分发包
    - Skills / Commands / Agents 能力
    - MCP servers
    - 工具权限策略
-5. 保留 Proma 通用 Agent 运行规则，包括中文输出、工作区路径、计划模式、记忆系统、权限系统、文件检查点等。
-6. 第一版支持内置专家团和 plugin 提供的专家团，不做复杂可视化编辑器。
+5. 保留 WorkMate 通用 Agent 运行规则，包括中文输出、工作区路径、计划模式、记忆系统、权限系统、文件检查点等。
+6. 第一版只支持 plugin 提供的专家团；内置专家团也以内置 plugin 的形式提供，不设置单独的专家团目录。
 
 ## 非目标
 
@@ -61,12 +61,12 @@ plugin = 能力包 / 分发包
 
 | 术语 | 含义 |
 | --- | --- |
-| Plugin | Proma/CC 风格能力包，包含 skills、agents、commands、MCP 等 |
+| Plugin | WorkMate/CC 风格能力包，包含 skills、agents、commands、MCP 等 |
 | Expert Group | 专家团，描述一个主角色和一组辅角色、技能、工具的编排 |
-| Main Role | 专家团主角色，替换默认 Proma Agent 角色 prompt |
+| Main Role | 专家团主角色，替换默认 WorkMate Agent 角色 prompt |
 | SubAgent | SDK `agents` 中可被主角色调用的辅角色 |
 | Skill | `skills/<name>/SKILL.md` 描述的可触发工作流 |
-| Tool | SDK 内置工具、MCP 工具、Proma 权限控制下的工具集合 |
+| Tool | SDK 内置工具、MCP 工具、WorkMate 权限控制下的工具集合 |
 | Session Binding | Agent 会话绑定专家团 ID，决定运行时配置 |
 
 ## 专家团与 Plugin 的关系
@@ -91,6 +91,26 @@ plugin-root/
 ```
 
 `plugin.json` 继续作为插件元信息，不直接承载专家团复杂配置。专家团配置放在 `expert-groups/*.json`，这样可以让一个 plugin 提供多个专家团。
+
+`plugin.json` 增加可选的 `expertGroups` 快速索引字段，用于插件列表和专家团列表的快速发现。该字段只作为索引，运行时仍必须校验对应的 `expert-groups/*.json` 文件存在且合法。
+
+```json
+{
+  "name": "product-experts",
+  "version": "0.1.0",
+  "description": "产品专家团能力包",
+  "expertGroups": [
+    "product-team"
+  ]
+}
+```
+
+发现规则：
+
+1. 优先读取 `plugin.json` 中的 `expertGroups` 索引。
+2. 对索引中声明的每个 ID，校验 `expert-groups/{id}.json`。
+3. 如果插件存在 `expert-groups/*.json` 但未在 `plugin.json` 声明，仍可扫描并记录 warning，提示插件补充索引字段。
+4. plugin 处于禁用状态时，其专家团不进入可召唤列表。
 
 示例：
 
@@ -156,6 +176,17 @@ export interface AgentExpertGroupInfo extends AgentExpertGroupManifest {
 }
 ```
 
+同时扩展 `AgentPluginManifest`：
+
+```ts
+export interface AgentPluginManifest {
+  name: string
+  version: string
+  description?: string
+  expertGroups?: string[]
+}
+```
+
 ### AgentSessionMeta 扩展
 
 在 `AgentSessionMeta` 增加：
@@ -168,26 +199,40 @@ expertPluginId?: string
 语义：
 
 - `expertGroupId`：当前会话绑定的专家团 ID。
-- `expertPluginId`：专家团来源插件 ID；内置专家团可以省略或使用 `builtin:<name>`。
+- `expertPluginId`：专家团来源插件 ID；内置专家团也来自内置 plugin，因此同样写入插件 ID。
 - 普通 Agent 会话不设置这两个字段。
 - 绑定字段创建后不允许直接修改；如需切换专家团，必须新建会话。
 
+不可变约束必须由主进程服务层强制执行。`updateAgentSessionMeta()` 不接受 `expertGroupId` 和 `expertPluginId` 更新；只有 `createAgentSession()` 可以在创建时写入。UI 层也需要禁用“切换当前会话专家团”的入口，但 UI 拦截不是唯一保护。
+
 ## 存储位置
 
-支持两类专家团来源：
+专家团只有一个来源：plugin。
 
 ```text
-apps/electron/default-expert-groups/
-  product-team.json
-
 ~/.proma/user-plugins/<market>/<plugin>/
   expert-groups/*.json
 
 ~/.proma/default-plugins/<plugin>/
   expert-groups/*.json
+
+apps/electron/bundled-plugins/<plugin>/
+  expert-groups/*.json
 ```
 
-第一版优先扫描 plugin 下的 `expert-groups/`。内置专家团可以作为内置 plugin 的一部分提供，也可以用 `default-expert-groups/` 作为过渡。
+内置专家团以内置 plugin 形式提供，例如：
+
+```text
+apps/electron/bundled-plugins/workmate-experts/
+  .claude-plugin/
+    plugin.json
+  agents/
+  skills/
+  expert-groups/
+    product-team.json
+```
+
+第一版不设置 `default-expert-groups/` 目录，避免和 plugin 扫描逻辑分叉。
 
 ## 主进程服务
 
@@ -199,7 +244,7 @@ apps/electron/src/main/lib/agent-expert-group-manager.ts
 
 职责：
 
-1. 扫描内置专家团和 plugin 专家团。
+1. 扫描 plugin 专家团，包括内置 plugin 和用户 plugin。
 2. 校验专家团 JSON 结构。
 3. 根据 `expertGroupId + expertPluginId` 解析专家团。
 4. 将专家团配置转成运行时配置。
@@ -308,14 +353,15 @@ const queryOptions = {
 
 ## Prompt 组装策略
 
-当前 `buildSystemPrompt()` 固定注入默认 Proma 主角色。专家团改造后：
+当前 `buildSystemPrompt()` 固定注入默认 WorkMate 主角色。专家团改造后：
 
 ```ts
 if (ctx.expertRuntime) {
   sections.push(buildExpertMainRolePrompt(ctx.expertRuntime))
+  sections.push(buildExpertModeSummary(ctx.expertRuntime))
   sections.push(buildExpertDelegationPrompt(ctx.expertRuntime))
 } else {
-  sections.push(buildDefaultPromaAgentPrompt())
+  sections.push(buildDefaultWorkMateAgentPrompt())
   sections.push(buildDefaultSubagentDelegationPrompt(ctx))
 }
 ```
@@ -332,7 +378,24 @@ if (ctx.expertRuntime) {
 - 任务完成标准
 - 交互规范
 
-专家团只替换主角色和 SubAgent 调度说明，不替换 Proma 的底层运行规则。
+专家团只替换主角色和 SubAgent 调度说明，不替换 WorkMate 的底层运行规则。
+
+`buildExpertModeSummary()` 需要明确告诉主角色当前处于专家团模式，并列出可调度资源：
+
+```text
+## 专家团模式
+
+- 当前专家团: 产品专家团
+- 主角色: 产品负责人
+- 可调度 SubAgent:
+  - requirement-analyst: 需求分析
+  - ux-designer: 交互方案
+  - tech-reviewer: 技术可行性评审
+- 推荐 Skills:
+  - prd-writer: 输出 PRD 时优先使用
+- 可用 MCP:
+  - dpmp: 创建和管理 Story
+```
 
 ## SubAgent 合并策略
 
@@ -350,12 +413,9 @@ expertRuntime.agents > builtinAgents
 
 如果专家团定义同名 SubAgent，覆盖内置定义。这样专家团可以提供更专业的 `researcher` 或 `code-reviewer`。
 
-如果专家团只引用 plugin `agents/*.md`，有两种实现路径：
+专家团 SubAgent 只走一条运行路径：WorkMate 解析 plugin `agents/*.md`，转换为 SDK `AgentDefinition`，再通过 SDK `agents` option 显式注册。
 
-1. 由 SDK plugin 自动发现 agents。
-2. Proma 解析 `agents/*.md` 并转成 SDK `AgentDefinition`。
-
-第一版建议采用第二种作为主路径，因为 Proma 可以统一控制：
+不依赖 SDK plugin 自动发现 agents 作为专家团运行时来源，因为 WorkMate 需要统一控制：
 
 - prompt
 - tools
@@ -365,11 +425,11 @@ expertRuntime.agents > builtinAgents
 - UI 展示
 - 测试覆盖
 
-SDK plugin 自动发现能力可以保留，但不作为专家团运行时的唯一依据。
+如果 SDK plugin 机制也发现了同名 agent，专家团运行时以 `expertRuntime.agents` 为准；WorkMate 在构建 runtime 时按名称去重，并记录 warning，避免同名 SubAgent 出现两份定义。
 
 ## Skills 和 Commands
 
-Skills 与 Commands 不需要手动拼进 system prompt。专家团只需要确保相关 plugin path 被传给 SDK：
+Skills 与 Commands 不需要手动拼进 system prompt。专家团需要确保相关 plugin path 被传给 SDK：
 
 ```ts
 plugins: [
@@ -387,6 +447,14 @@ Prompt 中只注入“何时使用这些能力”的调度说明，例如：
 
 这样可以避免把 Skill 全文重复塞进 system prompt。
 
+`AgentExpertGroupManifest.skills` 字段的运行时作用固定为三类：
+
+1. **校验**：确认专家团声明的关键 Skill 在来源 plugin 的 `skills/` 下存在。
+2. **UI 展示**：在专家团详情中展示“推荐 Skills / 依赖 Skills”。
+3. **调度提示**：生成简短 prompt hints，告诉主角色何时优先使用这些 Skills。
+
+该字段不负责注册 Skills。Skill 注册仍由 SDK plugin path 完成。
+
 ## MCP 合并策略
 
 MCP 来源优先级：
@@ -401,7 +469,7 @@ customMcpServers > expertRuntime.mcpServers > workspaceMcpServers
 - `expertRuntime.mcpServers` 来自专家团依赖的 plugin `.mcp.json`。
 - `workspaceMcpServers` 是工作区已有配置。
 
-如果名称冲突，优先级高的一方覆盖低优先级配置，并记录一条中文日志。
+如果名称冲突，优先级高的一方覆盖低优先级配置，并用 `console.warn` 记录中文日志。专家团详情页应展示 MCP 冲突 issue，便于用户在设置中处理；第一版不需要在运行时弹出额外确认。
 
 ## 工具权限策略
 
@@ -411,10 +479,16 @@ customMcpServers > expertRuntime.mcpServers > workspaceMcpServers
 mode: 'inherit' | 'restrict'
 ```
 
-- `inherit`：继承当前 Proma permission mode 和 safe tools 策略。
-- `restrict`：在 Proma 权限策略基础上进一步限制 `allowedTools`。
+- `inherit`：继承当前 WorkMate permission mode 和 safe tools 策略。
+- `restrict`：在 WorkMate 权限策略基础上进一步限制 `allowedTools`。
 
-不支持专家团直接绕过权限。即使专家团声明强工具能力，也必须经过 Proma 现有 `agent-permission-service.ts`。
+`restrict` 是 AND 逻辑：
+
+```text
+最终可用工具 = WorkMate 权限策略允许的工具 ∩ expertGroup.allowedTools
+```
+
+不支持专家团直接绕过权限。即使专家团声明强工具能力，也必须经过 WorkMate 现有 `agent-permission-service.ts`。
 
 ## UI 设计
 
@@ -432,7 +506,8 @@ Agent 模式增加“召唤专家”入口：
 2. 如果用户在普通会话里选择专家团，系统创建新会话。
 3. 如果用户在专家团会话里选择另一个专家团，系统创建另一个新会话。
 4. 专家团会话可以继续使用当前 workspace、channel、model。
-5. 会话标题默认使用 `{专家团名称} · 新任务`。
+5. 会话标题创建时临时使用 `{专家团名称} · 新任务`。
+6. 首轮用户消息发送后，继续复用现有 Agent 自动标题生成逻辑，用首条消息摘要替换临时标题。
 
 ## IPC 设计
 
@@ -457,13 +532,7 @@ createAgentSession(
 )
 ```
 
-也可以改成对象参数，减少后续扩展成本：
-
-```ts
-createAgentSession(input: CreateAgentSessionInput)
-```
-
-推荐第一版同步重构为对象参数，因为继续追加位置参数会降低可读性。
+`createAgentSession(input: CreateAgentSessionInput)` 对象参数重构不放入专家团 MVP。该重构可以作为独立前置或后续改动，避免扩大专家团 PR 的 review 范围。
 
 ## 状态管理
 
@@ -482,7 +551,7 @@ createExpertSessionAtom
 
 普通会话兼容：
 
-- 没有 `expertGroupId` 的历史会话继续按默认 Proma Agent 运行。
+- 没有 `expertGroupId` 的历史会话继续按默认 WorkMate Agent 运行。
 - 历史 `agent-sessions.json` 不需要迁移。
 - 读取 `expertGroupId` 时做 optional 处理。
 
@@ -491,6 +560,8 @@ Plugin 兼容：
 - 没有 `expert-groups/` 的 plugin 继续作为普通 plugin。
 - 有 `expert-groups/` 的 plugin 额外展示专家团能力。
 - plugin 启用状态为 false 时，其专家团不可召唤。
+- plugin 被禁用后，已绑定该专家团的历史会话仍可打开和查看，但不能继续发送新消息；重新启用 plugin 后恢复运行。
+- plugin 被卸载后，已绑定该专家团的历史会话保留元数据和消息记录；继续发送时提示专家团来源已不可用，不自动降级为普通 Agent。
 
 ## 错误处理
 
@@ -503,11 +574,21 @@ Plugin 兼容：
    - 发送消息前提示用户专家团不可用。
    - 不自动降级为普通 Agent，避免角色语义漂移。
 
-3. 专家团引用的 subagent 不存在：
+3. 会话绑定的专家团来源 plugin 被禁用：
+   - 会话仍可打开。
+   - 发送消息前提示用户先启用来源 plugin。
+   - 不自动切换为普通 Agent。
+
+4. 会话绑定的专家团来源 plugin 被卸载：
+   - 会话仍可打开。
+   - 发送消息前提示来源 plugin 已卸载。
+   - 保留 `expertGroupId/expertPluginId` 作为历史标记。
+
+5. 专家团引用的 subagent 不存在：
    - 专家团不可召唤。
    - 设置页展示具体缺失项。
 
-4. 专家团引用的 MCP 未配置凭据：
+6. 专家团引用的 MCP 未配置凭据：
    - 专家团可以召唤。
    - 运行时保留 MCP，但 MCP 自身测试状态在 UI 提示。
    - 工具调用失败时走现有 SDK 错误展示。
@@ -527,17 +608,21 @@ Plugin 兼容：
 - `agent-prompt-builder.test.ts`
   - 普通会话 prompt 不变
   - 专家团会话替换主角色 prompt
-  - Proma 通用规则仍保留
+  - WorkMate 通用规则仍保留
   - 专家团调度说明正确注入
+  - 专家团模式摘要包含 SubAgent、Skills、MCP 清单
 
 - `agent-orchestrator.test.ts`
   - 专家团 agents 合并
+  - 同名 SubAgent 去重并以专家团定义优先
   - plugin paths 合并
   - MCP 优先级合并
+  - `toolsPolicy.restrict` 使用 AND 逻辑收紧工具
   - 缺失专家团时报错
 
 - `agent-session-manager.test.ts`
   - 创建专家团会话写入 `expertGroupId`
+  - `updateAgentSessionMeta()` 拒绝修改专家团绑定字段
   - 历史会话读取兼容
 
 ### UI 测试
@@ -572,13 +657,16 @@ Plugin 兼容：
 第一版只交付：
 
 - plugin 下 `expert-groups/*.json` 扫描。
+- `plugin.json` 可选 `expertGroups` 快速索引。
 - 专家团列表 UI。
 - 选择专家团新建会话。
 - 会话绑定 `expertGroupId/expertPluginId`。
+- 后端强制专家团绑定不可变。
 - 主角色 prompt 替换。
 - SubAgent 合并。
 - plugin paths 注入。
 - MCP 合并。
+- 禁用/卸载 plugin 后的历史会话保护。
 - 基础测试。
 
 暂不交付：
@@ -591,13 +679,13 @@ Plugin 兼容：
 
 ## 设计结论
 
-专家团应该作为 plugin 能力的高级编排形态实现。Proma 不需要新增一套独立的专家运行时，而是复用现有 Agent SDK、plugin registry、skills、agents、MCP、permission service 和 prompt builder。
+专家团应该作为 plugin 能力的高级编排形态实现。WorkMate 不需要新增一套独立的专家运行时，而是复用现有 Agent SDK、plugin registry、skills、agents、MCP、permission service 和 prompt builder。
 
 最终形态是：
 
 ```text
 用户召唤专家团
-  -> Proma 创建新 Agent 会话
+  -> WorkMate 创建新 Agent 会话
   -> 会话绑定 expertGroupId / expertPluginId
   -> Orchestrator 解析专家团 runtime
   -> Prompt Builder 替换主角色并注入调度说明
