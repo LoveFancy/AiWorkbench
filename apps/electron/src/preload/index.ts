@@ -15,6 +15,8 @@ import type {
   ChannelCreateInput,
   ChannelUpdateInput,
   ChannelTestResult,
+  ChannelModelTestInput,
+  ChannelModelTestResult,
   FetchModelsInput,
   FetchModelsResult,
   ConversationMeta,
@@ -225,6 +227,9 @@ export interface ElectronAPI {
 
   /** 直接测试连接（无需已保存渠道，传入明文凭证） */
   testChannelDirect: (input: FetchModelsInput) => Promise<ChannelTestResult>
+
+  /** 直接测试单个模型（无需已保存渠道，传入明文凭证和模型 ID） */
+  testChannelModelDirect: (input: ChannelModelTestInput) => Promise<ChannelModelTestResult>
 
   /** 从供应商拉取可用模型列表（直接传入凭证，无需已保存渠道） */
   fetchModels: (input: FetchModelsInput) => Promise<FetchModelsResult>
@@ -1175,6 +1180,10 @@ const electronAPI: ElectronAPI = {
 
   testChannelDirect: (input: FetchModelsInput) => {
     return ipcRenderer.invoke(CHANNEL_IPC_CHANNELS.TEST_DIRECT, input)
+  },
+
+  testChannelModelDirect: (input: ChannelModelTestInput) => {
+    return ipcRenderer.invoke(CHANNEL_IPC_CHANNELS.TEST_MODEL_DIRECT, input)
   },
 
   fetchModels: (input: FetchModelsInput) => {

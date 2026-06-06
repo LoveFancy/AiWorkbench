@@ -22,6 +22,7 @@ import {
   Zap,
   Download,
   Search,
+  FlaskConical,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSetAtom } from 'jotai'
@@ -43,6 +44,7 @@ import type {
   ChannelTestResult,
   FetchModelsResult,
   ProviderType,
+  ChannelModelTestResult,
 } from '@proma/shared'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -55,6 +57,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   SettingsSection,
   SettingsCard,
@@ -176,6 +185,10 @@ export function ChannelForm({ channel, onSaved, onAutoSaved, onAgentEligibilityC
   const [fetchResult, setFetchResult] = React.useState<FetchModelsResult | null>(null)
   const [apiKeyLoaded, setApiKeyLoaded] = React.useState(false)
   const [showExitDialog, setShowExitDialog] = React.useState(false)
+  const [testingModelId, setTestingModelId] = React.useState<string | null>(null)
+  const [modelTestModel, setModelTestModel] = React.useState<ChannelModel | null>(null)
+  const [modelTestResult, setModelTestResult] = React.useState<ChannelModelTestResult | null>(null)
+  const [showModelTestDialog, setShowModelTestDialog] = React.useState(false)
 
   const setChannelFormDirty = useSetAtom(channelFormDirtyAtom)
   const lastAgentEligibleRef = React.useRef(channel ? isAgentEligibleChannel(channel) : false)
@@ -361,6 +374,34 @@ export function ChannelForm({ channel, onSaved, onAutoSaved, onAgentEligibilityC
       setTestResult({ success: false, message: '测试请求失败' })
     } finally {
       setTesting(false)
+    }
+  }
+
+  /** 测试单个已启用模型 */
+  const handleTestModel = async (model: ChannelModel): Promise<void> => {
+    if (!apiKey.trim() || !baseUrl.trim()) {
+      toast.warning('请先填写 Base URL 和 API Key')
+      return
+    }
+
+    setTestingModelId(model.id)
+    setModelTestModel(model)
+    setModelTestResult(null)
+    setShowModelTestDialog(true)
+
+    try {
+      const result = await window.electronAPI.testChannelModelDirect({
+        provider,
+        baseUrl,
+        apiKey,
+        model: model.id,
+      })
+      setModelTestResult(result)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '测试请求失败'
+      setModelTestResult({ success: false, message })
+    } finally {
+      setTestingModelId(null)
     }
   }
 
@@ -590,12 +631,27 @@ export function ChannelForm({ channel, onSaved, onAutoSaved, onAgentEligibilityC
                   className="flex items-center gap-2 px-4 py-2.5 group"
                 >
                   <CheckCircle2 size={14} className="text-emerald-500 flex-shrink-0" />
-                  <span className="text-sm text-foreground flex-1">
+                  <span className="min-w-0 flex-1 truncate text-sm text-foreground">
                     {model.name}
                     {model.name !== model.id && (
                       <span className="text-muted-foreground ml-1">({model.id})</span>
                     )}
                   </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    type="button"
+                    onClick={() => void handleTestModel(model)}
+                    disabled={testingModelId !== null || !apiKey.trim() || !baseUrl.trim()}
+                    className="h-7 flex-shrink-0 text-xs"
+                  >
+                    {testingModelId === model.id ? (
+                      <Loader2 size={12} className="animate-spin" />
+                    ) : (
+                      <FlaskConical size={12} />
+                    )}
+                    <span>测试模型</span>
+                  </Button>
                   <button
                     type="button"
                     onClick={() => handleToggleModel(model.id)}
@@ -772,6 +828,40 @@ export function ChannelForm({ channel, onSaved, onAutoSaved, onAgentEligibilityC
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={showModelTestDialog} onOpenChange={setShowModelTestDialog}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>测试模型</DialogTitle>
+            <DialogDescription>
+              {modelTestModel ? `${modelTestModel.name} (${modelTestModel.id})` : '正在测试已启用模型'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            {!modelTestResult ? (
+              <div className="flex items-center gap-2 rounded-md bg-muted/50 px-3 py-4 text-sm text-muted-foreground">
+                <Loader2 size={16} className="animate-spin" />
+                正在发送测试请求...
+              </div>
+            ) : (
+              <>
+                <div className={cn(
+                  'flex items-center gap-2 text-sm font-medium',
+                  modelTestResult.success ? 'text-emerald-600' : 'text-destructive',
+                )}>
+                  {modelTestResult.success ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+                  <span>{modelTestResult.message}</span>
+                </div>
+                <div className="max-h-[320px] overflow-auto rounded-md bg-muted/50 px-3 py-2 text-sm leading-relaxed text-foreground whitespace-pre-wrap">
+                  {modelTestResult.success
+                    ? (modelTestResult.content || '模型请求成功，但没有返回文本内容。')
+                    : modelTestResult.message}
+                </div>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

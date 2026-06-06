@@ -885,7 +885,7 @@ export interface AgentPluginsConfig {
   mcpServers: Record<string, AgentPluginMcpServerState>
 }
 
-export type AgentPluginMarketplaceType = 'github' | 'gitee' | 'raw' | 'local'
+export type AgentPluginMarketplaceType = 'github' | 'gitee' | 'gitlab' | 'raw' | 'local'
 
 export interface AgentPluginMarketplace {
   id: string

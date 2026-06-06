@@ -222,6 +222,26 @@ export interface FetchModelsResult {
 }
 
 /**
+ * 测试单个模型的输入参数（无需已保存的渠道，直接传入当前表单凭证）
+ */
+export interface ChannelModelTestInput extends FetchModelsInput {
+  /** 要测试的模型 ID */
+  model: string
+}
+
+/**
+ * 测试单个模型的结果
+ */
+export interface ChannelModelTestResult {
+  /** 是否成功 */
+  success: boolean
+  /** 结果消息 */
+  message: string
+  /** 模型返回的文本内容 */
+  content?: string
+}
+
+/**
  * 渠道相关 IPC 通道常量
  */
 export const CHANNEL_IPC_CHANNELS = {
@@ -241,4 +261,6 @@ export const CHANNEL_IPC_CHANNELS = {
   FETCH_MODELS: 'channel:fetch-models',
   /** 直接测试连接（无需已保存渠道，传入明文凭证） */
   TEST_DIRECT: 'channel:test-direct',
+  /** 直接测试单个模型（无需已保存渠道，传入明文凭证和模型 ID） */
+  TEST_MODEL_DIRECT: 'channel:test-model-direct',
 } as const

@@ -19,6 +19,8 @@ import type {
   ChannelModel,
   FetchModelsInput,
   FetchModelsResult,
+  ChannelModelTestInput,
+  ChannelModelTestResult,
   ProviderType,
 } from '@proma/shared'
 import { PROVIDER_DEFAULT_URLS } from '@proma/shared'
@@ -32,6 +34,7 @@ import {
 } from '@proma/core'
 import { ensurePresetChannels } from './channel-presets.ts'
 import { getPlatformChannel } from '../../models/model-service'
+import { testChannelModelWithFetch } from './channel-model-tester.ts'
 
 /** 当前配置版本 */
 const CONFIG_VERSION = 1
@@ -486,6 +489,19 @@ export async function testChannelDirect(input: FetchModelsInput): Promise<Channe
   } catch (error) {
     const message = error instanceof Error ? error.message : '未知错误'
     return { success: false, message: `连接测试失败: ${message}` }
+  }
+}
+
+/**
+ * 直接测试单个模型（无需已保存渠道）
+ */
+export async function testChannelModelDirect(input: ChannelModelTestInput): Promise<ChannelModelTestResult> {
+  const proxyUrl = await getEffectiveProxyUrl()
+  try {
+    return await testChannelModelWithFetch(input, getFetchFn(proxyUrl))
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '未知错误'
+    return { success: false, message: `模型测试失败: ${message}` }
   }
 }
 

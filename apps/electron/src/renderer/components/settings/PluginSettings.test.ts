@@ -21,6 +21,15 @@ describe('插件市场输入推断', () => {
     })
   })
 
+  test('GitLab 仓库地址自动识别为 gitlab', () => {
+    expect(inferMarketplaceInput('http://gitlab.htzq.htsc.com.cn/aidev/ht-dev-plugins/claudecode-plugin-marketplace')).toEqual({
+      id: 'claudecode-plugin-marketplace',
+      name: 'claudecode-plugin-marketplace',
+      source: 'http://gitlab.htzq.htsc.com.cn/aidev/ht-dev-plugins/claudecode-plugin-marketplace',
+      type: 'gitlab',
+    })
+  })
+
   test('直接 JSON URL 自动识别为 raw', () => {
     expect(inferMarketplaceInput('https://example.com/marketplace.json')).toMatchObject({
       id: 'marketplace',

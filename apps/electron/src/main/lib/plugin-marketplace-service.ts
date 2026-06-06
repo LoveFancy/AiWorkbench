@@ -115,7 +115,7 @@ function normalizeManifest(raw: unknown): MarketManifest {
 }
 
 function parseMarketplaceType(value: unknown): AgentPluginMarketplaceType {
-  return value === 'github' || value === 'gitee' || value === 'raw' || value === 'local' ? value : 'raw'
+  return value === 'github' || value === 'gitee' || value === 'gitlab' || value === 'raw' || value === 'local' ? value : 'raw'
 }
 
 export function readPluginMarketplacesConfig(input?: Pick<PluginMarketplacePaths, 'marketplacesPath'>): AgentPluginMarketplacesConfig {
@@ -256,6 +256,9 @@ function formatMarketplaceHttpError(marketplace: AgentPluginMarketplace, url: st
   if (marketplace.type === 'gitee' && /github\.com/i.test(marketplace.source)) {
     hints.push('当前地址是 GitHub 仓库，请将市场类型改为 GitHub。')
   }
+  if (marketplace.type !== 'gitlab' && /gitlab/i.test(marketplace.source)) {
+    hints.push('当前地址是 GitLab 仓库，请将市场类型改为 GitLab。')
+  }
   if (status === 404) {
     hints.push('未找到 .claude-plugin/marketplace.json，请确认仓库默认分支和文件路径。')
   }
@@ -279,6 +282,10 @@ function resolveMarketplaceManifestUrl(marketplace: AgentPluginMarketplace): str
   if (marketplace.type === 'gitee') {
     return marketplace.source
       .replace(/\/?$/, '/raw/main/.claude-plugin/marketplace.json')
+  }
+  if (marketplace.type === 'gitlab') {
+    return marketplace.source
+      .replace(/\/?$/, '/-/raw/main/.claude-plugin/marketplace.json')
   }
   return marketplace.source
 }
@@ -361,7 +368,7 @@ export async function searchMarketplacePlugins(query = '', input?: PluginMarketp
 
 function resolvePluginSource(marketplace: AgentPluginMarketplace, source: string): string {
   if (/^https?:\/\//.test(source)) return source
-  if (marketplace.type === 'github' || marketplace.type === 'gitee') {
+  if (marketplace.type === 'github' || marketplace.type === 'gitee' || marketplace.type === 'gitlab') {
     return `${marketplace.source.replace(/\/$/, '')}/${source.replace(/^\.\//, '')}`
   }
   if (marketplace.type !== 'local') return new URL(source, marketplace.source).toString()

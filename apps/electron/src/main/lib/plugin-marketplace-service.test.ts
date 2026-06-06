@@ -420,6 +420,44 @@ describe('插件市场服务', () => {
     }
   })
 
+  test('GitLab 市场仓库地址会解析到 raw marketplace.json', async () => {
+    const temp = tempRoot()
+    try {
+      const marketplacesPath = join(temp.root, 'plugin-marketplaces.json')
+      const servicePaths = {
+        marketplacesPath,
+        cacheDir: join(temp.root, 'cache'),
+        userPluginsDir: join(temp.root, 'user-plugins'),
+        pluginsConfigPath: join(temp.root, 'plugins.json'),
+      }
+      const requestedUrls: string[] = []
+      globalThis.fetch = (async (input: Parameters<typeof fetch>[0]) => {
+        requestedUrls.push(String(input))
+        return new Response(JSON.stringify({
+          name: 'HT Dev Plugins',
+          plugins: [{ name: 'frontend-design', source: './plugins/frontend-design' }],
+        }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }) as unknown as typeof fetch
+
+      addPluginMarketplace({
+        id: 'ht-dev-plugins',
+        name: '',
+        source: 'http://gitlab.htzq.htsc.com.cn/aidev/ht-dev-plugins/claudecode-plugin-marketplace',
+        type: 'gitlab',
+      }, servicePaths)
+
+      await refreshPluginMarketplace('ht-dev-plugins', servicePaths)
+
+      expect(requestedUrls).toEqual(['http://gitlab.htzq.htsc.com.cn/aidev/ht-dev-plugins/claudecode-plugin-marketplace/-/raw/main/.claude-plugin/marketplace.json'])
+      expect(listPluginMarketplaces({ marketplacesPath })[0]?.type).toBe('gitlab')
+    } finally {
+      temp.cleanup()
+    }
+  })
+
   test('Gitee 市场的相对插件路径解析为仓库内路径', async () => {
     const temp = tempRoot()
     try {
@@ -467,6 +505,58 @@ describe('插件市场服务', () => {
       })
 
       expect(cloneCalls).toEqual(['https://gitee.com/topsecwp/ECC/plugins/frontend-design'])
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('GitLab 市场的相对插件路径解析为仓库内路径', async () => {
+    const temp = tempRoot()
+    try {
+      const sourcePlugin = join(temp.root, 'remote-source')
+      mkdirSync(join(sourcePlugin, '.claude-plugin'), { recursive: true })
+      writeFileSync(
+        join(sourcePlugin, '.claude-plugin', 'plugin.json'),
+        JSON.stringify({ name: 'frontend-design', version: '1.0.0' }),
+        'utf-8',
+      )
+      const marketplacesPath = join(temp.root, 'plugin-marketplaces.json')
+      const cacheDir = join(temp.root, 'cache')
+      const userPluginsDir = join(temp.root, 'user-plugins')
+      const pluginsConfigPath = join(temp.root, 'plugins.json')
+      const servicePaths = { marketplacesPath, cacheDir, userPluginsDir, pluginsConfigPath }
+      const cloneCalls: string[] = []
+
+      addPluginMarketplace({
+        id: 'gitlab-market',
+        name: 'GitLab 插件市场',
+        source: 'http://gitlab.htzq.htsc.com.cn/aidev/ht-dev-plugins/claudecode-plugin-marketplace',
+        type: 'gitlab',
+      }, servicePaths)
+      mkdirSync(join(cacheDir, 'gitlab-market'), { recursive: true })
+      writeFileSync(
+        join(cacheDir, 'gitlab-market', 'manifest.json'),
+        JSON.stringify({
+          plugins: [{ name: 'frontend-design', source: './plugins/frontend-design', version: '1.0.0' }],
+        }),
+        'utf-8',
+      )
+
+      await installMarketplacePlugin({
+        marketplaceId: 'gitlab-market',
+        pluginName: 'frontend-design',
+        enable: true,
+      }, {
+        ...servicePaths,
+        cloneRepo: async (source, target) => {
+          cloneCalls.push(source)
+          mkdirSync(target, { recursive: true })
+          return undefined
+        },
+        copyClonedFixture: sourcePlugin,
+      })
+
+      expect(cloneCalls).toEqual(['http://gitlab.htzq.htsc.com.cn/aidev/ht-dev-plugins/claudecode-plugin-marketplace/plugins/frontend-design'])
     } finally {
       temp.cleanup()
     }

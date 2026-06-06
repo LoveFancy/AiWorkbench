@@ -72,6 +72,10 @@ function mockEipGateway(scenario: Partial<MockScenario> = {}) {
   })
 }
 
+function setMockFetch(fetchFn: unknown): void {
+  globalThis.fetch = fetchFn as typeof fetch
+}
+
 // ============ 测试 ============
 
 describe('auth-service 集成测试', () => {
@@ -88,7 +92,7 @@ describe('auth-service 集成测试', () => {
 
   describe('loginWithEipGateway - 完整流程', () => {
     it('正常登录 → 获取长期 Token → 落盘加密', async () => {
-      globalThis.fetch = mockEipGateway()
+      setMockFetch(mockEipGateway())
 
       const { loginWithEipGateway } = await import('../auth-service')
       const result = await loginWithEipGateway('022480', 'password123')
@@ -106,7 +110,7 @@ describe('auth-service 集成测试', () => {
     })
 
     it('登录失败（HTTP 401）→ 返回 success=false', async () => {
-      globalThis.fetch = mockEipGateway({ loginStatus: 401 })
+      setMockFetch(mockEipGateway({ loginStatus: 401 }))
 
       const { loginWithEipGateway } = await import('../auth-service')
       const result = await loginWithEipGateway('022480', 'wrong')
@@ -124,7 +128,7 @@ describe('auth-service 集成测试', () => {
         }))
         .mockResolvedValueOnce(new Response('Internal Error', { status: 500 }))
 
-      globalThis.fetch = mockFetch
+      setMockFetch(mockFetch)
 
       const { loginWithEipGateway } = await import('../auth-service')
       const result = await loginWithEipGateway('022480', 'pass')
@@ -134,7 +138,7 @@ describe('auth-service 集成测试', () => {
     })
 
     it('网络异常 → 返回异常信息', async () => {
-      globalThis.fetch = vi.fn().mockRejectedValue(new Error('Network error'))
+      setMockFetch(vi.fn().mockRejectedValue(new Error('Network error')))
 
       const { loginWithEipGateway } = await import('../auth-service')
       const result = await loginWithEipGateway('022480', 'pass')
@@ -146,7 +150,7 @@ describe('auth-service 集成测试', () => {
 
   describe('getToken / getAuthInfo / needsReauth', () => {
     async function setupLoggedIn() {
-      globalThis.fetch = mockEipGateway()
+      setMockFetch(mockEipGateway())
       const { loginWithEipGateway } = await import('../auth-service')
       await loginWithEipGateway('022480', 'pass')
     }
@@ -223,7 +227,7 @@ describe('auth-service 集成测试', () => {
 
   describe('logout', () => {
     it('logout 后 getToken 返回 null', async () => {
-      globalThis.fetch = mockEipGateway()
+      setMockFetch(mockEipGateway())
       const { loginWithEipGateway, logout, getToken, getJobId } = await import('../auth-service')
       await loginWithEipGateway('022480', 'pass')
 

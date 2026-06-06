@@ -183,6 +183,8 @@ export function inferMarketplaceInput(sourceText: string): InferredMarketplaceIn
     type = 'github'
   } else if (/^git@gitee\.com:/i.test(source) || /^https?:\/\/gitee\.com\//i.test(source)) {
     type = 'gitee'
+  } else if (/^git@[^:]*gitlab[^:]*:/i.test(source) || /^https?:\/\/[^/]*gitlab[^/]*\//i.test(source)) {
+    type = 'gitlab'
   } else if (/^https?:\/\//i.test(source)) {
     type = 'raw'
   } else if (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(source)) {
@@ -691,7 +693,7 @@ export function PluginSettings(): React.ReactElement {
           <DialogHeader>
             <DialogTitle>添加插件市场</DialogTitle>
             <DialogDescription>
-              输入市场来源即可，系统会自动识别 GitHub、Gitee、Raw URL 或本地路径。
+              输入市场来源即可，系统会自动识别 GitHub、Gitee、GitLab、Raw URL 或本地路径。
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -700,7 +702,7 @@ export function PluginSettings(): React.ReactElement {
               <Input
                 value={marketplaceSourceInput}
                 onChange={(event) => setMarketplaceSourceInput(event.target.value)}
-                placeholder="owner/repo、https://.../marketplace.json 或 ./path/to/marketplace"
+                placeholder="owner/repo、GitLab/Gitee/GitHub 仓库、https://.../marketplace.json 或 ./path/to/marketplace"
                 autoFocus
               />
             </div>
@@ -708,6 +710,7 @@ export function PluginSettings(): React.ReactElement {
               <div className="font-semibold">Examples:</div>
               <div className="mt-2 space-y-1 text-zinc-400">
                 <div>· owner/repo (GitHub)</div>
+                <div>· http://gitlab.htzq.htsc.com.cn/aidev/ht-dev-plugins/claudecode-plugin-marketplace</div>
                 <div>· git@github.com:owner/repo.git (SSH)</div>
                 <div>· https://example.com/marketplace.json</div>
                 <div>· ./path/to/marketplace</div>
