@@ -6,7 +6,7 @@
  */
 
 import * as React from 'react'
-import { useSetAtom } from 'jotai'
+import { useAtom } from 'jotai'
 import { Loader2, CheckCircle2, XCircle, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
@@ -42,21 +42,20 @@ async function refreshChatTools(setter: (tools: Awaited<ReturnType<typeof window
 
 /** 联网搜索工具设置区域 */
 export function WebSearchSettings(): React.ReactElement {
-  const [enabled, setEnabled] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
+  const [saving, setSaving] = React.useState(false)
   const [testing, setTesting] = React.useState(false)
   const [testQuery, setTestQuery] = React.useState('')
   const [testTimeRange, setTestTimeRange] = React.useState<WebSearchTimeRange>('OneMonth')
   const [testResult, setTestResult] = React.useState<ToolTestResult | null>(null)
-  const setChatTools = useSetAtom(chatToolsAtom)
+  const [chatTools, setChatTools] = useAtom(chatToolsAtom)
+  const searchTool = chatTools.find((t) => t.meta.id === 'web-search')
+  const enabled = searchTool?.enabled ?? false
 
-  // 从主进程加载当前开关状态
+  // 从主进程加载当前开关状态；开关状态以 chatToolsAtom 为唯一前端状态源。
   React.useEffect(() => {
     window.electronAPI.getChatTools().then((tools) => {
-      const searchTool = tools.find((t) => t.meta.id === 'web-search')
-      if (searchTool) {
-        setEnabled(searchTool.enabled)
-      }
+      setChatTools(tools)
     }).catch((err: unknown) => {
       console.error('[联网搜索设置] 加载失败:', err)
     }).finally(() => {
@@ -65,12 +64,14 @@ export function WebSearchSettings(): React.ReactElement {
   }, [])
 
   const handleToggle = async (checked: boolean): Promise<void> => {
+    setSaving(true)
     try {
       await window.electronAPI.updateChatToolState('web-search', { enabled: checked })
-      setEnabled(checked)
       await refreshChatTools(setChatTools)
     } catch (error) {
       console.error('[联网搜索设置] 切换失败:', error)
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -101,6 +102,7 @@ export function WebSearchSettings(): React.ReactElement {
       action={
         <Switch
           checked={enabled}
+          disabled={saving}
           onCheckedChange={handleToggle}
         />
       }
@@ -109,8 +111,7 @@ export function WebSearchSettings(): React.ReactElement {
         <div className="space-y-4 p-4">
           {/* 引导说明 */}
           <div className="rounded-lg bg-muted/50 p-3 space-y-2 text-sm text-muted-foreground">
-            <p>联网搜索由 <span className="font-medium text-foreground">数智中台搜索服务</span> 提供，启用后 AI 可以搜索互联网获取实时信息。</p>
-            <p className="text-xs">服务凭据由系统内置管理；此开关控制 Chat 模式中的联网搜索工具。</p>
+            <p>联网搜索由 <span className="font-medium text-foreground">泰为平台</span> 提供，启用后 AI 可以搜索互联网获取实时信息。</p>
           </div>
 
           <div className="rounded-lg bg-muted/30 p-3">

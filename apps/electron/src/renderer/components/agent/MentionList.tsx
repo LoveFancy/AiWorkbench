@@ -10,9 +10,12 @@ import * as React from 'react'
 import { cn } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
+export const MENTION_LIST_WIDTH_CLASS = 'w-[560px]'
+export const MENTION_LIST_EMPTY_WIDTH_CLASS = 'w-[560px]'
+export const MENTION_LIST_TOOLTIP_WIDTH_CLASS = 'max-w-[560px]'
+
 export interface MentionListProps<T> {
   items: T[]
-  selectedIndex: number
   onSelect: (item: T) => void
   /** 空列表占位文字 */
   emptyText: string
@@ -78,7 +81,15 @@ export function normalizeMentionTooltipTitle(title: string | undefined): string 
 
 function renderTooltipContent(title: string): React.ReactElement {
   return (
-    <TooltipContent side="right" align="start" sideOffset={8} className="z-[10000] max-w-[360px] whitespace-pre-wrap break-words leading-relaxed">
+    <TooltipContent
+      side="right"
+      align="start"
+      sideOffset={8}
+      className={cn(
+        'z-[10000] whitespace-pre-wrap break-words leading-relaxed',
+        MENTION_LIST_TOOLTIP_WIDTH_CLASS,
+      )}
+    >
       {title}
     </TooltipContent>
   )
@@ -115,7 +126,7 @@ function MentionListInner<T>(
 
   if (items.length === 0) {
     return (
-      <div className="rounded-lg border bg-popover p-2 shadow-lg text-[11px] text-muted-foreground w-[280px]">
+      <div className={cn('rounded-lg border bg-popover p-2 shadow-lg text-[11px] text-muted-foreground', MENTION_LIST_EMPTY_WIDTH_CLASS)}>
         {emptyText}
       </div>
     )
@@ -124,7 +135,7 @@ function MentionListInner<T>(
   return (
     <div
       ref={containerRef}
-      className="rounded-lg border bg-popover shadow-lg overflow-y-auto max-h-[240px] w-[280px]"
+      className={cn('rounded-lg border bg-popover shadow-lg overflow-y-auto max-h-[240px]', MENTION_LIST_WIDTH_CLASS)}
     >
       {items.map((item, index) => {
         const title = normalizeMentionTooltipTitle(titleExtractor?.(item))
@@ -135,7 +146,13 @@ function MentionListInner<T>(
               'w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-xs hover:bg-accent transition-colors',
               index === localIndex && 'bg-accent text-accent-foreground',
             )}
-            onClick={() => onSelect(item)}
+            // 用 mousedown 而非 click：异步 items 重渲染会替换 button 节点，
+            // 导致 mousedown/mouseup 不在同一节点、click 不派发而漏选；
+            // preventDefault 阻止按钮抢焦点，避免编辑器 blur 触发弹窗关闭竞态。
+            onMouseDown={(e) => {
+              e.preventDefault()
+              onSelect(item)
+            }}
           >
             {renderItem(item)}
           </button>

@@ -103,7 +103,7 @@ export function createWelcomeConversation(): ConversationMeta | null {
     const assistantMessage: ChatMessage = {
       id: randomUUID(),
       role: 'assistant',
-      content: `你好，欢迎来到 WorkMate 伴行！WorkMate 伴行是一个通用的 Agent，其实它可以完成任何事，说实话这也挺难的，因为你要构建完整的工作环境才能做到，这会涉及到一些新的概念或者思考方式，不过别担心，我们做了很多设计可以帮助你靠谱稳定的越用越好用。
+      content: `你好，欢迎来到 WorkMate 伴行！WorkMate 伴行是华泰面向内部研发与办公场景，基于开源 Agent 技术深度定制的智能工作助手。它可以完成很多复杂任务，但这也意味着你需要构建完整的工作环境，这会涉及到一些新的概念或者思考方式。不过别担心，我们做了很多设计可以帮助你靠谱稳定地越用越好用。
 
 在介绍功能之前，想先认识一下你：
 

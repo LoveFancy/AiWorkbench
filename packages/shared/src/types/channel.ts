@@ -10,17 +10,21 @@
  */
 export type ProviderType =
   | 'anthropic'
+  | 'anthropic-compatible'
   | 'openai'
   | 'deepseek'
   | 'google'
   | 'kimi-api'
   | 'kimi-coding'
   | 'zhipu'
+  | 'zhipu-coding'
   | 'minimax'
   | 'huatai-anthropic'
   | 'huatai-openai'
   | 'doubao'
   | 'qwen'
+  | 'xiaomi'
+  | 'xiaomi-token-plan'
   | 'custom'
 
 /**
@@ -28,17 +32,21 @@ export type ProviderType =
  */
 export const PROVIDER_DEFAULT_URLS: Record<ProviderType, string> = {
   anthropic: 'https://api.anthropic.com',
+  'anthropic-compatible': '',
   openai: 'https://api.openai.com/v1',
   deepseek: 'https://api.deepseek.com/anthropic',
   google: 'https://generativelanguage.googleapis.com',
   'kimi-api': 'https://api.moonshot.cn/anthropic',
   'kimi-coding': 'https://api.kimi.com/coding/v1',
   zhipu: 'https://open.bigmodel.cn/api/paas/v4',
+  'zhipu-coding': 'https://open.bigmodel.cn/api/anthropic',
   minimax: 'https://api.minimaxi.com/anthropic',
   'huatai-anthropic': 'http://168.63.65.40:8090/llm-service/v1/messages',
   'huatai-openai': 'http://168.63.65.40:8090/llm-service/v1/chat/completions',
   doubao: 'https://ark.cn-beijing.volces.com/api/v3',
   qwen: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  xiaomi: 'https://api.xiaomimimo.com/anthropic',
+  'xiaomi-token-plan': 'https://token-plan-cn.xiaomimimo.com/anthropic',
   custom: '',
 }
 
@@ -57,18 +65,48 @@ export const PROVIDER_DEFAULT_MODELS: Partial<Record<ProviderType, ChannelModel[
     { id: 'kimi-for-coding', name: 'Kimi for Coding', enabled: true },
   ],
   minimax: [
+    { id: 'MiniMax-M3', name: 'MiniMax-M3', enabled: true },
     { id: 'MiniMax-M2.7', name: 'MiniMax-M2.7', enabled: true },
   ],
+  zhipu: [
+    { id: 'glm-5.1', name: 'GLM-5.1', enabled: true },
+  ],
+  'zhipu-coding': [
+    { id: 'glm-5.1', name: 'GLM-5.1', enabled: true },
+  ],
   'huatai-anthropic': [
-    { id: 'local-glm-47-flash', name: 'local-glm-47-flash', enabled: false },
-    { id: 'saas-kimi-k25', name: 'saas-kimi-k25', enabled: false },
-    { id: 'local-deepseek-v4-pro', name: 'local-deepseek-v4-pro', enabled: false },
-    { id: 'saas-deepseek-v4-flash', name: 'saas-deepseek-v4-flash', enabled: false },
-    { id: 'saas-deepseek-v4-pro', name: 'saas-deepseek-v4-pro', enabled: false },
+    { id: 'saas-doubao-15-pro-32k', name: 'saas-doubao-15-pro-32k', enabled: false, supportsMultimodal: false },
+    { id: 'saas-deepseek-v32', name: 'saas-deepseek-v32', enabled: false, supportsMultimodal: false },
+    { id: 'local-deepseek-v32', name: 'local-deepseek-v32', enabled: false, supportsMultimodal: false },
+    { id: 'local-qwen36-27b', name: 'local-qwen36-27b', enabled: false, supportsMultimodal: true },
+    { id: 'local-qwen3-235b-nothink-moe', name: 'local-qwen3-235b-nothink-moe', enabled: false, supportsMultimodal: false },
+    { id: 'saas-doubao-seed-20-pro', name: 'saas-doubao-seed-20-pro', enabled: false, supportsMultimodal: true },
+    { id: 'saas-kimi-k25', name: 'saas-kimi-k25', enabled: false, supportsMultimodal: true },
+    { id: 'saas-kimi-k26', name: 'saas-kimi-k26', enabled: false, supportsMultimodal: true },
+    { id: 'saas-qwen35-397b', name: 'saas-qwen35-397b', enabled: false, supportsMultimodal: true },
+    { id: 'local-qwen3-vl-30b', name: 'local-qwen3-vl-30b', enabled: false, supportsMultimodal: true },
+    { id: 'saas-glm-51', name: 'saas-glm-51', enabled: false, supportsMultimodal: true },
+    { id: 'saas-qwen36-plus', name: 'saas-qwen36-plus', enabled: false, supportsMultimodal: false },
+    { id: 'saas-deepseek-v4-flash', name: 'saas-deepseek-v4-flash', enabled: false, supportsMultimodal: false },
+    { id: 'saas-deepseek-v4-pro', name: 'saas-deepseek-v4-pro', enabled: false, supportsMultimodal: false },
   ],
   'huatai-openai': [
     { id: 'local-deepseek-v4-pro', name: 'local-deepseek-v4-pro', enabled: true },
     { id: 'local-deepseek-v32', name: 'local-deepseek-v32', enabled: true },
+  ],
+  xiaomi: [
+    { id: 'mimo-v2.5-pro', name: 'MiMo V2.5 Pro', enabled: true },
+    { id: 'mimo-v2-pro', name: 'MiMo V2 Pro', enabled: true },
+    { id: 'mimo-v2.5', name: 'MiMo V2.5', enabled: true },
+    { id: 'mimo-v2-omni', name: 'MiMo V2 Omni', enabled: true },
+    { id: 'mimo-v2-flash', name: 'MiMo V2 Flash', enabled: true },
+  ],
+  'xiaomi-token-plan': [
+    { id: 'mimo-v2.5-pro', name: 'MiMo V2.5 Pro', enabled: true },
+    { id: 'mimo-v2-pro', name: 'MiMo V2 Pro', enabled: true },
+    { id: 'mimo-v2.5', name: 'MiMo V2.5', enabled: true },
+    { id: 'mimo-v2-omni', name: 'MiMo V2 Omni', enabled: true },
+    { id: 'mimo-v2-flash', name: 'MiMo V2 Flash', enabled: true },
   ],
 }
 
@@ -77,17 +115,21 @@ export const PROVIDER_DEFAULT_MODELS: Partial<Record<ProviderType, ChannelModel[
  */
 export const PROVIDER_LABELS: Record<ProviderType, string> = {
   anthropic: 'Anthropic',
+  'anthropic-compatible': 'Anthropic 兼容格式',
   openai: 'OpenAI',
   deepseek: 'DeepSeek',
   google: 'Google',
   'kimi-api': 'Kimi API (Anthropic 协议)',
   'kimi-coding': 'Kimi Coding Plan',
   zhipu: '智谱 AI',
+  'zhipu-coding': '智谱 Coding Plan',
   minimax: 'MiniMax (API&编程包)',
   'huatai-anthropic': '华泰（Anthropic 格式）',
   'huatai-openai': '华泰（OpenAI 格式）',
   doubao: '豆包',
   qwen: '通义千问',
+  xiaomi: '小米 MiMo (API)',
+  'xiaomi-token-plan': '小米 MiMo Token Plan',
   custom: 'OpenAI 兼容格式',
 }
 
@@ -99,11 +141,15 @@ export const PROVIDER_LABELS: Record<ProviderType, string> = {
  */
 export const AGENT_COMPATIBLE_PROVIDERS: ReadonlySet<ProviderType> = new Set<ProviderType>([
   'anthropic',
+  'anthropic-compatible',
   'deepseek',
   'kimi-api',
   'kimi-coding',
+  'zhipu-coding',
   'minimax',
   'huatai-anthropic',
+  'xiaomi',
+  'xiaomi-token-plan',
 ])
 
 /**
@@ -123,6 +169,8 @@ export interface ChannelModel {
   name: string
   /** 是否启用 */
   enabled: boolean
+  /** 是否支持多模态图片理解 */
+  supportsMultimodal?: boolean
 }
 
 /**
@@ -222,6 +270,26 @@ export interface FetchModelsResult {
 }
 
 /**
+ * 测试单个模型的输入参数（无需已保存的渠道，直接传入当前表单凭证）
+ */
+export interface ChannelModelTestInput extends FetchModelsInput {
+  /** 要测试的模型 ID */
+  model: string
+}
+
+/**
+ * 测试单个模型的结果
+ */
+export interface ChannelModelTestResult {
+  /** 是否成功 */
+  success: boolean
+  /** 结果消息 */
+  message: string
+  /** 模型返回的文本内容 */
+  content?: string
+}
+
+/**
  * 渠道相关 IPC 通道常量
  */
 export const CHANNEL_IPC_CHANNELS = {
@@ -241,4 +309,6 @@ export const CHANNEL_IPC_CHANNELS = {
   FETCH_MODELS: 'channel:fetch-models',
   /** 直接测试连接（无需已保存渠道，传入明文凭证） */
   TEST_DIRECT: 'channel:test-direct',
+  /** 直接测试单个模型（无需已保存渠道，传入明文凭证和模型 ID） */
+  TEST_MODEL_DIRECT: 'channel:test-model-direct',
 } as const

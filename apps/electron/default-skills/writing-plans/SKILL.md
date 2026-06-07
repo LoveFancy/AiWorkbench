@@ -1,9 +1,9 @@
 ---
 name: writing-plans
-description: Use when you have a spec or requirements for a multi-step task, before touching code
-version: "1.0.0"
+description: 用于已有规格说明或多步骤需求、且尚未动手改代码时，将需求拆成清晰的实施计划、文件改动、验证步骤和检查点。
+version: "1.0.1"
 ---
-version: "1.0.0"
+version: "1.0.1"
 ---
 # Writing Plans
 

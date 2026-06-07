@@ -250,6 +250,7 @@ export function ChannelSettings(): React.ReactElement {
         id: m.id,
         name: m.name,
         enabled: true,
+        supportsMultimodal: m.supportsMultimodal,
       })),
       enabled: true,
     } as Channel
@@ -397,7 +398,7 @@ function ChannelRow({ channel, onEdit, onDelete, onToggle }: ChannelRowProps): R
   return (
     <SettingsRow
       label={channel.name}
-      icon={<img src={getChannelLogo(channel.baseUrl)} alt="" className="w-8 h-8 rounded" />}
+      icon={<img src={getChannelLogo(channel)} alt="" className="w-8 h-8 rounded" />}
       description={description}
       className="group"
     >
@@ -450,7 +451,7 @@ function AgentProviderRow({ channel, enabled, onToggle }: AgentProviderRowProps)
   return (
     <SettingsRow
       label={channel.name}
-      icon={<img src={getChannelLogo(channel.baseUrl)} alt="" className="w-8 h-8 rounded" />}
+      icon={<img src={getChannelLogo(channel)} alt="" className="w-8 h-8 rounded" />}
       description={description}
     >
       <Switch

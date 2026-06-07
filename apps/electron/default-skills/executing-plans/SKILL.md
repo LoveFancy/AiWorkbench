@@ -1,9 +1,9 @@
 ---
 name: executing-plans
-description: Use when you have a written implementation plan to execute in a separate session with review checkpoints
-version: "1.0.0"
+description: 用于执行已经写好的实现计划，通常在独立会话中按检查点推进、逐批完成任务，并在关键节点回报状态以便复核。
+version: "1.0.1"
 ---
-version: "1.0.0"
+version: "1.0.1"
 ---
 # Executing Plans
 

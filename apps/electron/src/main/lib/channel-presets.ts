@@ -96,8 +96,12 @@ function syncPresetModels(channel: Channel, decryptApiKey?: (encryptedKey: strin
     }
 
     return {
+      ...model,
       ...existing,
       enabled: hasConfiguredKey ? existing.enabled : false,
+      supportsMultimodal: typeof existing.supportsMultimodal === 'boolean'
+        ? existing.supportsMultimodal
+        : model.supportsMultimodal,
     }
   })
   const customModels = channel.models

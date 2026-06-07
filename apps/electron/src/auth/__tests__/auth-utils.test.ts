@@ -1,5 +1,14 @@
-import { describe, it, expect } from 'vitest'
-import { extractToken, parseJobId } from '../auth-service'
+import { describe, it, expect, mock } from 'bun:test'
+
+mock.module('electron', () => ({
+  safeStorage: {
+    isEncryptionAvailable: () => true,
+    encryptString: (value: string) => Buffer.from(value, 'utf-8'),
+    decryptString: (value: Buffer) => value.toString('utf-8'),
+  },
+}))
+
+const { extractToken, parseJobId } = await import('../auth-service')
 
 // ===== extractToken 测试 =====
 

@@ -103,7 +103,12 @@ export function getPlatformChannel(): import('@proma/shared').Channel | null {
     baseUrl: firstBaseUrl,
     apiKey: l1ApiKey,
     apiKeyConfigured: true,
-    models: allEnabled.map((m) => ({ id: m.id, name: m.name, enabled: true })),
+    models: allEnabled.map((m) => ({
+      id: m.id,
+      name: m.name,
+      enabled: true,
+      supportsMultimodal: m.supportsMultimodal,
+    })),
     enabled: true,
     createdAt: 0,
     updatedAt: 0,

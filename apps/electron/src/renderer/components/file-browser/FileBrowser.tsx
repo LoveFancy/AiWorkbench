@@ -95,6 +95,8 @@ interface FileBrowserProps {
   hideEmpty?: boolean
   /** 托管工作区短路径显示上下文；仅影响展示，不影响真实路径操作 */
   displayRoots?: ManagedPathRoots
+  /** 外部空白区点击等场景触发清空当前选中项 */
+  clearSelectionSignal?: number
   /** 点击添加到聊天（在文件操作菜单中显示） */
   onAddToChat?: (entry: FileEntry) => void
   /** 单击文件时在内联预览面板中显示（替代外部窗口预览） */
@@ -105,7 +107,7 @@ interface FileBrowserProps {
   onCreateEntry?: (parentDir: string, type: 'directory' | 'file') => void
 }
 
-export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displayRoots, onAddToChat, onFilePreview, onSelectedDirectoryChange, onCreateEntry }: FileBrowserProps): React.ReactElement {
+export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displayRoots, clearSelectionSignal = 0, onAddToChat, onFilePreview, onSelectedDirectoryChange, onCreateEntry }: FileBrowserProps): React.ReactElement {
   const [entries, setEntries] = React.useState<FileEntry[]>([])
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
@@ -168,6 +170,11 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
     setSelectedPaths(new Set())
     onSelectedDirectoryChange?.(null)
   }, [onSelectedDirectoryChange])
+
+  React.useEffect(() => {
+    if (clearSelectionSignal === 0) return
+    clearSelection()
+  }, [clearSelectionSignal, clearSelection])
 
   /** 加载根目录 */
   const loadRoot = React.useCallback(async () => {
@@ -314,7 +321,7 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
   }, [displayRoots, rootPath])
 
   const fileTree = (
-    <div className={cn('py-1', embedded && 'min-h-full')}>
+    <div className="py-1">
       {error && (
         <div className="px-3 py-2 text-xs text-destructive">{error}</div>
       )}
@@ -356,7 +363,7 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
   )
 
   return (
-    <div className={cn('flex flex-col', embedded ? 'min-h-full' : 'h-full')} onClickCapture={handleRootClickCapture}>
+    <div className={cn('flex flex-col', embedded ? 'min-h-0' : 'h-full')} onClickCapture={handleRootClickCapture}>
       {/* 顶部工具栏（可由外部接管） */}
       {!hideToolbar && (
         <div className="flex items-center gap-1 px-3 pr-10 h-[48px] border-b flex-shrink-0">

@@ -1,6 +1,6 @@
 ---
 name: executing-plans
-description: Use when you have a written implementation plan to execute in a separate session with review checkpoints
+description: 用于执行已经写好的实现计划，通常在独立会话中按检查点推进并回报进度。
 ---
 
 # Executing Plans

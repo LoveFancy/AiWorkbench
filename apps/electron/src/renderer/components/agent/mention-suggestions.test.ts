@@ -4,6 +4,8 @@ import {
   buildSlashMentionCommandProps,
   buildSlashCommandSearchText,
   createMcpMentionSuggestion,
+  getSlashMentionItemLayoutClasses,
+  truncateSkillMentionName,
   formatSlashMentionTooltip,
   formatSlashCommandDisplayLabel,
   sortSlashMentionItems,
@@ -93,6 +95,17 @@ describe('slash command mention 展示', () => {
       label: 'docx',
       mentionKind: 'skill',
     })
+  })
+
+  test('候选项名称列和说明列按 1/3 与 2/3 分配宽度', () => {
+    expect(getSlashMentionItemLayoutClasses('skill').content).toContain('grid-cols-[minmax(0,1fr)_minmax(0,2fr)]')
+    expect(getSlashMentionItemLayoutClasses('command').content).toContain('grid-cols-[minmax(0,1fr)_minmax(0,2fr)]')
+  })
+
+  test('Skill 候选项名称最多显示 20 个字符', () => {
+    expect(truncateSkillMentionName('developing-claude-code-plugins')).toBe('developing-claude-c…')
+    expect(truncateSkillMentionName('brainstorming')).toBe('brainstorming')
+    expect(Array.from(truncateSkillMentionName('developing-claude-code-plugins'))).toHaveLength(20)
   })
 })
 

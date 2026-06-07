@@ -11,7 +11,7 @@ describe('内置 Skill 查找 Skill', () => {
 
     const content = readFileSync(skillPath, 'utf-8')
 
-    expect(content).toContain('version: "1.0.1"')
+    expect(content).toContain('version: "1.0.2"')
     expect(content).toContain('http://skillhub.uat.saas.htsc')
     expect(content).toContain('npx skills add http://skillhub.uat.saas.htsc --skill <skill-name>')
     expect(content).toContain('npx skills find [query]')
