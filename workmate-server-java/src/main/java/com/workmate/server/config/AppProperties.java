@@ -21,6 +21,7 @@ public class AppProperties {
     private double observabilitySampleRate = 1.0;
     private int observabilityMaxEventsPerMinute = 60;
     private LocalDev localDev = new LocalDev();
+    private Upgrade upgrade = new Upgrade();
 
     /** 大模型平台配置 */
     private ModelPlatform modelPlatform = new ModelPlatform();
@@ -49,6 +50,13 @@ public class AppProperties {
         private String baseUrl;
         private Integer maxTokens;
         private boolean enabled = true;
+    }
+
+    @Data
+    public static class Upgrade {
+        private String releaseRootDir = "/app/workmate/releases";
+        private String uploadTempDir = "/app/workmate/upload-tmp";
+        private String publicDownloadBaseUrl = "http://eiplite.htsc.com.cn/workmate/releases";
     }
 
     /**

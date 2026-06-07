@@ -6,11 +6,13 @@ import com.workmate.server.dto.request.WhitelistRuleRequest;
 import com.workmate.server.dto.response.ApiResponse;
 import com.workmate.server.dto.response.DashboardStats;
 import com.workmate.server.dto.response.EventStats;
+import com.workmate.server.dto.response.ReleaseUploadResponse;
 import com.workmate.server.entity.AdminWhitelist;
 import com.workmate.server.entity.UpgradeRelease;
 import com.workmate.server.entity.UpgradeStrategy;
 import com.workmate.server.service.AdminService;
 import com.workmate.server.service.ObservabilityService;
+import com.workmate.server.service.ReleaseFileService;
 import com.workmate.server.service.StrategyService;
 import com.workmate.server.service.UpgradeService;
 import com.workmate.server.service.WhitelistService;
@@ -19,6 +21,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.*;
 
@@ -31,6 +34,7 @@ public class AdminController {
     private final WhitelistService whitelistService;
     private final StrategyService strategyService;
     private final UpgradeService upgradeService;
+    private final ReleaseFileService releaseFileService;
     private final ObservabilityService observabilityService;
 
     // ===== 权限校验 =====
@@ -100,6 +104,17 @@ public class AdminController {
             @RequestParam(required = false) String platform) {
         var result = upgradeService.listReleases(page, pageSize, platform);
         return ApiResponse.ok(Map.of("total", result.total(), "releases", result.items()));
+    }
+
+    @PostMapping({"/releases/upload", "/upgrade/releases/upload"})
+    public ApiResponse<ReleaseUploadResponse> uploadReleaseFile(
+            @RequestParam String version,
+            @RequestParam String platform,
+            @RequestParam String arch,
+            @RequestParam String packageType,
+            @RequestParam MultipartFile file) {
+        ReleaseUploadResponse result = releaseFileService.upload(version, platform, arch, packageType, file);
+        return ApiResponse.ok(result, "上传成功");
     }
 
     @PostMapping("/releases")
