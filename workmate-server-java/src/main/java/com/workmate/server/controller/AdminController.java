@@ -217,7 +217,7 @@ public class AdminController {
             @RequestParam(defaultValue = "20") int pageSize,
             @RequestParam(required = false) String eventType,
             @RequestParam(required = false) String userId,
-            @RequestParam Integer year,
+            @RequestParam(required = false) Integer year,
             @RequestParam(required = false) String clientVersion) {
         var result = observabilityService.queryEvents(
                 page, pageSize, eventType, userId, year, clientVersion);
@@ -231,7 +231,7 @@ public class AdminController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int pageSize,
             @RequestParam(required = false) String userId,
-            @RequestParam Integer year,
+            @RequestParam(required = false) Integer year,
             @RequestParam(required = false) String clientVersion,
             @RequestParam(required = false) String errorFingerprint) {
         var result = observabilityService.queryErrors(

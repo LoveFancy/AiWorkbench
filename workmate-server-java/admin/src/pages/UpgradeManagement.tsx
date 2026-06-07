@@ -1,14 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Tabs, Table, Button, Modal, Form, Input, Select, Tag, Space,
-  App, Badge, InputNumber, Switch, Card,
+  App, Badge, InputNumber, Switch, Card, Upload, Progress,
 } from 'antd'
-import { PlusOutlined, DeleteOutlined, EyeOutlined, RollbackOutlined } from '@ant-design/icons'
+import { PlusOutlined, DeleteOutlined, EyeOutlined, RollbackOutlined, UploadOutlined } from '@ant-design/icons'
+import type { UploadFile } from 'antd/es/upload'
 import type { ColumnsType } from 'antd/es/table'
 import {
-  fetchReleases, createRelease, rollbackRelease,
+  fetchReleases, createRelease, rollbackRelease, uploadReleaseFile,
   fetchUpgradeWhitelist,
-  type UpgradeRelease, type UpgradeWhitelistRule,
+  type UpgradeRelease, type UpgradeWhitelistRule, type ReleaseUploadResult,
 } from '../api/upgrade.api'
 import {
   fetchStrategies, fetchStrategyDetail, createStrategy,
@@ -24,6 +25,21 @@ const platformOptions = [
   { label: 'macOS', value: 'darwin' },
   { label: 'Linux', value: 'linux' },
 ]
+
+const archOptions = [
+  { label: 'x64', value: 'x64' },
+  { label: 'arm64', value: 'arm64' },
+]
+
+const packageTypeOptions: Record<string, { label: string; value: string }[]> = {
+  win32: [{ label: 'exe', value: 'exe' }],
+  darwin: [{ label: 'dmg', value: 'dmg' }],
+  linux: [
+    { label: 'AppImage', value: 'appimage' },
+    { label: 'deb', value: 'deb' },
+    { label: 'rpm', value: 'rpm' },
+  ],
+}
 
 const ruleTypeOptions = [
   { label: '列表 (工号逗号分隔)', value: 'list' },
@@ -52,6 +68,16 @@ function ReleasesTab() {
   const [form] = Form.useForm()
   const [page, setPage] = useState(1)
 
+  // 上传相关状态
+  const [uploadFile, setUploadFile] = useState<UploadFile | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadPercent, setUploadPercent] = useState(0)
+  const [uploadResult, setUploadResult] = useState<ReleaseUploadResult | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+
+  // 联动：切换平台时清空已选架构和包类型
+  const [selectedPlatform, setSelectedPlatform] = useState<string | undefined>()
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
@@ -64,47 +90,177 @@ function ReleasesTab() {
 
   useEffect(() => { load() }, [load])
 
+  const resetUpload = () => {
+    setUploadFile(null)
+    setUploadPercent(0)
+    setUploadResult(null)
+  }
+
+  const openCreateModal = () => {
+    form.resetFields()
+    resetUpload()
+    setSelectedPlatform(undefined)
+    setModalOpen(true)
+  }
+
+  // 上传文件
+  const handleUpload = async () => {
+    const version = form.getFieldValue('version')
+    const platform = form.getFieldValue('platform')
+    const arch = form.getFieldValue('arch')
+    const packageType = form.getFieldValue('packageType')
+
+    if (!version) { message.warning('请先填写版本号'); return }
+    if (!platform) { message.warning('请先选择平台'); return }
+    if (!arch) { message.warning('请先选择架构'); return }
+    if (!packageType) { message.warning('请先选择安装包类型'); return }
+    if (!uploadFile?.originFileObj) { message.warning('请先选择安装包文件'); return }
+
+    setUploading(true)
+    setUploadPercent(0)
+    try {
+      const res = await uploadReleaseFile({
+        version,
+        platform,
+        arch,
+        packageType,
+        file: uploadFile.originFileObj,
+        onUploadProgress: (pct) => setUploadPercent(pct),
+      })
+      setUploadResult(res.data)
+      message.success('安装包上传成功')
+    } catch (err: any) {
+      message.error(err.message || '上传失败')
+    }
+    setUploading(false)
+  }
+
+  // 创建发布版本
   const handleCreate = async () => {
+    setSubmitting(true)
     try {
       const values = await form.validateFields()
-      await createRelease({ ...values, releaseType: 'UPGRADE' })
+
+      if (!uploadResult) {
+        message.warning('请先上传安装包')
+        setSubmitting(false)
+        return
+      }
+
+      await createRelease({
+        version: values.version,
+        releaseType: 'UPGRADE',
+        releaseNotes: values.releaseNotes || '',
+        downloadUrl: uploadResult.downloadUrl,
+        platform: values.platform,
+        arch: uploadResult.arch,
+        packageType: uploadResult.packageType,
+        fileName: uploadResult.fileName,
+        fileSize: uploadResult.fileSize,
+        sha256: uploadResult.sha256,
+        minVersion: values.minVersion || undefined,
+      })
       message.success('版本发布成功')
-      setModalOpen(false); form.resetFields(); load()
+      setModalOpen(false); form.resetFields(); resetUpload(); load()
     } catch (err: any) { if (err?.errorFields) return; message.error(err.message) }
+    setSubmitting(false)
   }
 
   const columns: ColumnsType<UpgradeRelease> = [
     { title: 'ID', dataIndex: 'id', width: 60 },
-    { title: '版本号', dataIndex: 'version', width: 120 },
-    { title: '平台', dataIndex: 'platform', width: 80 },
-    { title: '最低升级版本', dataIndex: 'minVersion', width: 130, render: (v: string|null) => v || '-' },
+    { title: '版本号', dataIndex: 'version', width: 100 },
+    { title: '平台', dataIndex: 'platform', width: 70 },
+    { title: '架构', dataIndex: 'arch', width: 60, render: (v: string|null) => v || '-' },
+    { title: '包类型', dataIndex: 'packageType', width: 80, render: (v: string|null) => v || '-' },
+    { title: '文件名', dataIndex: 'fileName', ellipsis: true, width: 180, render: (v: string|null) => v || '-' },
+    { title: '大小', dataIndex: 'fileSize', width: 80, render: (v: number|null) => v ? `${(v / 1024 / 1024).toFixed(1)} MB` : '-' },
+    { title: '最低升级版本', dataIndex: 'minVersion', width: 120, render: (v: string|null) => v || '-' },
     {
-      title: '状态', dataIndex: 'isActive', width: 70,
+      title: '状态', dataIndex: 'isActive', width: 60,
       render: (a: boolean) => a ? <Badge status="processing" text="活跃" /> : <Badge status="default" text="-" />,
     },
-    { title: '下载地址', dataIndex: 'downloadUrl', ellipsis: true, width: 220 },
-    { title: '发布时间', dataIndex: 'publishedAt', width: 170 },
+    { title: '下载地址', dataIndex: 'downloadUrl', ellipsis: true, width: 200 },
+    { title: '发布时间', dataIndex: 'publishedAt', width: 160 },
   ]
 
   return (
     <div>
-      <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setModalOpen(true) }} style={{ marginBottom: 16 }}>
+      <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal} style={{ marginBottom: 16 }}>
         新建发布
       </Button>
       <Table columns={columns} dataSource={data} rowKey="id" loading={loading}
-        pagination={{ current: page, pageSize: 20, total, onChange: setPage }} size="middle" />
+        pagination={{ current: page, pageSize: 20, total, onChange: setPage }} size="middle"
+        scroll={{ x: 1300 }} />
 
-      <Modal title="新建版本发布" open={modalOpen} onOk={handleCreate} onCancel={() => setModalOpen(false)} destroyOnClose width={520}>
-        <Form form={form} layout="vertical" initialValues={{ releaseType: 'UPGRADE' }}>
-          <Form.Item name="version" label="版本号" rules={[{ required: true }]}>
+      <Modal title="新建版本发布" open={modalOpen}
+        onOk={handleCreate} onCancel={() => setModalOpen(false)}
+        confirmLoading={submitting}
+        destroyOnClose width={560}>
+        <Form form={form} layout="vertical">
+          <Form.Item name="version" label="版本号" rules={[{ required: true, message: '请输入版本号' }]}>
             <Input placeholder="如 1.2.0" />
           </Form.Item>
-          <Form.Item name="platform" label="平台" rules={[{ required: true }]}>
-            <Select options={platformOptions} placeholder="选择平台" />
+          <Space style={{ width: '100%' }} size="middle">
+            <Form.Item name="platform" label="平台" rules={[{ required: true, message: '请选择平台' }]}>
+              <Select options={platformOptions} placeholder="选择平台" style={{ width: 140 }}
+                onChange={(v) => {
+                  setSelectedPlatform(v)
+                  form.setFieldsValue({ arch: undefined, packageType: undefined })
+                  resetUpload()
+                }} />
+            </Form.Item>
+            <Form.Item name="arch" label="架构" rules={[{ required: true, message: '请选择架构' }]}>
+              <Select options={archOptions} placeholder="选择架构" style={{ width: 100 }}
+                onChange={() => resetUpload()} />
+            </Form.Item>
+            <Form.Item name="packageType" label="安装包类型" rules={[{ required: true, message: '请选择类型' }]}>
+              <Select
+                options={selectedPlatform ? packageTypeOptions[selectedPlatform] || [] : []}
+                placeholder="选择类型" style={{ width: 120 }}
+                onChange={() => resetUpload()} />
+            </Form.Item>
+          </Space>
+
+          {/* 文件上传区域 */}
+          <Form.Item label="安装包文件" required>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+              <Upload
+                fileList={uploadFile ? [uploadFile] : []}
+                beforeUpload={(file) => {
+                  setUploadFile({ uid: '-1', name: file.name, status: 'done', originFileObj: file } as UploadFile)
+                  setUploadResult(null)
+                  setUploadPercent(0)
+                  return false // 阻止自动上传
+                }}
+                onRemove={() => resetUpload()}
+                maxCount={1}
+                accept={
+                  selectedPlatform === 'win32' ? '.exe' :
+                  selectedPlatform === 'darwin' ? '.dmg' :
+                  selectedPlatform === 'linux' ? '.AppImage,.deb,.rpm' : undefined
+                }
+              >
+                <Button icon={<UploadOutlined />}>选择文件</Button>
+              </Upload>
+              <Button
+                type="primary" ghost
+                onClick={handleUpload}
+                loading={uploading}
+                disabled={!uploadFile || uploading}
+              >
+                上传
+              </Button>
+            </div>
+            {uploading && (
+              <Progress percent={uploadPercent} size="small" style={{ marginBottom: 4 }} />
+            )}
+            {uploadResult && (
+              <Tag color="success" style={{ marginTop: 4, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                已上传: {uploadResult.fileName} ({(uploadResult.fileSize / 1024 / 1024).toFixed(1)} MB)
+              </Tag>
+            )}
           </Form.Item>
-          <Form.Item name="downloadUrl" label="下载地址" rules={[{ required: true, type: 'url' }]}>
-            <Input placeholder="https://..." />
-          </Form.Item>
+
           <Form.Item name="releaseNotes" label="发布说明">
             <Input.TextArea rows={3} placeholder="此版本的更新内容" />
           </Form.Item>
