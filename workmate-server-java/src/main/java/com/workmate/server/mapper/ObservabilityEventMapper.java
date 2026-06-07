@@ -13,7 +13,9 @@ public interface ObservabilityEventMapper {
 
     Optional<ObservabilityEvent> findByEventId(@Param("eventId") String eventId);
 
-    long countByEventType(@Param("eventType") String eventType);
+    int insert(ObservabilityEvent event);
+
+    long count();
 
     long countByEventTypeAndClientPlatformAndClientVersionAndCreatedAtGreaterThanEqual(
             @Param("eventType") String eventType,
@@ -29,20 +31,9 @@ public interface ObservabilityEventMapper {
 
     long countDistinctUserId();
 
-    List<ObservabilityEvent> findTopErrorFingerprints(@Param("limit") int limit);
-
-    List<ObservabilityEvent> findTopErrorFingerprintsBetween(@Param("startDate") LocalDateTime startDate,
-                                                              @Param("endDate") LocalDateTime endDate,
-                                                              @Param("limit") int limit);
-
-    int insert(ObservabilityEvent event);
-
-    long count();
-
     List<ObservabilityEvent> queryEvents(@Param("eventType") String eventType,
                                           @Param("userId") String userId,
                                           @Param("startDate") LocalDateTime startDate,
                                           @Param("endDate") LocalDateTime endDate,
-                                          @Param("clientVersion") String clientVersion,
-                                          @Param("errorFingerprint") String errorFingerprint);
+                                          @Param("clientVersion") String clientVersion);
 }

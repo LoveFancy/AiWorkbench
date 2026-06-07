@@ -4,6 +4,7 @@ import com.workmate.server.dto.response.DashboardStats;
 import com.workmate.server.dto.response.PaginatedData;
 import com.workmate.server.entity.AdminWhitelist;
 import com.workmate.server.mapper.AdminWhitelistMapper;
+import com.workmate.server.mapper.ObservabilityErrorMapper;
 import com.workmate.server.mapper.ObservabilityEventMapper;
 import com.workmate.server.mapper.UpgradeStrategyMapper;
 import com.github.pagehelper.PageHelper;
@@ -21,11 +22,12 @@ public class AdminService {
 
     private final AdminWhitelistMapper adminWhitelistMapper;
     private final ObservabilityEventMapper eventMapper;
+    private final ObservabilityErrorMapper errorMapper;
     private final UpgradeStrategyMapper strategyMapper;
 
     public DashboardStats getDashboardStats() {
         long totalEvents = eventMapper.count();
-        long errorEvents = eventMapper.countByEventType("error");
+        long errorEvents = errorMapper.count();
         long activeStrategies = strategyMapper.countByStatus("ACTIVE");
         long activeReleases = 0; // simplified
         long totalUsers = eventMapper.countDistinctUserId();
