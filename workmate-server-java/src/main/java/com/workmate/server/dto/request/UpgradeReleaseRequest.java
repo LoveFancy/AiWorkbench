@@ -32,5 +32,19 @@ public class UpgradeReleaseRequest {
     private String platform;
 
     @Size(max = 32)
+    private String arch;
+
+    @Size(max = 32)
+    private String packageType;
+
+    @Size(max = 255)
+    private String fileName;
+
+    private Long fileSize;
+
+    @Size(max = 64)
+    private String sha256;
+
+    @Size(max = 32)
     private String minVersion;
 }

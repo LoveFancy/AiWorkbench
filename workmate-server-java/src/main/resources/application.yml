@@ -54,6 +54,10 @@ workmate:
   model-platform-timeout-ms: 10000
   observability-sample-rate: 1.0
   observability-max-events-per-minute: 60
+  upgrade:
+    release-root-dir: ${WORKMATE_RELEASE_ROOT_DIR:/app/workmate/releases}
+    upload-temp-dir: ${WORKMATE_UPLOAD_TEMP_DIR:/app/workmate/upload-tmp}
+    public-download-base-url: ${WORKMATE_PUBLIC_DOWNLOAD_BASE_URL:http://eiplite.htsc.com.cn/workmate/releases}
 
   # ===== 大模型平台认证（测试 & 生产共用） =====
   model-platform:

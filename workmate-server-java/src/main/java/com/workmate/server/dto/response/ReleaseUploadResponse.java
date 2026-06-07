@@ -1,30 +1,21 @@
-package com.workmate.server.entity;
+package com.workmate.server.dto.response;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
-
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class UpgradeRelease {
-
-    private Integer id;
+public class ReleaseUploadResponse {
     private String version;
-    private String releaseType;
-    private String releaseNotes;
-    private String downloadUrl;
     private String platform;
     private String arch;
     private String packageType;
     private String fileName;
     private Long fileSize;
     private String sha256;
-    private String minVersion;
-    private Boolean isActive;
-    private LocalDateTime publishedAt;
+    private String downloadUrl;
 }
