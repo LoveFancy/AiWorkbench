@@ -7,6 +7,7 @@ import com.workmate.server.entity.UpgradeStrategyStage;
 import com.workmate.server.entity.UpgradeStrategyStageRule;
 import com.workmate.server.entity.UpgradeWhitelist;
 import com.workmate.server.exception.AppException;
+import com.workmate.server.mapper.ObservabilityErrorMapper;
 import com.workmate.server.mapper.ObservabilityEventMapper;
 import com.workmate.server.mapper.UpgradeStrategyMapper;
 import com.workmate.server.mapper.UpgradeStrategyStageMapper;
@@ -31,6 +32,7 @@ public class StrategyService {
     private final UpgradeStrategyStageRuleMapper stageRuleMapper;
     private final UpgradeWhitelistMapper whitelistMapper;
     private final ObservabilityEventMapper eventMapper;
+    private final ObservabilityErrorMapper errorMapper;
 
     @Transactional
     public UpgradeStrategy createStrategy(StrategyCreateRequest input) {
@@ -433,11 +435,11 @@ public class StrategyService {
 
     private long getStageErrorCount(String platform, String targetVersion, LocalDateTime since) {
         if (since != null) {
-            return eventMapper.countByEventTypeAndClientPlatformAndClientVersionAndCreatedAtGreaterThanEqual(
-                    "error", platform, targetVersion, since);
+            return errorMapper.countByClientPlatformAndClientVersionAndCreatedAtGreaterThanEqual(
+                    platform, targetVersion, since);
         }
-        return eventMapper.countByEventTypeAndClientPlatformAndClientVersionAndCreatedAtGreaterThanEqual(
-                "error", platform, targetVersion, LocalDateTime.of(2000, 1, 1, 0, 0));
+        return errorMapper.countByClientPlatformAndClientVersionAndCreatedAtGreaterThanEqual(
+                platform, targetVersion, LocalDateTime.of(2000, 1, 1, 0, 0));
     }
 
     private long getStageRequestCount(String platform, String targetVersion, LocalDateTime since) {

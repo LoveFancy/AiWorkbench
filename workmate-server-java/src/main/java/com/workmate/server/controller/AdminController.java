@@ -204,22 +204,34 @@ public class AdminController {
             @RequestParam(defaultValue = "20") int pageSize,
             @RequestParam(required = false) String eventType,
             @RequestParam(required = false) String userId,
-            @RequestParam(required = false) String startDate,
-            @RequestParam(required = false) String endDate,
-            @RequestParam(required = false) String clientVersion,
-            @RequestParam(required = false) String errorFingerprint) {
+            @RequestParam Integer year,
+            @RequestParam(required = false) String clientVersion) {
         var result = observabilityService.queryEvents(
-                page, pageSize, eventType, userId, startDate, endDate, clientVersion, errorFingerprint);
+                page, pageSize, eventType, userId, year, clientVersion);
         return ApiResponse.ok(Map.of(
                 "total", result.total(), "events", result.items(),
                 "page", result.page(), "pageSize", result.pageSize()));
     }
 
+    @GetMapping("/observability/errors")
+    public ApiResponse<Map<String, Object>> queryErrors(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) String userId,
+            @RequestParam Integer year,
+            @RequestParam(required = false) String clientVersion,
+            @RequestParam(required = false) String errorFingerprint) {
+        var result = observabilityService.queryErrors(
+                page, pageSize, userId, year, clientVersion, errorFingerprint);
+        return ApiResponse.ok(Map.of(
+                "total", result.total(), "errors", result.items(),
+                "page", result.page(), "pageSize", result.pageSize()));
+    }
+
     @GetMapping("/observability/stats")
     public ApiResponse<EventStats> getEventStats(
-            @RequestParam(required = false) String startDate,
-            @RequestParam(required = false) String endDate) {
-        return ApiResponse.ok(observabilityService.getEventStats(startDate, endDate));
+            @RequestParam(required = false) Integer year) {
+        return ApiResponse.ok(observabilityService.getEventStats(year));
     }
 
     @SuppressWarnings("unchecked")
