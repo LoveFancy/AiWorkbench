@@ -17,7 +17,7 @@ function getEipGatewayBase(): string {
       }
     }
   } catch { /* settings.json 损坏时走默认 */ }
-  return 'http://eip.htsc.com.cn/gateway'
+  return 'http://eiplite.htsc.com.cn/gateway'
 }
 
 /** 强制重新登录天数：自 Token 初始签发起超过此天数必须重新登录 */

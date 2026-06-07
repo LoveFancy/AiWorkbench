@@ -1,20 +1,11 @@
 package com.workmate.server.service;
 
 import com.workmate.server.config.AppProperties;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 @Slf4j
 @Service
@@ -22,7 +13,7 @@ import java.util.Map;
 public class ModelPlatformService {
 
     private final AppProperties appProperties;
-    private final ObjectMapper objectMapper;
+    private final ModelPlatformClientManager modelPlatformClientManager;
 
     public record ModelInfo(String id, String name, String description, String provider,
                             String baseUrl, Integer maxTokens, boolean enabled) {
@@ -31,6 +22,13 @@ public class ModelPlatformService {
     public record UserCredentials(String apiKey, List<ModelInfo> models) {
     }
 
+    /**
+     * 获取用户凭证和可用模型列表。
+     * <ul>
+     *   <li>本地开发模式（local-dev.enabled=true）：返回预定义模型列表</li>
+     *   <li>测试/生产环境：委托 {@link ModelPlatformClientManager} 调用大模型平台认证接口</li>
+     * </ul>
+     */
     public UserCredentials getUserCredentials(String userId) {
         // 本地开发模式：直接返回预定义模型列表，不请求真实平台
         if (appProperties.getLocalDev().isEnabled()) {
@@ -39,54 +37,8 @@ public class ModelPlatformService {
             return buildLocalDevCredentials();
         }
 
-        String url = appProperties.getModelPlatformApiUrl() + "/users/" + userId + "/credentials";
-        log.info("查询用户凭证和模型列表, userId={}, url={}", userId, url);
-
-        try {
-            HttpClient client = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofMillis(appProperties.getModelPlatformTimeoutMs()))
-                    .build();
-
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .header("Content-Type", "application/json")
-                    .timeout(Duration.ofMillis(appProperties.getModelPlatformTimeoutMs()))
-                    .GET()
-                    .build();
-
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-
-            if (response.statusCode() != 200) {
-                log.error("大模型平台返回错误, status={}, userId={}", response.statusCode(), userId);
-                return new UserCredentials("", List.of());
-            }
-
-            JsonNode root = objectMapper.readTree(response.body());
-            String apiKey = root.has("apiKey") ? root.get("apiKey").asText("") : "";
-
-            List<ModelInfo> models = new ArrayList<>();
-            if (root.has("models") && root.get("models").isArray()) {
-                for (JsonNode m : root.get("models")) {
-                    boolean enabled = m.has("enabled") && m.get("enabled").asBoolean(false);
-                    if (enabled) {
-                        models.add(new ModelInfo(
-                                m.has("id") ? m.get("id").asText() : null,
-                                m.has("name") ? m.get("name").asText() : null,
-                                m.has("description") ? m.get("description").asText() : null,
-                                m.has("provider") ? m.get("provider").asText() : null,
-                                m.has("baseUrl") ? m.get("baseUrl").asText() : null,
-                                m.has("maxTokens") && !m.get("maxTokens").isNull() ? m.get("maxTokens").asInt() : null,
-                                enabled
-                        ));
-                    }
-                }
-            }
-
-            return new UserCredentials(apiKey, models);
-        } catch (Exception e) {
-            log.error("查询大模型平台失败, userId={}", userId, e);
-            return new UserCredentials("", List.of());
-        }
+        // 测试/生产环境：通过 ModelPlatformClientManager 调用大模型平台认证接口
+        return modelPlatformClientManager.fetchUserCredentials(userId);
     }
 
     /**

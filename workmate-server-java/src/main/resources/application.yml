@@ -55,6 +55,20 @@ workmate:
   observability-sample-rate: 1.0
   observability-max-events-per-minute: 60
 
+  # ===== 大模型平台认证（测试 & 生产共用） =====
+  model-platform:
+    auth-url: "http://168.63.65.40:8090/llm-service/apikey/model/auth"
+    default-provider: "anthropic"
+    provider-url-mapping:
+      openai: "http://168.63.65.40:8090/llm-service/v1/chat/completions"
+      anthropic: "http://168.63.65.40:8090/llm-service/v1/messages"
+
+  # ===== LLM 大模型服务调用地址 =====
+  llm-service:
+    base-url: "http://168.63.65.40:8090/llm-service/v1"
+    openai-path: "/chat/completions"
+    anthropic-path: "/messages"
+
 # ===== 日志公共基础（路径、格式） =====
 logging:
   level:
