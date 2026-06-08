@@ -26,7 +26,6 @@ import { PermissionModeSelector } from './PermissionModeSelector'
 import { AskUserBanner } from './AskUserBanner'
 import { ExitPlanModeBanner } from './ExitPlanModeBanner'
 import { PlanModeDashedBorder } from './PlanModeDashedBorder'
-import { ExpertSummonButton } from './ExpertSummonButton'
 import { ModelSelector } from '@/components/chat/ModelSelector'
 import { AttachmentPreviewItem } from '@/components/chat/AttachmentPreviewItem'
 import { QuotedSelectionChip } from '@/components/diff/QuotedSelectionChip'
@@ -1880,7 +1879,6 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
   const canSend = messagesLoaded && (hasTextInput || pendingFiles.length > 0 || !!suggestion) && agentChannelId !== null && hasAvailableModel && (!streaming || hasTextInput)
 
   const inputToolbarItems = React.useMemo<ToolbarItem[]>(() => [
-    { key: 'expert-summon', node: <ExpertSummonButton variant="composer" sessionId={sessionId} /> },
     {
       key: 'model',
       node: (

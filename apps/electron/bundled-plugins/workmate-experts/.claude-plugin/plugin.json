@@ -1,6 +1,6 @@
 {
   "name": "workmate-experts",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "WorkMate 内置专家团能力包",
   "author": {
     "name": "WorkMate"
@@ -13,7 +13,6 @@
     "agent"
   ],
   "expertGroups": [
-    "product-team",
     "architecture-decision-team"
   ]
 }
