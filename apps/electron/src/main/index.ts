@@ -111,6 +111,7 @@ import { feishuBridgeManager } from './lib/feishu-bridge-manager'
 import { getFeishuMultiBotConfig } from './lib/feishu-config'
 import { stopFeishuSyncSleepBlocker, syncFeishuSyncSleepBlocker } from './lib/feishu-sleep-blocker'
 import { dingtalkBridgeManager } from './lib/dingtalk-bridge-manager'
+import { initWorkmateServices, shutdownWorkmateServices } from './lib/workmate-init'
 import { getDingTalkMultiBotConfig } from './lib/dingtalk-config'
 import { wechatBridge } from './lib/wechat-bridge'
 import { getWeChatConfig } from './lib/wechat-config'
@@ -126,6 +127,7 @@ import { setPromaVersion } from '@proma/core'
 import { TRAY_IPC_CHANNELS } from '../types'
 
 const MIGRATION_IPC_OPEN = 'migration:open-import-file'
+let isWorkmateShutdownComplete = false
 
 /** 检查文件路径是否为迁移文件，如果是则通知渲染进程打开导入流程 */
 function handleMigrationFileOpen(filePath: string): void {
@@ -456,6 +458,9 @@ async function bootstrap(): Promise<void> {
   initModelService()
   registerPlatformModelsIpcHandlers()
 
+  // WorkMate 观测上报服务初始化
+  safeRun('initWorkmateServices', initWorkmateServices)
+
   // 从磁盘加载模型缓存
   loadCacheFromDisk()
   // 启动定期模型刷新
@@ -603,7 +608,19 @@ app.on('window-all-closed', () => {
   }
 })
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
+  // WorkMate 观测上报：等待最后一批事件完成冲刷后再继续退出
+  if (!isWorkmateShutdownComplete) {
+    event.preventDefault()
+    void shutdownWorkmateServices()
+      .catch((error) => console.warn('[WorkMate] 观测上报关闭失败:', error))
+      .finally(() => {
+        isWorkmateShutdownComplete = true
+        app.quit()
+      })
+    return
+  }
+
   // 标记正在退出，让 close 事件不再阻止关闭
   setQuitting()
 

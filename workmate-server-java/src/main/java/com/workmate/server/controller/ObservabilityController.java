@@ -1,6 +1,6 @@
 package com.workmate.server.controller;
 
-import com.workmate.server.dto.request.ObservabilityEventRequest;
+import com.workmate.server.dto.request.ObservabilityBatchRequest;
 import com.workmate.server.dto.response.ApiResponse;
 import com.workmate.server.dto.response.EventStats;
 import com.workmate.server.dto.response.PaginatedData;
@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/workmate/observability")
@@ -22,18 +23,16 @@ public class ObservabilityController {
     private final ObservabilityService observabilityService;
 
     /**
-     * 客户端批量上报观测事件（统一入口，服务端按 type 分流到业务表或异常表）
+     * 客户端批量上报观测事件（统一入口，服务端按 type 分流到业务表或异常表）。
+     * 接收格式：{ "events": [...] }，与客户端 flushQueue 的 POST body 一一对应。
      */
     @PostMapping("/events")
-    public ApiResponse<Object> reportEvents(
-            @Valid @RequestBody ObservabilityEventRequest request,
+    public ApiResponse<Map<String, Integer>> reportEvents(
+            @Valid @RequestBody ObservabilityBatchRequest request,
             HttpServletRequest httpRequest) {
         String jobId = (String) httpRequest.getAttribute("jobId");
-        Object result = observabilityService.createEvent(request, jobId);
-        if (result == null) {
-            return ApiResponse.ok(null, "rate_limited");
-        }
-        return ApiResponse.ok(result, "上报成功");
+        Map<String, Integer> result = observabilityService.createEvents(request.getEvents(), jobId);
+        return ApiResponse.ok(result, "上报完成");
     }
 
     /**

@@ -44,6 +44,27 @@ public class ObservabilityService {
     }
 
     /**
+     * 批量处理客户端上报事件，返回处理统计 { received, duplicated, inserted }。
+     */
+    @Transactional
+    public Map<String, Integer> createEvents(List<ObservabilityEventRequest> events, String jobId) {
+        int received = events.size();
+        int duplicated = 0;
+        int inserted = 0;
+
+        for (ObservabilityEventRequest request : events) {
+            Object result = createEvent(request, jobId);
+            if (result == null) {
+                duplicated++;
+            } else {
+                inserted++;
+            }
+        }
+
+        return Map.of("received", received, "duplicated", duplicated, "inserted", inserted);
+    }
+
+    /**
      * 处理客户端上报的单个事件，按 type 分流到业务表或异常表。
      */
     @Transactional
