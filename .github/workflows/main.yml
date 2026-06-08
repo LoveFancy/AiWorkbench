@@ -12,7 +12,6 @@ jobs:
       ELECTRON_MIRROR: https://mirrors.huaweicloud.com/electron/
       ELECTRON_BUILDER_BINARIES_MIRROR: https://mirrors.huaweicloud.com/electron-builder-binaries/
       NPM_CONFIG_ELECTRON_BUILDER_BINARIES_MIRROR: https://mirrors.huaweicloud.com/electron-builder-binaries/
-      npm_config_electron_builder_binaries_mirror: https://mirrors.huaweicloud.com/electron-builder-binaries/
 
     steps:
       - uses: actions/checkout@v4
