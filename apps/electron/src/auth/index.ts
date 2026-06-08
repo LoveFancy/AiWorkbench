@@ -8,12 +8,12 @@ export {
   loginWithEipGateway,
   getToken,
   getJobId,
+  getEipGatewayBase,
   isLoggedIn,
-  needsReauth,
   getAuthInfo,
+  needsReauth,
   logout,
   buildAuthHeaders,
-  getEipGatewayBase,
 } from './auth-service'
 
 // IPC 注册

@@ -56,7 +56,7 @@ public class AppProperties {
     public static class Upgrade {
         private String releaseRootDir = "/app/workmate/releases";
         private String uploadTempDir = "/app/workmate/upload-tmp";
-        private String publicDownloadBaseUrl = "http://eiplite.htsc.com.cn/workmate/releases";
+        private String publicDownloadBaseUrl;
     }
 
     /**

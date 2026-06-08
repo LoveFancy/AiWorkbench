@@ -4,24 +4,9 @@
  * 调用 /workmate/upgrade/check，解析响应并做端侧二次校验。
  */
 
-import { readFileSync, existsSync } from 'node:fs'
-import { getSettingsPath } from '../config-paths'
 import { httpGet } from '../../../shared/hteip-client'
+import { getEipGatewayBase } from '../../../auth'
 import { compareVersion, isValidVersionDirection } from './workmate-version'
-
-/** 从 settings.json 读取 eipGatewayBase（复用已有配置字段） */
-function getEipGatewayBase(): string {
-  const settingsPath = getSettingsPath()
-  try {
-    if (existsSync(settingsPath)) {
-      const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'))
-      if (typeof settings.eipGatewayBase === 'string' && settings.eipGatewayBase.trim()) {
-        return settings.eipGatewayBase.trim()
-      }
-    }
-  } catch { /* ignore */ }
-  return 'http://eiplite.htsc.com.cn/gateway'
-}
 
 /** 服务端 check 接口原始响应 */
 export interface CheckApiResponse {

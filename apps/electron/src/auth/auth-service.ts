@@ -88,14 +88,10 @@ async function login(
   const url = `${base}/login`
   console.log('[Auth] POST %s', url)
 
-  // 从 base URL 解析 Origin / Host，避免写死
-  let origin = 'http://eiplite.htsc.com.cn'
-  let host = 'eiplite.htsc.com.cn'
-  try {
-    const parsed = new URL(base)
-    origin = parsed.origin
-    host = parsed.host
-  } catch { /* 保持回退值 */ }
+  // 从 base URL 解析 Origin / Host
+  const parsed = new URL(base)
+  const origin = parsed.origin
+  const host = parsed.host
 
   try {
     const response = await fetch(url, {
