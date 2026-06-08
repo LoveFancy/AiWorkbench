@@ -3,9 +3,10 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { AgentSessionMeta } from '@proma/shared'
-import { clearConfigRootOverride, setConfigRoot } from './config-root-service.ts'
 
 let root = ''
+let clearConfigRootOverride: typeof import('./config-root-service.ts').clearConfigRootOverride
+let setConfigRoot: typeof import('./config-root-service.ts').setConfigRoot
 
 mock.module('electron', () => ({
   app: {
@@ -16,7 +17,11 @@ mock.module('electron', () => ({
   BrowserWindow: class {},
 }))
 
-beforeAll(() => {
+beforeAll(async () => {
+  const configRootService = await import('./config-root-service.ts')
+  clearConfigRootOverride = configRootService.clearConfigRootOverride
+  setConfigRoot = configRootService.setConfigRoot
+
   clearConfigRootOverride()
   root = mkdtempSync(join(tmpdir(), 'proma-agent-sessions-'))
   process.env.HOME = root
@@ -25,7 +30,7 @@ beforeAll(() => {
 })
 
 afterAll(() => {
-  clearConfigRootOverride()
+  clearConfigRootOverride?.()
   if (root) rmSync(root, { recursive: true, force: true })
 })
 

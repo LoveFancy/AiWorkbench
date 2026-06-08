@@ -9,7 +9,7 @@ import { join, resolve, sep, dirname } from 'node:path'
 import { existsSync, realpathSync, rmSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { IPC_CHANNELS, CHANNEL_IPC_CHANNELS, CHAT_IPC_CHANNELS, AGENT_IPC_CHANNELS, ENVIRONMENT_IPC_CHANNELS, INSTALLER_IPC_CHANNELS, PROXY_IPC_CHANNELS, GITHUB_RELEASE_IPC_CHANNELS, SYSTEM_PROMPT_IPC_CHANNELS, MEMORY_IPC_CHANNELS, CHAT_TOOL_IPC_CHANNELS, FEISHU_IPC_CHANNELS, DINGTALK_IPC_CHANNELS, WECHAT_IPC_CHANNELS, isPromaPermissionMode } from '@proma/shared'
+import { IPC_CHANNELS, CHANNEL_IPC_CHANNELS, CHAT_IPC_CHANNELS, AGENT_IPC_CHANNELS, ENVIRONMENT_IPC_CHANNELS, INSTALLER_IPC_CHANNELS, PROXY_IPC_CHANNELS, GITHUB_RELEASE_IPC_CHANNELS, SYSTEM_PROMPT_IPC_CHANNELS, MEMORY_IPC_CHANNELS, CHAT_TOOL_IPC_CHANNELS, FEISHU_IPC_CHANNELS, DINGTALK_IPC_CHANNELS, WECHAT_IPC_CHANNELS, AUTOMATION_IPC_CHANNELS, isPromaPermissionMode } from '@proma/shared'
 import { USER_PROFILE_IPC_CHANNELS, SETTINGS_IPC_CHANNELS, SCRATCH_PAD_IPC_CHANNELS, QUICK_TASK_IPC_CHANNELS, VOICE_DICTATION_IPC_CHANNELS, APP_ICON_IPC_CHANNELS, DOCK_BADGE_IPC_CHANNELS, STORAGE_IPC_CHANNELS } from '../types'
 import type {
   QuickTaskSubmitInput,
@@ -122,6 +122,9 @@ import type {
   AgentPluginInstallInput,
   AgentPluginInstallResult,
   AgentExpertGroupInfo,
+  Automation,
+  CreateAutomationInput,
+  UpdateAutomationInput,
 } from '@proma/shared'
 import type { UserProfile, AppSettings, ConfigRootInfo } from '../types'
 import { getRuntimeStatus, getGitRepoStatus, reinitializeRuntime } from './lib/runtime-init'
@@ -176,6 +179,13 @@ import {
 import { getProxySettings, saveProxySettings } from './lib/proxy-settings-service'
 import { detectSystemProxy } from './lib/system-proxy-detector'
 import {
+  listAutomations,
+  createAutomation,
+  updateAutomation,
+  deleteAutomation,
+} from './lib/automation-manager'
+import { runAutomationNow, broadcastChanged as broadcastAutomationsChanged } from './lib/automation-scheduler'
+import {
   listAgentSessions,
   createAgentSession,
   getAgentSessionMeta,
@@ -210,6 +220,7 @@ import {
   saveWorkspaceMcpConfig,
   getAllWorkspaceSkills,
   getOtherWorkspaceSkills,
+  getDefaultSkillSlugs,
   getWorkspaceCapabilities,
   getAgentWorkspace,
   deleteWorkspaceSkill,
@@ -1796,25 +1807,9 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // 切换 Agent 会话手动工作中状态
+  // 清除 Agent 会话完成状态（兼容清除旧版 manualWorking）
   ipcMain.handle(
-    AGENT_IPC_CHANNELS.TOGGLE_MANUAL_WORKING,
-    async (_, id: string): Promise<AgentSessionMeta> => {
-      const sessions = listAgentSessions()
-      const current = sessions.find((s) => s.id === id)
-      if (!current) throw new Error(`Agent session not found: ${id}`)
-      const newManualWorking = !current.manualWorking
-      const updates: Partial<AgentSessionMeta> = { manualWorking: newManualWorking }
-      if (newManualWorking && current.archived) {
-        updates.archived = false
-      }
-      return updateAgentSessionMeta(id, updates)
-    }
-  )
-
-  // 确认 Agent 会话已完成（清除 completedButUnconfirmed 和 manualWorking）
-  ipcMain.handle(
-    AGENT_IPC_CHANNELS.CONFIRM_WORKING_DONE,
+    AGENT_IPC_CHANNELS.CLEAR_COMPLETION_STATE,
     async (_, id: string): Promise<AgentSessionMeta> => {
       const sessions = listAgentSessions()
       const current = sessions.find((s) => s.id === id)
@@ -1928,7 +1923,40 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     AGENT_IPC_CHANNELS.DELETE_WORKSPACE,
     async (_, id: string): Promise<void> => {
-      return deleteAgentWorkspace(id)
+      const deletingWorkspace = getAgentWorkspace(id)
+      if (!deletingWorkspace) {
+        return deleteAgentWorkspace(id)
+      }
+
+      // 守卫前置：在删除任何会话/自动任务前就拦截不可删除的工作区，
+      // 否则会先把绑定数据删光、再由 deleteAgentWorkspace 抛错，造成数据丢失与状态不一致
+      if (deletingWorkspace.slug === 'default') {
+        throw new Error('默认项目不能删除')
+      }
+      if (listAgentWorkspaces().length <= 1) {
+        throw new Error('至少需要保留一个项目')
+      }
+
+      const affectedSessionIds = listAgentSessions()
+        .filter((session) => session.workspaceId === id)
+        .map((session) => session.id)
+      const affectedAutomationIds = listAutomations()
+        .filter((automation) => automation.workspaceId === id)
+        .map((automation) => automation.id)
+
+      for (const sessionId of affectedSessionIds) {
+        if (isAgentSessionActive(sessionId)) {
+          stopAgent(sessionId)
+        }
+        deleteAgentSession(sessionId)
+      }
+      for (const automationId of affectedAutomationIds) {
+        deleteAutomation(automationId)
+      }
+      if (affectedAutomationIds.length > 0) {
+        broadcastAutomationsChanged()
+      }
+      deleteAgentWorkspace(id)
     }
   )
 
@@ -2024,6 +2052,14 @@ export function registerIpcHandlers(): void {
     AGENT_IPC_CHANNELS.GET_OTHER_WORKSPACE_SKILLS,
     async (_, currentSlug: string) => {
       return getOtherWorkspaceSkills(currentSlug)
+    }
+  )
+
+  // 获取默认 Skills 的 slug 列表（来自 ~/.proma/default-skills/）
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.GET_DEFAULT_SKILL_SLUGS,
+    async () => {
+      return getDefaultSkillSlugs()
     }
   )
 
@@ -4347,6 +4383,120 @@ export function registerIpcHandlers(): void {
     async (event) => {
       const win = BrowserWindow.fromWebContents(event.sender)
       return win && !win.isDestroyed() ? win.isMaximized() : false
+    }
+  )
+
+  // ===== 定时任务（Automation）=====
+
+  // 渲染进程可能被注入内容污染（XSS via markdown / MCP tool output），主进程必须自己校验入参，
+  // 否则 NaN / -Infinity / 越界值会污染 ~/.proma/automations.json，无法回滚。
+  const isNonEmptyString = (v: unknown): v is string => typeof v === 'string' && v.length > 0
+  const isNonBlankString = (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0
+  const isFiniteInt = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && Number.isInteger(v)
+  const validScheduleType = (v: unknown): v is 'interval' | 'daily' | 'weekly' =>
+    v === 'interval' || v === 'daily' || v === 'weekly'
+  const validPermissionMode = (v: unknown): v is 'auto' | 'bypassPermissions' =>
+    v === 'auto' || v === 'bypassPermissions'
+  const validAutomationNotificationTrigger = (v: unknown): v is 'always' | 'success' | 'error' =>
+    v === 'always' || v === 'success' || v === 'error'
+  const validTimeOfDay = (v: unknown): boolean => typeof v === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(v)
+
+  const validateAutomationNotificationTargets = (targets: unknown): void => {
+    if (targets === undefined) return
+    if (!Array.isArray(targets)) throw new Error('notificationTargets 必须是数组')
+    if (targets.length > 5) throw new Error('notificationTargets 最多 5 个')
+
+    for (const target of targets) {
+      if (!target || typeof target !== 'object') throw new Error('notificationTargets 包含非法目标')
+      const t = target as Record<string, unknown>
+      if (t.type !== 'feishu') throw new Error(`不支持的通知目标: ${String(t.type)}`)
+      if (typeof t.enabled !== 'boolean') throw new Error('notificationTargets.enabled 必须是 boolean')
+      if (!validAutomationNotificationTrigger(t.trigger)) {
+        throw new Error(`非法的 notificationTargets.trigger: ${String(t.trigger)}`)
+      }
+      if (!isNonEmptyString(t.botId)) throw new Error('notificationTargets.botId 必填')
+      if (!isNonEmptyString(t.chatId)) throw new Error('notificationTargets.chatId 必填')
+    }
+  }
+
+  const validateAutomationFields = (i: Partial<CreateAutomationInput | UpdateAutomationInput>): void => {
+    if (i.scheduleType !== undefined && !validScheduleType(i.scheduleType)) {
+      throw new Error(`非法的 scheduleType: ${String(i.scheduleType)}`)
+    }
+    if (i.intervalMinutes !== undefined && (!isFiniteInt(i.intervalMinutes) || i.intervalMinutes < 1)) {
+      throw new Error(`非法的 intervalMinutes: ${String(i.intervalMinutes)}`)
+    }
+    if (i.timeOfDay !== undefined && !validTimeOfDay(i.timeOfDay)) {
+      throw new Error(`非法的 timeOfDay: ${String(i.timeOfDay)}`)
+    }
+    if (i.dayOfWeek !== undefined && (!isFiniteInt(i.dayOfWeek) || i.dayOfWeek < 0 || i.dayOfWeek > 6)) {
+      throw new Error(`非法的 dayOfWeek: ${String(i.dayOfWeek)}`)
+    }
+    if (i.permissionMode !== undefined && !validPermissionMode(i.permissionMode)) {
+      throw new Error(`非法的 permissionMode: ${String(i.permissionMode)}`)
+    }
+    validateAutomationNotificationTargets(i.notificationTargets)
+  }
+
+  ipcMain.handle(
+    AUTOMATION_IPC_CHANNELS.LIST,
+    async (): Promise<Automation[]> => listAutomations()
+  )
+
+  ipcMain.handle(
+    AUTOMATION_IPC_CHANNELS.CREATE,
+    async (_, input: CreateAutomationInput): Promise<Automation> => {
+      if (!input || typeof input !== 'object') throw new Error('input 必须是对象')
+      if (!isNonEmptyString(input.name)) throw new Error('name 必填')
+      if (!isNonEmptyString(input.prompt)) throw new Error('prompt 必填')
+      if (!isNonEmptyString(input.channelId)) throw new Error('channelId 必填')
+      validateAutomationFields(input)
+      const a = createAutomation(input)
+      broadcastAutomationsChanged()
+      return a
+    }
+  )
+
+  ipcMain.handle(
+    AUTOMATION_IPC_CHANNELS.UPDATE,
+    async (_, input: UpdateAutomationInput): Promise<Automation | undefined> => {
+      if (!input || typeof input !== 'object') throw new Error('input 必须是对象')
+      if (!isNonEmptyString(input.id)) throw new Error('id 必填')
+      if (input.name !== undefined && !isNonBlankString(input.name)) throw new Error('name 不能为空')
+      if (input.prompt !== undefined && !isNonBlankString(input.prompt)) throw new Error('prompt 不能为空')
+      validateAutomationFields(input)
+      const a = updateAutomation(input)
+      broadcastAutomationsChanged()
+      return a
+    }
+  )
+
+  ipcMain.handle(
+    AUTOMATION_IPC_CHANNELS.DELETE,
+    async (_, id: string): Promise<boolean> => {
+      if (!isNonEmptyString(id)) throw new Error('id 必填')
+      const ok = deleteAutomation(id)
+      broadcastAutomationsChanged()
+      return ok
+    }
+  )
+
+  ipcMain.handle(
+    AUTOMATION_IPC_CHANNELS.TOGGLE,
+    async (_, id: string, active: boolean): Promise<Automation | undefined> => {
+      if (!isNonEmptyString(id)) throw new Error('id 必填')
+      if (typeof active !== 'boolean') throw new Error('active 必须是 boolean')
+      const a = updateAutomation({ id, active })
+      broadcastAutomationsChanged()
+      return a
+    }
+  )
+
+  ipcMain.handle(
+    AUTOMATION_IPC_CHANNELS.RUN_NOW,
+    async (_, id: string): Promise<void> => {
+      if (!isNonEmptyString(id)) throw new Error('id 必填')
+      await runAutomationNow(id)
     }
   )
 }

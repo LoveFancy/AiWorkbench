@@ -38,7 +38,6 @@ import type {
   AgentSessionReferenceSearchResult,
 } from '@proma/shared'
 import { getConversationMessages } from './conversation-manager'
-import { clearNanoBananaAgentHistory } from './chat-tools/nano-banana-mcp'
 
 /**
  * 会话索引文件格式
@@ -399,7 +398,7 @@ function convertLegacyMessage(legacy: AgentMessage): SDKMessage {
  */
 export function updateAgentSessionMeta(
   id: string,
-  updates: Partial<Pick<AgentSessionMeta, 'title' | 'channelId' | 'sdkSessionId' | 'workspaceId' | 'pinned' | 'archived' | 'attachedDirectories' | 'attachedFiles' | 'forkSourceDir' | 'forkSourceSdkSessionId' | 'resumeAtMessageUuid' | 'stoppedByUser' | 'permissionMode' | 'completedButUnconfirmed'>>,
+  updates: Partial<Pick<AgentSessionMeta, 'title' | 'channelId' | 'sdkSessionId' | 'workspaceId' | 'pinned' | 'archived' | 'attachedDirectories' | 'attachedFiles' | 'forkSourceDir' | 'forkSourceSdkSessionId' | 'resumeAtMessageUuid' | 'stoppedByUser' | 'permissionMode' | 'completedButUnconfirmed' | 'sourceAutomationId'>>,
 ): AgentSessionMeta {
   if ('expertGroupId' in updates || 'expertPluginId' in updates) {
     throw new Error('专家团绑定不能在会话创建后修改')
@@ -474,7 +473,7 @@ export function deleteAgentSession(id: string): void {
   console.log(`[Agent 会话] 已删除会话: ${removed.title} (${removed.id})`)
 
   // 清理 Nano Banana 生图历史
-  clearNanoBananaAgentHistory(id)
+  clearNanoBananaHistoryForSession(id)
 
   // 清理 SDK 关联数据（file-history 和 projects 下的 session JSONL）
   const sdkSessionIds = [removed.sdkSessionId, removed.forkSourceSdkSessionId].filter(Boolean) as string[]
@@ -516,6 +515,15 @@ export function deleteAgentSession(id: string): void {
         }
       } catch { /* ignore */ }
     }
+  }
+}
+
+function clearNanoBananaHistoryForSession(sessionId: string): void {
+  try {
+    const { clearNanoBananaAgentHistory } = require('./chat-tools/nano-banana-mcp') as typeof import('./chat-tools/nano-banana-mcp')
+    clearNanoBananaAgentHistory(sessionId)
+  } catch (error) {
+    console.warn(`[Agent 会话] 清理 Nano Banana 生图历史失败 (${sessionId}):`, error)
   }
 }
 
@@ -1286,7 +1294,7 @@ export function autoArchiveAgentSessions(daysThreshold: number): number {
   let count = 0
 
   for (const session of index.sessions) {
-    if (!session.pinned && !session.manualWorking && !session.completedButUnconfirmed && !session.archived && session.updatedAt < threshold) {
+    if (!session.pinned && !session.archived && session.updatedAt < threshold) {
       session.archived = true
       count++
     }
