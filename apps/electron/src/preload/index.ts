@@ -65,6 +65,7 @@ import type {
   AgentPluginInstallInput,
   AgentPluginInstallResult,
   AgentPluginMarketplaceType,
+  AgentExpertGroupInfo,
   FileEntry,
   CreateFileEntryInput,
   FileSearchResult,
@@ -448,7 +449,14 @@ export interface ElectronAPI {
   listAgentSessions: () => Promise<AgentSessionMeta[]>
 
   /** 创建 Agent 会话 */
-  createAgentSession: (title?: string, channelId?: string, workspaceId?: string) => Promise<AgentSessionMeta>
+  createAgentSession: (
+    title?: string,
+    channelId?: string,
+    workspaceId?: string,
+    expertGroupId?: string,
+    expertPluginId?: string,
+    expertIntroduction?: string,
+  ) => Promise<AgentSessionMeta>
 
   /** 获取 Agent 会话 SDKMessage（Phase 4 新格式） */
   getAgentSessionSDKMessages: (id: string) => Promise<SDKMessage[]>
@@ -538,6 +546,10 @@ export interface ElectronAPI {
   installAgentMarketplacePlugin: (input: AgentPluginInstallInput) => Promise<AgentPluginInstallResult>
   /** 获取 Agent 插件能力摘要 */
   getAgentPluginCapabilities: () => Promise<AgentPluginCapabilitySummary>
+  /** 列出 Agent 专家团 */
+  listAgentExpertGroups: () => Promise<AgentExpertGroupInfo[]>
+  /** 获取 Agent 专家团详情 */
+  getAgentExpertGroup: (input: { expertGroupId: string; expertPluginId?: string }) => Promise<AgentExpertGroupInfo | undefined>
   /** 配置插件 MCP 环境变量 */
   configureAgentPluginMcpEnv: (serverId: string, env: Record<string, string>) => Promise<void>
   /** 测试插件 MCP */
@@ -1485,8 +1497,15 @@ const electronAPI: ElectronAPI = {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.LIST_SESSIONS)
   },
 
-  createAgentSession: (title?: string, channelId?: string, workspaceId?: string) => {
-    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.CREATE_SESSION, title, channelId, workspaceId)
+  createAgentSession: (
+    title?: string,
+    channelId?: string,
+    workspaceId?: string,
+    expertGroupId?: string,
+    expertPluginId?: string,
+    expertIntroduction?: string,
+  ) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.CREATE_SESSION, title, channelId, workspaceId, expertGroupId, expertPluginId, expertIntroduction)
   },
 
   getAgentSessionSDKMessages: (id: string) => {
@@ -1639,6 +1658,14 @@ const electronAPI: ElectronAPI = {
 
   getAgentPluginCapabilities: () => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_PLUGIN_CAPABILITIES)
+  },
+
+  listAgentExpertGroups: () => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.LIST_EXPERT_GROUPS)
+  },
+
+  getAgentExpertGroup: (input: { expertGroupId: string; expertPluginId?: string }) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_EXPERT_GROUP, input)
   },
 
   configureAgentPluginMcpEnv: (serverId: string, env: Record<string, string>) => {

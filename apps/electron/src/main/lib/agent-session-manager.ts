@@ -100,6 +100,9 @@ export function createAgentSession(
   title?: string,
   channelId?: string,
   workspaceId?: string,
+  expertGroupId?: string,
+  expertPluginId?: string,
+  expertIntroduction?: string,
 ): AgentSessionMeta {
   const index = readIndex()
   const now = Date.now()
@@ -109,6 +112,8 @@ export function createAgentSession(
     title: title || '新 Agent 会话',
     channelId,
     workspaceId,
+    expertGroupId,
+    expertPluginId,
     createdAt: now,
     updatedAt: now,
   }
@@ -118,6 +123,11 @@ export function createAgentSession(
 
   // 确保消息目录存在
   getAgentSessionsDir()
+
+  const introduction = expertIntroduction?.trim()
+  if (introduction) {
+    appendSDKMessages(meta.id, [createAssistantIntroductionMessage(introduction, now)])
+  }
 
   // 若有工作区，创建 session 级别子文件夹并初始化 .claude / .context
   if (workspaceId) {
@@ -154,6 +164,18 @@ export function createAgentSession(
 
   console.log(`[Agent 会话] 已创建会话: ${meta.title} (${meta.id})`)
   return meta
+}
+
+function createAssistantIntroductionMessage(content: string, createdAt: number): SDKMessage {
+  return {
+    type: 'assistant',
+    message: {
+      content: [{ type: 'text', text: content }],
+    },
+    parent_tool_use_id: null,
+    _createdAt: createdAt,
+    _synthetic: 'expert_introduction',
+  } as unknown as SDKMessage
 }
 
 /**
@@ -379,6 +401,10 @@ export function updateAgentSessionMeta(
   id: string,
   updates: Partial<Pick<AgentSessionMeta, 'title' | 'channelId' | 'sdkSessionId' | 'workspaceId' | 'pinned' | 'archived' | 'attachedDirectories' | 'attachedFiles' | 'forkSourceDir' | 'forkSourceSdkSessionId' | 'resumeAtMessageUuid' | 'stoppedByUser' | 'permissionMode' | 'completedButUnconfirmed'>>,
 ): AgentSessionMeta {
+  if ('expertGroupId' in updates || 'expertPluginId' in updates) {
+    throw new Error('专家团绑定不能在会话创建后修改')
+  }
+
   const index = readIndex()
   const idx = index.sessions.findIndex((s) => s.id === id)
 

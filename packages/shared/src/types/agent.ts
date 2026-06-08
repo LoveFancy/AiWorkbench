@@ -589,6 +589,10 @@ export interface AgentSessionMeta {
   sdkSessionId?: string
   /** 所属工作区 ID */
   workspaceId?: string
+  /** 该会话绑定的专家团 ID；创建后不可修改 */
+  expertGroupId?: string
+  /** 该会话绑定的专家团来源插件 ID；创建后不可修改 */
+  expertPluginId?: string
   /** 是否置顶 */
   pinned?: boolean
   /** 是否已归档 */
@@ -840,7 +844,7 @@ export interface HtSkillHubInstallResult {
 
 export type AgentPluginKind = 'builtin' | 'user'
 
-export type AgentPluginCapabilityType = 'skill' | 'command' | 'agent' | 'mcp'
+export type AgentPluginCapabilityType = 'skill' | 'command' | 'agent' | 'mcp' | 'expert-group'
 
 export type AgentPluginIssueLevel = 'warning' | 'error'
 
@@ -862,6 +866,61 @@ export interface AgentPluginManifest {
   repository?: string
   license?: string
   keywords?: string[]
+  /** 插件声明的专家团 ID 快速索引，对应 expert-groups/{id}.json */
+  expertGroups?: string[]
+}
+
+export type AgentExpertGroupStatus =
+  | 'available'
+  | 'plugin_disabled'
+  | 'plugin_uninstalled'
+  | 'invalid_manifest'
+  | 'missing_subagent'
+  | 'missing_skill'
+  | 'mcp_conflict'
+
+export interface AgentExpertGroupMainRole {
+  name: string
+  prompt: string
+}
+
+export interface AgentExpertGroupToolsPolicy {
+  mode: 'inherit' | 'restrict'
+  allowedTools?: string[]
+  disallowedTools?: string[]
+}
+
+export interface AgentExpertGroupManifest {
+  id: string
+  name: string
+  description?: string
+  /** 专家团被唤起后展示给用户的自我介绍 */
+  introduction?: string
+  mainRole: AgentExpertGroupMainRole
+  subagents?: string[]
+  /** WorkMate 内置工具声明，例如 web-search。运行时由 Orchestrator 注入对应 SDK MCP 工具。 */
+  builtinTools?: string[]
+  skills?: string[]
+  mcpServers?: string[]
+  tags?: string[]
+  samplePrompts?: string[]
+  toolsPolicy?: AgentExpertGroupToolsPolicy
+}
+
+export interface AgentExpertGroupInfo extends AgentExpertGroupManifest {
+  sourcePluginId: string
+  sourceLabel: string
+  /** 来源插件版本 */
+  sourcePluginVersion: string
+  sourcePluginKind: AgentPluginKind
+  sourcePluginPath: string
+  filePath: string
+  enabled: boolean
+  status: AgentExpertGroupStatus
+  issues: Array<{
+    level: AgentPluginIssueLevel
+    message: string
+  }>
 }
 
 export interface AgentPluginCapability {
@@ -1596,6 +1655,10 @@ export const AGENT_IPC_CHANNELS = {
   INSTALL_MARKETPLACE_PLUGIN: 'agent:install-marketplace-plugin',
   /** 获取 Agent 插件能力摘要 */
   GET_PLUGIN_CAPABILITIES: 'agent:get-plugin-capabilities',
+  /** 列出 Agent 专家团 */
+  LIST_EXPERT_GROUPS: 'agent:list-expert-groups',
+  /** 获取 Agent 专家团详情 */
+  GET_EXPERT_GROUP: 'agent:get-expert-group',
   /** 配置插件 MCP 环境变量 */
   CONFIGURE_PLUGIN_MCP_ENV: 'agent:configure-plugin-mcp-env',
   /** 测试插件 MCP */

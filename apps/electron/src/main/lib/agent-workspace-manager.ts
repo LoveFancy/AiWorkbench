@@ -32,10 +32,16 @@ interface AgentWorkspacesIndex {
 
 const INDEX_VERSION = 2
 
+const DEFAULT_INACTIVE_SKILL_SLUGS = new Set(['feishu-lark-setup', 'huatai-email-setup'])
+
 interface InstallSkillZipOptions {
   activeDir?: string
   inactiveDir?: string
   tempRoot?: string
+}
+
+export function getDefaultSkillInitialEnabled(skillSlug: string): boolean {
+  return !DEFAULT_INACTIVE_SKILL_SLUGS.has(skillSlug)
 }
 
 /** 读取工作区索引文件，自动执行版本迁移 */
@@ -158,10 +164,11 @@ export function getAgentWorkspace(id: string): AgentWorkspace | undefined {
   return index.workspaces.find((w) => w.id === id)
 }
 
-/** 将 ~/.proma/default-skills/ 的内容逐个复制到工作区 skills/ 目录 */
+/** 将 ~/.proma/default-skills/ 的内容逐个复制到工作区，默认禁用项进入 skills-inactive/ */
 function copyDefaultSkills(workspaceSlug: string): void {
   const defaultDir = getDefaultSkillsDir()
-  const targetDir = getWorkspaceSkillsDir(workspaceSlug)
+  const activeDir = getWorkspaceSkillsDir(workspaceSlug)
+  const inactiveDir = getInactiveSkillsDir(workspaceSlug)
 
   try {
     const entries = readdirSync(defaultDir, { withFileTypes: true })
@@ -173,6 +180,7 @@ function copyDefaultSkills(workspaceSlug: string): void {
     for (const entry of entries) {
       if (!entry.isDirectory()) continue
       const source = join(defaultDir, entry.name)
+      const targetDir = getDefaultSkillInitialEnabled(entry.name) ? activeDir : inactiveDir
       const target = join(targetDir, entry.name)
       cpSync(source, target, { recursive: true })
     }
@@ -295,7 +303,7 @@ export function ensureDefaultWorkspace(): AgentWorkspace {
 
 /**
  * 同步默认 Skills 到所有工作区。规则：
- * - 缺失：注入到 skills/（active），让升级后新增的内置 Skill 对老用户立即可用
+ * - 缺失：按默认启用状态注入到 skills/ 或 skills-inactive/
  * - 已存在（active 或 inactive）：比较 SKILL.md 的 version，bundled 更新时才覆盖
  *   （保留用户停用决定 — 在 inactive 的依然在 inactive；同时避免每次启动
  *    全量 cpSync 4MB+ 文件阻塞主进程）
@@ -368,9 +376,12 @@ export function upgradeDefaultSkillsInWorkspaces(): void {
       }
 
       try {
-        if (!existsSync(activeDir)) mkdirSync(activeDir, { recursive: true })
-        cpSync(info.sourcePath, activePath, { recursive: true, filter: skillCopyFilter })
-        console.log(`[Agent 工作区] 已注入新默认 Skill: ${workspace.slug}/${slug} → active`)
+        const enabledByDefault = getDefaultSkillInitialEnabled(slug)
+        const targetDir = enabledByDefault ? activeDir : inactiveDir
+        const targetPath = enabledByDefault ? activePath : inactivePath
+        if (!existsSync(targetDir)) mkdirSync(targetDir, { recursive: true })
+        cpSync(info.sourcePath, targetPath, { recursive: true, filter: skillCopyFilter })
+        console.log(`[Agent 工作区] 已注入新默认 Skill: ${workspace.slug}/${slug} → ${enabledByDefault ? 'active' : 'inactive'}`)
       } catch (err) {
         console.warn(`[Agent 工作区] 注入默认 Skill 失败 (${workspace.slug}/${slug}):`, err)
       }

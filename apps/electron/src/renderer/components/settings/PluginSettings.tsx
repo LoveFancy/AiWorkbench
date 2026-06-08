@@ -63,6 +63,8 @@ function capabilityLabel(type: AgentPluginCapability['type']): string {
       return 'Agent'
     case 'mcp':
       return 'MCP'
+    case 'expert-group':
+      return '专家团'
   }
 }
 
@@ -100,13 +102,14 @@ function summarizeCapabilities(plugin: AgentPluginInfo): string {
       acc[capability.type] += 1
       return acc
     },
-    { skill: 0, command: 0, agent: 0, mcp: 0 },
+    { skill: 0, command: 0, agent: 0, mcp: 0, 'expert-group': 0 },
   )
   return [
     counts.skill > 0 ? `${counts.skill} Skills` : null,
     counts.command > 0 ? `${counts.command} Commands` : null,
     counts.agent > 0 ? `${counts.agent} Agents` : null,
     counts.mcp > 0 ? `${counts.mcp} MCP` : null,
+    counts['expert-group'] > 0 ? `${counts['expert-group']} 专家团` : null,
   ].filter(Boolean).join(' · ') || '暂无能力'
 }
 
@@ -116,7 +119,7 @@ function groupCapabilities(capabilities: AgentPluginCapability[]): Record<AgentP
       acc[capability.type].push(capability)
       return acc
     },
-    { skill: [], command: [], agent: [], mcp: [] },
+    { skill: [], command: [], agent: [], mcp: [], 'expert-group': [] },
   )
 }
 

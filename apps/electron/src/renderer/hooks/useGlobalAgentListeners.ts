@@ -19,6 +19,7 @@ import {
   allPendingAskUserRequestsAtom,
   allPendingExitPlanRequestsAtom,
   agentPromptSuggestionsAtom,
+  applyBackgroundTaskEvent,
   backgroundTasksAtomFamily,
   fileBrowserAutoRevealAtom,
   recentlyModifiedPathsAtom,
@@ -711,38 +712,14 @@ export function useGlobalAgentListeners(): void {
           }
 
           // 处理后台任务事件
-          if (event.type === 'task_backgrounded') {
-            store.set(backgroundTasksAtomFamily(sessionId), (prev) => {
-              if (prev.some((t) => t.toolUseId === event.toolUseId)) return prev
-              return [...prev, {
-                id: event.taskId,
-                type: 'agent' as const,
-                toolUseId: event.toolUseId,
-                startTime: Date.now(),
-                elapsedSeconds: 0,
-                intent: event.intent,
-              }]
-            })
-          } else if (event.type === 'task_progress') {
-            store.set(backgroundTasksAtomFamily(sessionId), (prev) =>
-              prev.map((t) =>
-                t.toolUseId === event.toolUseId
-                  ? { ...t, elapsedSeconds: event.elapsedSeconds ?? t.elapsedSeconds }
-                  : t
-              )
-            )
-          } else if (event.type === 'shell_backgrounded') {
-            store.set(backgroundTasksAtomFamily(sessionId), (prev) => {
-              if (prev.some((t) => t.toolUseId === event.toolUseId)) return prev
-              return [...prev, {
-                id: event.shellId,
-                type: 'shell' as const,
-                toolUseId: event.toolUseId,
-                startTime: Date.now(),
-                elapsedSeconds: 0,
-                intent: event.command || event.intent,
-              }]
-            })
+          if (
+            event.type === 'task_backgrounded' ||
+            event.type === 'task_progress' ||
+            event.type === 'task_notification' ||
+            event.type === 'shell_backgrounded' ||
+            event.type === 'shell_killed'
+          ) {
+            store.set(backgroundTasksAtomFamily(sessionId), (prev) => applyBackgroundTaskEvent(prev, event))
           } else if (event.type === 'tool_result') {
             // 工具完成时，移除对应的后台任务
             store.set(backgroundTasksAtomFamily(sessionId), (prev) =>
@@ -806,12 +783,6 @@ export function useGlobalAgentListeners(): void {
                 const m = new Map(prev); m.set(sessionId, (prev.get(sessionId) ?? 0) + 1); return m
               })
             }
-          } else if (event.type === 'shell_killed') {
-            store.set(backgroundTasksAtomFamily(sessionId), (prev) => {
-              const task = prev.find((t) => t.id === event.shellId)
-              if (!task) return prev
-              return prev.filter((t) => t.toolUseId !== task.toolUseId)
-            })
           } else if (event.type === 'prompt_suggestion') {
             // 存储提示建议到 atom
             console.log(`[GlobalAgentListeners] 收到建议: sessionId=${sessionId}, suggestion="${event.suggestion.slice(0, 50)}..."`)

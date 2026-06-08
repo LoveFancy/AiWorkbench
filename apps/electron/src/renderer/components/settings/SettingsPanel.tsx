@@ -36,6 +36,7 @@ import { StorageSettings } from "./StorageSettings";
 import { ToolSettings } from "./ToolSettings";
 import { UsageLogSettings } from "./UsageLogSettings";
 import { PluginSettings } from "./PluginSettings";
+import { ExpertGroupSettings } from "./ExpertGroupSettings";
 import { TutorialViewer } from "../tutorial/TutorialViewer";
 import { ShortcutSettings } from "./ShortcutSettings";
 import type { TabItem } from "./settings-tabs";
@@ -60,6 +61,8 @@ function renderTabContent(tab: SettingsTab): React.ReactElement {
       return <UsageLogSettings />;
     case "plugins":
       return <PluginSettings />;
+    case "experts":
+      return <ExpertGroupSettings />;
     case "appearance":
       return <AppearanceSettings />;
     case "about":

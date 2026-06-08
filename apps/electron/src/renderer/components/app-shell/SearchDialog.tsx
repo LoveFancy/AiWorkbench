@@ -520,14 +520,19 @@ export function SearchDialog(): React.ReactElement {
     )
     const channelId = deepseekChannel?.id ?? currentAgentChannelId ?? undefined
 
-    const configDir = import.meta.env.DEV ? '.proma-dev' : '.proma'
+    let configRootPath = import.meta.env.DEV ? '~/.workmate-dev' : '~/.workmate'
+    try {
+      configRootPath = (await window.electronAPI.getConfigRootInfo()).currentPath
+    } catch (error) {
+      console.warn('[搜索] 获取数据目录失败，使用默认目录提示:', error)
+    }
     const prompt = `请帮我在 Proma 的全部会话历史中搜索与以下描述相关的内容：
 
 "${q}"
 
 搜索范围：
-- Chat 会话消息文件：~/${configDir}/conversations/ 目录下所有 .jsonl 文件
-- Agent 会话消息文件：~/${configDir}/agent-sessions/ 目录下所有 .jsonl 文件
+- Chat 会话消息文件：${configRootPath}/conversations/ 目录下所有 .jsonl 文件
+- Agent 会话消息文件：${configRootPath}/agent-sessions/ 目录下所有 .jsonl 文件
 
 要求：
 1. 理解用户描述的语义，不要求关键词完全匹配，根据内容相关性判断

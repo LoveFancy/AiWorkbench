@@ -121,6 +121,7 @@ import type {
   AgentPluginCapabilitySummary,
   AgentPluginInstallInput,
   AgentPluginInstallResult,
+  AgentExpertGroupInfo,
 } from '@proma/shared'
 import type { UserProfile, AppSettings, ConfigRootInfo } from '../types'
 import { getRuntimeStatus, getGitRepoStatus, reinitializeRuntime } from './lib/runtime-init'
@@ -1714,8 +1715,16 @@ export function registerIpcHandlers(): void {
   // 创建 Agent 会话
   ipcMain.handle(
     AGENT_IPC_CHANNELS.CREATE_SESSION,
-    async (_, title?: string, channelId?: string, workspaceId?: string): Promise<AgentSessionMeta> => {
-      const session = createAgentSession(title, channelId, workspaceId)
+    async (
+      _,
+      title?: string,
+      channelId?: string,
+      workspaceId?: string,
+      expertGroupId?: string,
+      expertPluginId?: string,
+      expertIntroduction?: string,
+    ): Promise<AgentSessionMeta> => {
+      const session = createAgentSession(title, channelId, workspaceId, expertGroupId, expertPluginId, expertIntroduction)
       feishuBridgeManager.ensureSessionMirror(session).catch((error) => {
         console.error('[飞书 Session 镜像] 新会话建群失败:', error)
       })
@@ -2238,6 +2247,22 @@ export function registerIpcHandlers(): void {
     async (): Promise<AgentPluginCapabilitySummary> => {
       const { getPluginCapabilitySummary } = await import('./lib/plugin-registry-service')
       return getPluginCapabilitySummary()
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.LIST_EXPERT_GROUPS,
+    async (): Promise<AgentExpertGroupInfo[]> => {
+      const { listAgentExpertGroups } = await import('./lib/agent-expert-group-manager')
+      return listAgentExpertGroups()
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.GET_EXPERT_GROUP,
+    async (_, input: { expertGroupId: string; expertPluginId?: string }): Promise<AgentExpertGroupInfo | undefined> => {
+      const { getAgentExpertGroup } = await import('./lib/agent-expert-group-manager')
+      return getAgentExpertGroup(input)
     }
   )
 

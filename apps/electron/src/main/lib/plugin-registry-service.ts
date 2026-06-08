@@ -105,6 +105,7 @@ function normalizeManifest(raw: unknown, fallbackName: string): AgentPluginManif
     ...(typeof record.repository === 'string' && { repository: record.repository }),
     ...(typeof record.license === 'string' && { license: record.license }),
     keywords: stringArray(record.keywords),
+    expertGroups: stringArray(record.expertGroups),
   }
 }
 
@@ -243,6 +244,88 @@ function discoverMcp(pluginPath: string, pluginId: string, sourceLabel: string, 
   }
 }
 
+function readExpertGroupTitle(filePath: string): { title?: string; issue?: AgentPluginCapability['issue'] } {
+  try {
+    const raw = readJsonFile(filePath)
+    if (!isRecord(raw)) {
+      return { issue: { level: 'error', message: `专家团配置不是 JSON 对象: ${filePath}` } }
+    }
+    const name = typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim() : undefined
+    return { ...(name && { title: name }) }
+  } catch (error) {
+    return {
+      issue: {
+        level: 'error',
+        message: `解析专家团配置失败: ${error instanceof Error ? error.message : String(error)}`,
+      },
+    }
+  }
+}
+
+function discoverExpertGroups(
+  pluginPath: string,
+  pluginId: string,
+  sourceLabel: string,
+  enabled: boolean,
+  manifest: AgentPluginManifest,
+): AgentPluginCapability[] {
+  const groupsDir = join(pluginPath, 'expert-groups')
+  const indexed = new Set(manifest.expertGroups ?? [])
+  const discovered = new Set<string>()
+  const capabilities: AgentPluginCapability[] = []
+
+  for (const id of indexed) {
+    const relativePath = `expert-groups/${id}.json`
+    const filePath = join(pluginPath, relativePath)
+    discovered.add(id)
+    if (!existsSync(filePath)) {
+      capabilities.push({
+        type: 'expert-group',
+        name: id,
+        sourcePluginId: pluginId,
+        sourceLabel,
+        relativePath,
+        enabled,
+        issue: { level: 'error', message: `插件声明的专家团不存在: ${relativePath}` },
+      })
+      continue
+    }
+    const { title, issue } = readExpertGroupTitle(filePath)
+    capabilities.push({
+      type: 'expert-group',
+      name: id,
+      sourcePluginId: pluginId,
+      sourceLabel,
+      relativePath,
+      ...(title && { description: title }),
+      enabled,
+      ...(issue && { issue }),
+    })
+  }
+
+  if (!existsSync(groupsDir)) return capabilities
+
+  for (const entry of readdirSync(groupsDir, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith('.json')) continue
+    const id = entry.name.replace(/\.json$/i, '')
+    if (discovered.has(id)) continue
+    const relativePath = `expert-groups/${entry.name}`
+    const { title, issue } = readExpertGroupTitle(join(groupsDir, entry.name))
+    capabilities.push({
+      type: 'expert-group',
+      name: id,
+      sourcePluginId: pluginId,
+      sourceLabel,
+      relativePath,
+      ...(title && { description: title }),
+      enabled,
+      issue: issue ?? { level: 'warning', message: `专家团未在 plugin.json 的 expertGroups 中声明: ${id}` },
+    })
+  }
+
+  return capabilities
+}
+
 function normalizeMcpEntry(raw: unknown): McpServerEntry | null {
   if (!isRecord(raw)) return null
   const type = raw.type === 'stdio' || raw.type === 'http' || raw.type === 'sse' ? raw.type : undefined
@@ -346,6 +429,7 @@ function pluginInfoFromPath(kind: 'builtin' | 'user', pluginPath: string, plugin
     ...discoverMarkdownCapabilities(pluginPath, 'commands', 'command', pluginId, sourceLabel, enabled),
     ...discoverMarkdownCapabilities(pluginPath, 'agents', 'agent', pluginId, sourceLabel, enabled),
     ...discoverMcp(pluginPath, pluginId, sourceLabel, enabled, config),
+    ...discoverExpertGroups(pluginPath, pluginId, sourceLabel, enabled, manifest),
   ]
   const capabilityIssues = capabilities.flatMap((capability) => capability.issue ? [capability.issue] : [])
 

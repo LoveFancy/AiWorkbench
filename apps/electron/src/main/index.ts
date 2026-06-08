@@ -95,7 +95,7 @@ import { createApplicationMenu } from './menu'
 import { registerIpcHandlers } from './ipc'
 import { createTray, destroyTray, getTray } from './tray'
 import { initializeRuntime } from './lib/runtime-init'
-import { seedDefaultPlugins, seedDefaultSkills } from './lib/config-paths'
+import { getConfigDirPath, seedDefaultPlugins, seedDefaultSkills } from './lib/config-paths'
 import { upgradeDefaultSkillsInWorkspaces } from './lib/agent-workspace-manager'
 import { stopAllAgents, killOrphanedClaudeSubprocesses } from './lib/agent-service'
 import { stopAllGenerations } from './lib/chat-service'
@@ -437,10 +437,10 @@ async function bootstrap(): Promise<void> {
   // 必须在其他初始化之前执行，确保环境变量正确加载
   await safeAwait('initializeRuntime', () => initializeRuntime())
 
-  // 同步默认 Skills 模板到 ~/.proma/default-skills/
+  // 同步默认 Skills 模板到 ~/.workmate/default-skills/
   safeRun('seedDefaultSkills', seedDefaultSkills)
 
-  // 同步默认插件到 ~/.proma/default-plugins/
+  // 同步默认插件到 ~/.workmate/default-plugins/
   seedDefaultPlugins()
 
   // 升级所有工作区中版本过旧的默认 Skills
@@ -573,14 +573,20 @@ function handleBootstrapFailure(err: unknown): void {
 
   try {
     const message = err instanceof Error ? (err.stack ?? err.message) : String(err)
+    let configDirPath = '~/.workmate（老用户可能是 ~/.proma）'
+    try {
+      configDirPath = getConfigDirPath()
+    } catch {
+      // 启动降级路径中不能因为数据目录解析失败而阻止错误弹窗。
+    }
     dialog.showErrorBox(
       'Proma 启动遇到错误',
       `部分功能可能不可用：\n\n${message}\n\n` +
         `日志位置：${app.getPath('logs')}\n\n` +
         `常见原因与排查：\n` +
         `1. 旧版 Proma 进程未退出（终端运行 killall Proma 后重试）\n` +
-        `2. ~/.proma/ 配置损坏（重命名 ~/.proma 后重启）\n` +
-        `3. 系统 Keychain 无法解密保存的凭证（删除 ~/.proma/feishu.json 等后重新登录）\n\n` +
+        `2. 数据目录配置损坏（重命名 ${configDirPath} 后重启）\n` +
+        `3. 系统 Keychain 无法解密保存的凭证（删除 ${configDirPath}/feishu.json 等后重新登录）\n\n` +
         `如需协助请到 GitHub Issues 反馈。`,
     )
   } catch {
