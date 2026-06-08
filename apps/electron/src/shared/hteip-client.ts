@@ -136,10 +136,10 @@ export async function httpRequest<T = unknown>(
     : undefined
 
   // 4. 发起请求
-  try {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), timeout)
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeout)
 
+  try {
     const combinedSignal = signal
       ? combineSignals(signal, controller.signal)
       : controller.signal
@@ -150,8 +150,6 @@ export async function httpRequest<T = unknown>(
       body: requestBody,
       signal: combinedSignal,
     })
-
-    clearTimeout(timeoutId)
 
     const data = await response.json().catch(() => null)
 
@@ -166,6 +164,8 @@ export async function httpRequest<T = unknown>(
       return { status: 0, ok: false, data: null, error: '请求超时' }
     }
     return { status: 0, ok: false, data: null, error: error.message }
+  } finally {
+    clearTimeout(timeoutId)
   }
 }
 
