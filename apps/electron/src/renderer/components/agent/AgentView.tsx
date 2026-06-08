@@ -23,6 +23,7 @@ import { AgentHeader } from './AgentHeader'
 import { ContextUsageBadge } from './ContextUsageBadge'
 import { PermissionBanner } from './PermissionBanner'
 import { PermissionModeSelector } from './PermissionModeSelector'
+import { ExpertSummonButton } from './ExpertSummonButton'
 import { AskUserBanner } from './AskUserBanner'
 import { ExitPlanModeBanner } from './ExitPlanModeBanner'
 import { PlanModeDashedBorder } from './PlanModeDashedBorder'
@@ -1899,6 +1900,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
   const canSend = messagesLoaded && (hasTextInput || pendingFiles.length > 0 || !!suggestion) && agentChannelId !== null && hasAvailableModel && (!streaming || hasTextInput)
 
   const inputToolbarItems = React.useMemo<ToolbarItem[]>(() => [
+    { key: 'expert-group', node: <ExpertSummonButton variant="composer" sessionId={sessionId} /> },
     {
       key: 'model',
       node: (

@@ -10,6 +10,7 @@ import { getInactiveSkillsDir, getWorkspaceSkillsDir } from './config-paths'
 import { getAllWorkspaceSkills } from './agent-workspace-manager'
 
 export const HT_SKILLHUB_BASE_URL = 'http://skillhub.uat.saas.htsc/.well-known/skills'
+const HT_SKILLHUB_GROUP_NAME = 'SkillHub'
 
 export interface HtSkillHubSkill {
   name: string
@@ -78,6 +79,19 @@ async function defaultFetchText(url: string): Promise<string> {
 
 function buildSkillFileUrl(skillName: string, filePath: string): string {
   return `${HT_SKILLHUB_BASE_URL}/${encodeURIComponent(skillName)}/${filePath.split('/').map(encodeURIComponent).join('/')}`
+}
+
+function withSkillHubGroup(content: string): string {
+  const match = content.match(/^---\s*\n([\s\S]*?)\n---(\s*\n[\s\S]*)$/)
+  if (!match) return content
+
+  const frontmatter = match[1] ?? ''
+  const body = match[2] ?? ''
+  const nextFrontmatter = /^group\s*:/m.test(frontmatter)
+    ? frontmatter.replace(/^group\s*:.*$/m, `group: ${HT_SKILLHUB_GROUP_NAME}`)
+    : `${frontmatter}\ngroup: ${HT_SKILLHUB_GROUP_NAME}`
+
+  return `---\n${nextFrontmatter}\n---${body}`
 }
 
 function normalizeHubSkill(raw: unknown): HtSkillHubSkill | null {
@@ -152,7 +166,8 @@ export async function installHtSkillHubSkill(input: InstallHtSkillHubSkillInput)
 
   try {
     for (const file of skill.files) {
-      const content = await fetchText(buildSkillFileUrl(skill.name, file))
+      const rawContent = await fetchText(buildSkillFileUrl(skill.name, file))
+      const content = file === 'SKILL.md' ? withSkillHubGroup(rawContent) : rawContent
       const targetFile = resolveWithin(tmpPath, file)
       mkdirSync(dirname(targetFile), { recursive: true })
       writeFileSync(targetFile, content, 'utf-8')

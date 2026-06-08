@@ -57,13 +57,16 @@ interface SkillGroupBucket {
 
 // ===== Helpers =====
 
-function groupSkillsByPrefix(skills: SkillMeta[], defaultSlugs: Set<string>): SkillGroup[] {
+function groupSkillsByPrefix(skills: SkillMeta[], defaultSlugs: Set<string>, skillHubSlugs: Set<string>): SkillGroup[] {
   const builtinSkills: SkillMeta[] = []
+  const skillHubSkills: SkillMeta[] = []
   const otherSkills: SkillMeta[] = []
 
   for (const skill of skills) {
     if (defaultSlugs.has(skill.slug)) {
       builtinSkills.push(skill)
+    } else if (skillHubSlugs.has(skill.slug)) {
+      skillHubSkills.push(skill)
     } else {
       otherSkills.push(skill)
     }
@@ -98,6 +101,10 @@ function groupSkillsByPrefix(skills: SkillMeta[], defaultSlugs: Set<string>): Sk
   }
 
   // built-in 分组放在最前面（用 proma-built-in 作为内部哨兵，避免与用户 skill 的 slug 前缀碰撞）
+  if (skillHubSkills.length > 0) {
+    groups.unshift({ prefix: 'SkillHub', skills: skillHubSkills })
+  }
+
   if (builtinSkills.length > 0) {
     groups.unshift({ prefix: 'proma-built-in', skills: builtinSkills, isBuiltin: true })
   }
@@ -167,6 +174,7 @@ export function AgentSettings(): React.ReactElement {
   const [skillsDir, setSkillsDir] = React.useState('')
   const [configRootPath, setConfigRootPath] = React.useState('')
   const [defaultSkillSlugs, setDefaultSkillSlugs] = React.useState<Set<string>>(new Set())
+  const [skillHubSlugs, setSkillHubSlugs] = React.useState<Set<string>>(new Set())
   const [otherWorkspaces, setOtherWorkspaces] = React.useState<OtherWorkspaceSkillsGroup[]>([])
   const [skillHubRefreshKey, setSkillHubRefreshKey] = React.useState(0)
   const [showImportDialog, setShowImportDialog] = React.useState(false)
@@ -196,6 +204,14 @@ export function AgentSettings(): React.ReactElement {
       setSkillsDir(dir)
       setConfigRootPath(rootInfo.currentPath)
       setDefaultSkillSlugs(new Set(defaultSlugs))
+      void window.electronAPI.getHtSkillHubSkills(workspaceSlug)
+        .then((hubSkills) => {
+          setSkillHubSlugs(new Set(hubSkills.filter((skill) => skill.installed).map((skill) => skill.name)))
+        })
+        .catch((error) => {
+          console.warn('[Agent 设置] 加载 SkillHub 已安装清单失败，使用本地分组:', error)
+          setSkillHubSlugs(new Set())
+        })
     } catch (error) {
       console.error('[Agent 设置] 加载工作区配置失败:', error)
     } finally {
@@ -571,6 +587,7 @@ ${skillList}
                 <SkillListPanel
                   skills={skills}
                   defaultSkillSlugs={defaultSkillSlugs}
+                  skillHubSlugs={skillHubSlugs}
                   selectedSlug={selectedSkillSlug}
                   onSelect={setSelectedSkillSlug}
                   onDelete={handleDeleteSkill}
@@ -721,6 +738,7 @@ function McpServerRow({ name, entry, onEdit, onDelete, onToggle }: McpServerRowP
 interface SkillListPanelProps {
   skills: SkillMeta[]
   defaultSkillSlugs: Set<string>
+  skillHubSlugs: Set<string>
   selectedSlug: string | null
   onSelect: (slug: string) => void
   onDelete: (slug: string, name: string) => void
@@ -729,8 +747,8 @@ interface SkillListPanelProps {
   skillsDir: string
 }
 
-function SkillListPanel({ skills, defaultSkillSlugs, selectedSlug, onSelect, onDelete, onToggle, onUpdate, skillsDir }: SkillListPanelProps): React.ReactElement {
-  const groups = React.useMemo(() => groupSkillsByPrefix(skills, defaultSkillSlugs), [skills, defaultSkillSlugs])
+function SkillListPanel({ skills, defaultSkillSlugs, skillHubSlugs, selectedSlug, onSelect, onDelete, onToggle, onUpdate, skillsDir }: SkillListPanelProps): React.ReactElement {
+  const groups = React.useMemo(() => groupSkillsByPrefix(skills, defaultSkillSlugs, skillHubSlugs), [skills, defaultSkillSlugs, skillHubSlugs])
   const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(() =>
     new Set(groups.filter((g) => g.prefix).map((g) => g.prefix)),
   )
@@ -763,11 +781,6 @@ function SkillListPanel({ skills, defaultSkillSlugs, selectedSlug, onSelect, onD
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider truncate flex-1">
                 {group.isBuiltin ? 'built-in' : group.prefix}
               </span>
-              {group.isBuiltin && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium flex-shrink-0">
-                  PROMA
-                </span>
-              )}
               <span className="text-[10px] tabular-nums text-muted-foreground flex-shrink-0">{group.skills.length}</span>
             </button>
             {expandedGroups.has(group.prefix) && (
