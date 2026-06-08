@@ -5,6 +5,7 @@ export interface ObservabilityEvent {
   eventId: string | null
   userId: string
   eventType: string
+  question: string | null
   questionLength: number | null
   modelId: string | null
   channelId: string | null

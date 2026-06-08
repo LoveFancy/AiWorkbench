@@ -109,6 +109,7 @@ public class ObservabilityService {
                 .eventId(request.getEventId())
                 .userId(userId)
                 .eventType(request.getType())
+                .question(request.getQuestion())
                 .questionLength(request.getQuestionLength() != null ? request.getQuestionLength()
                         : (request.getQuestion() != null ? request.getQuestion().length() : null))
                 .modelId(request.getModelId())

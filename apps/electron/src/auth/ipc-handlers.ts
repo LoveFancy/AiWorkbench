@@ -15,15 +15,31 @@ export function registerAuthIpcHandlers(): void {
 
   ipcMain.handle(AUTH_IPC_CHANNELS.LOGIN, async (_event, username: string, password: string, days?: number) => {
     const result = await loginWithEipGateway(username, password, days)
+
+    // 上报登录事件（动态 import 避免循环依赖）
+    const { reportLoginEvent } = await import('../main/lib/observability-service')
+    const jobId = result.jobId ?? username
     if (result.success) {
-      // 登录成功后触发升级检测
+      reportLoginEvent(jobId, 'success')
       try { onLoginSuccess() } catch { /* ignore updater errors */ }
+    } else {
+      reportLoginEvent(jobId, 'failure', new Error(result.message))
     }
+
     return result
   })
 
   ipcMain.handle(AUTH_IPC_CHANNELS.LOGOUT, () => {
+    const jobId = getJobId()
     logout()
+
+    // 上报登出事件（动态 import 避免循环依赖）
+    if (jobId) {
+      import('../main/lib/observability-service').then(
+        ({ reportLogoutEvent }) => reportLogoutEvent(jobId),
+      ).catch(() => { /* 上报失败不影响登出 */ })
+    }
+
     return { success: true }
   })
 }

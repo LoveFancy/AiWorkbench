@@ -20,7 +20,7 @@ workmate:
   default-user-id: ${DEFAULT_USER_ID:022480}
   local-dev:
     enabled: true
-    api-key: "sk-6d7ba36a9d1a4555add56dced146b389"
+    api-key: "sk-6d457fa61d9b4826aa1114bb5cb82093"
     models:
       - id: "deepseek-v4-pro"
         name: "DeepSeek V4 Pro"

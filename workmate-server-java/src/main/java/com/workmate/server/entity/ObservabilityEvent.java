@@ -21,6 +21,7 @@ public class ObservabilityEvent {
     private String eventId;
     private String userId;
     private String eventType;
+    private String question;
     private Integer questionLength;
     private String modelId;
     private String channelId;

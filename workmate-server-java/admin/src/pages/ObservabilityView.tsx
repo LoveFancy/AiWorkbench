@@ -26,30 +26,30 @@ const { RangePicker } = DatePicker
 
 const eventTypeOptions = [
   { label: '全部', value: '' },
-  { label: '用户提问', value: 'chat_question' },
   { label: '用户登录', value: 'user_login' },
+  { label: '用户登出', value: 'user_logout' },
+  { label: 'Chat 提问', value: 'chat_question' },
+  { label: 'Agent 提问', value: 'agent_question' },
+  { label: '升级检测', value: 'upgrade_check' },
   { label: '客户端错误', value: 'error' },
-  { label: '客户端启动', value: 'app_start' },
-  { label: '页面浏览', value: 'page_view' },
-  { label: '用户操作', value: 'user_action' },
 ]
 
 const eventTypeColorMap: Record<string, string> = {
-  chat_question: 'blue',
   user_login: 'green',
+  user_logout: 'orange',
+  chat_question: 'blue',
+  agent_question: 'purple',
+  upgrade_check: 'cyan',
   error: 'red',
-  app_start: 'purple',
-  page_view: 'cyan',
-  user_action: 'geekblue',
 }
 
 const eventTypeLabelMap: Record<string, string> = {
-  chat_question: '用户提问',
   user_login: '用户登录',
+  user_logout: '用户登出',
+  chat_question: 'Chat 提问',
+  agent_question: 'Agent 提问',
+  upgrade_check: '升级检测',
   error: '客户端错误',
-  app_start: '客户端启动',
-  page_view: '页面浏览',
-  user_action: '用户操作',
 }
 
 export default function ObservabilityViewPage() {
@@ -128,7 +128,6 @@ export default function ObservabilityViewPage() {
       ),
     },
     { title: '用户工号', dataIndex: 'userId', width: 100 },
-    { title: '用户名', dataIndex: 'userName', width: 100 },
     {
       title: '提问',
       dataIndex: 'question',

@@ -7,6 +7,7 @@
         <result column="event_id" property="eventId"/>
         <result column="user_id" property="userId"/>
         <result column="event_type" property="eventType"/>
+        <result column="question" property="question"/>
         <result column="question_length" property="questionLength"/>
         <result column="model_id" property="modelId"/>
         <result column="channel_id" property="channelId"/>
@@ -48,10 +49,10 @@
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO observability_events (event_id, user_id, event_type, question_length,
+        INSERT INTO observability_events (event_id, user_id, event_type, question, question_length,
             model_id, channel_id, session_id, workspace_id, result, response_duration_ms,
             client_version, client_platform, client_os_version, created_at)
-        VALUES (#{eventId}, #{userId}, #{eventType}, #{questionLength},
+        VALUES (#{eventId}, #{userId}, #{eventType}, #{question}, #{questionLength},
             #{modelId}, #{channelId}, #{sessionId}, #{workspaceId}, #{result}, #{responseDurationMs},
             #{clientVersion}, #{clientPlatform}, #{clientOsVersion}, #{createdAt})
     </insert>

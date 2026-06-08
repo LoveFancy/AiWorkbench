@@ -16,6 +16,7 @@ import {
 } from './workmate-manifest'
 import { isValidVersionDirection } from './workmate-version'
 import { getToken } from '../../../auth'
+import { reportUpgradeCheckEvent } from '../observability-service'
 
 // ===== 状态管理 =====
 
@@ -79,6 +80,13 @@ export async function checkForUpdates(manual = false): Promise<void> {
 
     const result = await checkForWorkmateUpgrade(currentVersion, platform, arch)
 
+    // 仅手动检查时上报升级检测事件
+    if (manual) {
+      try {
+        reportUpgradeCheckEvent('success')
+      } catch { /* 上报失败不影响主流程 */ }
+    }
+
     if (!result.hasUpdate) {
       if (result.hint) {
         setStatus({ status: 'not-available', hint: result.hint })
@@ -114,6 +122,14 @@ export async function checkForUpdates(manual = false): Promise<void> {
     await doDownload()
   } catch (err) {
     console.error('[更新] 检测失败:', err)
+
+    // 仅手动检查时上报升级检测失败事件
+    if (manual) {
+      try {
+        reportUpgradeCheckEvent('failure', err instanceof Error ? err : new Error(String(err)))
+      } catch { /* 上报失败不影响主流程 */ }
+    }
+
     if (manual) {
       setStatus({
         status: 'error',
