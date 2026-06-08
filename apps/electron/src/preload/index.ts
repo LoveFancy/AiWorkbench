@@ -866,6 +866,9 @@ export interface ElectronAPI {
       releaseNotes?: string
       progress?: { percent: number; transferred: number; total: number; bytesPerSecond: number }
       error?: string
+      hint?: string
+      forceUpdate?: boolean
+      releaseType?: 'UPGRADE' | 'ROLLBACK'
     }>
     onStatusChanged: (callback: (status: {
       status: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error'
@@ -873,6 +876,9 @@ export interface ElectronAPI {
       releaseNotes?: string
       progress?: { percent: number; transferred: number; total: number; bytesPerSecond: number }
       error?: string
+      hint?: string
+      forceUpdate?: boolean
+      releaseType?: 'UPGRADE' | 'ROLLBACK'
     }) => void) => () => void
     quitAndInstall: () => Promise<void>
   }
