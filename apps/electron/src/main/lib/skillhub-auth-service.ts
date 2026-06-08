@@ -209,7 +209,10 @@ export async function exchangeToken(): Promise<string> {
 export async function getValidSkillHubToken(): Promise<string> {
   // 已有有效 token 直接返回（不走锁）
   const cached = getCachedValidToken()
-  if (cached) return cached
+  if (cached) {
+    console.log('[SkillHub 认证] 使用缓存 Token:', cached.substring(0, 20) + '…')
+    return cached
+  }
 
   // 需要刷新时加锁，避免并发重复请求
   if (!refreshPromise) {

@@ -48,6 +48,19 @@ function shortSkillName(skillName: string): string {
 
 // ===== SkillHub API 统一请求入口 =====
 
+function formatErrorResponse(text: string): string {
+  if (!text) return '(空响应)'
+  try {
+    const json = JSON.parse(text)
+    // 如果后端返回了 message/error 字段，优先展示可读信息；完整 JSON 作为补充
+    const summary = json.message || json.error || json.msg || ''
+    const detail = JSON.stringify(json)
+    return summary ? `${summary}\n详细信息: ${detail}` : detail
+  } catch {
+    return text
+  }
+}
+
 async function skillHubFetch(path: string, init?: RequestInit): Promise<Response> {
   const token = await getValidSkillHubToken()
   const base = getSkillHubApiBase()
@@ -59,13 +72,15 @@ async function skillHubFetch(path: string, init?: RequestInit): Promise<Response
       console.log('[SkillHub]    body: %s', typeof init.body === 'string' ? init.body.substring(0, 500) : String(init.body).substring(0, 500))
     } catch { /* ignore */ }
   }
-  const makeRequest = (t: string) => fetch(url, {
-    ...init,
-    headers: {
-      ...(init?.headers as Record<string, string> | undefined),
-      Authorization: `Bearer ${t}`,
-    },
+  const buildHeaders = (t: string): Record<string, string> => ({
+    ...(init?.headers as Record<string, string> | undefined),
+    Authorization: `Bearer ${t}`,
   })
+
+  const makeRequest = (t: string) => fetch(url, { ...init, headers: buildHeaders(t) })
+
+  const requestHeaders = buildHeaders(token)
+  console.log('[SkillHub]    headers: %s', JSON.stringify(requestHeaders))
 
   let response = await makeRequest(token)
   console.log('[SkillHub] <= %s %s HTTP %d', method, url, response.status)
@@ -79,11 +94,13 @@ async function skillHubFetch(path: string, init?: RequestInit): Promise<Response
   if (!response.ok) {
     const text = await response.text().catch(() => '(响应读取失败)')
     const bodyPreview = typeof init?.body === 'string' ? (init.body.length > 500 ? init.body.substring(0, 500) + '…' : init.body) : ''
+    const errorDetail = formatErrorResponse(text)
     throw new Error(
       `SkillHub 请求失败 (${response.status})\n` +
       `请求: ${method} ${url}\n` +
+      `Headers: ${JSON.stringify(requestHeaders)}\n` +
       (bodyPreview ? `Body: ${bodyPreview}\n` : '') +
-      `响应: ${text.substring(0, 500)}`
+      `响应: ${errorDetail}`
     )
   }
 
@@ -129,20 +146,20 @@ interface SkillMetadataRaw {
 }
 
 export async function fetchSkillHubSkills(query: SkillListQuery = {}): Promise<SkillMetadataRaw[]> {
-  const body: Record<string, unknown> = {
+  const reqBody: Record<string, unknown> = {
     page: query.page ?? 1,
     pageSize: query.pageSize ?? 20,
     sort: query.sort ?? 'downloads',
     order: query.order ?? 'desc',
   }
-  if (query.keyword) body.keyword = query.keyword
-  if (query.category) body.category = query.category
-  if (query.env) body.env = query.env
+  if (query.keyword) reqBody.keyword = query.keyword
+  if (query.category) reqBody.category = query.category
+  if (query.env) reqBody.env = query.env
 
   const response = await skillHubFetch('/ai_skillhub_service/api/v1/market/skills', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(reqBody),
   })
 
   const body = await response.json() as { code: string; data: SkillMetadataRaw[] }
@@ -187,17 +204,46 @@ export async function fetchHtSkillHubIndex(workspaceSlug?: string, page?: number
     return skills.map((skill) => ({ ...skill, installed: false }))
   }
 
-  const installed = new Map(getAllWorkspaceSkills(workspaceSlug).map((s) => [s.slug, s.enabled]))
-  return skills.map((skill) => ({
-    ...skill,
-    installed: installed.has(shortSkillName(skill.name)),
-    enabled: installed.get(shortSkillName(skill.name)),
-  }))
+  const localSkills = getAllWorkspaceSkills(workspaceSlug)
+  const activeSkillsDir = getWorkspaceSkillsDir(workspaceSlug)
+  const inactiveSkillsDir = getInactiveSkillsDir(workspaceSlug)
+
+  // 多维度匹配，避免大小写 / 目录名不一致导致已安装 Skill 显示为未安装：
+  //   1. slug（目录名）case-insensitive
+  //   2. .proma-source.json 中记录的原始 skillName（包括活跃和禁用目录）
+  const slugLowerMap = new Map<string, boolean>()
+  const sourceNameMap = new Map<string, boolean>()
+
+  for (const s of localSkills) {
+    slugLowerMap.set(s.slug.toLowerCase(), s.enabled)
+  }
+
+  for (const dir of [activeSkillsDir, inactiveSkillsDir]) {
+    for (const s of localSkills) {
+      const sourcePath = join(dir, s.slug, '.proma-source.json')
+      try {
+        if (existsSync(sourcePath)) {
+          const source = JSON.parse(readFileSync(sourcePath, 'utf-8')) as { skillName?: string }
+          if (source.skillName) {
+            sourceNameMap.set(source.skillName.toLowerCase(), s.enabled)
+          }
+        }
+      } catch { /* skip corrupt files */ }
+    }
+  }
+
+  return skills.map((skill) => {
+    const short = shortSkillName(skill.name)
+    const installed = slugLowerMap.has(short.toLowerCase()) || sourceNameMap.has(skill.name.toLowerCase())
+    const enabled = slugLowerMap.get(short.toLowerCase()) ?? sourceNameMap.get(skill.name.toLowerCase())
+    return { ...skill, installed, enabled }
+  })
 }
 
 export async function readHtSkillHubSkillContent(skillName: string): Promise<string> {
   const skills = await fetchSkillHubSkills()
-  const skill = skills.find((s) => s.skillName === skillName)
+  const key = skillName.toLowerCase()
+  const skill = skills.find((s) => s.skillName.toLowerCase() === key)
   return skill?.readme ?? ''
 }
 
@@ -355,12 +401,15 @@ export async function batchInstallHtSkillHubSkills(
   const results: InstallHtSkillHubSkillResult[] = []
   const concurrency = 3
 
+  // 一次性拉取远端列表，避免每个 skill 都单独请求
+  const allSkills = await fetchSkillHubSkills()
+  const nameLowerMap = new Map(allSkills.map((s) => [s.skillName.toLowerCase(), s]))
+
   for (let i = 0; i < skillNames.length; i += concurrency) {
     const batch = skillNames.slice(i, i + concurrency)
     const batchResults = await Promise.allSettled(
       batch.map(async (name) => {
-        const skills = await fetchSkillHubSkills()
-        const raw = skills.find((s) => s.skillName === name)
+        const raw = nameLowerMap.get(name.toLowerCase())
         if (!raw) throw new Error(`SkillHub 未找到 Skill: ${name}`)
 
         const skill: HtSkillHubSkill = { name: raw.skillName, description: raw.description, files: [] }

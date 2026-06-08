@@ -2137,7 +2137,8 @@ export function registerIpcHandlers(): void {
     async (_, workspaceSlug: string, skillName: string, overwrite: boolean): Promise<HtSkillHubInstallResult> => {
       const { fetchHtSkillHubIndex, installHtSkillHubSkill } = await import('./lib/skillhub-service')
       const skills = await fetchHtSkillHubIndex(workspaceSlug)
-      const skill = skills.find((item) => item.name === skillName)
+      const key = skillName.toLowerCase()
+      const skill = skills.find((item) => item.name.toLowerCase() === key)
       if (!skill) throw new Error(`华泰 SkillHub 未找到 Skill: ${skillName}`)
       return installHtSkillHubSkill({ workspaceSlug, skill, overwrite })
     }
