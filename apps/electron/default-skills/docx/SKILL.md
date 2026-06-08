@@ -1,8 +1,8 @@
 ---
 name: docx
-description: "Use this skill whenever the user wants to create, read, edit, or manipulate Word documents (.docx files). Triggers include: any mention of 'Word doc', 'word document', '.docx', or requests to produce professional documents with formatting like tables of contents, headings, page numbers, or letterheads. Also use when extracting or reorganizing content from .docx files, inserting or replacing images in documents, performing find-and-replace in Word files, working with tracked changes or comments, or converting content into a polished Word document. If the user asks for a 'report', 'memo', 'letter', 'template', or similar deliverable as a Word or .docx file, use this skill. Do NOT use for PDFs, spreadsheets, Google Docs, or general coding tasks unrelated to document generation."
+description: "用于创建、读取、编辑或处理 Word 文档（.docx）。当用户提到 Word、.docx、报告、备忘录、信函、模板，或需要目录、标题、页码、信头、批注、修订、查找替换、图片插入/替换、内容重组等专业文档处理时使用。本 Skill 不用于 PDF、电子表格、Google Docs 或与文档生成无关的一般编码任务。"
 license: Proprietary. LICENSE.txt has complete terms
-version: "1.0.1"
+version: "1.0.2"
 ---
 
 # DOCX creation, editing, and analysis

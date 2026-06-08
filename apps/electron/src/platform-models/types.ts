@@ -7,6 +7,7 @@ export interface PlatformModelInfo {
   /** 模型调用地址 */
   baseUrl?: string
   maxTokens?: number
+  supportsMultimodal?: boolean
   enabled: boolean
 }
 

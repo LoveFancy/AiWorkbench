@@ -28,6 +28,8 @@ import { readAttachmentAsBase64, isImageAttachment } from './attachment-service'
 import { extractTextFromAttachment, isDocumentAttachment } from './document-parser'
 import { getFetchFn } from './proxy-fetch'
 import { getEffectiveProxyUrl } from './proxy-settings-service'
+import { reportChatEvent } from './observability-service'
+import { getJobId } from '../../auth'
 import { getEnabledTools } from './chat-tool-registry'
 import { executeToolCalls } from './chat-tool-executor'
 
@@ -252,6 +254,8 @@ export async function sendMessage(
   const accumulatedToolActivities: ChatToolActivity[] = []
   const accumulatedGeneratedAttachments: FileAttachment[] = []
 
+  const startTime = Date.now()
+
   try {
     // 7. 获取适配器
     const adapter = getAdapter(channel.provider)
@@ -440,6 +444,17 @@ export async function sendMessage(
       model: modelId,
       messageId: (accumulatedContent.trim() || accumulatedGeneratedAttachments.length > 0) ? assistantMsgId : undefined,
     })
+
+    // 上报 Chat 成功事件
+    try {
+      reportChatEvent({
+        userId: getJobId() ?? 'unknown',
+        question: userMessage,
+        modelId,
+        result: 'success',
+        responseDurationMs: Date.now() - startTime,
+      })
+    } catch { /* 上报失败不影响主流程 */ }
   } catch (error) {
     // 被中止的请求：保存已输出的部分内容，通知前端停止
     if (controller.signal.aborted) {
@@ -510,6 +525,20 @@ export async function sendMessage(
       conversationId,
       error: errorMessage,
     })
+
+    // 上报 Chat 失败事件（中止除外）
+    if (!controller.signal.aborted) {
+      try {
+        reportChatEvent({
+          userId: getJobId() ?? 'unknown',
+          question: userMessage,
+          modelId,
+          result: 'failure',
+          responseDurationMs: Date.now() - startTime,
+          error: error instanceof Error ? error : new Error(errorMessage),
+        })
+      } catch { /* 上报失败不影响主流程 */ }
+    }
   } finally {
     activeControllers.delete(conversationId)
   }

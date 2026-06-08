@@ -25,7 +25,7 @@ import {
 } from '@/atoms/chat-atoms'
 import { useConversationModelOptional } from '@/hooks/useConversationSettings'
 import { useConversationIdOptional } from '@/contexts/session-context'
-import { getModelLogo, getChannelLogo } from '@/lib/model-logo'
+import { getModelLogo, getChannelLogo, DefaultLogo } from '@/lib/model-logo'
 import { hasConfiguredApiKey } from '@/lib/model-selection'
 import { cn } from '@/lib/utils'
 import type { Channel, ModelOption } from '@proma/shared'
@@ -270,7 +270,7 @@ export function ModelSelector({
           </div>
 
           {/* 模型列表 */}
-          <div className="max-h-[420px] overflow-y-auto">
+          <div className="max-h-[420px] overflow-y-auto scrollbar-thin">
             {filteredGrouped.size === 0 ? (
               <div className="py-10 text-center text-sm text-muted-foreground">
                 未找到模型
@@ -287,7 +287,10 @@ export function ModelSelector({
                     {/* 供应商标题行 - 灰色背景 */}
                     <div className="flex items-center gap-2 px-4 py-2 bg-muted/50 border-b border-border/30">
                       <img
-                        src={getChannelLogo(channels.find((c) => c.id === channelId)?.baseUrl ?? '')}
+                        src={(() => {
+                          const ch = channels.find((c) => c.id === channelId)
+                          return ch ? getChannelLogo(ch) : DefaultLogo
+                        })()}
                         alt={first.channelName}
                         className="size-5 rounded object-cover"
                       />

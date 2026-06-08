@@ -24,6 +24,9 @@ interface UpdateStatus {
   releaseNotes?: string
   progress?: { percent: number; transferred: number; total: number; bytesPerSecond: number }
   error?: string
+  hint?: string
+  forceUpdate?: boolean
+  releaseType?: 'UPGRADE' | 'ROLLBACK'
 }
 
 /** 更新 API（仅版本检测，不自动下载/安装） */

@@ -7,6 +7,7 @@ import {
   FolderPlus,
   Info,
   List,
+  Loader2,
   Package,
   RefreshCw,
   Search,
@@ -130,6 +131,17 @@ function getPluginInstallTarget(plugin: AgentPluginInfo): PluginInstallTarget | 
   }
 }
 
+function getMarketplacePluginOperationKey(target: PluginInstallTarget): string {
+  return `${target.marketplaceId}:${target.pluginName}`
+}
+
+function getMarketplaceCatalogOperationKey(plugin: AgentPluginMarketplacePlugin): string {
+  return getMarketplacePluginOperationKey({
+    marketplaceId: plugin.marketplaceId,
+    pluginName: plugin.name,
+  })
+}
+
 function getPluginSourceLabel(plugin: AgentPluginInfo, marketplaces: AgentPluginMarketplace[]): string {
   if (plugin.kind === 'builtin') return 'builtin'
   if (!plugin.sourceMarketplaceId) return 'user'
@@ -183,6 +195,8 @@ export function inferMarketplaceInput(sourceText: string): InferredMarketplaceIn
     type = 'github'
   } else if (/^git@gitee\.com:/i.test(source) || /^https?:\/\/gitee\.com\//i.test(source)) {
     type = 'gitee'
+  } else if (/^git@[^:]*gitlab[^:]*:/i.test(source) || /^https?:\/\/[^/]*gitlab[^/]*\//i.test(source)) {
+    type = 'gitlab'
   } else if (/^https?:\/\//i.test(source)) {
     type = 'raw'
   } else if (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(source)) {
@@ -216,6 +230,7 @@ export function PluginSettings(): React.ReactElement {
   const [editingMcp, setEditingMcp] = React.useState<AgentPluginCapability | null>(null)
   const [mcpEnvText, setMcpEnvText] = React.useState('')
   const [marketplaceSourceInput, setMarketplaceSourceInput] = React.useState('')
+  const [pendingPluginOperations, setPendingPluginOperations] = React.useState<Set<string>>(new Set())
 
   const capabilities = React.useMemo(() => {
     const items = plugins.flatMap((plugin) => plugin.capabilities)
@@ -332,6 +347,11 @@ export function PluginSettings(): React.ReactElement {
     () => installedDetailPlugin ? capabilitiesByPluginId.get(installedDetailPlugin.id) ?? installedDetailPlugin.capabilities : [],
     [capabilitiesByPluginId, installedDetailPlugin],
   )
+  const installedDetailUpdatePending = React.useMemo(() => {
+    if (!installedDetailPlugin) return false
+    const target = getPluginInstallTarget(installedDetailPlugin)
+    return target ? pendingPluginOperations.has(getMarketplacePluginOperationKey(target)) : false
+  }, [installedDetailPlugin, pendingPluginOperations])
   const attentionPlugins = React.useMemo(
     () => filteredInstalledPlugins.filter((plugin) => plugin.issues.length > 0 || (capabilityIssueCountsByPluginId.get(plugin.id) ?? 0) > 0),
     [capabilityIssueCountsByPluginId, filteredInstalledPlugins],
@@ -368,6 +388,18 @@ export function PluginSettings(): React.ReactElement {
   React.useEffect(() => {
     void loadAll()
   }, [loadAll])
+
+  const setPluginOperationPending = React.useCallback((operationKey: string, isPending: boolean) => {
+    setPendingPluginOperations((prev) => {
+      const next = new Set(prev)
+      if (isPending) {
+        next.add(operationKey)
+      } else {
+        next.delete(operationKey)
+      }
+      return next
+    })
+  }, [])
 
   const handleTogglePlugin = async (plugin: AgentPluginInfo, enabled: boolean): Promise<void> => {
     await window.electronAPI.setAgentPluginEnabled(plugin.id, enabled)
@@ -428,6 +460,9 @@ export function PluginSettings(): React.ReactElement {
   }
 
   const handleInstall = async (plugin: AgentPluginMarketplacePlugin): Promise<void> => {
+    const operationKey = getMarketplaceCatalogOperationKey(plugin)
+    if (pendingPluginOperations.has(operationKey)) return
+    setPluginOperationPending(operationKey, true)
     try {
       await window.electronAPI.installAgentMarketplacePlugin({
         marketplaceId: plugin.marketplaceId,
@@ -439,6 +474,8 @@ export function PluginSettings(): React.ReactElement {
       await loadAll()
     } catch (error) {
       toast.error('安装插件失败', { description: error instanceof Error ? error.message : '未知错误' })
+    } finally {
+      setPluginOperationPending(operationKey, false)
     }
   }
 
@@ -448,6 +485,9 @@ export function PluginSettings(): React.ReactElement {
       toast.error('该插件不支持从市场更新')
       return
     }
+    const operationKey = getMarketplacePluginOperationKey(target)
+    if (pendingPluginOperations.has(operationKey)) return
+    setPluginOperationPending(operationKey, true)
     try {
       await window.electronAPI.installAgentMarketplacePlugin({
         marketplaceId: target.marketplaceId,
@@ -459,6 +499,8 @@ export function PluginSettings(): React.ReactElement {
       await loadAll()
     } catch (error) {
       toast.error('更新插件失败', { description: error instanceof Error ? error.message : '未知错误' })
+    } finally {
+      setPluginOperationPending(operationKey, false)
     }
   }
 
@@ -537,7 +579,11 @@ export function PluginSettings(): React.ReactElement {
             </div>
           )}
           <div className="space-y-2">
-            {visibleDiscover.map((plugin) => (
+            {visibleDiscover.map((plugin) => {
+              const operationKey = getMarketplaceCatalogOperationKey(plugin)
+              const isPending = pendingPluginOperations.has(operationKey)
+              const actionLabel = plugin.installed ? '更新' : '安装'
+              return (
               <div key={`${plugin.marketplaceId}:${plugin.name}`} className="rounded-lg bg-card p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
@@ -549,13 +595,18 @@ export function PluginSettings(): React.ReactElement {
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">{plugin.description ?? '暂无描述'}</p>
                   </div>
-                  <Button onClick={() => void handleInstall(plugin)}>
-                    <Download size={16} className="mr-2" />
-                    {plugin.installed ? '更新' : '安装'}
+                  <Button disabled={isPending} onClick={() => void handleInstall(plugin)}>
+                    {isPending ? (
+                      <Loader2 size={16} className="mr-2 animate-spin" />
+                    ) : (
+                      <Download size={16} className="mr-2" />
+                    )}
+                    {isPending ? `${actionLabel}中` : actionLabel}
                   </Button>
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
           {!loading && visibleDiscover.length === 0 && <EmptyState text="暂无可安装插件，请先添加并刷新插件市场" />}
         </TabsContent>
@@ -570,6 +621,7 @@ export function PluginSettings(): React.ReactElement {
               onToggle={handleTogglePlugin}
               onUninstall={handleUninstall}
               onUpdate={handleUpdateInstalledPlugin}
+              updatePending={installedDetailUpdatePending}
               onOpenMcpEditor={openMcpEditor}
               onTestMcp={handleTestMcp}
               onOpenExternal={openExternal}
@@ -691,7 +743,7 @@ export function PluginSettings(): React.ReactElement {
           <DialogHeader>
             <DialogTitle>添加插件市场</DialogTitle>
             <DialogDescription>
-              输入市场来源即可，系统会自动识别 GitHub、Gitee、Raw URL 或本地路径。
+              输入市场来源即可，系统会自动识别 GitHub、Gitee、GitLab、Raw URL 或本地路径。
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -700,7 +752,7 @@ export function PluginSettings(): React.ReactElement {
               <Input
                 value={marketplaceSourceInput}
                 onChange={(event) => setMarketplaceSourceInput(event.target.value)}
-                placeholder="owner/repo、https://.../marketplace.json 或 ./path/to/marketplace"
+                placeholder="owner/repo、GitLab/Gitee/GitHub 仓库、https://.../marketplace.json 或 ./path/to/marketplace"
                 autoFocus
               />
             </div>
@@ -708,6 +760,7 @@ export function PluginSettings(): React.ReactElement {
               <div className="font-semibold">Examples:</div>
               <div className="mt-2 space-y-1 text-zinc-400">
                 <div>· owner/repo (GitHub)</div>
+                <div>· http://gitlab.htzq.htsc.com.cn/aidev/ht-dev-plugins/claudecode-plugin-marketplace</div>
                 <div>· git@github.com:owner/repo.git (SSH)</div>
                 <div>· https://example.com/marketplace.json</div>
                 <div>· ./path/to/marketplace</div>
@@ -831,6 +884,7 @@ function InstalledPluginDetailPage({
   onToggle,
   onUninstall,
   onUpdate,
+  updatePending,
   onOpenMcpEditor,
   onTestMcp,
   onOpenExternal,
@@ -842,6 +896,7 @@ function InstalledPluginDetailPage({
   onToggle: (plugin: AgentPluginInfo, enabled: boolean) => Promise<void>
   onUninstall: (plugin: AgentPluginInfo) => Promise<void>
   onUpdate: (plugin: AgentPluginInfo) => Promise<void>
+  updatePending: boolean
   onOpenMcpEditor: (capability: AgentPluginCapability) => void
   onTestMcp: (capability: AgentPluginCapability) => Promise<void>
   onOpenExternal: (url?: string) => void
@@ -886,9 +941,13 @@ function InstalledPluginDetailPage({
 
         <div className="mt-5 flex flex-wrap gap-2">
           {canUpdate && (
-            <Button size="sm" onClick={() => void onUpdate(plugin)}>
-              <RefreshCw size={14} className="mr-1" />
-              更新
+            <Button size="sm" disabled={updatePending} onClick={() => void onUpdate(plugin)}>
+              {updatePending ? (
+                <Loader2 size={14} className="mr-1 animate-spin" />
+              ) : (
+                <RefreshCw size={14} className="mr-1" />
+              )}
+              {updatePending ? '更新中' : '更新'}
             </Button>
           )}
           {plugin.homepage && (

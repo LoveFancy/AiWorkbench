@@ -1,0 +1,19 @@
+# ============================================================
+# WorkMate Server - UAT 环境配置（profile: uat）
+# ============================================================
+# 启动方式：bin/start.sh --profile uat
+# 公共配置在 application.yml 中；本文件仅配置 UAT 差异化项。
+# ============================================================
+
+spring:
+  datasource:
+    url: jdbc:mysql://${DB_HOST}:${DB_PORT:3306}/${DB_NAME:workmate_server}?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+
+workmate:
+  user-id-encryption-key: ${USER_ID_ENCRYPTION_KEY}
+  require-user-id: true
+  default-user-id:
+  model-platform-api-url: http://model-platform-uat.htsc.com/api/v1

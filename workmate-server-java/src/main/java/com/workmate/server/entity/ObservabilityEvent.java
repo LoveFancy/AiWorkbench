@@ -7,16 +7,19 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
+/**
+ * 业务事件实体，映射 observability_events 表（按年分区，永久保留）。
+ * 仅存储 user_login / user_logout / chat_question / agent_question / upgrade_check。
+ */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class ObservabilityEvent {
 
-    private Integer id;
+    private Long id;
     private String eventId;
     private String userId;
-    private String userName;
     private String eventType;
     private String question;
     private Integer questionLength;
@@ -26,13 +29,6 @@ public class ObservabilityEvent {
     private String workspaceId;
     private String result;
     private Integer responseDurationMs;
-    private String errorType;
-    private String errorMessage;
-    private String errorStack;
-    private String errorFingerprint;
-    private Integer errorStatusCode;
-    private String breadcrumbs;
-    private String tags;
     private String clientVersion;
     private String clientPlatform;
     private String clientOsVersion;

@@ -73,6 +73,7 @@ function createMentionSuggestion<T>(
     char: config.char,
     allowSpaces: false,
     command: insertMentionWithCurrentSchema(config.char),
+    allowedPrefixes: null,
 
     items: async ({ query }): Promise<T[]> => {
       const slug = workspaceSlugRef.current
@@ -87,15 +88,35 @@ function createMentionSuggestion<T>(
     render: () => {
       let renderer: ReactRenderer<MentionListRef> | null = null
       let popup: HTMLDivElement | null = null
+      let blurHandler: (() => void) | null = null
+      let editorDom: HTMLElement | null = null
+
+      function cleanup() {
+        if (blurHandler && editorDom) {
+          editorDom.removeEventListener('blur', blurHandler, true)
+          blurHandler = null
+        }
+        editorDom = null
+        mentionActiveRef.current = false
+        mentionItemCountRef.current = 0
+        popup?.remove()
+        popup = null
+        renderer?.destroy()
+        renderer = null
+      }
 
       return {
         onStart(props) {
+          if (popup || renderer) {
+            cleanup()
+          }
+
           mentionActiveRef.current = true
           mentionItemCountRef.current = props.items.length
+          editorDom = props.editor.view.dom
           renderer = new ReactRenderer(MentionList, {
             props: {
               items: props.items,
-              selectedIndex: 0,
               emptyText: config.emptyText,
               keyExtractor: config.keyExtractor,
               titleExtractor: config.titleExtractor,
@@ -109,6 +130,15 @@ function createMentionSuggestion<T>(
           })
           popup = createMentionPopup(renderer.element)
           positionPopup(popup, props.clientRect?.())
+
+          blurHandler = () => {
+            setTimeout(() => {
+              if (!props.editor.view.hasFocus() && popup) {
+                cleanup()
+              }
+            }, 100)
+          }
+          editorDom.addEventListener('blur', blurHandler, true)
         },
 
         onUpdate(props) {
@@ -129,12 +159,7 @@ function createMentionSuggestion<T>(
         },
 
         onExit() {
-          mentionActiveRef.current = false
-          mentionItemCountRef.current = 0
-          popup?.remove()
-          popup = null
-          renderer?.destroy()
-          renderer = null
+          cleanup()
         },
       }
     },
@@ -161,6 +186,32 @@ export interface SlashCommandMentionItem {
 }
 
 export type SlashMentionItem = SkillMentionItem | SlashCommandMentionItem
+
+interface SlashMentionItemLayoutClasses {
+  content: string
+  name: string
+  description: string
+}
+
+export function getSlashMentionItemLayoutClasses(kind: SlashMentionItem['kind']): SlashMentionItemLayoutClasses {
+  return kind === 'command'
+    ? {
+        content: 'grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] items-center gap-2 min-w-0 flex-1',
+        name: 'truncate font-medium min-w-0',
+        description: 'truncate text-[10px] text-muted-foreground/55 min-w-0',
+      }
+    : {
+        content: 'grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] items-center gap-2 min-w-0 flex-1',
+        name: 'truncate font-medium min-w-0',
+        description: 'truncate text-[10px] text-muted-foreground/50 min-w-0',
+      }
+}
+
+export function truncateSkillMentionName(name: string): string {
+  const chars = Array.from(name)
+  if (chars.length <= 20) return name
+  return `${chars.slice(0, 19).join('')}…`
+}
 
 export function sortSlashMentionItems(items: SlashMentionItem[]): SlashMentionItem[] {
   return [...items].sort((a, b) => {
@@ -252,15 +303,16 @@ export function createSkillMentionSuggestion(
       keyExtractor: (item) => `${item.kind}:${item.id}`,
       titleExtractor: formatSlashMentionTooltip,
       renderItem: (item) => {
+        const layout = getSlashMentionItemLayoutClasses(item.kind)
         if (item.kind === 'command') {
           return (
             <>
               <TerminalSquare className="size-3.5 text-amber-500 flex-shrink-0" />
-              <span className="truncate font-medium w-[158px] flex-shrink-0">
-                {formatSlashCommandDisplayLabel(item)}
-              </span>
-              <span className="truncate text-[10px] text-muted-foreground/55 flex-1 min-w-0">
-                {[item.argumentHint, item.description].filter(Boolean).join('  ')}
+              <span className={layout.content}>
+                <span className={layout.name}>{formatSlashCommandDisplayLabel(item)}</span>
+                <span className={layout.description}>
+                  {[item.argumentHint, item.description].filter(Boolean).join('  ')}
+                </span>
               </span>
             </>
           )
@@ -268,10 +320,12 @@ export function createSkillMentionSuggestion(
         return (
           <>
             <Sparkles className="size-3.5 text-violet-500 flex-shrink-0" />
-            <span className="truncate font-medium flex-1 min-w-0">{item.name}</span>
-            {item.description && (
-              <span className="truncate text-[10px] text-muted-foreground/50 max-w-[120px]">{item.description}</span>
-            )}
+            <span className={layout.content}>
+              <span className={layout.name}>{truncateSkillMentionName(item.name)}</span>
+              {item.description && (
+                <span className={layout.description}>{item.description}</span>
+              )}
+            </span>
           </>
         )
       },

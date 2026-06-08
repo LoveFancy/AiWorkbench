@@ -1,0 +1,25 @@
+# 脚本文件强制 LF 行尾（CRLF 会导致 bash 报 "invalid option" 错误）
+*.sh      text eol=lf
+
+# Java / Maven 源码
+*.java    text
+*.xml     text
+*.yml     text
+*.yaml    text
+*.sql     text
+*.conf    text eol=lf
+
+# 前端
+*.ts      text
+*.tsx     text
+*.json    text
+*.html    text
+*.css     text
+
+# 二进制（不做行尾转换）
+*.jar     binary
+*.zip     binary
+*.tar.gz  binary
+*.png     binary
+*.ico     binary
+*.svg     binary

@@ -82,40 +82,6 @@ CREATE TABLE `admin_whitelist` (
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
--- CreateTable: observability_events
-CREATE TABLE `observability_events` (
-    `id` INTEGER NOT NULL AUTO_INCREMENT,
-    `event_id` VARCHAR(36) NULL,
-    `user_id` VARCHAR(64) NOT NULL,
-    `user_name` VARCHAR(128) NULL,
-    `event_type` VARCHAR(32) NOT NULL,
-    `question` TEXT NULL,
-    `question_length` INTEGER NULL,
-    `model_id` VARCHAR(128) NULL,
-    `channel_id` VARCHAR(128) NULL,
-    `session_id` VARCHAR(64) NULL,
-    `workspace_id` VARCHAR(64) NULL,
-    `result` VARCHAR(16) NULL,
-    `response_duration_ms` INTEGER NULL,
-    `error_type` VARCHAR(64) NULL,
-    `error_message` TEXT NULL,
-    `error_stack` TEXT NULL,
-    `error_fingerprint` VARCHAR(64) NULL,
-    `error_status_code` INTEGER NULL,
-    `breadcrumbs` TEXT NULL,
-    `tags` TEXT NULL,
-    `client_version` VARCHAR(32) NOT NULL,
-    `client_platform` VARCHAR(32) NOT NULL,
-    `client_os_version` VARCHAR(64) NULL,
-    `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    UNIQUE INDEX `observability_events_event_id_key`(`event_id`),
-    INDEX `observability_events_event_type_idx`(`event_type`),
-    INDEX `observability_events_user_id_idx`(`user_id`),
-    INDEX `observability_events_created_at_idx`(`created_at`),
-    INDEX `observability_events_client_version_idx`(`client_version`),
-    INDEX `observability_events_error_fingerprint_idx`(`error_fingerprint`),
-    PRIMARY KEY (`id`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- AddForeignKey
 ALTER TABLE `upgrade_whitelist` ADD CONSTRAINT `upgrade_whitelist_source_strategy_id_fkey`

@@ -8,9 +8,10 @@ export {
   loginWithEipGateway,
   getToken,
   getJobId,
+  getEipGatewayBase,
   isLoggedIn,
-  needsReauth,
   getAuthInfo,
+  needsReauth,
   logout,
   buildAuthHeaders,
 } from './auth-service'

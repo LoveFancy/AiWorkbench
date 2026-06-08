@@ -1,7 +1,7 @@
 ---
 name: find-skills
-description: Helps users discover and install agent skills when they ask questions like "how do I do X", "find a skill for X", "is there a skill that can...", or express interest in extending capabilities. This skill should be used when the user is looking for functionality that might exist as an installable skill.
-version: "1.0.1"
+description: 帮助用户发现和安装 Agent Skills。当用户询问“怎么做 X”“有没有 X 的 Skill”“能不能扩展某种能力”，或在寻找可能已有的可安装能力时使用。WorkMate 中优先从华泰 SkillHub 查找，再考虑开放生态来源。
+version: "1.0.2"
 ---
 # Find Skills
 

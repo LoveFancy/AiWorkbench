@@ -6,9 +6,26 @@ import type { LoginResult, PersistedAuthData, AuthInfo } from './types'
 
 const AUTH_FILE = 'auth.json'
 
+export interface AuthPathProvider {
+  getConfigDir(): string
+  getSettingsPath(): string
+}
+
+const defaultPathProvider: AuthPathProvider = {
+  getConfigDir,
+  getSettingsPath,
+}
+
+let pathProvider = defaultPathProvider
+
+/** 测试专用：避免全局 mock config-paths 影响同一进程里的其他测试。 */
+export function setAuthPathProviderForTest(provider: AuthPathProvider | null): void {
+  pathProvider = provider ?? defaultPathProvider
+}
+
 /** 从 settings.json 读取 eipGatewayBase，未配置时回退到生产地址 */
-function getEipGatewayBase(): string {
-  const settingsPath = getSettingsPath()
+export function getEipGatewayBase(): string {
+  const settingsPath = pathProvider.getSettingsPath()
   try {
     if (existsSync(settingsPath)) {
       const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'))
@@ -17,14 +34,14 @@ function getEipGatewayBase(): string {
       }
     }
   } catch { /* settings.json 损坏时走默认 */ }
-  return 'http://eip.htsc.com.cn/gateway'
+  return 'http://eiplite.htsc.com.cn/gateway'
 }
 
 /** 强制重新登录天数：自 Token 初始签发起超过此天数必须重新登录 */
 const FORCED_REAUTH_DAYS = 180
 
 function getAuthFilePath(): string {
-  return join(getConfigDir(), AUTH_FILE)
+  return join(pathProvider.getConfigDir(), AUTH_FILE)
 }
 
 // ===== 总入口：完整登录流程 =====
@@ -71,14 +88,10 @@ async function login(
   const url = `${base}/login`
   console.log('[Auth] POST %s', url)
 
-  // 从 base URL 解析 Origin / Host，避免写死
-  let origin = 'http://eip.htsc.com.cn'
-  let host = 'eip.htsc.com.cn'
-  try {
-    const parsed = new URL(base)
-    origin = parsed.origin
-    host = parsed.host
-  } catch { /* 保持回退值 */ }
+  // 从 base URL 解析 Origin / Host
+  const parsed = new URL(base)
+  const origin = parsed.origin
+  const host = parsed.host
 
   try {
     const response = await fetch(url, {

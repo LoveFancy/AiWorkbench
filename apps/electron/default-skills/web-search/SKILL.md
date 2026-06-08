@@ -1,12 +1,12 @@
 ---
 name: web-search
-description: Use when the user asks for current, recent, public web information, explicitly requests online search or lookup, or asks a factual question that may be outdated or uncertain.
-version: "1.0.1"
+description: 当用户需要当前、近期或公开网页信息，明确要求联网搜索/查询，或提出可能过期、不确定的事实问题时使用。
+version: "1.0.2"
 ---
 
 # Web Search
 
-Use this skill when you need current public web information. The bundled search script calls Proma's built-in Compass search service directly and deliberately ignores proxy environment variables.
+当需要当前公开网页信息时使用本 Skill。内置搜索脚本会直接调用 WorkMate 的 Compass 搜索服务，并有意忽略代理环境变量。
 
 ## How To Search
 

@@ -9,6 +9,11 @@
         <result column="release_notes" property="releaseNotes"/>
         <result column="download_url" property="downloadUrl"/>
         <result column="platform" property="platform"/>
+        <result column="arch" property="arch"/>
+        <result column="package_type" property="packageType"/>
+        <result column="file_name" property="fileName"/>
+        <result column="file_size" property="fileSize"/>
+        <result column="sha256" property="sha256"/>
         <result column="min_version" property="minVersion"/>
         <result column="is_active" property="isActive"/>
         <result column="published_at" property="publishedAt"/>
@@ -31,15 +36,16 @@
     </update>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO upgrade_releases (version, release_type, release_notes, download_url, platform, min_version, is_active, published_at)
-        VALUES (#{version}, #{releaseType}, #{releaseNotes}, #{downloadUrl}, #{platform}, #{minVersion}, #{isActive}, #{publishedAt})
+        INSERT INTO upgrade_releases (version, release_type, release_notes, download_url, platform, arch, package_type, file_name, file_size, sha256, min_version, is_active, published_at)
+        VALUES (#{version}, #{releaseType}, #{releaseNotes}, #{downloadUrl}, #{platform}, #{arch}, #{packageType}, #{fileName}, #{fileSize}, #{sha256}, #{minVersion}, #{isActive}, #{publishedAt})
     </insert>
 
     <update id="update">
         UPDATE upgrade_releases
         SET version = #{version}, release_type = #{releaseType}, release_notes = #{releaseNotes},
-            download_url = #{downloadUrl}, platform = #{platform}, min_version = #{minVersion},
-            is_active = #{isActive}
+            download_url = #{downloadUrl}, platform = #{platform}, arch = #{arch},
+            package_type = #{packageType}, file_name = #{fileName}, file_size = #{fileSize},
+            sha256 = #{sha256}, min_version = #{minVersion}, is_active = #{isActive}
         WHERE id = #{id}
     </update>
 

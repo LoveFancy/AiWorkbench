@@ -6,13 +6,13 @@ import com.workmate.server.dto.request.WhitelistRuleRequest;
 import com.workmate.server.dto.response.ApiResponse;
 import com.workmate.server.dto.response.DashboardStats;
 import com.workmate.server.dto.response.EventStats;
+import com.workmate.server.dto.response.ReleaseUploadResponse;
 import com.workmate.server.entity.AdminWhitelist;
-import com.workmate.server.entity.ObservabilityEvent;
 import com.workmate.server.entity.UpgradeRelease;
 import com.workmate.server.entity.UpgradeStrategy;
-import com.workmate.server.entity.UpgradeWhitelist;
 import com.workmate.server.service.AdminService;
 import com.workmate.server.service.ObservabilityService;
+import com.workmate.server.service.ReleaseFileService;
 import com.workmate.server.service.StrategyService;
 import com.workmate.server.service.UpgradeService;
 import com.workmate.server.service.WhitelistService;
@@ -21,6 +21,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.*;
 
@@ -33,6 +34,7 @@ public class AdminController {
     private final WhitelistService whitelistService;
     private final StrategyService strategyService;
     private final UpgradeService upgradeService;
+    private final ReleaseFileService releaseFileService;
     private final ObservabilityService observabilityService;
 
     // ===== 权限校验 =====
@@ -102,6 +104,17 @@ public class AdminController {
             @RequestParam(required = false) String platform) {
         var result = upgradeService.listReleases(page, pageSize, platform);
         return ApiResponse.ok(Map.of("total", result.total(), "releases", result.items()));
+    }
+
+    @PostMapping({"/releases/upload", "/upgrade/releases/upload"})
+    public ApiResponse<ReleaseUploadResponse> uploadReleaseFile(
+            @RequestParam String version,
+            @RequestParam String platform,
+            @RequestParam String arch,
+            @RequestParam String packageType,
+            @RequestParam MultipartFile file) {
+        ReleaseUploadResponse result = releaseFileService.upload(version, platform, arch, packageType, file);
+        return ApiResponse.ok(result, "上传成功");
     }
 
     @PostMapping("/releases")
@@ -204,22 +217,34 @@ public class AdminController {
             @RequestParam(defaultValue = "20") int pageSize,
             @RequestParam(required = false) String eventType,
             @RequestParam(required = false) String userId,
-            @RequestParam(required = false) String startDate,
-            @RequestParam(required = false) String endDate,
-            @RequestParam(required = false) String clientVersion,
-            @RequestParam(required = false) String errorFingerprint) {
+            @RequestParam(required = false) Integer year,
+            @RequestParam(required = false) String clientVersion) {
         var result = observabilityService.queryEvents(
-                page, pageSize, eventType, userId, startDate, endDate, clientVersion, errorFingerprint);
+                page, pageSize, eventType, userId, year, clientVersion);
         return ApiResponse.ok(Map.of(
                 "total", result.total(), "events", result.items(),
                 "page", result.page(), "pageSize", result.pageSize()));
     }
 
+    @GetMapping("/observability/errors")
+    public ApiResponse<Map<String, Object>> queryErrors(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) Integer year,
+            @RequestParam(required = false) String clientVersion,
+            @RequestParam(required = false) String errorFingerprint) {
+        var result = observabilityService.queryErrors(
+                page, pageSize, userId, year, clientVersion, errorFingerprint);
+        return ApiResponse.ok(Map.of(
+                "total", result.total(), "errors", result.items(),
+                "page", result.page(), "pageSize", result.pageSize()));
+    }
+
     @GetMapping("/observability/stats")
     public ApiResponse<EventStats> getEventStats(
-            @RequestParam(required = false) String startDate,
-            @RequestParam(required = false) String endDate) {
-        return ApiResponse.ok(observabilityService.getEventStats(startDate, endDate));
+            @RequestParam(required = false) Integer year) {
+        return ApiResponse.ok(observabilityService.getEventStats(year));
     }
 
     @SuppressWarnings("unchecked")

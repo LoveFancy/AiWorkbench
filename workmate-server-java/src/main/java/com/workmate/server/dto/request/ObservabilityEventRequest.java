@@ -23,7 +23,6 @@ public class ObservabilityEventRequest {
     private String type;
 
     private String userId;
-    private String userName;
 
     @NotNull(message = "timestamp 不能为空")
     private Long timestamp;

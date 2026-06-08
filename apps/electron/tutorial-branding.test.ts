@@ -4,8 +4,8 @@ import { expect, test } from 'bun:test'
 
 const tutorial = readFileSync(join(import.meta.dir, '../../tutorial/tutorial.md'), 'utf-8')
 
-test('内置教程使用华泰自研 Agent 工具口径', () => {
-  expect(tutorial).toContain('华泰自研 Agent 工具')
+test('内置教程使用开源 Agent 技术深度定制口径', () => {
+  expect(tutorial).toContain('WorkMate 伴行是华泰面向内部研发与办公场景，基于开源 Agent 技术深度定制的智能工作助手')
   expect(tutorial).toContain('秦晓012950')
 })
 

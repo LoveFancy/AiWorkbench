@@ -19,6 +19,11 @@ public class UpgradeRelease {
     private String releaseNotes;
     private String downloadUrl;
     private String platform;
+    private String arch;
+    private String packageType;
+    private String fileName;
+    private Long fileSize;
+    private String sha256;
     private String minVersion;
     private Boolean isActive;
     private LocalDateTime publishedAt;

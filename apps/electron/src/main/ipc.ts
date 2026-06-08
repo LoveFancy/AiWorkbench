@@ -31,6 +31,8 @@ import type {
   ChannelCreateInput,
   ChannelUpdateInput,
   ChannelTestResult,
+  ChannelModelTestInput,
+  ChannelModelTestResult,
   FetchModelsInput,
   FetchModelsResult,
   ConversationMeta,
@@ -122,7 +124,7 @@ import type {
 } from '@proma/shared'
 import type { UserProfile, AppSettings, ConfigRootInfo } from '../types'
 import { getRuntimeStatus, getGitRepoStatus, reinitializeRuntime } from './lib/runtime-init'
-import { getUnstagedChanges, getFileDiff, getUntrackedContent, revertFile, getDiffContents } from './lib/git-diff-service'
+import { getUnstagedChanges, getFileDiff, getUntrackedContent, revertFile, getDiffContents, listWorktrees, getWorktreeChanges } from './lib/git-diff-service'
 import { registerPromaFilePath } from './lib/local-file-protocol'
 import { createAgentFileEntry, findManagedFileEntryRoot } from './lib/agent-file-entry-service'
 import { registerUpdaterIpc } from './lib/updater/updater-ipc'
@@ -134,6 +136,7 @@ import {
   decryptApiKey,
   testChannel,
   testChannelDirect,
+  testChannelModelDirect,
   fetchModels,
 } from './lib/channel-manager'
 import {
@@ -182,6 +185,7 @@ import {
   moveSessionToWorkspace,
   forkAgentSession,
   autoArchiveAgentSessions,
+  cleanupStaleAttachedPaths,
   searchAgentSessionMessages,
   searchAgentSessionReferences,
 } from './lib/agent-session-manager'
@@ -209,6 +213,7 @@ import {
   getAgentWorkspace,
   deleteWorkspaceSkill,
   importSkillFromWorkspace,
+  installSkillZipToWorkspace,
   updateSkillFromSource,
   readWorkspaceSkillContent,
   writeWorkspaceSkillContent,
@@ -225,6 +230,10 @@ import {
   attachWorkspaceFile,
   detachWorkspaceDirectory,
   detachWorkspaceFile,
+  getWorktreeRepos,
+  addWorktreeRepo,
+  removeWorktreeRepo,
+  cleanupStaleWorkspaceAttachedPaths,
 } from './lib/agent-workspace-manager'
 import { getMemoryConfig, setMemoryConfig } from './lib/memory-service'
 import { getAllToolInfos } from './lib/chat-tool-registry'
@@ -839,7 +848,31 @@ export function registerIpcHandlers(): void {
       }
       const access = normalizeFileAccessOptions({ sessionId })
       if (!ensurePathAllowed(dirPath, access) || (gitRoot && !ensurePathAllowed(gitRoot, access))) return null
-      return getDiffContents(dirPath, filePath, gitRoot)
+      return getDiffContents(dirPath, filePath, gitRoot, input.baseRef)
+    }
+  )
+
+  // 列出 Git Worktree（只读取 worktree 元信息，不涉及文件内容，跳过路径安全检查）
+  ipcMain.handle(
+    IPC_CHANNELS.LIST_WORKTREES,
+    async (_, repoPath: string, _sessionId: string) => {
+      if (!repoPath || typeof repoPath !== 'string') return []
+      return await listWorktrees(repoPath)
+    }
+  )
+
+  // 获取 Worktree 相对于基准分支的全量变更
+  ipcMain.handle(
+    IPC_CHANNELS.GET_WORKTREE_CHANGES,
+    async (_, worktreePath: string, baseBranch: string, sessionId: string) => {
+      if (!worktreePath || typeof worktreePath !== 'string') {
+        return { isGitRepo: false, files: [], untrackedFiles: [], gitRootNames: [] }
+      }
+      const access = normalizeFileAccessOptions({ sessionId })
+      if (!ensurePathAllowed(worktreePath, access)) {
+        return { isGitRepo: false, files: [], untrackedFiles: [], gitRootNames: [] }
+      }
+      return getWorktreeChanges(worktreePath, baseBranch)
     }
   )
 
@@ -946,11 +979,16 @@ export function registerIpcHandlers(): void {
   // 查询某个文件在本机的默认打开应用信息（带图标）
   ipcMain.handle(
     IPC_CHANNELS.GET_DEFAULT_APP_FOR_FILE,
-    async (_, filePath: string): Promise<import('@proma/shared').DefaultAppInfo | null> => {
+    async (_, filePath: string, access?: FileAccessOptions | string[]): Promise<import('@proma/shared').DefaultAppInfo | null> => {
       if (!filePath || typeof filePath !== 'string') return null
       try {
+        const options = normalizeFileAccessOptions(access)
+        if (options && !isPathAllowed(filePath, options)) {
+          console.warn('[IPC] shell:get-default-app-for-file 拒绝越界路径:', filePath)
+          return null
+        }
         console.log('[IPC] get-default-app-for-file 收到请求:', filePath)
-        const result = await getDefaultAppInfoForFile(filePath)
+        const result = await getDefaultAppInfoForFile(filePath, options)
         console.log('[IPC] get-default-app-for-file 返回:', result ? `name=${result.name} appPath=${result.appPath} iconLen=${result.iconDataUrl?.length}` : 'null')
         return result
       } catch (err) {
@@ -1015,6 +1053,14 @@ export function registerIpcHandlers(): void {
     CHANNEL_IPC_CHANNELS.TEST_DIRECT,
     async (_, input: FetchModelsInput): Promise<ChannelTestResult> => {
       return testChannelDirect(input)
+    }
+  )
+
+  // 直接测试单个模型（无需已保存渠道，传入明文凭证和模型 ID）
+  ipcMain.handle(
+    CHANNEL_IPC_CHANNELS.TEST_MODEL_DIRECT,
+    async (_, input: ChannelModelTestInput): Promise<ChannelModelTestResult> => {
+      return testChannelModelDirect(input)
     }
   )
 
@@ -1757,6 +1803,21 @@ export function registerIpcHandlers(): void {
     }
   )
 
+  // 确认 Agent 会话已完成（清除 completedButUnconfirmed 和 manualWorking）
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.CONFIRM_WORKING_DONE,
+    async (_, id: string): Promise<AgentSessionMeta> => {
+      const sessions = listAgentSessions()
+      const current = sessions.find((s) => s.id === id)
+      if (!current) throw new Error(`Agent session not found: ${id}`)
+      const updates: Partial<AgentSessionMeta> = {}
+      if (current.manualWorking) updates.manualWorking = false
+      if (current.completedButUnconfirmed) updates.completedButUnconfirmed = false
+      if (Object.keys(updates).length === 0) return current
+      return updateAgentSessionMeta(id, updates)
+    }
+  )
+
   // 切换 Agent 会话归档状态
   ipcMain.handle(
     AGENT_IPC_CHANNELS.TOGGLE_ARCHIVE,
@@ -1962,6 +2023,28 @@ export function registerIpcHandlers(): void {
     AGENT_IPC_CHANNELS.IMPORT_SKILL_FROM_WORKSPACE,
     async (_, targetSlug: string, sourceSlug: string, skillSlug: string): Promise<SkillMeta> => {
       return importSkillFromWorkspace(targetSlug, sourceSlug, skillSlug)
+    }
+  )
+
+  // 上传 zip 包安装 Skill
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.INSTALL_SKILL_ZIP,
+    async (_, workspaceSlug: string): Promise<SkillMeta | null> => {
+      const win = BrowserWindow.getFocusedWindow()
+      const result = win
+        ? await dialog.showOpenDialog(win, {
+          title: '选择 Skill zip 包',
+          properties: ['openFile'],
+          filters: [{ name: 'Skill zip 包', extensions: ['zip'] }],
+        })
+        : await dialog.showOpenDialog({
+          title: '选择 Skill zip 包',
+          properties: ['openFile'],
+          filters: [{ name: 'Skill zip 包', extensions: ['zip'] }],
+        })
+
+      if (result.canceled || result.filePaths.length === 0) return null
+      return installSkillZipToWorkspace(workspaceSlug, result.filePaths[0]!)
     }
   )
 
@@ -2680,6 +2763,29 @@ export function registerIpcHandlers(): void {
     AGENT_IPC_CHANNELS.GET_WORKSPACE_ATTACHED_FILES,
     async (_, workspaceSlug: string): Promise<string[]> => {
       return getWorkspaceAttachedFiles(workspaceSlug)
+    }
+  )
+
+  // ===== Worktree 仓库配置管理 =====
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.GET_WORKTREE_REPOS,
+    async (_, workspaceSlug: string) => {
+      return getWorktreeRepos(workspaceSlug)
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.ADD_WORKTREE_REPO,
+    async (_, workspaceSlug: string, repo: import('@proma/shared').WorkspaceWorktreeRepo) => {
+      return addWorktreeRepo(workspaceSlug, repo)
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.REMOVE_WORKTREE_REPO,
+    async (_, workspaceSlug: string, repoPath: string) => {
+      return removeWorktreeRepo(workspaceSlug, repoPath)
     }
   )
 
@@ -3912,6 +4018,14 @@ export function registerIpcHandlers(): void {
   runAutoArchive()
   setInterval(runAutoArchive, 24 * 60 * 60 * 1000)
 
+  // 启动时清理不存在的附加目录/文件（如已删除的 worktree）
+  try {
+    cleanupStaleAttachedPaths()
+    cleanupStaleWorkspaceAttachedPaths()
+  } catch (error) {
+    console.error('[启动清理] 清理失效附加路径失败:', error)
+  }
+
   // ===== 存储管理 =====
 
   ipcMain.handle(STORAGE_IPC_CHANNELS.GET_STATS, async () => {
@@ -4208,6 +4322,35 @@ export function registerIpcHandlers(): void {
     async (event) => {
       const win = BrowserWindow.fromWebContents(event.sender)
       return win && !win.isDestroyed() ? win.isMaximized() : false
+    }
+  )
+
+  // ===== WorkMate 观测上报 =====
+  ipcMain.handle(
+    'workmate:report-renderer-error',
+    async (_event, payload: {
+      name: string
+      message: string
+      stack?: string
+      componentStack?: string
+    }) => {
+      // 延迟导入避免循环依赖
+      const { normalizeRendererErrorPayload } = await import('./lib/observability-ipc-handler')
+      const normalized = normalizeRendererErrorPayload(payload)
+      if (!normalized) return
+
+      const { reportErrorEvent } = await import('./lib/observability-service')
+      const error = new Error(normalized.message)
+      error.name = normalized.name
+      if (normalized.stack) {
+        error.stack = normalized.stack
+      }
+      reportErrorEvent(error, {
+        tags: {
+          source: 'renderer-error-boundary',
+          componentStack: normalized.componentStack ?? '',
+        },
+      })
     }
   )
 }

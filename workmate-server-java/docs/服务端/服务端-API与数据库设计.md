@@ -1,4 +1,4 @@
-﻿# WorkMate Server — 项目概览与数据字典
+# WorkMate Server — 项目概览与数据字典
 
 编辑时间：2026年6月3日
 
@@ -268,15 +268,13 @@ model AdminWhitelist {
   @@map("admin_whitelist")
 }
 
-// ===== 观测事件表 =====
+// ===== 业务事件表（按年分区，永久保留） =====
 
 model ObservabilityEvent {
-  id                 Int      @id @default(autoincrement())
-  eventId            String?  @map("event_id") @db.VarChar(36) @unique
+  id                 BigInt   @id @default(autoincrement())
+  eventId            String   @map("event_id") @db.VarChar(36) @unique
   userId             String   @map("user_id") @db.VarChar(64)
-  userName           String?  @map("user_name") @db.VarChar(128)
-  eventType          String   @map("event_type") @db.VarChar(32)
-  question           String?  @db.Text
+  eventType          String   @map("event_type") @db.VarChar(32)  // user_login|user_logout|chat_question|agent_question|upgrade_check
   questionLength     Int?     @map("question_length")
   modelId            String?  @map("model_id") @db.VarChar(128)
   channelId          String?  @map("channel_id") @db.VarChar(128)
@@ -284,9 +282,29 @@ model ObservabilityEvent {
   workspaceId        String?  @map("workspace_id") @db.VarChar(64)
   result             String?  @db.VarChar(16)
   responseDurationMs Int?     @map("response_duration_ms")
+  clientVersion      String   @map("client_version") @db.VarChar(32)
+  clientPlatform     String   @map("client_platform") @db.VarChar(32)
+  clientOsVersion    String?  @map("client_os_version") @db.VarChar(64)
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  @@index([eventType, createdAt])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@index([clientVersion])
+  @@map("observability_events")
+}
+
+// ===== 异常事件表（按月分区，保留 6 个月） =====
+
+model ObservabilityError {
+  id                 BigInt   @id @default(autoincrement())
+  eventId            String   @map("event_id") @db.VarChar(36) @unique
+  userId             String   @map("user_id") @db.VarChar(64)
+  sessionId          String?  @map("session_id") @db.VarChar(64)
+  workspaceId        String?  @map("workspace_id") @db.VarChar(64)
   errorType          String?  @map("error_type") @db.VarChar(64)
   errorMessage       String?  @map("error_message") @db.Text
-  errorStack         String?  @map("error_stack") @db.Text
+  errorStack         String?  @map("error_stack") @db.VarChar(1000)
   errorFingerprint   String?  @map("error_fingerprint") @db.VarChar(64)
   errorStatusCode    Int?     @map("error_status_code")
   breadcrumbs        String?  @db.Text
@@ -295,14 +313,19 @@ model ObservabilityEvent {
   clientPlatform     String   @map("client_platform") @db.VarChar(32)
   clientOsVersion    String?  @map("client_os_version") @db.VarChar(64)
   createdAt          DateTime @default(now()) @map("created_at")
-  @@index([eventType])
-  @@index([userId])
+
+  @@index([errorFingerprint, createdAt])
+  @@index([userId, createdAt])
   @@index([createdAt])
   @@index([clientVersion])
-  @@index([errorFingerprint])
-  @@map("observability_events")
+  @@map("observability_errors")
 }
 ```
+
+> **分区说明**：Prisma 原生不支持分区表 DDL，分区与 `ROW_FORMAT=COMPRESSED` 通过自定义 SQL 迁移管理。
+> - `observability_events`：按年 RANGE 分区（`YEAR(created_at)`），永久保留
+> - `observability_errors`：按月 RANGE 分区（`TO_DAYS(created_at)`），保留 6 个月，每月 1 日定时删除过期分区
+> - 完整 DDL 与分区维护脚本见 [服务端-观测数据与异常上报.md §5](./服务端-观测数据与异常上报.md#五数据模型最终版)
 
 ---
 
@@ -315,7 +338,10 @@ model ObservabilityEvent {
 ```
 模型查询：  GET  /workmate/models
 升级检测：  GET  /workmate/upgrade/check?currentVersion=X&platform=Y
-观测上报：  POST /workmate/observability/events   Body: { events: [...] }
+观测上报：  POST /workmate/observability/events   Body: { events: [...] }  → 服务端按 type 分流到业务表/异常表
+管理台 - 业务事件：  GET  /workmate/console/observability/events?year=YYYY
+管理台 - 异常事件：  GET  /workmate/console/observability/errors?year=YYYY
+管理台 - 统计概览：  GET  /workmate/console/observability/stats?year=YYYY
 ```
 
 **注意**：客户端无需自行加密工号。请求经 EIP 网关后，网关会自动在 Header 中注入 `X-EIPGW-USERID`（AES-128-GCM 加密密文）。

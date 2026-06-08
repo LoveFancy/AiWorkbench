@@ -1,6 +1,12 @@
 import { expect, test } from 'bun:test'
 
-import { handleMentionListKeyDown, normalizeMentionTooltipTitle } from './MentionList'
+import {
+  MENTION_LIST_EMPTY_WIDTH_CLASS,
+  MENTION_LIST_TOOLTIP_WIDTH_CLASS,
+  MENTION_LIST_WIDTH_CLASS,
+  handleMentionListKeyDown,
+  normalizeMentionTooltipTitle,
+} from './MentionList'
 
 test('Tab 选中当前高亮候选项并阻止焦点跳转', () => {
   const selected: string[] = []
@@ -44,4 +50,10 @@ test('hover 说明会保留完整多行文本并忽略空白内容', () => {
   expect(normalizeMentionTooltipTitle('  命令: /doc\n说明: 完整功能提示  ')).toBe('命令: /doc\n说明: 完整功能提示')
   expect(normalizeMentionTooltipTitle('   ')).toBeUndefined()
   expect(normalizeMentionTooltipTitle(undefined)).toBeUndefined()
+})
+
+test('候选弹窗整体宽度扩大到 560px，给长 Skill 名称留出空间', () => {
+  expect(MENTION_LIST_WIDTH_CLASS).toBe('w-[560px]')
+  expect(MENTION_LIST_EMPTY_WIDTH_CLASS).toBe('w-[560px]')
+  expect(MENTION_LIST_TOOLTIP_WIDTH_CLASS).toBe('max-w-[560px]')
 })

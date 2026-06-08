@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'bun:test'
+import { join } from 'node:path'
 
 import { inferMarketplaceInput } from './PluginSettings'
+
+const pluginSettingsSource = await Bun.file(join(import.meta.dir, 'PluginSettings.tsx')).text()
 
 describe('插件市场输入推断', () => {
   test('owner/repo 简写按 GitHub 仓库处理', () => {
@@ -21,6 +24,15 @@ describe('插件市场输入推断', () => {
     })
   })
 
+  test('GitLab 仓库地址自动识别为 gitlab', () => {
+    expect(inferMarketplaceInput('http://gitlab.htzq.htsc.com.cn/aidev/ht-dev-plugins/claudecode-plugin-marketplace')).toEqual({
+      id: 'claudecode-plugin-marketplace',
+      name: 'claudecode-plugin-marketplace',
+      source: 'http://gitlab.htzq.htsc.com.cn/aidev/ht-dev-plugins/claudecode-plugin-marketplace',
+      type: 'gitlab',
+    })
+  })
+
   test('直接 JSON URL 自动识别为 raw', () => {
     expect(inferMarketplaceInput('https://example.com/marketplace.json')).toMatchObject({
       id: 'marketplace',
@@ -35,5 +47,16 @@ describe('插件市场输入推断', () => {
       source: './path/to/marketplace',
       type: 'local',
     })
+  })
+})
+
+describe('插件安装更新进行中状态', () => {
+  test('安装和更新按钮点击后显示转圈并禁用，直到操作结束', () => {
+    expect(pluginSettingsSource).toContain('Loader2')
+    expect(pluginSettingsSource).toContain('pendingPluginOperations')
+    expect(pluginSettingsSource).toContain('setPluginOperationPending')
+    expect(pluginSettingsSource).toContain('isPending')
+    expect(pluginSettingsSource).toContain('disabled={isPending}')
+    expect(pluginSettingsSource).toContain('animate-spin')
   })
 })

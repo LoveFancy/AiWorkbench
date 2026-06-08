@@ -21,6 +21,7 @@ export function createFileMentionSuggestion(
   attachedDirsRef?: React.RefObject<string[]>,
   mentionItemCountRef?: React.MutableRefObject<number>,
   sessionAttachedDirsRef?: React.RefObject<string[]>,
+  allowEntry?: (entry: FileIndexEntry) => boolean,
 ): Omit<SuggestionOptions<FileIndexEntry>, 'editor'> {
   let lastResult: FileSearchResult | null = null
   let missingWorkspaceToastShown = false
@@ -28,6 +29,7 @@ export function createFileMentionSuggestion(
   return {
     char: '@',
     allowSpaces: false,
+    allowedPrefixes: null,
 
     items: async ({ query }): Promise<FileIndexEntry[]> => {
       const wsPath = workspacePathRef.current
@@ -54,8 +56,16 @@ export function createFileMentionSuggestion(
           additionalPaths.length > 0 ? additionalPaths : undefined,
           sessionPaths.length > 0 ? sessionPaths : undefined,
         )
-        lastResult = result
-        return result.entries
+        const filteredResult = allowEntry
+          ? {
+              ...result,
+              entries: result.entries.filter(allowEntry),
+              sessionEntries: result.sessionEntries.filter(allowEntry),
+              workspaceEntries: result.workspaceEntries.filter(allowEntry),
+            }
+          : result
+        lastResult = filteredResult
+        return filteredResult.entries
       } catch(e) {
         console.error('[FileMention] search failed:', e)
         lastResult = null
@@ -68,6 +78,8 @@ export function createFileMentionSuggestion(
       let popup: HTMLDivElement | null = null
       let resizeObserver: ResizeObserver | null = null
       let latestClientRect: (() => DOMRect | null) | null | undefined = null
+      let blurHandler: (() => void) | null = null
+      let editorRef: SuggestionProps<FileIndexEntry>['editor'] | null = null
 
       function splitEntries(result: FileSearchResult | null) {
         return {
@@ -95,10 +107,34 @@ export function createFileMentionSuggestion(
         positionPopup(popup, latestClientRect?.(), { anchorBottom: true })
       }
 
+      function cleanup() {
+        if (blurHandler && editorRef) {
+          editorRef.view.dom.removeEventListener('blur', blurHandler, true)
+          blurHandler = null
+        }
+        editorRef = null
+        mentionActiveRef.current = false
+        if (mentionItemCountRef) mentionItemCountRef.current = 0
+        lastResult = null
+        latestClientRect = null
+        resizeObserver?.disconnect()
+        resizeObserver = null
+        popup?.remove()
+        popup = null
+        renderer?.destroy()
+        renderer = null
+      }
+
       return {
         onStart(props) {
+          // 防御竞态：如果上一次弹窗未被正确清理，先清理残留
+          if (popup || renderer) {
+            cleanup()
+          }
+
           mentionActiveRef.current = true
           if (mentionItemCountRef) mentionItemCountRef.current = props.items.length
+          editorRef = props.editor
 
           try {
             latestClientRect = props.clientRect
@@ -110,8 +146,20 @@ export function createFileMentionSuggestion(
               anchorPopup()
             })
             resizeObserver.observe(popup!)
+
+            // 编辑器失焦时强制关闭弹窗（点击页面其他区域等场景）
+            blurHandler = () => {
+              // 延迟检查：点击弹窗本身不应关闭（焦点会回到编辑器）
+              setTimeout(() => {
+                if (!editorRef?.view.hasFocus() && popup) {
+                  cleanup()
+                }
+              }, 100)
+            }
+            props.editor.view.dom.addEventListener('blur', blurHandler, true)
           } catch (e) {
             console.error('[FileMention] render popup failed:', e)
+            cleanup()
           }
         },
 
@@ -138,16 +186,7 @@ export function createFileMentionSuggestion(
         },
 
         onExit() {
-          mentionActiveRef.current = false
-          if (mentionItemCountRef) mentionItemCountRef.current = 0
-          lastResult = null
-          latestClientRect = null
-          resizeObserver?.disconnect()
-          resizeObserver = null
-          popup?.remove()
-          popup = null
-          renderer?.destroy()
-          renderer = null
+          cleanup()
         },
       }
     },

@@ -9,14 +9,18 @@
 # ============================================================
 
 spring:
-  config:
-    activate:
-      on-profile: localdev
+  datasource:
+    url: jdbc:mysql://${DB_HOST:127.0.0.1}:${DB_PORT:3306}/${DB_NAME:workmate_server}?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:fxd1993}
 
 workmate:
+  # 开发服务器关闭身份校验
+  require-user-id: false
+  default-user-id: ${DEFAULT_USER_ID:022480}
   local-dev:
     enabled: true
-    api-key: "sk-6d7ba36a9d1a4555add56dced146b389"
+    api-key: "sk-6d457fa61d9b4826aa1114bb5cb82093"
     models:
       - id: "deepseek-v4-pro"
         name: "DeepSeek V4 Pro"

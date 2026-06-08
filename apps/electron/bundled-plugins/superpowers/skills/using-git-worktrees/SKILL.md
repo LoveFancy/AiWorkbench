@@ -1,6 +1,6 @@
 ---
 name: using-git-worktrees
-description: Use when starting feature work that needs isolation from current workspace or before executing implementation plans - ensures an isolated workspace exists via native tools or git worktree fallback
+description: 开始需要隔离工作区的功能开发，或执行实现计划前使用；通过原生工具或 git worktree 准备独立工作区。
 ---
 
 # Using Git Worktrees

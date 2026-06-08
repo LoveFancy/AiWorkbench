@@ -28,6 +28,7 @@ import { lowlight } from '@/lib/lowlight'
 import { htmlToMarkdown } from '@/lib/markdown-rich-text'
 import { createFileMentionSuggestion } from '@/components/file-browser/file-mention-suggestion'
 import { createSkillMentionSuggestion, createMcpMentionSuggestion, createSessionMentionSuggestion } from '@/components/agent/mention-suggestions'
+import type { FileIndexEntry } from '@proma/shared'
 import {
   VOICE_DICTATION_INSERT_EVENT,
   getLastFocusedVoiceInputId,
@@ -120,6 +121,8 @@ interface RichTextInputProps {
   attachedDirs?: string[]
   /** 会话级附加目录路径列表（@ 引用时标记为会话文件） */
   sessionAttachedDirs?: string[]
+  /** 文件 Mention 搜索结果过滤器 */
+  allowFileMention?: (entry: FileIndexEntry) => boolean
   /** HTML 草稿值（切换会话恢复时使用，保留 mention 等富文本结构） */
   htmlValue?: string
   /** HTML 值变更回调（用于保存富文本草稿） */
@@ -155,6 +158,7 @@ export function RichTextInput({
   sessionId,
   attachedDirs = [],
   sessionAttachedDirs = [],
+  allowFileMention,
   htmlValue,
   onHtmlChange,
   sendWithCmdEnter = false,
@@ -210,13 +214,22 @@ export function RichTextInput({
   // 工作区 slug 引用（给 Skill/MCP Suggestion 使用）
   const workspaceSlugRef = useRef<string | null>(workspaceSlug ?? null)
   workspaceSlugRef.current = workspaceSlug ?? null
+  const allowFileMentionRef = useRef<typeof allowFileMention>(allowFileMention)
+  allowFileMentionRef.current = allowFileMention
 
   // 是否启用 Mention 功能：Agent 首帧可能尚未拿到路径/slug/id，但扩展必须先注册。
   const hasMentionSupport = enableMentions ?? (workspacePath !== undefined || workspaceSlug !== undefined || workspaceId !== undefined)
 
   // Mention Suggestion 配置（稳定引用，不随 workspacePath 变化重建）
   const mentionSuggestion = useMemo(
-    () => createFileMentionSuggestion(workspacePathRef, mentionActiveRef, attachedDirsRef, mentionItemCountRef, sessionAttachedDirsRef),
+    () => createFileMentionSuggestion(
+      workspacePathRef,
+      mentionActiveRef,
+      attachedDirsRef,
+      mentionItemCountRef,
+      sessionAttachedDirsRef,
+      (entry) => allowFileMentionRef.current?.(entry) ?? true,
+    ),
     [],
   )
 

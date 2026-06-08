@@ -15,6 +15,8 @@ import type {
   ChannelCreateInput,
   ChannelUpdateInput,
   ChannelTestResult,
+  ChannelModelTestInput,
+  ChannelModelTestResult,
   FetchModelsInput,
   FetchModelsResult,
   ConversationMeta,
@@ -149,6 +151,10 @@ export interface ElectronAPI {
   // ===== WorkMate 平台模型 =====
   platformModels: PlatformModelsElectronAPI
 
+  // ===== WorkMate 观测上报 =====
+  /** 上报渲染进程错误到主进程观测服务 */
+  reportRendererError: (payload: { name: string; message: string; stack?: string; componentStack?: string }) => Promise<void>
+
   // ===== 运行时相关 =====
 
   /**
@@ -180,6 +186,10 @@ export interface ElectronAPI {
   revertFile: (input: import('@proma/shared').RevertFileInput) => Promise<void>
   /** 获取文件新旧版本内容 */
   getDiffContents: (input: import('@proma/shared').GetFileDiffInput) => Promise<{ oldContent: string; newContent: string } | null>
+  /** 列出 Git Worktree */
+  listWorktrees: (repoPath: string, sessionId: string) => Promise<import('@proma/shared').WorktreeInfo[]>
+  /** 获取 Worktree 相对于基准分支的全量变更 */
+  getWorktreeChanges: (worktreePath: string, baseBranch: string, sessionId: string) => Promise<import('@proma/shared').UnstagedChangesResult>
   /** 在独立窗口打开当前文件预览 */
   openDetachedPreview: (input: DetachedPreviewWindowInput) => Promise<string | null>
   /** 获取独立预览窗口数据 */
@@ -225,6 +235,9 @@ export interface ElectronAPI {
 
   /** 直接测试连接（无需已保存渠道，传入明文凭证） */
   testChannelDirect: (input: FetchModelsInput) => Promise<ChannelTestResult>
+
+  /** 直接测试单个模型（无需已保存渠道，传入明文凭证和模型 ID） */
+  testChannelModelDirect: (input: ChannelModelTestInput) => Promise<ChannelModelTestResult>
 
   /** 从供应商拉取可用模型列表（直接传入凭证，无需已保存渠道） */
   fetchModels: (input: FetchModelsInput) => Promise<FetchModelsResult>
@@ -459,6 +472,9 @@ export interface ElectronAPI {
   /** 切换 Agent 会话手动工作中状态 */
   toggleManualWorkingAgentSession: (id: string) => Promise<AgentSessionMeta>
 
+  /** 确认 Agent 会话已完成（清除 completedButUnconfirmed 和 manualWorking） */
+  confirmWorkingDoneAgentSession: (id: string) => Promise<AgentSessionMeta>
+
   /** 切换 Agent 会话归档状态 */
   toggleArchiveAgentSession: (id: string) => Promise<AgentSessionMeta>
 
@@ -579,6 +595,9 @@ export interface ElectronAPI {
 
   /** 从其他工作区导入 Skill */
   importSkillFromWorkspace: (targetSlug: string, sourceSlug: string, skillSlug: string) => Promise<SkillMeta>
+
+  /** 上传 zip 包安装 Skill */
+  installSkillZip: (workspaceSlug: string) => Promise<SkillMeta | null>
 
   /** 从源工作区同步更新已导入的 Skill */
   updateSkillFromSource: (targetSlug: string, skillSlug: string) => Promise<SkillMeta>
@@ -727,6 +746,12 @@ export interface ElectronAPI {
 
   /** 获取工作区附加文件列表 */
   getWorkspaceAttachedFiles: (workspaceSlug: string) => Promise<string[]>
+  /** 获取工作区 worktree 仓库配置列表 */
+  getWorktreeRepos: (workspaceSlug: string) => Promise<import('@proma/shared').WorkspaceWorktreeRepo[]>
+  /** 添加 worktree 仓库到工作区配置 */
+  addWorktreeRepo: (workspaceSlug: string, repo: import('@proma/shared').WorkspaceWorktreeRepo) => Promise<import('@proma/shared').WorkspaceWorktreeRepo[]>
+  /** 从工作区配置移除 worktree 仓库 */
+  removeWorktreeRepo: (workspaceSlug: string, repoPath: string) => Promise<import('@proma/shared').WorkspaceWorktreeRepo[]>
 
   // ===== Agent 文件系统操作 =====
 
@@ -755,7 +780,7 @@ export interface ElectronAPI {
   scanEditors: () => Promise<import('@proma/shared').EditorApp[]>
 
   /** 查询本机为该文件类型注册的默认打开应用（含图标 dataURL） */
-  getDefaultAppForFile: (filePath: string) => Promise<import('@proma/shared').DefaultAppInfo | null>
+  getDefaultAppForFile: (filePath: string, access?: import('@proma/shared').FileAccessOptions) => Promise<import('@proma/shared').DefaultAppInfo | null>
 
   /** 在系统文件管理器中显示文件 */
   showInFolder: (filePath: string) => Promise<void>
@@ -845,6 +870,9 @@ export interface ElectronAPI {
       releaseNotes?: string
       progress?: { percent: number; transferred: number; total: number; bytesPerSecond: number }
       error?: string
+      hint?: string
+      forceUpdate?: boolean
+      releaseType?: 'UPGRADE' | 'ROLLBACK'
     }>
     onStatusChanged: (callback: (status: {
       status: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error'
@@ -852,6 +880,9 @@ export interface ElectronAPI {
       releaseNotes?: string
       progress?: { percent: number; transferred: number; total: number; bytesPerSecond: number }
       error?: string
+      hint?: string
+      forceUpdate?: boolean
+      releaseType?: 'UPGRADE' | 'ROLLBACK'
     }) => void) => () => void
     quitAndInstall: () => Promise<void>
   }
@@ -1112,6 +1143,14 @@ const electronAPI: ElectronAPI = {
     return ipcRenderer.invoke(IPC_CHANNELS.GET_DIFF_CONTENTS, input)
   },
 
+  listWorktrees: (repoPath: string, sessionId: string) => {
+    return ipcRenderer.invoke(IPC_CHANNELS.LIST_WORKTREES, repoPath, sessionId)
+  },
+
+  getWorktreeChanges: (worktreePath: string, baseBranch: string, sessionId: string) => {
+    return ipcRenderer.invoke(IPC_CHANNELS.GET_WORKTREE_CHANGES, worktreePath, baseBranch, sessionId)
+  },
+
   openDetachedPreview: (input: DetachedPreviewWindowInput) => {
     return ipcRenderer.invoke(IPC_CHANNELS.OPEN_DETACHED_PREVIEW, input) as Promise<string | null>
   },
@@ -1175,6 +1214,10 @@ const electronAPI: ElectronAPI = {
 
   testChannelDirect: (input: FetchModelsInput) => {
     return ipcRenderer.invoke(CHANNEL_IPC_CHANNELS.TEST_DIRECT, input)
+  },
+
+  testChannelModelDirect: (input: ChannelModelTestInput) => {
+    return ipcRenderer.invoke(CHANNEL_IPC_CHANNELS.TEST_MODEL_DIRECT, input)
   },
 
   fetchModels: (input: FetchModelsInput) => {
@@ -1480,6 +1523,10 @@ const electronAPI: ElectronAPI = {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.TOGGLE_MANUAL_WORKING, id)
   },
 
+  confirmWorkingDoneAgentSession: (id: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.CONFIRM_WORKING_DONE, id)
+  },
+
   toggleArchiveAgentSession: (id: string) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.TOGGLE_ARCHIVE, id)
   },
@@ -1655,6 +1702,10 @@ const electronAPI: ElectronAPI = {
       sourceSlug,
       skillSlug,
     )
+  },
+
+  installSkillZip: (workspaceSlug: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.INSTALL_SKILL_ZIP, workspaceSlug)
   },
 
   updateSkillFromSource: (targetSlug: string, skillSlug: string) => {
@@ -1884,6 +1935,18 @@ const electronAPI: ElectronAPI = {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_WORKSPACE_ATTACHED_FILES, workspaceSlug)
   },
 
+  getWorktreeRepos: (workspaceSlug: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_WORKTREE_REPOS, workspaceSlug)
+  },
+
+  addWorktreeRepo: (workspaceSlug: string, repo: import('@proma/shared').WorkspaceWorktreeRepo) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.ADD_WORKTREE_REPO, workspaceSlug, repo)
+  },
+
+  removeWorktreeRepo: (workspaceSlug: string, repoPath: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.REMOVE_WORKTREE_REPO, workspaceSlug, repoPath)
+  },
+
   // Agent 文件系统操作
   getAgentSessionPath: (workspaceId: string, sessionId: string) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_SESSION_PATH, workspaceId, sessionId)
@@ -1917,8 +1980,8 @@ const electronAPI: ElectronAPI = {
     return ipcRenderer.invoke(IPC_CHANNELS.SCAN_EDITORS)
   },
 
-  getDefaultAppForFile: (filePath: string) => {
-    return ipcRenderer.invoke(IPC_CHANNELS.GET_DEFAULT_APP_FOR_FILE, filePath) as Promise<import('@proma/shared').DefaultAppInfo | null>
+  getDefaultAppForFile: (filePath: string, access?: import('@proma/shared').FileAccessOptions) => {
+    return ipcRenderer.invoke(IPC_CHANNELS.GET_DEFAULT_APP_FOR_FILE, filePath, access) as Promise<import('@proma/shared').DefaultAppInfo | null>
   },
 
   showInFolder: (filePath: string) => {
@@ -2438,6 +2501,11 @@ const electronAPI: ElectronAPI = {
 
   // ===== WorkMate 平台模型 =====
   ...createPlatformModelsPreloadApi(),
+
+  // ===== WorkMate 观测上报 =====
+  reportRendererError: (payload: { name: string; message: string; stack?: string; componentStack?: string }) => {
+    return ipcRenderer.invoke('workmate:report-renderer-error', payload)
+  },
 }
 
 // 将 API 暴露到渲染进程的 window 对象上

@@ -2,12 +2,11 @@
  * AboutSettings - 关于页面
  *
  * 显示应用版本号等基本信息，以及版本检测状态。
- * 检测到新版本后引导用户去 GitHub Releases 手动下载。
  */
 
 import * as React from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
-import { RefreshCw, Loader2, CheckCircle2, AlertCircle, Info, Terminal, ChevronDown, ChevronUp, ExternalLink, RotateCw } from 'lucide-react'
+import { RefreshCw, Loader2, CheckCircle2, AlertCircle, Info, Terminal, ChevronDown, ChevronUp, RotateCw } from 'lucide-react'
 import type { EnvironmentCheckResult, RuntimeStatus } from '@proma/shared'
 import {
   SettingsSection,
@@ -22,14 +21,11 @@ import {
 import { EnvironmentCheckCard } from '@/components/environment/EnvironmentCheckCard'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
-import { ReleaseNotesViewer } from './ReleaseNotesViewer'
 import { VersionHistory } from './VersionHistory'
 
 /** 从 package.json 构建时由 Vite define 注入 */
 declare const __APP_VERSION__: string
 const APP_VERSION = __APP_VERSION__
-
-const UPDATE_DOWNLOAD_URL = 'http://168.61.12.83:8199/aiworkbench/'
 
 /** 更新状态卡片 */
 function UpdateCard(): React.ReactElement | null {
@@ -37,9 +33,7 @@ function UpdateCard(): React.ReactElement | null {
   const status = useAtomValue(updateStatusAtom)
   const [checking, setChecking] = React.useState(false)
   const [showReleaseNotes, setShowReleaseNotes] = React.useState(false)
-  const [release, setRelease] = React.useState<import('@proma/shared').GitHubRelease | null>(null)
 
-  // updater 不可用时不渲染
   if (!available) return null
 
   const handleCheck = async (): Promise<void> => {
@@ -47,48 +41,23 @@ function UpdateCard(): React.ReactElement | null {
     try {
       await checkForUpdates()
     } finally {
-      // 状态由 atom 订阅自动更新，延迟重置 checking 避免按钮闪烁
       setTimeout(() => setChecking(false), 1000)
     }
-  }
-
-  const handleGoToDownload = (): void => {
-    const url = release?.html_url || UPDATE_DOWNLOAD_URL
-    window.electronAPI.openExternal(url)
   }
 
   const handleQuitAndInstall = (): void => {
     window.electronAPI.updater?.quitAndInstall()
   }
 
-  // 当检测到新版本时，获取完整的 release 信息
-  React.useEffect(() => {
-    if (status.status === 'available' && status.version && !release) {
-      window.electronAPI
-        .getReleaseByTag(`v${status.version}`)
-        .then((r) => {
-          if (r) {
-            setRelease(r)
-            setShowReleaseNotes(true)
-          }
-        })
-        .catch((err) => {
-          console.error('[更新] 获取 Release 信息失败:', err)
-        })
-    }
-  }, [status.status, status.version, release])
-
   const isChecking = checking || status.status === 'checking' || status.status === 'downloading'
-  const hasReleaseNotes = status.releaseNotes || release?.body
+  const hasReleaseNotes = !!status.releaseNotes
 
   return (
     <SettingsCard>
       <SettingsRow label="软件更新">
         <div className="flex items-center gap-3">
-          {/* 状态文字 */}
-          <StatusText status={status.status} version={status.version} error={status.error} />
+          <StatusText status={status.status} version={status.version} error={status.error} hint={status.hint} />
 
-          {/* 操作按钮 */}
           {status.status === 'downloaded' ? (
             <button
               onClick={handleQuitAndInstall}
@@ -96,14 +65,6 @@ function UpdateCard(): React.ReactElement | null {
             >
               <RotateCw className="h-3.5 w-3.5" />
               立即重启
-            </button>
-          ) : status.status === 'available' ? (
-            <button
-              onClick={handleGoToDownload}
-              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-              前往下载
             </button>
           ) : (
             <button
@@ -122,7 +83,7 @@ function UpdateCard(): React.ReactElement | null {
         </div>
       </SettingsRow>
 
-      {/* Release Notes（新版本可用时显示） */}
+      {/* Release Notes（从 status 直接获取，不调 GitHub API） */}
       {status.status === 'available' && hasReleaseNotes && (
         <div className="px-4 pb-4 border-t">
           <button
@@ -137,13 +98,9 @@ function UpdateCard(): React.ReactElement | null {
             )}
           </button>
 
-          {showReleaseNotes && release && (
-            <div className="mt-2">
-              <ReleaseNotesViewer
-                release={release}
-                showHeader={false}
-                compact
-              />
+          {showReleaseNotes && (
+            <div className="mt-2 text-xs whitespace-pre-wrap text-muted-foreground">
+              {status.releaseNotes}
             </div>
           )}
         </div>
@@ -153,10 +110,11 @@ function UpdateCard(): React.ReactElement | null {
 }
 
 /** 状态文字组件 */
-function StatusText({ status, version, error }: {
+function StatusText({ status, version, error, hint }: {
   status: string
   version?: string
   error?: string
+  hint?: string
 }): React.ReactElement {
   switch (status) {
     case 'checking':
@@ -164,7 +122,7 @@ function StatusText({ status, version, error }: {
     case 'available':
       return (
         <span className="text-xs text-primary flex items-center gap-1">
-          <ExternalLink className="h-3 w-3" />
+          <Info className="h-3 w-3" />
           新版本 v{version} 可用
         </span>
       )
@@ -184,9 +142,9 @@ function StatusText({ status, version, error }: {
       )
     case 'not-available':
       return (
-        <span className="text-xs text-muted-foreground flex items-center gap-1">
+        <span className="text-xs text-muted-foreground flex items-center gap-1" title={hint}>
           <CheckCircle2 className="h-3 w-3" />
-          已是最新版本
+          {hint || '已是最新版本'}
         </span>
       )
     case 'error':
