@@ -655,7 +655,7 @@ export function PluginSettings(): React.ReactElement {
               )
             })}
           </div>
-          {!loading && visibleDiscover.length === 0 && <EmptyState text="暂无可安装插件，请先添加并刷新插件市场" />}
+          {!loading && visibleDiscover.length === 0 && <EmptyState text="暂无可安装 Claude Code 插件，请先添加并刷新 Claude Code 类型插件市场" />}
         </TabsContent>
 
         <TabsContent value="installed" className="space-y-3">
@@ -711,7 +711,7 @@ export function PluginSettings(): React.ReactElement {
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <h3 className="text-sm font-medium">插件市场</h3>
-              <p className="mt-1 text-xs text-muted-foreground">GitHub、Gitee、Raw URL 或本地 marketplace.json。</p>
+              <p className="mt-1 text-xs text-muted-foreground">当前仅支持 Claude Code 类型插件市场，来源可使用 GitHub、Gitee、GitLab、Raw URL 或本地 marketplace.json。</p>
             </div>
             <Button onClick={() => setAddMarketplaceOpen(true)}>
               <FolderPlus size={16} className="mr-2" />
@@ -791,7 +791,7 @@ export function PluginSettings(): React.ReactElement {
           <DialogHeader>
             <DialogTitle>添加插件市场</DialogTitle>
             <DialogDescription>
-              输入市场来源即可，系统会自动识别 GitHub、Gitee、GitLab、Raw URL 或本地路径。
+              当前仅支持 Claude Code 类型插件市场。输入市场来源后，系统会自动识别 GitHub、Gitee、GitLab、Raw URL 或本地路径。
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
