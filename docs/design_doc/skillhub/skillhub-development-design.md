@@ -928,8 +928,8 @@ async function getValidSkillHubToken(): Promise<string> {
 | # | 问题 | 影响 | 跟进 |
 |---|------|------|------|
 | 1 | `GET /market/skills/{name}` 详情接口返回字段可能不完整，部分字段待 Hub 后端补充 | 详情页展示内容受限，如 `readme`、`envVars`、`dependencies` 等可能为空 | 待与 SkillHub 团队确认接口字段完备性 |
-| 2 | Skill 详情/下载的 Token 选择策略未定，Skill 自身可能携带环境属性；test 和 prod 的下载接口 URL 路径可能不同 | 无法确定下载时该用哪个环境的 Token | 待 SkillHub 明确：① Skill 是否有 env 属性 ② test/prod 下载路径区分 |
-| 3 | OpenAPI 中 `servers` 为空，但域名相同，仅 URL 路径可能不同 | 需确认各环境的完整接口路径 | 待确认 test/prod 对应的具体路径 |
+| 2 | ~~Skill 详情/下载的 Token 选择策略未定~~ | ~~不影响当前开发~~ | 暂不处理 |
+| 3 | ~~OpenAPI 中 `servers` 为空~~ | ~~不影响当前开发~~ | 暂不处理 |
 
 ---
 

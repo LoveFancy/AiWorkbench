@@ -84,7 +84,7 @@
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
-            <scope>test</scope>
+            <scope>runtime</scope>
         </dependency>
     </dependencies>
 
@@ -93,13 +93,10 @@
         <finalName>workmate-server-${project.version}</finalName>
 
         <plugins>
-            <!-- 跳过 spring-boot 重打包，保留原始瘦 jar -->
+            <!-- 开发时 spring-boot:run 使用 -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
-                <configuration>
-                    <skip>true</skip>
-                </configuration>
             </plugin>
 
             <!-- 瘦 jar：排除资源文件（资源由 config/ 目录提供） -->

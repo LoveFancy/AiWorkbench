@@ -12,6 +12,8 @@ server:
   max-http-request-header-size: 16KB
 
 spring:
+  profiles:
+    active: ${DB_TYPE:mysql}
   servlet:
     multipart:
       max-file-size: 20MB
@@ -21,9 +23,10 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
   datasource:
-    # 驱动类所有 MySQL 环境一致
     driver-class-name: com.mysql.cj.jdbc.Driver
-    # HikariCP 公共基础配置（连接超时、生命周期、池名）
+    url: ${DATABASE_URL:jdbc:mysql://localhost:3306/workmate_server?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
     hikari:
       maximum-pool-size: 100
       minimum-idle: 30
@@ -31,7 +34,7 @@ spring:
       connection-timeout: 30000
       idle-timeout: 600000
       max-lifetime: 1800000
-     
+
 mybatis:
   mapper-locations: classpath:mapper/*.xml
   type-aliases-package: com.workmate.server.entity
@@ -66,4 +69,3 @@ logging:
     max-history: 30
   pattern:
     file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
-   

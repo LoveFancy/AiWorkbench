@@ -1,15 +1,16 @@
 import React from 'react'
-import { Search, RefreshCw, ShieldCheck, Download, RotateCw, Sparkles, FolderOpen, Play, Pause, Trash2, ArrowUp } from 'lucide-react'
+import { Search, RefreshCw, ShieldCheck, Sparkles, FolderOpen, Play, Pause, Download, RotateCw, Trash2, ArrowUp } from 'lucide-react'
 import { toast } from 'sonner'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import type { HtSkillHubSkill } from '@proma/shared'
 import { SettingsSection } from '../primitives'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { AuthStatusBar, AuthErrorBar } from './AuthStatusBar'
 import { SkillCard } from './SkillCard'
-import { BatchToolbar } from './SkillCard'
 
 interface SkillHubPanelProps {
   workspaceSlug: string
@@ -21,15 +22,10 @@ interface SkillHubPanelProps {
 
 type HubFilter = 'all' | 'installed' | 'uninstalled'
 
-interface BatchSelectState {
-  selected: Set<string>
-  mode: boolean
-}
-
 /**
  * SkillHub 面板主组件
  *
- * 认证 → 列表（搜索/筛选/滚动加载/批量） → 预览 → 安装/卸载/启用/禁用/更新
+ * 认证 → 列表（搜索/筛选/滚动加载） → 预览 → 安装/卸载/启用/禁用/更新
  */
 export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInstalled, skillsDir }: SkillHubPanelProps): React.ReactElement {
   const [skills, setSkills] = React.useState<HtSkillHubSkill[]>([])
@@ -48,8 +44,12 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
   const [updates, setUpdates] = React.useState<Map<string, boolean>>(new Map())
   const [, setUpdatesChecked] = React.useState(false)
 
-  // 批量操作
-  const [batch, setBatch] = React.useState<BatchSelectState>({ selected: new Set(), mode: false })
+  // 批量安装（仅"未安装"tab）
+  const [batchSelected, setBatchSelected] = React.useState<Set<string>>(new Set())
+
+  // 确认弹窗
+  const [confirmOpen, setConfirmOpen] = React.useState(false)
+  const confirmSkill = React.useRef<HtSkillHubSkill | null>(null)
 
   // ===== 认证状态 =====
   const [authStatus, setAuthStatus] = React.useState<{ authenticated: boolean; expiresAt?: number; remainingSeconds?: number } | null>(null)
@@ -89,8 +89,9 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
 
   const loadSkills = React.useCallback(async (): Promise<void> => {
     setLoading(true)
+    setPage(1)
     try {
-      const list = await window.electronAPI.getHtSkillHubSkills(workspaceSlug)
+      const list = await window.electronAPI.getHtSkillHubSkills(workspaceSlug, 1)
       setSkills(list)
       setHasMore(list.length >= 20)
       setSelectedName((current) => current && list.some((s) => s.name === current) ? current : list[0]?.name ?? null)
@@ -109,10 +110,10 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
   const loadMore = React.useCallback(async (): Promise<void> => {
     if (!hasMore || loading) return
     const nextPage = page + 1
-    setPage(nextPage)
     try {
-      const list = await window.electronAPI.getHtSkillHubSkills(workspaceSlug)
-      if (list.length < 20) setHasMore(false)
+      const list = await window.electronAPI.getHtSkillHubSkills(workspaceSlug, nextPage)
+      if (list.length === 0 || list.length < 20) setHasMore(false)
+      setPage(nextPage)
       setSkills((prev) => [...prev, ...list])
     } catch {
       setHasMore(false)
@@ -157,15 +158,19 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
   // ===== 操作处理 =====
 
   const handleInstall = React.useCallback(async (skill: HtSkillHubSkill): Promise<void> => {
-    if (!authStatus?.authenticated) {
-      toast.error('请先认证 SkillHub')
+    if (!authStatus?.authenticated) { toast.error('请先认证 SkillHub'); return }
+    if (skill.installed) {
+      confirmSkill.current = skill
+      setConfirmOpen(true)
       return
     }
-    const overwrite = skill.installed
-    if (overwrite && !window.confirm(`确认覆盖安装 Skill「${skill.name}」？`)) return
+    await doInstall(skill)
+  }, [authStatus])
 
+  const doInstall = React.useCallback(async (skill: HtSkillHubSkill): Promise<void> => {
     setInstalling(skill.name)
     try {
+      const overwrite = skill.installed
       const result = await window.electronAPI.installHtSkillHubSkill(workspaceSlug, skill.name, overwrite)
       toast.success(result.status === 'overwritten' ? `已覆盖安装: ${skill.name}` : `已安装: ${skill.name}`)
       onInstalled()
@@ -175,7 +180,24 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
     } finally {
       setInstalling(null)
     }
-  }, [workspaceSlug, authStatus, onInstalled, loadSkills])
+  }, [workspaceSlug, onInstalled, loadSkills])
+
+  const handleBatchInstall = React.useCallback(async (): Promise<void> => {
+    const names = Array.from(batchSelected)
+    if (names.length === 0) return
+    setInstalling('__batch__')
+    try {
+      await window.electronAPI.batchInstallHtSkillHubSkills(workspaceSlug, names, false)
+      toast.success(`已安装 ${names.length} 个 Skill`)
+      setBatchSelected(new Set())
+      onInstalled()
+      await loadSkills()
+    } catch (error) {
+      toast.error('批量安装失败', { description: error instanceof Error ? error.message : '未知错误' })
+    } finally {
+      setInstalling(null)
+    }
+  }, [workspaceSlug, batchSelected, onInstalled, loadSkills])
 
   const handleUninstall = React.useCallback(async (skillName: string): Promise<void> => {
     try {
@@ -231,7 +253,10 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
   }, [workspaceSlug, loadSkills])
 
   const openInstalledFolder = (skillName: string): void => {
-    if (skillsDir) window.electronAPI.openFile(`${skillsDir}/${skillName}`)
+    // 根据启用状态判断实际目录：禁用 → skills-inactive，启用 → skills
+    const enabled = selectedSkill?.enabled !== false
+    const dir = enabled ? skillsDir : skillsDir.replace(/skills$/, 'skills-inactive')
+    window.electronAPI.openFile(`${dir}/${skillName}`)
   }
 
   // ===== 过滤 =====
@@ -340,38 +365,33 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
                 </button>
               ))}
             </div>
-            <div className="text-xs text-muted-foreground">
-              共 {filteredSkills.length} 个，已安装 {skills.filter((s) => s.installed).length} 个
-            </div>
           </div>
 
-          {/* 批量操作栏 */}
-          <BatchToolbar
-            selectedCount={batch.selected.size}
-            total={filteredSkills.length}
-            onBatchInstall={async () => {
-              const names = Array.from(batch.selected)
-              await window.electronAPI.batchInstallHtSkillHubSkills(workspaceSlug, names, true)
-              toast.success(`已开始批量安装 ${names.length} 个 Skill`)
-              setBatch({ selected: new Set(), mode: false })
-              onInstalled()
-              await loadSkills()
-            }}
-            onBatchUninstall={async () => {
-              const names = Array.from(batch.selected)
-              if (!window.confirm(`确定要批量卸载 ${names.length} 个 Skill？`)) return
-              await window.electronAPI.batchUninstallHtSkillHubSkills(workspaceSlug, names)
-              toast.success(`已卸载 ${names.length} 个 Skill`)
-              setBatch({ selected: new Set(), mode: false })
-              await loadSkills()
-            }}
-            onSelectAll={() => {
-              setBatch((prev) => {
-                if (prev.selected.size === filteredSkills.length) return { selected: new Set(), mode: false }
-                return { selected: new Set(filteredSkills.map((s) => s.name)), mode: true }
-              })
-            }}
-          />
+          {/* 批量安装栏（仅"未安装"） */}
+          {filter === 'uninstalled' && filteredSkills.length > 0 && (
+            <div className="px-3 py-2 border-b border-border bg-background/70 flex items-center gap-2 text-xs">
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  if (batchSelected.size === filteredSkills.length) setBatchSelected(new Set())
+                  else setBatchSelected(new Set(filteredSkills.map(s => s.name)))
+                }}
+              >
+                {batchSelected.size === filteredSkills.length ? '取消全选' : `全选 (${batchSelected.size}/${filteredSkills.length})`}
+              </button>
+              <div className="flex-1" />
+              <Button
+                size="sm"
+                className="h-6 text-[10px]"
+                onClick={handleBatchInstall}
+                disabled={batchSelected.size === 0 || installing === '__batch__'}
+              >
+                {installing === '__batch__' ? <RefreshCw size={10} className="animate-spin" /> : <Download size={10} />}
+                <span className="ml-0.5">批量安装 ({batchSelected.size})</span>
+              </Button>
+            </div>
+          )}
 
           <div ref={listRef} className="flex-1 overflow-y-auto" onScroll={handleScroll}>
             {loading ? (
@@ -383,19 +403,17 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
                 <SkillCard
                   key={skill.name}
                   skill={skill}
+                  filter={filter}
+                  batchChecked={batchSelected.has(skill.name)}
+                  onToggleBatch={() => setBatchSelected(prev => {
+                    const next = new Set(prev)
+                    next.has(skill.name) ? next.delete(skill.name) : next.add(skill.name)
+                    return next
+                  })}
                   selected={selectedName === skill.name}
                   installing={installing === skill.name}
                   hasUpdate={updates.has(skill.name)}
-                  onSelect={() => {
-                    setSelectedName(skill.name)
-                    if (batch.mode) {
-                      setBatch((prev) => {
-                        const next = new Set(prev.selected)
-                        next.has(skill.name) ? next.delete(skill.name) : next.add(skill.name)
-                        return { selected: next, mode: next.size > 0 }
-                      })
-                    }
-                  }}
+                  onSelect={() => setSelectedName(skill.name)}
                   onInstall={() => void handleInstall(skill)}
                   onUninstall={() => void handleUninstall(skill.name)}
                   onToggle={() => void handleToggle(skill.name, skill.enabled === false)}
@@ -428,50 +446,113 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground line-clamp-3">{selectedSkill.description || '暂无描述'}</p>
                   </div>
-                  <div className="shrink-0 flex items-center gap-2">
+                  <div className="shrink-0 flex items-center gap-1">
                     {selectedSkill.installed && (
                       <>
-                        <Button size="sm" variant="outline" onClick={() => openInstalledFolder(selectedSkill.name)}>
-                          <FolderOpen size={14} />
-                          <span>打开目录</span>
-                        </Button>
-                        <Button
-                          size="sm" variant="outline"
-                          onClick={() => void handleToggle(selectedSkill.name, selectedSkill.enabled === false)}
-                        >
-                          {selectedSkill.enabled === false ? <Play size={14} /> : <Pause size={14} />}
-                          <span>{selectedSkill.enabled === false ? '启用' : '禁用'}</span>
-                        </Button>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openInstalledFolder(selectedSkill.name)}>
+                                <FolderOpen size={16} />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>打开目录</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button size="icon" variant="ghost" className="h-8 w-8"
+                                onClick={() => void handleToggle(selectedSkill.name, selectedSkill.enabled === false)}>
+                                {selectedSkill.enabled === false ? <Play size={16} /> : <Pause size={16} />}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>{selectedSkill.enabled === false ? '启用' : '禁用'}</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                       </>
                     )}
                     {updates.has(selectedSkill.name) ? (
-                      <Button size="sm" onClick={() => void handleUpdate(selectedSkill)} disabled={installing !== null}>
-                        {installing === selectedSkill.name ? <RefreshCw size={14} className="animate-spin" /> : <ArrowUp size={14} />}
-                        <span>更新</span>
-                      </Button>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => void handleUpdate(selectedSkill)} disabled={installing !== null}>
+                              {installing === selectedSkill.name ? <RefreshCw size={16} className="animate-spin" /> : <ArrowUp size={16} />}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>更新</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     ) : (
-                      <Button size="sm" onClick={() => void handleInstall(selectedSkill)} disabled={installing !== null}>
-                        {installing === selectedSkill.name
-                          ? <RefreshCw size={14} className="animate-spin" />
-                          : selectedSkill.installed ? <RotateCw size={14} /> : <Download size={14} />}
-                        <span>{selectedSkill.installed ? '覆盖安装' : '安装'}</span>
-                      </Button>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => void handleInstall(selectedSkill)} disabled={installing !== null}>
+                              {installing === selectedSkill.name
+                                ? <RefreshCw size={16} className="animate-spin" />
+                                : selectedSkill.installed ? <RotateCw size={16} /> : <Download size={16} />}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>{selectedSkill.installed ? '覆盖安装' : '安装'}</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     )}
                     {selectedSkill.installed && (
-                      <Button variant="ghost" size="sm" className="text-red-600" onClick={() => void handleUninstall(selectedSkill.name)}>
-                        <Trash2 size={14} />
-                      </Button>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button size="icon" variant="ghost" className="h-8 w-8 text-red-600" onClick={() => void handleUninstall(selectedSkill.name)}>
+                              <Trash2 size={16} />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>卸载</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     )}
                   </div>
                 </div>
               </div>
 
               <div className="p-4 space-y-4 overflow-y-auto">
+                {/* 元数据 */}
+                {(selectedSkill.version || selectedSkill.category || selectedSkill.author || selectedSkill.tags?.length) && (
+                  <div className="p-4 border rounded-lg">
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">元数据</div>
+                    <div className="space-y-1.5">
+                      {selectedSkill.displayName && (
+                        <div className="flex items-start gap-3 text-xs"><span className="text-muted-foreground w-14 shrink-0">名称</span><span className="text-foreground truncate">{selectedSkill.displayName}</span></div>
+                      )}
+                      {selectedSkill.version && (
+                        <div className="flex items-start gap-3 text-xs"><span className="text-muted-foreground w-14 shrink-0">版本</span><span className="text-foreground font-mono">{selectedSkill.version}</span></div>
+                      )}
+                      {selectedSkill.category && (
+                        <div className="flex items-start gap-3 text-xs"><span className="text-muted-foreground w-14 shrink-0">分类</span><span className="text-foreground">{selectedSkill.category}</span></div>
+                      )}
+                      {selectedSkill.author && (
+                        <div className="flex items-start gap-3 text-xs"><span className="text-muted-foreground w-14 shrink-0">作者</span><span className="text-foreground">{selectedSkill.author}</span></div>
+                      )}
+                      {selectedSkill.downloadCount !== undefined && (
+                        <div className="flex items-start gap-3 text-xs"><span className="text-muted-foreground w-14 shrink-0">下载</span><span className="text-foreground">{selectedSkill.downloadCount.toLocaleString()}</span></div>
+                      )}
+                      {selectedSkill.tags && selectedSkill.tags.length > 0 && (
+                        <div className="flex items-start gap-3 text-xs">
+                          <span className="text-muted-foreground w-14 shrink-0">标签</span>
+                          <span className="text-foreground flex flex-wrap gap-1">
+                            {selectedSkill.tags.map((t) => (
+                              <span key={t} className="rounded bg-muted px-1.5 py-0.5 text-[10px]">{t}</span>
+                            ))}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {/* SKILL.md */}
                 <div className="p-4 border rounded-lg">
                   <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">SKILL.md</div>
                   <div className="prose prose-sm dark:prose-invert max-w-none">
                     <Markdown remarkPlugins={[remarkGfm]}>
-                      {selectedSkill.description || '从列表缓存获取预览内容，无需额外请求。'}
+                      {selectedSkill.description || '暂无描述'}
                     </Markdown>
                   </div>
                 </div>
@@ -485,6 +566,24 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
         </div>
       </div>
       )}
+
+      {/* 覆盖安装确认弹窗 */}
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>覆盖安装确认</DialogTitle>
+            <DialogDescription>
+              当前工作区已安装 Skill「{confirmSkill.current?.name}」，覆盖安装将替换所有文件。是否继续？
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)}>取消</Button>
+            <Button onClick={() => { setConfirmOpen(false); if (confirmSkill.current) void doInstall(confirmSkill.current) }}>
+              确认覆盖
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </SettingsSection>
   )
 }

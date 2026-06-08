@@ -2118,9 +2118,9 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(
     AGENT_IPC_CHANNELS.GET_HT_SKILLHUB_SKILLS,
-    async (_, workspaceSlug: string): Promise<HtSkillHubSkill[]> => {
+    async (_, workspaceSlug: string, page?: number): Promise<HtSkillHubSkill[]> => {
       const { fetchHtSkillHubIndex } = await import('./lib/skillhub-service')
-      return fetchHtSkillHubIndex(workspaceSlug)
+      return fetchHtSkillHubIndex(workspaceSlug, page)
     }
   )
 
@@ -2140,6 +2140,58 @@ export function registerIpcHandlers(): void {
       const skill = skills.find((item) => item.name === skillName)
       if (!skill) throw new Error(`华泰 SkillHub 未找到 Skill: ${skillName}`)
       return installHtSkillHubSkill({ workspaceSlug, skill, overwrite })
+    }
+  )
+
+  // ===== SkillHub 认证 =====
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.SKILLHUB_AUTH_STATUS,
+    async (_) => {
+      const { getSkillHubAuthStatus } = await import('./lib/skillhub-auth-service')
+      return getSkillHubAuthStatus()
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.SKILLHUB_AUTHENTICATE,
+    async (_) => {
+      const { exchangeToken } = await import('./lib/skillhub-auth-service')
+      return exchangeToken()
+    }
+  )
+
+  // ===== SkillHub 卸载 & 更新 & 批量 =====
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.UNINSTALL_HT_SKILLHUB_SKILL,
+    async (_, workspaceSlug: string, skillName: string) => {
+      const { uninstallHtSkillHubSkill } = await import('./lib/skillhub-service')
+      return uninstallHtSkillHubSkill(workspaceSlug, skillName)
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.CHECK_SKILL_UPDATES,
+    async (_, workspaceSlug: string) => {
+      const { checkSkillUpdates } = await import('./lib/skillhub-service')
+      return checkSkillUpdates(workspaceSlug)
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.BATCH_INSTALL_HT_SKILLHUB,
+    async (_, workspaceSlug: string, skillNames: string[], overwrite?: boolean) => {
+      const { batchInstallHtSkillHubSkills } = await import('./lib/skillhub-service')
+      return batchInstallHtSkillHubSkills(workspaceSlug, skillNames, overwrite)
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.BATCH_UNINSTALL_HT_SKILLHUB,
+    async (_, workspaceSlug: string, skillNames: string[]) => {
+      const { batchUninstallHtSkillHubSkills } = await import('./lib/skillhub-service')
+      return batchUninstallHtSkillHubSkills(workspaceSlug, skillNames)
     }
   )
 

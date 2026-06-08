@@ -15,7 +15,8 @@ import { getToken } from '../../auth/auth-service'
 
 // ===== 常量 =====
 
-const DEFAULT_SKILLHUB_BASE = 'http://talentshub-uat.sit.saas.htsc'
+const DEFAULT_SKILLHUB_AUTH_BASE = 'http://eiplite.htsc.com.cn'
+const DEFAULT_SKILLHUB_API_BASE = 'http://skillhub.uat.saas.htsc'
 
 /** 从 settings.json 读取 skillHubBase，未配置时回退到 UAT 地址 */
 export function getSkillHubBase(): string {
@@ -28,10 +29,48 @@ export function getSkillHubBase(): string {
       }
     }
   } catch { /* settings.json 损坏时走默认 */ }
-  return DEFAULT_SKILLHUB_BASE
+  return DEFAULT_SKILLHUB_API_BASE
 }
 
-const AUTH_URL_PATH = '/ai_skillhub_bff/api/v1/auth/token?clientId=proma'
+/**
+ * 从 settings.json 读取 skillHubApiBase，未配置时回退到 skillHubBase（向后兼容）。
+ * 用于市场查询、详情、下载等 API 请求，与认证换票的 domain 可能不同。
+ */
+export function getSkillHubApiBase(): string {
+  const settingsPath = getSettingsPath()
+  try {
+    if (existsSync(settingsPath)) {
+      const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'))
+      if (typeof settings.skillHubApiBase === 'string' && settings.skillHubApiBase.trim()) {
+        return settings.skillHubApiBase.trim()
+      }
+      // 未配 skillHubApiBase 时回退到 skillHubBase
+      if (typeof settings.skillHubBase === 'string' && settings.skillHubBase.trim()) {
+        return settings.skillHubBase.trim()
+      }
+    }
+  } catch { /* settings.json 损坏时走默认 */ }
+  return DEFAULT_SKILLHUB_AUTH_BASE
+}
+
+const DEFAULT_AUTH_URL_PATH = '/ai_skillhub_bff/api/v1/auth/token?clientId=WEBIDE&env=test'
+
+/**
+ * 从 settings.json 读取 skillHubAuthPath，未配置时回退到代码默认值。
+ * 例如可配置为 /ai_skillhub_bff/api/v1/auth/token?clientId=OTHER&env=prod
+ */
+export function getSkillHubAuthPath(): string {
+  const settingsPath = getSettingsPath()
+  try {
+    if (existsSync(settingsPath)) {
+      const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'))
+      if (typeof settings.skillHubAuthPath === 'string' && settings.skillHubAuthPath.trim()) {
+        return settings.skillHubAuthPath.trim()
+      }
+    }
+  } catch { /* settings.json 损坏时走默认 */ }
+  return DEFAULT_AUTH_URL_PATH
+}
 
 /** 提前刷新阈值：距离过期不足 5 分钟时主动刷新 */
 const REFRESH_THRESHOLD_MS = 5 * 60 * 1000
@@ -108,8 +147,8 @@ export async function exchangeToken(): Promise<string> {
     throw new Error('EIP 未登录，请先登录 EIP 网关')
   }
 
-  console.log('[SkillHub 认证] 开始换票...')
-  const authUrl = `${getSkillHubBase()}${AUTH_URL_PATH}`
+  const authUrl = `${getSkillHubBase()}${getSkillHubAuthPath()}`
+  console.log('[SkillHub 认证] 换票 POST %s', authUrl)
 
   let response: Response
   try {
@@ -124,6 +163,7 @@ export async function exchangeToken(): Promise<string> {
     throw new Error(`无法连接 SkillHub 认证服务: ${(err as Error).message}`)
   }
 
+  console.log('[SkillHub 认证] 换票响应 HTTP %d', response.status)
   if (!response.ok) {
     const text = await response.text().catch(() => '(响应读取失败)')
     if (response.status === 401) {

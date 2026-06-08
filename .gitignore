@@ -65,10 +65,10 @@ vendor
 
 # ===== Git Worktrees =====
 .worktrees
-apps/electron/fixtures/skills-list.json
-apps/electron/default-skills/proma-coach/SKILL.md
-replay_pid43104.log
-apps/electron/fixtures/skill-detail.json
-hs_err_pid43104.log
-hs_err_pid2748.log
-workmate-server-java/data/workmate.mv.db
+
+# ===== Mock data (build-time generated) =====
+workmate-server-java/mock-skills/
+
+# ===== Runtime artifacts =====
+hs_err_pid*.log
+workmate-server-java/data/
