@@ -84,4 +84,10 @@ describe('插件市场分支配置', () => {
     expect(pluginSettingsSource).toContain('marketplace.branch ??')
     expect(pluginSettingsSource).toContain('branch:')
   })
+
+  test('市场详情中的长来源地址支持查看完整值和复制', () => {
+    expect(pluginSettingsSource).toContain('title={marketplace.source}')
+    expect(pluginSettingsSource).toContain('CopyValueButton value={marketplace.source} label="插件市场地址"')
+    expect(pluginSettingsSource).toContain('navigator.clipboard.writeText(value)')
+  })
 })

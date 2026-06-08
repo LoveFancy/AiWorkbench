@@ -2,6 +2,8 @@ import * as React from 'react'
 import {
   AlertTriangle,
   ArrowLeft,
+  Check,
+  Copy,
   Download,
   ExternalLink,
   FolderPlus,
@@ -1102,8 +1104,37 @@ function DetailField({ label, value }: { label: string; value: string }): React.
   return (
     <div className="min-w-0">
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="truncate font-medium">{value}</div>
+      <div className="truncate font-medium" title={value}>{value}</div>
     </div>
+  )
+}
+
+function CopyValueButton({ value, label }: { value: string; label: string }): React.ReactElement {
+  const [copied, setCopied] = React.useState(false)
+
+  const handleCopy = React.useCallback(async (): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(true)
+      toast.success(`${label}已复制`)
+      window.setTimeout(() => setCopied(false), 1200)
+    } catch (error) {
+      console.error(`[插件设置] 复制${label}失败:`, error)
+      toast.error(`${label}复制失败`)
+    }
+  }, [label, value])
+
+  return (
+    <Button
+      type="button"
+      size="icon"
+      variant="ghost"
+      className="size-7 shrink-0"
+      title={copied ? '已复制' : `复制${label}`}
+      onClick={handleCopy}
+    >
+      {copied ? <Check size={14} /> : <Copy size={14} />}
+    </Button>
   )
 }
 
@@ -1196,12 +1227,15 @@ function MarketplaceDetailPanel({
   return (
     <aside className="rounded-lg bg-card p-4 shadow-sm xl:sticky xl:top-4 xl:self-start">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="font-semibold">{marketplace.name}</h3>
             <Badge variant={marketplace.enabled ? 'secondary' : 'outline'}>{marketplace.enabled ? '已启用' : '已禁用'}</Badge>
           </div>
-          <p className="mt-1 truncate text-sm text-muted-foreground">{marketplace.source}</p>
+          <div className="mt-1 flex min-w-0 items-center gap-1">
+            <p className="min-w-0 truncate text-sm text-muted-foreground" title={marketplace.source}>{marketplace.source}</p>
+            <CopyValueButton value={marketplace.source} label="插件市场地址" />
+          </div>
         </div>
         <Switch checked={marketplace.enabled} onCheckedChange={(checked) => void onToggle(marketplace, checked)} />
       </div>
