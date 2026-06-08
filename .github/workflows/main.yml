@@ -32,7 +32,21 @@ jobs:
 
       - name: Build Windows NSIS installer
         working-directory: apps/electron
-        run: bun run dist:win -- --x64 --publish never
+        shell: pwsh
+        run: |
+          for ($i = 1; $i -le 3; $i++) {
+            bun run dist:win -- --x64 --publish never
+            if ($LASTEXITCODE -eq 0) {
+              exit 0
+            }
+
+            if ($i -eq 3) {
+              exit $LASTEXITCODE
+            }
+
+            Write-Host "Windows installer build attempt $i failed, retrying in 20s..."
+            Start-Sleep -Seconds 20
+          }
 
       - name: Verify auto-update artifacts
         shell: pwsh
