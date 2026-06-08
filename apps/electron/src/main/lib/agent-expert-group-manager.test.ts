@@ -14,6 +14,7 @@ interface TestPaths {
   builtinDir: string
   userDir: string
   configPath: string
+  defaultSkillsDir: string
 }
 
 function tempRoot(): { root: string; paths: TestPaths; cleanup: () => void } {
@@ -24,6 +25,7 @@ function tempRoot(): { root: string; paths: TestPaths; cleanup: () => void } {
       builtinDir: join(root, 'default-plugins'),
       userDir: join(root, 'user-plugins'),
       configPath: join(root, 'plugins.json'),
+      defaultSkillsDir: join(root, 'default-skills'),
     },
     cleanup: () => rmSync(root, { recursive: true, force: true }),
   }
@@ -60,6 +62,10 @@ function createExpertPlugin(paths: TestPaths, name = 'workmate-experts'): string
       mcpServers: ['dpmp'],
       tags: ['PRD', 'Story'],
       samplePrompts: ['帮我把这个想法整理成 PRD'],
+      toolsPolicy: {
+        mode: 'inherit',
+        disallowedTools: ['WebSearch', 'WebFetch'],
+      },
     }),
     'utf-8',
   )
@@ -158,6 +164,7 @@ describe('Agent 专家团管理器', () => {
       })
       expect(runtime?.promptHints).toContain('当任务需要 PRD、Story 时，优先考虑使用产品专家团。')
       expect(runtime?.mcpServers.dpmp).toMatchObject({ type: 'stdio', command: 'dpmp' })
+      expect(runtime?.disallowedTools).toEqual(['WebSearch', 'WebFetch'])
     } finally {
       temp.cleanup()
     }
@@ -193,6 +200,42 @@ describe('Agent 专家团管理器', () => {
 
       expect(groups[0]?.status).toBe('missing_skill')
       expect(groups[0]?.issues.some((issue) => issue.message.includes('prd-writer'))).toBe(true)
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('专家团可以引用内置默认 Skill', () => {
+    const temp = tempRoot()
+    try {
+      createExpertPlugin(temp.paths)
+      mkdirSync(join(temp.paths.defaultSkillsDir, 'web-search'), { recursive: true })
+      writeFileSync(
+        join(temp.paths.defaultSkillsDir, 'web-search', 'SKILL.md'),
+        '---\nname: web-search\ndescription: 联网检索\n---\n# Web Search',
+        'utf-8',
+      )
+      writeFileSync(
+        join(temp.paths.builtinDir, 'workmate-experts', 'expert-groups', 'product-team.json'),
+        JSON.stringify({
+          id: 'product-team',
+          name: '产品专家团',
+          mainRole: {
+            name: '产品负责人',
+            prompt: '你是产品专家团的主角色。',
+          },
+          subagents: ['requirement-analyst'],
+          skills: ['web-search'],
+        }),
+        'utf-8',
+      )
+      rmSync(join(temp.paths.builtinDir, 'workmate-experts', 'skills', 'prd-writer'), { recursive: true, force: true })
+
+      const groups = listAgentExpertGroups(temp.paths)
+
+      expect(groups[0]?.status).toBe('available')
+      expect(groups[0]?.skills).toEqual(['web-search'])
+      expect(groups[0]?.issues).toEqual([])
     } finally {
       temp.cleanup()
     }

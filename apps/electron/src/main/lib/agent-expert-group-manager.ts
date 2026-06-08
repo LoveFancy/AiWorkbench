@@ -9,12 +9,14 @@ import type {
   McpServerEntry,
 } from '@proma/shared'
 import { listInstalledPlugins } from './plugin-registry-service'
+import { getDefaultSkillsDir } from './config-paths'
 
 interface ExpertGroupRegistryPaths {
   builtinDir?: string
   userDir?: string
   configPath?: string
   runtimeDir?: string
+  defaultSkillsDir?: string
 }
 
 export interface ResolveExpertGroupRuntimeInput {
@@ -30,6 +32,7 @@ export interface ExpertGroupRuntime {
   mcpServers: Record<string, McpServerEntry>
   promptHints: string[]
   allowedTools?: string[]
+  disallowedTools?: string[]
 }
 
 interface ExpertIssue {
@@ -95,6 +98,7 @@ function normalizeExpertManifest(raw: unknown, filePath: string): { manifest?: A
         toolsPolicy: {
           mode: raw.toolsPolicy.mode === 'restrict' ? 'restrict' : 'inherit',
           allowedTools: stringArray(raw.toolsPolicy.allowedTools),
+          disallowedTools: stringArray(raw.toolsPolicy.disallowedTools),
         },
       }),
     },
@@ -134,7 +138,12 @@ function mcpServerNames(pluginPath: string): Set<string> {
   }
 }
 
-function validateExpertReferences(pluginPath: string, manifest: AgentExpertGroupManifest): ExpertIssue[] {
+function hasSkill(pluginPath: string, defaultSkillsDir: string, skillName: string): boolean {
+  return existsSync(join(pluginPath, 'skills', skillName, 'SKILL.md')) ||
+    existsSync(join(defaultSkillsDir, skillName, 'SKILL.md'))
+}
+
+function validateExpertReferences(pluginPath: string, manifest: AgentExpertGroupManifest, paths?: ExpertGroupRegistryPaths): ExpertIssue[] {
   const issues: ExpertIssue[] = []
 
   for (const agentName of manifest.subagents ?? []) {
@@ -147,8 +156,9 @@ function validateExpertReferences(pluginPath: string, manifest: AgentExpertGroup
     }
   }
 
+  const defaultSkillsDir = paths?.defaultSkillsDir ?? getDefaultSkillsDir()
   for (const skillName of manifest.skills ?? []) {
-    if (!existsSync(join(pluginPath, 'skills', skillName, 'SKILL.md'))) {
+    if (!hasSkill(pluginPath, defaultSkillsDir, skillName)) {
       issues.push({
         level: 'error',
         status: 'missing_skill',
@@ -200,7 +210,7 @@ export function listAgentExpertGroups(paths?: ExpertGroupRegistryPaths): AgentEx
 
       const allIssues = [
         ...issues,
-        ...validateExpertReferences(plugin.path, manifest),
+        ...validateExpertReferences(plugin.path, manifest, paths),
         ...(capability.issue ? [capability.issue] : []),
       ]
       groups.push({
@@ -329,5 +339,6 @@ export function resolveExpertGroupRuntime(
     mcpServers: readPluginMcp(group.sourcePluginPath, group.mcpServers ?? []),
     promptHints: [`当任务需要 ${tags} 时，优先考虑使用${group.name}。`],
     ...(group.toolsPolicy?.mode === 'restrict' && { allowedTools: group.toolsPolicy.allowedTools ?? [] }),
+    ...(group.toolsPolicy?.disallowedTools?.length && { disallowedTools: group.toolsPolicy.disallowedTools }),
   }
 }

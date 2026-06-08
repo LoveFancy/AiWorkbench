@@ -1586,6 +1586,7 @@ export class AgentOrchestrator {
         ...(appSettings.agentMaxBudgetUsd != null && appSettings.agentMaxBudgetUsd > 0 && {
           maxBudgetUsd: appSettings.agentMaxBudgetUsd,
         }),
+        ...(expertRuntime?.disallowedTools?.length && { disallowedTools: expertRuntime.disallowedTools }),
         // 1M context window: 支持的模型自动启用 beta（Claude: Sonnet 4+ / Opus 4.6+ / 4.7 / 4.8、DeepSeek V4 系列）
         // 未启用时 SDK 默认 200K 并在约 150K 触发压缩；启用后上限提升至 1M
         ...(supports1MContext(modelId || DEFAULT_MODEL_ID) && {

@@ -13,7 +13,9 @@
     "implementation-risk-reviewer",
     "adr-writer"
   ],
-  "skills": [],
+  "skills": [
+    "web-search"
+  ],
   "mcpServers": [],
   "tags": [
     "架构决策",
@@ -29,6 +31,10 @@
   ],
   "toolsPolicy": {
     "mode": "inherit",
-    "allowedTools": []
+    "allowedTools": [],
+    "disallowedTools": [
+      "WebSearch",
+      "WebFetch"
+    ]
   }
 }

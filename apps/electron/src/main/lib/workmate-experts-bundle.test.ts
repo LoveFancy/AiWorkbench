@@ -17,4 +17,18 @@ describe('WorkMate 内置专家团配置', () => {
     expect(prompt).toContain('同一批 tool_use')
     expect(prompt).toContain('不要先启动一个 external-researcher')
   })
+
+  test('架构决策专家团通过 web-search Skill 联网，不直接暴露 WebSearch 和 WebFetch 工具', () => {
+    const group = JSON.parse(readFileSync(
+      join(pluginRoot, 'expert-groups', 'architecture-decision-team.json'),
+      'utf-8',
+    )) as { skills?: string[]; toolsPolicy?: { disallowedTools?: string[] } }
+    const researcher = readFileSync(join(pluginRoot, 'agents', 'external-researcher.md'), 'utf-8')
+
+    expect(group.skills).toContain('web-search')
+    expect(group.toolsPolicy?.disallowedTools).toEqual(['WebSearch', 'WebFetch'])
+    expect(researcher).toContain('优先调用 `web-search` Skill')
+    expect(researcher).not.toContain('- WebSearch')
+    expect(researcher).not.toContain('- WebFetch')
+  })
 })

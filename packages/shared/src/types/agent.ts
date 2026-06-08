@@ -887,6 +887,7 @@ export interface AgentExpertGroupMainRole {
 export interface AgentExpertGroupToolsPolicy {
   mode: 'inherit' | 'restrict'
   allowedTools?: string[]
+  disallowedTools?: string[]
 }
 
 export interface AgentExpertGroupManifest {
