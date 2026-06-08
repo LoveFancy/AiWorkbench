@@ -13,6 +13,7 @@ export {
   getAuthInfo,
   logout,
   buildAuthHeaders,
+  getEipGatewayBase,
 } from './auth-service'
 
 // IPC 注册

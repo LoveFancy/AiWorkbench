@@ -151,6 +151,10 @@ export interface ElectronAPI {
   // ===== WorkMate 平台模型 =====
   platformModels: PlatformModelsElectronAPI
 
+  // ===== WorkMate 观测上报 =====
+  /** 上报渲染进程错误到主进程观测服务 */
+  reportRendererError: (payload: { name: string; message: string; stack?: string; componentStack?: string }) => Promise<void>
+
   // ===== 运行时相关 =====
 
   /**
@@ -2491,6 +2495,11 @@ const electronAPI: ElectronAPI = {
 
   // ===== WorkMate 平台模型 =====
   ...createPlatformModelsPreloadApi(),
+
+  // ===== WorkMate 观测上报 =====
+  reportRendererError: (payload: { name: string; message: string; stack?: string; componentStack?: string }) => {
+    return ipcRenderer.invoke('workmate:report-renderer-error', payload)
+  },
 }
 
 // 将 API 暴露到渲染进程的 window 对象上

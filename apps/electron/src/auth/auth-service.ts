@@ -24,7 +24,7 @@ export function setAuthPathProviderForTest(provider: AuthPathProvider | null): v
 }
 
 /** 从 settings.json 读取 eipGatewayBase，未配置时回退到生产地址 */
-function getEipGatewayBase(): string {
+export function getEipGatewayBase(): string {
   const settingsPath = pathProvider.getSettingsPath()
   try {
     if (existsSync(settingsPath)) {
@@ -89,8 +89,8 @@ async function login(
   console.log('[Auth] POST %s', url)
 
   // 从 base URL 解析 Origin / Host，避免写死
-  let origin = 'http://eip.htsc.com.cn'
-  let host = 'eip.htsc.com.cn'
+  let origin = 'http://eiplite.htsc.com.cn'
+  let host = 'eiplite.htsc.com.cn'
   try {
     const parsed = new URL(base)
     origin = parsed.origin
