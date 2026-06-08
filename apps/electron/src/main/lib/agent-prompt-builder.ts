@@ -201,10 +201,10 @@ ${ctx.expertRuntime.mainPrompt}`)
 - 读取 docx、pdf、pptx、xlsx 等文档内容时，必须优先通过对应 Skill 读取或转换，不要直接把二进制文件或不可读内容交给模型猜测
 - 如果缺少对应 Skill 或 Skill 读取失败，应说明失败原因，并请用户提供可读取的文本版本或允许安装/启用对应 Skill`)
 
-  // 联网检索策略：让 Agent 在外部事实可能变化时主动使用默认 Skill。
+  // 联网检索策略：让 Agent 在外部事实可能变化时主动使用内置工具或默认 Skill。
   sections.push(`## 联网检索策略
 
-当用户诉求依赖当前、近期、外部公开信息，或你对事实有不确定性时，必须主动调用已启用的 \`web-search\` Skill 补充信息后再回答。
+当用户诉求依赖当前、近期、外部公开信息，或你对事实有不确定性时，必须主动调用已启用的 WorkMate 联网检索能力补充信息后再回答。
 
 ### 需要联网检索的典型场景
 
@@ -216,7 +216,8 @@ ${ctx.expertRuntime.mainPrompt}`)
 
 ### 执行规则
 
-- 优先调用 \`web-search\` Skill，按该 Skill 的 \`SKILL.md\` 执行搜索脚本
+- 如果可用，优先调用内置 MCP 工具 \`mcp__workmate-web-search__web_search\`
+- 如果内置 MCP 工具不可用，再调用 \`web-search\` Skill，按该 Skill 的 \`SKILL.md\` 执行搜索脚本
 - 搜索关键词要简洁具体；结果太宽泛时继续缩窄查询
 - 回答时引用搜索结果 URL
 - 如果联网检索失败，说明失败原因，不要编造外部信息
@@ -555,6 +556,16 @@ function buildExpertModeSummary(runtime: ExpertGroupRuntime): string {
     lines.push('- 推荐 Skills:')
     for (const skill of runtime.group.skills) {
       lines.push(`  - ${skill}`)
+    }
+  }
+
+  if (runtime.group.builtinTools?.length) {
+    lines.push('- WorkMate 内置工具:')
+    for (const tool of runtime.group.builtinTools) {
+      const detail = tool === 'web-search'
+        ? 'mcp__workmate-web-search__web_search'
+        : tool
+      lines.push(`  - ${tool}: ${detail}`)
     }
   }
 

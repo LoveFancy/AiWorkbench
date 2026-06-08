@@ -759,6 +759,24 @@ export class AgentOrchestrator {
   }
 
   /**
+   * 注入 WorkMate 内置联网搜索工具（专家团按需启用）
+   */
+  private async injectWebSearchTools(
+    sdk: typeof import('@anthropic-ai/claude-agent-sdk'),
+    mcpServers: Record<string, Record<string, unknown>>,
+    enabled: boolean,
+  ): Promise<void> {
+    if (!enabled) return
+
+    try {
+      const { injectWebSearchMcpServer } = await import('./chat-tools/web-search-mcp')
+      await injectWebSearchMcpServer(sdk, mcpServers)
+    } catch (err) {
+      console.error(`[Agent 编排] 注入 WorkMate 联网搜索 MCP 失败:`, err)
+    }
+  }
+
+  /**
    * 生成 Agent 会话标题
    *
    * 使用 Provider 适配器系统，支持所有渠道。任何错误返回 null。
@@ -1247,6 +1265,11 @@ export class AgentOrchestrator {
 
       if (expertRuntime) {
         Object.assign(mcpServers, expertRuntime.mcpServers)
+        await this.injectWebSearchTools(
+          sdk,
+          mcpServers,
+          expertRuntime.group.builtinTools?.includes('web-search') ?? false,
+        )
         console.log(`[Agent 编排] 已加载专家团: ${expertRuntime.group.name}`)
       }
 

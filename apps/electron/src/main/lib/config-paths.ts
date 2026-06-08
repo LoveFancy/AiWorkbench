@@ -1,8 +1,9 @@
 /**
  * 配置路径工具
  *
- * 管理 Proma 应用的本地配置文件路径。
- * 所有用户配置存储在 ~/.proma/ 目录下。
+ * 管理 WorkMate 应用的本地配置文件路径。
+ * 新用户配置默认存储在 ~/.workmate/ 目录下。
+ * 已存在 ~/.proma/ 的老用户继续使用原目录，不自动迁移或重命名。
  */
 
 import { join, basename } from 'node:path'
@@ -13,37 +14,54 @@ import { resolveConfigDir } from './config-root-service'
 /**
  * 获取配置目录名称
  *
- * 开发模式下返回 '.proma-dev'，正式版本返回 '.proma'。
+ * 开发模式下优先返回 '.workmate-dev'，正式版本优先返回 '.workmate'。
+ * 如果 WorkMate 新目录不存在但 Proma 旧目录存在，则继续返回旧目录。
  *
  * 检测优先级：
  * 1. PROMA_DEV=1 环境变量（显式覆盖）
  * 2. Electron app.isPackaged（未打包 = 开发模式）
- * 3. 兜底 '.proma'
+ * 3. 兜底 '.workmate'
  */
 let _configDirName: string | undefined
 
+export function resolveDefaultConfigDirName(homeDir: string, preferredName: string, legacyName: string): string {
+  const preferredDir = join(homeDir, preferredName)
+  const legacyDir = join(homeDir, legacyName)
+  if (existsSync(preferredDir)) return preferredName
+  if (existsSync(legacyDir)) return legacyName
+  return preferredName
+}
+
 export function getConfigDirName(): string {
   if (_configDirName === undefined) {
+    const homeDir = homedir()
     if (process.env.PROMA_DEV === '1') {
-      _configDirName = '.proma-dev'
+      _configDirName = resolveDefaultConfigDirName(homeDir, '.workmate-dev', '.proma-dev')
     } else {
       try {
         const { app } = require('electron')
-        _configDirName = app.isPackaged ? '.proma' : '.proma-dev'
+        _configDirName = app.isPackaged
+          ? resolveDefaultConfigDirName(homeDir, '.workmate', '.proma')
+          : resolveDefaultConfigDirName(homeDir, '.workmate-dev', '.proma-dev')
       } catch {
-        _configDirName = '.proma'
+        _configDirName = resolveDefaultConfigDirName(homeDir, '.workmate', '.proma')
       }
     }
-    const mode = _configDirName === '.proma-dev' ? '开发模式' : '正式版本'
+    const mode = _configDirName.endsWith('-dev') ? '开发模式' : '正式版本'
     console.log(`[配置] 配置目录: ~/${_configDirName}/（${mode}）`)
   }
   return _configDirName
 }
 
+export function clearConfigDirNameForTest(): void {
+  _configDirName = undefined
+}
+
 /**
  * 获取配置目录路径
  *
- * 开发模式返回 ~/.proma-dev/，正式版本返回 ~/.proma/。
+ * 新用户开发模式返回 ~/.workmate-dev/，正式版本返回 ~/.workmate/。
+ * 老用户已有 ~/.proma-dev/ 或 ~/.proma/ 时继续返回旧目录。
  * 如果目录不存在则自动创建。
  */
 export function getConfigDir(): string {
@@ -67,7 +85,7 @@ export function getConfigDirPath(): string {
 /**
  * 获取渠道配置文件路径
  *
- * @returns ~/.proma/channels.json
+ * @returns ~/.workmate/channels.json
  */
 export function getChannelsPath(): string {
   return join(getConfigDir(), 'channels.json')
@@ -76,7 +94,7 @@ export function getChannelsPath(): string {
 /**
  * 获取对话索引文件路径
  *
- * @returns ~/.proma/conversations.json
+ * @returns ~/.workmate/conversations.json
  */
 export function getConversationsIndexPath(): string {
   return join(getConfigDir(), 'conversations.json')
@@ -87,7 +105,7 @@ export function getConversationsIndexPath(): string {
  *
  * 如果目录不存在则自动创建。
  *
- * @returns ~/.proma/conversations/
+ * @returns ~/.workmate/conversations/
  */
 export function getConversationsDir(): string {
   const dir = join(getConfigDir(), 'conversations')
@@ -104,7 +122,7 @@ export function getConversationsDir(): string {
  * 获取指定对话的消息文件路径
  *
  * @param id 对话 ID
- * @returns ~/.proma/conversations/{id}.jsonl
+ * @returns ~/.workmate/conversations/{id}.jsonl
  */
 export function getConversationMessagesPath(id: string): string {
   return join(getConversationsDir(), `${id}.jsonl`)
@@ -115,7 +133,7 @@ export function getConversationMessagesPath(id: string): string {
  *
  * 如果目录不存在则自动创建。
  *
- * @returns ~/.proma/attachments/
+ * @returns ~/.workmate/attachments/
  */
 export function getAttachmentsDir(): string {
   const dir = join(getConfigDir(), 'attachments')
@@ -134,7 +152,7 @@ export function getAttachmentsDir(): string {
  * 如果目录不存在则自动创建。
  *
  * @param conversationId 对话 ID
- * @returns ~/.proma/attachments/{conversationId}/
+ * @returns ~/.workmate/attachments/{conversationId}/
  */
 export function getConversationAttachmentsDir(conversationId: string): string {
   const dir = join(getAttachmentsDir(), conversationId)
@@ -150,7 +168,7 @@ export function getConversationAttachmentsDir(conversationId: string): string {
  * 解析附件相对路径为完整路径
  *
  * @param localPath 相对路径 {conversationId}/{uuid}.ext
- * @returns 完整路径 ~/.proma/attachments/{conversationId}/{uuid}.ext
+ * @returns 完整路径 ~/.workmate/attachments/{conversationId}/{uuid}.ext
  */
 export function resolveAttachmentPath(localPath: string): string {
   return join(getAttachmentsDir(), localPath)
@@ -159,7 +177,7 @@ export function resolveAttachmentPath(localPath: string): string {
 /**
  * 获取应用设置文件路径
  *
- * @returns ~/.proma/settings.json
+ * @returns ~/.workmate/settings.json
  */
 export function getSettingsPath(): string {
   return join(getConfigDir(), 'settings.json')
@@ -168,7 +186,7 @@ export function getSettingsPath(): string {
 /**
  * 获取用户档案文件路径
  *
- * @returns ~/.proma/user-profile.json
+ * @returns ~/.workmate/user-profile.json
  */
 export function getUserProfilePath(): string {
   return join(getConfigDir(), 'user-profile.json')
@@ -177,7 +195,7 @@ export function getUserProfilePath(): string {
 /**
  * 获取代理配置文件路径
  *
- * @returns ~/.proma/proxy-settings.json
+ * @returns ~/.workmate/proxy-settings.json
  */
 export function getProxySettingsPath(): string {
   return join(getConfigDir(), 'proxy-settings.json')
@@ -186,7 +204,7 @@ export function getProxySettingsPath(): string {
 /**
  * 获取系统提示词配置文件路径
  *
- * @returns ~/.proma/system-prompts.json
+ * @returns ~/.workmate/system-prompts.json
  */
 export function getSystemPromptsPath(): string {
   return join(getConfigDir(), 'system-prompts.json')
@@ -195,7 +213,7 @@ export function getSystemPromptsPath(): string {
 /**
  * 获取记忆配置文件路径
  *
- * @returns ~/.proma/memory.json
+ * @returns ~/.workmate/memory.json
  */
 export function getMemoryConfigPath(): string {
   return join(getConfigDir(), 'memory.json')
@@ -204,7 +222,7 @@ export function getMemoryConfigPath(): string {
 /**
  * 获取 Chat 工具配置文件路径
  *
- * @returns ~/.proma/chat-tools.json
+ * @returns ~/.workmate/chat-tools.json
  */
 export function getChatToolsConfigPath(): string {
   return join(getConfigDir(), 'chat-tools.json')
@@ -213,7 +231,7 @@ export function getChatToolsConfigPath(): string {
 /**
  * 获取 Agent 会话索引文件路径
  *
- * @returns ~/.proma/agent-sessions.json
+ * @returns ~/.workmate/agent-sessions.json
  */
 export function getAgentSessionsIndexPath(): string {
   return join(getConfigDir(), 'agent-sessions.json')
@@ -224,7 +242,7 @@ export function getAgentSessionsIndexPath(): string {
  *
  * 如果目录不存在则自动创建。
  *
- * @returns ~/.proma/agent-sessions/
+ * @returns ~/.workmate/agent-sessions/
  */
 export function getAgentSessionsDir(): string {
   const dir = join(getConfigDir(), 'agent-sessions')
@@ -241,7 +259,7 @@ export function getAgentSessionsDir(): string {
  * 获取指定 Agent 会话的消息文件路径
  *
  * @param id 会话 ID
- * @returns ~/.proma/agent-sessions/{id}.jsonl
+ * @returns ~/.workmate/agent-sessions/{id}.jsonl
  */
 export function getAgentSessionMessagesPath(id: string): string {
   return join(getAgentSessionsDir(), `${id}.jsonl`)
@@ -250,7 +268,7 @@ export function getAgentSessionMessagesPath(id: string): string {
 /**
  * 获取 Agent 工作区索引文件路径
  *
- * @returns ~/.proma/agent-workspaces.json
+ * @returns ~/.workmate/agent-workspaces.json
  */
 export function getAgentWorkspacesIndexPath(): string {
   return join(getConfigDir(), 'agent-workspaces.json')
@@ -261,7 +279,7 @@ export function getAgentWorkspacesIndexPath(): string {
  *
  * 如果目录不存在则自动创建。
  *
- * @returns ~/.proma/agent-workspaces/
+ * @returns ~/.workmate/agent-workspaces/
  */
 export function getAgentWorkspacesDir(): string {
   const dir = join(getConfigDir(), 'agent-workspaces')
@@ -280,7 +298,7 @@ export function getAgentWorkspacesDir(): string {
  * 如果目录不存在则自动创建。
  *
  * @param slug 工作区 slug
- * @returns ~/.proma/agent-workspaces/{slug}/
+ * @returns ~/.workmate/agent-workspaces/{slug}/
  */
 export function getAgentWorkspacePath(slug: string): string {
   const dir = join(getAgentWorkspacesDir(), slug)
@@ -297,7 +315,7 @@ export function getAgentWorkspacePath(slug: string): string {
  * 获取指定工作区的 MCP 配置文件路径
  *
  * @param slug 工作区 slug
- * @returns ~/.proma/agent-workspaces/{slug}/mcp.json
+ * @returns ~/.workmate/agent-workspaces/{slug}/mcp.json
  */
 export function getWorkspaceMcpPath(slug: string): string {
   return join(getAgentWorkspacePath(slug), 'mcp.json')
@@ -309,7 +327,7 @@ export function getWorkspaceMcpPath(slug: string): string {
  * 如果目录不存在则自动创建。
  *
  * @param slug 工作区 slug
- * @returns ~/.proma/agent-workspaces/{slug}/skills/
+ * @returns ~/.workmate/agent-workspaces/{slug}/skills/
  */
 export function getWorkspaceSkillsDir(slug: string): string {
   const dir = join(getAgentWorkspacePath(slug), 'skills')
@@ -328,7 +346,7 @@ export function getWorkspaceSkillsDir(slug: string): string {
  * 如果目录不存在则自动创建。
  *
  * @param slug 工作区 slug
- * @returns ~/.proma/agent-workspaces/{slug}/workspace-files/
+ * @returns ~/.workmate/agent-workspaces/{slug}/workspace-files/
  */
 export function getWorkspaceFilesDir(slug: string): string {
   const dir = join(getAgentWorkspacePath(slug), 'workspace-files')
@@ -347,7 +365,7 @@ export function getWorkspaceFilesDir(slug: string): string {
  * 适用于 /now 等只读查询场景。
  *
  * @param slug 工作区 slug
- * @returns ~/.proma/agent-workspaces/{slug}/workspace-files/
+ * @returns ~/.workmate/agent-workspaces/{slug}/workspace-files/
  */
 export function resolveWorkspaceFilesDir(slug: string): string {
   return join(getConfigDir(), 'agent-workspaces', slug, 'workspace-files')
@@ -361,7 +379,7 @@ export function resolveWorkspaceFilesDir(slug: string): string {
  *
  * @param slug 工作区 slug
  * @param sessionId 会话 ID
- * @returns ~/.proma/agent-workspaces/{slug}/{sessionId}/
+ * @returns ~/.workmate/agent-workspaces/{slug}/{sessionId}/
  */
 export function resolveAgentSessionWorkspacePath(slug: string, sessionId: string): string {
   return join(getConfigDir(), 'agent-workspaces', slug, sessionId)
@@ -374,7 +392,7 @@ export function resolveAgentSessionWorkspacePath(slug: string, sessionId: string
  * 如果目录不存在则自动创建。
  *
  * @param slug 工作区 slug
- * @returns ~/.proma/agent-workspaces/{slug}/skills-inactive/
+ * @returns ~/.workmate/agent-workspaces/{slug}/skills-inactive/
  */
 export function getInactiveSkillsDir(slug: string): string {
   const dir = join(getAgentWorkspacePath(slug), 'skills-inactive')
@@ -391,7 +409,7 @@ export function getInactiveSkillsDir(slug: string): string {
  *
  * 新建工作区时自动复制此目录的内容到工作区 skills/ 下。
  *
- * @returns ~/.proma/default-skills/
+ * @returns ~/.workmate/default-skills/
  */
 export function getDefaultSkillsDir(): string {
   const dir = join(getConfigDir(), 'default-skills')
@@ -408,7 +426,7 @@ export function getDefaultSkillsDir(): string {
  *
  * 新建环境时自动复制此目录的内容到本地插件目录下。
  *
- * @returns ~/.proma/default-plugins/
+ * @returns ~/.workmate/default-plugins/
  */
 export function getDefaultPluginsDir(): string {
   const dir = join(getConfigDir(), 'default-plugins')
@@ -425,7 +443,7 @@ export function getDefaultPluginsDir(): string {
  *
  * 用户从插件市场安装的完整 Plugin 存放在此目录。
  *
- * @returns ~/.proma/user-plugins/
+ * @returns ~/.workmate/user-plugins/
  */
 export function getUserPluginsDir(): string {
   const dir = join(getConfigDir(), 'user-plugins')
@@ -440,7 +458,7 @@ export function getUserPluginsDir(): string {
 /**
  * 获取插件市场缓存目录路径
  *
- * @returns ~/.proma/plugin-marketplace-cache/
+ * @returns ~/.workmate/plugin-marketplace-cache/
  */
 export function getPluginMarketplaceCacheDir(): string {
   const dir = join(getConfigDir(), 'plugin-marketplace-cache')
@@ -457,7 +475,7 @@ export function getPluginMarketplaceCacheDir(): string {
  *
  * 用于生成带用户 MCP env overlay 的 local plugin 副本，避免修改原插件目录。
  *
- * @returns ~/.proma/plugin-runtime-cache/
+ * @returns ~/.workmate/plugin-runtime-cache/
  */
 export function getPluginRuntimeCacheDir(): string {
   const dir = join(getConfigDir(), 'plugin-runtime-cache')
@@ -472,7 +490,7 @@ export function getPluginRuntimeCacheDir(): string {
 /**
  * 获取插件启用状态配置文件路径
  *
- * @returns ~/.proma/plugins.json
+ * @returns ~/.workmate/plugins.json
  */
 export function getPluginsConfigPath(): string {
   return join(getConfigDir(), 'plugins.json')
@@ -481,7 +499,7 @@ export function getPluginsConfigPath(): string {
 /**
  * 获取插件市场配置文件路径
  *
- * @returns ~/.proma/plugin-marketplaces.json
+ * @returns ~/.workmate/plugin-marketplaces.json
  */
 export function getPluginMarketplacesPath(): string {
   return join(getConfigDir(), 'plugin-marketplaces.json')
@@ -564,7 +582,7 @@ function defaultSkillCopyFilter(src: string): boolean {
 }
 
 /**
- * 从 app bundle 同步默认 Skills 到 ~/.proma/default-skills/
+ * 从 app bundle 同步默认 Skills 到 ~/.workmate/default-skills/
  *
  * 打包模式下从 process.resourcesPath/default-skills 复制。
  * 开发模式下从源码 default-skills/ 目录复制。
@@ -625,7 +643,7 @@ export function seedDefaultSkills(): void {
 }
 
 /**
- * 从 app bundle 同步默认插件到 ~/.proma/default-plugins/
+ * 从 app bundle 同步默认插件到 ~/.workmate/default-plugins/
  *
  * 打包模式下从 process.resourcesPath/default-plugins 复制。
  * 开发模式下从源码 bundled-plugins/ 目录复制。
@@ -688,7 +706,7 @@ export function syncDefaultPluginsFromDir(bundledDir: string, userDir: string): 
 /**
  * 获取微信配置文件路径
  *
- * @returns ~/.proma/wechat.json
+ * @returns ~/.workmate/wechat.json
  */
 export function getWeChatConfigPath(): string {
   return join(getConfigDir(), 'wechat.json')
@@ -697,7 +715,7 @@ export function getWeChatConfigPath(): string {
 /**
  * 获取微信长轮询同步游标路径
  *
- * @returns ~/.proma/wechat-sync.json
+ * @returns ~/.workmate/wechat-sync.json
  */
 export function getWeChatSyncPath(): string {
   return join(getConfigDir(), 'wechat-sync.json')
@@ -706,7 +724,7 @@ export function getWeChatSyncPath(): string {
 /**
  * 获取钉钉配置文件路径
  *
- * @returns ~/.proma/dingtalk.json
+ * @returns ~/.workmate/dingtalk.json
  */
 export function getDingTalkConfigPath(): string {
   return join(getConfigDir(), 'dingtalk.json')
@@ -715,7 +733,7 @@ export function getDingTalkConfigPath(): string {
 /**
  * 获取飞书配置文件路径
  *
- * @returns ~/.proma/feishu.json
+ * @returns ~/.workmate/feishu.json
  */
 export function getFeishuConfigPath(): string {
   return join(getConfigDir(), 'feishu.json')
@@ -724,7 +742,7 @@ export function getFeishuConfigPath(): string {
 /**
  * 获取飞书聊天绑定持久化路径
  *
- * @returns ~/.proma/feishu-bindings.json
+ * @returns ~/.workmate/feishu-bindings.json
  */
 export function getFeishuBindingsPath(): string {
   return join(getConfigDir(), 'feishu-bindings.json')
@@ -733,7 +751,7 @@ export function getFeishuBindingsPath(): string {
 /**
  * 获取某个飞书 Bot 的聊天绑定持久化路径
  *
- * @returns ~/.proma/feishu-bindings-{botId}.json
+ * @returns ~/.workmate/feishu-bindings-{botId}.json
  */
 export function getFeishuBotBindingsPath(botId: string): string {
   return join(getConfigDir(), `feishu-bindings-${botId}.json`)
@@ -744,7 +762,7 @@ export function getFeishuBotBindingsPath(botId: string): string {
  *
  * 用于保存最近交互用户 open_id 等需要跨进程重启恢复的状态。
  *
- * @returns ~/.proma/feishu-metadata-{botId}.json
+ * @returns ~/.workmate/feishu-metadata-{botId}.json
  */
 export function getFeishuBotMetadataPath(botId: string): string {
   return join(getConfigDir(), `feishu-metadata-${botId}.json`)
@@ -758,7 +776,7 @@ export function getFeishuBotMetadataPath(botId: string): string {
  *
  * @param workspaceSlug 工作区 slug
  * @param sessionId 会话 ID
- * @returns ~/.proma/agent-workspaces/{slug}/{sessionId}/
+ * @returns ~/.workmate/agent-workspaces/{slug}/{sessionId}/
  */
 export function getAgentSessionWorkspacePath(workspaceSlug: string, sessionId: string): string {
   const dir = join(getAgentWorkspacePath(workspaceSlug), sessionId)
@@ -779,7 +797,7 @@ export function getAgentSessionWorkspacePath(workspaceSlug: string, sessionId: s
  *
  * 如果目录不存在则自动创建。
  *
- * @returns ~/.proma/sdk-config/
+ * @returns ~/.workmate/sdk-config/
  */
 export function getSdkConfigDir(): string {
   const dir = join(getConfigDir(), 'sdk-config')
@@ -795,7 +813,7 @@ export function getSdkConfigDir(): string {
 /**
  * 获取 Scratch Pad 文件路径
  *
- * @returns ~/.proma/scratch-pad.md
+ * @returns ~/.workmate/scratch-pad.md
  */
 export function getScratchPadPath(): string {
   return join(getConfigDir(), 'scratch-pad.md')

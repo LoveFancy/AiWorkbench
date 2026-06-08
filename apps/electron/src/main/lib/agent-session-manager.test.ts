@@ -17,10 +17,11 @@ mock.module('electron', () => ({
 }))
 
 beforeAll(() => {
+  clearConfigRootOverride()
   root = mkdtempSync(join(tmpdir(), 'proma-agent-sessions-'))
   process.env.HOME = root
   process.env.PROMA_DEV = '0'
-  setConfigRoot(join(root, '.proma-test'), { homeDir: root, configDirName: '.proma-dev' })
+  setConfigRoot(join(root, '.workmate-test'), { homeDir: root, configDirName: '.workmate-dev' })
 })
 
 afterAll(() => {

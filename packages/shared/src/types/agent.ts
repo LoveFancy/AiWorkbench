@@ -898,6 +898,8 @@ export interface AgentExpertGroupManifest {
   introduction?: string
   mainRole: AgentExpertGroupMainRole
   subagents?: string[]
+  /** WorkMate 内置工具声明，例如 web-search。运行时由 Orchestrator 注入对应 SDK MCP 工具。 */
+  builtinTools?: string[]
   skills?: string[]
   mcpServers?: string[]
   tags?: string[]

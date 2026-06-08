@@ -31,7 +31,7 @@ describe('系统根提示词', () => {
     expect(prompt).toContain('不要自行拼装 Python 安装流程')
   })
 
-  test('Agent 根提示词要求需要外部实时信息时主动使用联网检索 Skill', () => {
+  test('Agent 根提示词要求需要外部实时信息时主动使用 WorkMate 联网检索能力', () => {
     const prompt = buildSystemPrompt({
       sessionId: 'test-session',
       permissionMode: 'bypassPermissions',
@@ -41,6 +41,7 @@ describe('系统根提示词', () => {
 
     expect(prompt).toContain('## 联网检索策略')
     expect(prompt).toContain('当前、近期、外部公开信息')
+    expect(prompt).toContain('mcp__workmate-web-search__web_search')
     expect(prompt).toContain('web-search')
     expect(prompt).toContain('不要编造外部信息')
   })
@@ -80,6 +81,7 @@ describe('系统根提示词', () => {
             prompt: '你是产品专家团的主角色。',
           },
           subagents: ['requirement-analyst'],
+          builtinTools: ['web-search'],
           skills: ['prd-writer'],
           mcpServers: ['dpmp'],
           sourcePluginId: 'builtin:workmate-experts',
@@ -112,6 +114,7 @@ describe('系统根提示词', () => {
     expect(prompt).toContain('## 专家团模式')
     expect(prompt).toContain('当前专家团: 产品专家团')
     expect(prompt).toContain('requirement-analyst: 需求分析专家')
+    expect(prompt).toContain('mcp__workmate-web-search__web_search')
     expect(prompt).toContain('prd-writer')
     expect(prompt).toContain('dpmp')
     expect(prompt).toContain('可见思考过程、推理摘要和最终回复都优先使用中文')

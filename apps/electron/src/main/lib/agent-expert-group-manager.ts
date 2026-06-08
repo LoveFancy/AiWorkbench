@@ -11,6 +11,8 @@ import type {
 import { listInstalledPlugins } from './plugin-registry-service'
 import { getDefaultSkillsDir } from './config-paths'
 
+const SUPPORTED_BUILTIN_TOOLS = new Set(['web-search'])
+
 interface ExpertGroupRegistryPaths {
   builtinDir?: string
   userDir?: string
@@ -90,6 +92,7 @@ function normalizeExpertManifest(raw: unknown, filePath: string): { manifest?: A
         prompt: mainRolePrompt,
       },
       subagents: stringArray(raw.subagents),
+      builtinTools: stringArray(raw.builtinTools),
       skills: stringArray(raw.skills),
       mcpServers: stringArray(raw.mcpServers),
       tags: stringArray(raw.tags),
@@ -157,6 +160,15 @@ function validateExpertReferences(pluginPath: string, manifest: AgentExpertGroup
   }
 
   const defaultSkillsDir = paths?.defaultSkillsDir ?? getDefaultSkillsDir()
+  for (const toolName of manifest.builtinTools ?? []) {
+    if (!SUPPORTED_BUILTIN_TOOLS.has(toolName)) {
+      issues.push({
+        level: 'warning',
+        message: `未支持的内置工具: ${toolName}`,
+      })
+    }
+  }
+
   for (const skillName of manifest.skills ?? []) {
     if (!hasSkill(pluginPath, defaultSkillsDir, skillName)) {
       issues.push({

@@ -58,6 +58,7 @@ function createExpertPlugin(paths: TestPaths, name = 'workmate-experts'): string
         prompt: '你是产品专家团的主角色。',
       },
       subagents: ['requirement-analyst'],
+      builtinTools: ['web-search'],
       skills: ['prd-writer'],
       mcpServers: ['dpmp'],
       tags: ['PRD', 'Story'],
@@ -163,6 +164,7 @@ describe('Agent 专家团管理器', () => {
         maxTurns: 6,
       })
       expect(runtime?.promptHints).toContain('当任务需要 PRD、Story 时，优先考虑使用产品专家团。')
+      expect(runtime?.group.builtinTools).toEqual(['web-search'])
       expect(runtime?.mcpServers.dpmp).toMatchObject({ type: 'stdio', command: 'dpmp' })
       expect(runtime?.disallowedTools).toEqual(['WebSearch', 'WebFetch'])
     } finally {
@@ -236,6 +238,37 @@ describe('Agent 专家团管理器', () => {
       expect(groups[0]?.status).toBe('available')
       expect(groups[0]?.skills).toEqual(['web-search'])
       expect(groups[0]?.issues).toEqual([])
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('未知内置工具给出 warning 但不阻断专家团加载', () => {
+    const temp = tempRoot()
+    try {
+      createExpertPlugin(temp.paths)
+      writeFileSync(
+        join(temp.paths.builtinDir, 'workmate-experts', 'expert-groups', 'product-team.json'),
+        JSON.stringify({
+          id: 'product-team',
+          name: '产品专家团',
+          mainRole: {
+            name: '产品负责人',
+            prompt: '你是产品专家团的主角色。',
+          },
+          subagents: ['requirement-analyst'],
+          builtinTools: ['unknown-tool'],
+        }),
+        'utf-8',
+      )
+
+      const groups = listAgentExpertGroups(temp.paths)
+
+      expect(groups[0]?.status).toBe('available')
+      expect(groups[0]?.issues).toContainEqual({
+        level: 'warning',
+        message: '未支持的内置工具: unknown-tool',
+      })
     } finally {
       temp.cleanup()
     }
