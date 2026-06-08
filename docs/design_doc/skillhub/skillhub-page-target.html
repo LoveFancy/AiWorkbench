@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SkillHub 目标页面</title>
+<style>
+/* ===== 复刻 shadcn/ui dark 主题 CSS 变量 ===== */
+:root {
+  --background: hsl(0, 0%, 7%);          /* #121212 */
+  --foreground: hsl(0, 0%, 98%);         /* #fafafa */
+  --muted: hsl(0, 0%, 14.9%);            /* #262626 */
+  --muted-foreground: hsl(0, 0%, 63.9%); /* #a3a3a3 */
+  --border: hsl(0, 0%, 14.9%);           /* #262626 */
+  --input: hsl(0, 0%, 14.9%);
+  --ring: hsl(0, 0%, 83.1%);
+  --primary: hsl(0, 0%, 98%);
+  --primary-foreground: hsl(0, 0%, 9%);
+  --accent: hsl(0, 0%, 40%);
+  --accent-foreground: hsl(0, 0%, 98%);
+  --destructive: hsl(0, 55%, 45%);
+  --destructive-foreground: hsl(0, 0%, 98%);
+  --card: hsl(0, 0%, 7%);
+  --emerald: #16a34a;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--background); color: var(--foreground); padding: 24px; }
+
+.page { max-width: 1100px; margin: 0 auto; }
+.page-title { font-size: 20px; font-weight: 600; margin-bottom: 16px; color: var(--foreground); }
+
+/* ===== Auth Bar ===== */
+.auth-bar { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 10px 16px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; font-size: 13px; }
+.auth-left { display: flex; align-items: center; gap: 12px; }
+.auth-label { font-size: 12px; color: var(--muted-foreground); }
+.auth-env { display: flex; align-items: center; gap: 4px; }
+.auth-dot { width: 8px; height: 8px; border-radius: 50%; }
+.auth-dot.on { background: var(--emerald); box-shadow: 0 0 6px var(--emerald); }
+.auth-dot.off { background: var(--destructive); box-shadow: 0 0 6px var(--destructive); }
+.auth-sep { color: var(--border); }
+.auth-time { font-size: 11px; color: var(--muted-foreground); }
+.btn-refresh { background: var(--muted); border: 1px solid var(--border); color: var(--foreground); border-radius: 6px; padding: 5px 12px; font-size: 12px; cursor: pointer; }
+.btn-refresh:hover { background: hsl(0, 0%, 20%); }
+
+/* ===== Toolbar ===== */
+.toolbar { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 12px 16px; margin-bottom: 12px; display: flex; gap: 12px; align-items: center; }
+.search-wrap { flex: 1; position: relative; }
+.search-wrap input { width: 100%; background: var(--background); border: 1px solid var(--border); color: var(--foreground); border-radius: 6px; padding: 7px 12px 7px 34px; font-size: 13px; outline: none; }
+.search-wrap input:focus { border-color: hsl(0, 0%, 83.1%); }
+.search-wrap input::placeholder { color: var(--muted-foreground); }
+.search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--muted-foreground); font-size: 14px; }
+.cat-select { background: var(--background); border: 1px solid var(--border); color: var(--foreground); border-radius: 6px; padding: 7px 12px; font-size: 13px; outline: none; min-width: 170px; cursor: pointer; }
+.cat-select:focus { border-color: hsl(0, 0%, 83.1%); }
+.toolbar-stats { font-size: 12px; color: var(--muted-foreground); white-space: nowrap; }
+
+/* ===== Main ===== */
+.main { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; min-height: 560px; max-height: calc(100vh - 240px); background: var(--card); }
+
+/* ===== Left Panel ===== */
+.left { width: 320px; flex-shrink: 0; border-right: 1px solid var(--border); display: flex; flex-direction: column; background: hsl(0, 0%, 7% / 0.3); }
+.left-scroll { flex: 1; overflow-y: auto; }
+
+/* ===== Skill Card ===== */
+.card { padding: 14px 16px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background .15s; }
+.card:hover { background: hsl(0, 0%, 14.9% / 0.5); }
+.card.active { background: var(--accent); color: var(--accent-foreground); }
+.card.active .skill-desc, .card.active .skill-meta, .card.active .skill-tag { color: hsl(0, 0%, 80%); }
+.card.active .skill-name { color: var(--accent-foreground); }
+.card-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.card-name { font-size: 14px; font-weight: 600; color: var(--foreground); }
+.card-desc { font-size: 12px; color: var(--muted-foreground); margin-top: 4px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.card-meta { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 11px; color: hsl(0, 0%, 45%); }
+.card-tags { display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap; }
+.card-tag { font-size: 10px; padding: 1px 6px; border-radius: 4px; background: hsl(0, 0%, 18%); color: var(--muted-foreground); border: 1px solid var(--border); }
+.card-actions { display: flex; gap: 6px; margin-top: 8px; }
+
+/* ===== Badges ===== */
+.badge { font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 500; white-space: nowrap; flex-shrink: 0; }
+.badge.installed { background: hsl(142, 76%, 36% / 0.15); color: hsl(142, 76%, 36%); }
+.badge.uninstalled { background: var(--muted); color: var(--muted-foreground); }
+.badge.disabled { background: hsl(45, 93%, 47% / 0.15); color: hsl(45, 93%, 47%); }
+.badge.update { background: hsl(25, 95%, 53% / 0.15); color: hsl(25, 95%, 53%); }
+
+/* ===== Buttons ===== */
+.btn { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); cursor: pointer; font-weight: 500; transition: all .15s; background: transparent; color: var(--foreground); }
+.btn:hover { background: hsl(0, 0%, 25%); }
+.btn-sm { padding: 3px 8px; font-size: 10px; }
+.btn-primary { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground); }
+.btn-primary:hover { background: hsl(0, 0%, 85%); }
+.btn-destructive { color: var(--destructive); border-color: hsl(0, 55%, 45% / 0.3); }
+.btn-destructive:hover { background: hsl(0, 55%, 45% / 0.15); }
+.btn-warn { color: hsl(45, 93%, 47%); border-color: hsl(45, 93%, 47% / 0.3); }
+.btn-warn:hover { background: hsl(45, 93%, 47% / 0.15); }
+
+/* ===== Right Panel ===== */
+.right { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.preview-hd { padding: 20px 24px 16px; border-bottom: 1px solid var(--border); }
+.preview-name { font-size: 18px; font-weight: 700; color: var(--foreground); }
+.preview-desc { font-size: 13px; color: var(--muted-foreground); margin-top: 4px; }
+.preview-infos { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.preview-info { font-size: 11px; padding: 3px 10px; border-radius: 6px; background: var(--muted); color: var(--muted-foreground); }
+.preview-info.green { background: hsl(142, 76%, 36% / 0.15); color: hsl(142, 76%, 36%); }
+.preview-tags { display: flex; gap: 5px; margin-top: 8px; flex-wrap: wrap; }
+.preview-tag { font-size: 10px; padding: 2px 8px; border-radius: 4px; background: hsl(0, 0%, 98% / 0.08); color: hsl(0, 0%, 75%); border: 1px solid hsl(0, 0%, 98% / 0.15); }
+.preview-acts { display: flex; gap: 8px; margin-top: 12px; }
+.preview-body { flex: 1; overflow-y: auto; padding: 20px 24px; }
+.readme-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--muted-foreground); margin-bottom: 12px; }
+.readme { font-size: 13px; line-height: 1.7; color: hsl(0, 0%, 85%); }
+.readme h1 { font-size: 20px; color: var(--foreground); margin-bottom: 12px; font-weight: 600; }
+.readme h2 { font-size: 16px; color: hsl(0, 0%, 90%); margin: 16px 0 8px; font-weight: 600; }
+.readme p { margin-bottom: 10px; }
+.readme ul { padding-left: 20px; margin-bottom: 10px; }
+.readme li { margin-bottom: 4px; font-size: 13px; }
+.readme code { background: hsl(0, 0%, 18%); padding: 2px 6px; border-radius: 4px; font-size: 12px; color: hsl(260, 60%, 75%); }
+.readme pre { background: var(--background); border: 1px solid var(--border); border-radius: 6px; padding: 12px; overflow-x: auto; margin-bottom: 12px; }
+.readme pre code { background: none; padding: 0; color: hsl(0, 0%, 85%); }
+
+/* ===== Batch Bar ===== */
+.batch { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-top: 1px solid var(--border); background: var(--background); font-size: 12px; }
+.batch label { display: flex; align-items: center; gap: 6px; color: var(--muted-foreground); cursor: pointer; }
+.batch input[type=checkbox] { accent-color: hsl(0, 0%, 83.1%); }
+.batch-count { color: hsl(0, 0%, 50%); }
+.batch-acts { margin-left: auto; display: flex; gap: 6px; }
+
+.placeholder { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--muted-foreground); font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1 class="page-title">SkillHub · 目标页面</h1>
+
+  <!-- 认证状态栏 -->
+  <div class="auth-bar">
+    <div class="auth-left">
+      <span class="auth-label">认证状态：</span>
+      <span class="auth-env"><span class="auth-dot on"></span> test ✅</span>
+      <span class="auth-sep">|</span>
+      <span class="auth-env"><span class="auth-dot on"></span> prod ✅</span>
+      <span class="auth-time">· test 剩余 1h32m  · prod 剩余 1h28m</span>
+    </div>
+    <button class="btn-refresh">🔄 刷新</button>
+  </div>
+
+  <!-- 搜索 + 分类 -->
+  <div class="toolbar">
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input type="text" placeholder="模糊搜索 Skill 名称或描述...">
+    </div>
+    <select class="cat-select">
+      <option value="">📂 全部业务专区</option>
+      <option value="工具">工具</option>
+      <option value="AI">AI</option>
+      <option value="开发">开发</option>
+      <option value="文档">文档</option>
+    </select>
+    <span class="toolbar-stats">共 5 个 · 已安装 3</span>
+  </div>
+
+  <!-- 主区域 -->
+  <div class="main">
+
+    <!-- 左侧列表 -->
+    <div class="left">
+      <div class="left-scroll">
+
+        <!-- 1: 已安装·已启用 (选中) -->
+        <div class="card active">
+          <div class="card-header">
+            <span class="card-name">✨ code-review</span>
+            <span class="badge installed">已安装</span>
+          </div>
+          <div class="card-desc">自动审查代码质量，发现潜在的安全漏洞、代码坏味道和性能问题</div>
+          <div class="card-meta"><span>v1.2.0</span><span>·</span><span>工具</span><span>·</span><span>⬇ 1.2k</span></div>
+          <div class="card-tags"><span class="card-tag">AI</span><span class="card-tag">审查</span><span class="card-tag">代码</span></div>
+          <div class="card-actions">
+            <button class="btn btn-sm">🔍 预览</button>
+            <button class="btn btn-sm">🗑️ 卸载</button>
+            <button class="btn btn-sm">⏸ 禁用</button>
+          </div>
+        </div>
+
+        <!-- 2: 已安装·已禁用 -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-name">✨ web-search</span>
+            <span class="badge disabled">已禁用</span>
+          </div>
+          <div class="card-desc">将网络搜索能力集成到 Agent 中，支持多种搜索引擎</div>
+          <div class="card-meta"><span>v2.0.1</span><span>·</span><span>AI</span><span>·</span><span>⬇ 3.4k</span></div>
+          <div class="card-tags"><span class="card-tag">搜索</span><span class="card-tag">联网</span></div>
+          <div class="card-actions">
+            <button class="btn btn-sm">🔍 预览</button>
+            <button class="btn btn-sm">🗑️ 卸载</button>
+            <button class="btn btn-sm">▶️ 启用</button>
+          </div>
+        </div>
+
+        <!-- 3: 未安装 -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-name">✨ pptx-creator</span>
+            <span class="badge uninstalled">未安装</span>
+          </div>
+          <div class="card-desc">快速生成精美的 PPT 演示文稿，支持多种模板和自定义样式</div>
+          <div class="card-meta"><span>v1.5.0</span><span>·</span><span>文档</span><span>·</span><span>⬇ 890</span></div>
+          <div class="card-tags"><span class="card-tag">PPT</span><span class="card-tag">演示</span></div>
+          <div class="card-actions">
+            <button class="btn btn-sm">🔍 预览</button>
+            <button class="btn btn-primary btn-sm">⬇️ 安装</button>
+          </div>
+        </div>
+
+        <!-- 4: 有更新 -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-name">✨ xlsx-helper</span>
+            <span class="badge update">有更新</span>
+          </div>
+          <div class="card-desc">Excel 数据处理助手，支持公式计算、数据清洗和批量导出</div>
+          <div class="card-meta"><span>v1.2.0 → v2.0.0</span><span>·</span><span>工具</span><span>·</span><span>⬇ 2.1k</span></div>
+          <div class="card-tags"><span class="card-tag">Excel</span><span class="card-tag">数据处理</span></div>
+          <div class="card-actions">
+            <button class="btn btn-sm">🔍 预览</button>
+            <button class="btn btn-warn btn-sm">⬆️ 更新</button>
+            <button class="btn btn-sm">🗑️ 卸载</button>
+          </div>
+        </div>
+
+        <!-- 5: 未安装 -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-name">✨ drawio-skill</span>
+            <span class="badge uninstalled">未安装</span>
+          </div>
+          <div class="card-desc">使用 Draw.io 创建流程图、架构图和 UML 图表</div>
+          <div class="card-meta"><span>v0.9.0</span><span>·</span><span>开发</span><span>·</span><span>⬇ 560</span></div>
+          <div class="card-tags"><span class="card-tag">图表</span><span class="card-tag">架构</span><span class="card-tag">UML</span></div>
+          <div class="card-actions">
+            <button class="btn btn-sm">🔍 预览</button>
+            <button class="btn btn-primary btn-sm">⬇️ 安装</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 批量操作栏 -->
+      <div class="batch">
+        <label><input type="checkbox"><span>全选</span></label>
+        <span class="batch-count">(0/5)</span>
+        <div class="batch-acts">
+          <button class="btn btn-sm" disabled>⬇️ 批量安装</button>
+          <button class="btn btn-sm" disabled>🗑️ 批量卸载</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右侧详情面板 -->
+    <div class="right">
+      <div class="preview-hd">
+        <div class="preview-name">✨ code-review</div>
+        <div class="preview-desc">自动审查代码质量，发现潜在的安全漏洞、代码坏味道和性能问题</div>
+        <div class="preview-infos">
+          <span class="preview-info">v1.2.0</span>
+          <span class="preview-info">📂 工具</span>
+          <span class="preview-info">⬇ 1.2k 下载</span>
+          <span class="preview-info">👤 k0892142</span>
+          <span class="preview-info green">已安装</span>
+        </div>
+        <div class="preview-tags">
+          <span class="preview-tag">AI</span>
+          <span class="preview-tag">审查</span>
+          <span class="preview-tag">代码</span>
+        </div>
+        <div class="preview-acts">
+          <button class="btn">🔍 预览</button>
+          <button class="btn">🗑️ 卸载</button>
+          <button class="btn">⏸ 禁用</button>
+          <button class="btn">🔍 检查更新</button>
+        </div>
+      </div>
+      <div class="preview-body">
+        <div class="readme-label">README</div>
+        <div class="readme">
+          <h1>代码审查助手</h1>
+          <p>自动审查代码质量，发现潜在的安全漏洞、代码坏味道和性能问题。</p>
+          <h2>功能</h2>
+          <ul>
+            <li><strong>安全审查</strong> — 检测 SQL 注入、XSS、敏感信息泄露等安全问题</li>
+            <li><strong>代码规范</strong> — 检查命名规范、代码结构、注释完整性</li>
+            <li><strong>性能分析</strong> — 识别 N+1 查询、内存泄漏、不必要的重复计算</li>
+            <li><strong>最佳实践</strong> — 推荐设计模式、错误处理、测试覆盖率建议</li>
+          </ul>
+          <h2>使用方式</h2>
+          <p>在 Agent 对话中提及 <code>@code-review</code> 即可触发审查，或者直接说"帮我审查一下这段代码"。</p>
+          <h2>环境变量</h2>
+          <pre><code># 可选：指定审查规则集
+REVIEW_RULESET=strict
+
+# 可选：忽略特定规则
+REVIEW_IGNORE=no-unused-vars,no-console</code></pre>
+          <h2>版本历史</h2>
+          <ul>
+            <li><strong>v1.2.0</strong> — 新增 Go 语言支持，优化 Rust 审查规则</li>
+            <li><strong>v1.1.0</strong> — 支持自定义规则集</li>
+            <li><strong>v1.0.0</strong> — 初始版本，支持 JS/TS/Python</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>
