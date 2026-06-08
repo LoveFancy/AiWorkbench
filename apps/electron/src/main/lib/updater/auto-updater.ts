@@ -15,7 +15,7 @@ import {
   loadManifest, saveManifest, deleteManifest, deleteInstaller, getInstallerPath,
 } from './workmate-manifest'
 import { isValidVersionDirection } from './workmate-version'
-import { getToken } from '../../auth'
+import { getToken } from '../../../auth'
 
 // ===== 状态管理 =====
 
