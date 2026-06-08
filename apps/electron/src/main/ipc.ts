@@ -9,7 +9,7 @@ import { join, resolve, sep, dirname } from 'node:path'
 import { existsSync, realpathSync, rmSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { IPC_CHANNELS, CHANNEL_IPC_CHANNELS, CHAT_IPC_CHANNELS, AGENT_IPC_CHANNELS, ENVIRONMENT_IPC_CHANNELS, INSTALLER_IPC_CHANNELS, PROXY_IPC_CHANNELS, GITHUB_RELEASE_IPC_CHANNELS, SYSTEM_PROMPT_IPC_CHANNELS, MEMORY_IPC_CHANNELS, CHAT_TOOL_IPC_CHANNELS, FEISHU_IPC_CHANNELS, DINGTALK_IPC_CHANNELS, WECHAT_IPC_CHANNELS, AUTOMATION_IPC_CHANNELS, isPromaPermissionMode } from '@proma/shared'
+import { IPC_CHANNELS, CHANNEL_IPC_CHANNELS, CHAT_IPC_CHANNELS, AGENT_IPC_CHANNELS, ENVIRONMENT_IPC_CHANNELS, INSTALLER_IPC_CHANNELS, PROXY_IPC_CHANNELS, GITHUB_RELEASE_IPC_CHANNELS, SYSTEM_PROMPT_IPC_CHANNELS, MEMORY_IPC_CHANNELS, CHAT_TOOL_IPC_CHANNELS, FEISHU_IPC_CHANNELS, DINGTALK_IPC_CHANNELS, WECHAT_IPC_CHANNELS, AUTOMATION_IPC_CHANNELS, SYSTEM_LOG_IPC_CHANNELS, isPromaPermissionMode } from '@proma/shared'
 import { USER_PROFILE_IPC_CHANNELS, SETTINGS_IPC_CHANNELS, SCRATCH_PAD_IPC_CHANNELS, QUICK_TASK_IPC_CHANNELS, VOICE_DICTATION_IPC_CHANNELS, APP_ICON_IPC_CHANNELS, DOCK_BADGE_IPC_CHANNELS, STORAGE_IPC_CHANNELS } from '../types'
 import type {
   QuickTaskSubmitInput,
@@ -125,6 +125,8 @@ import type {
   Automation,
   CreateAutomationInput,
   UpdateAutomationInput,
+  SystemLogReadInput,
+  SystemLogReadResult,
 } from '@proma/shared'
 import type { UserProfile, AppSettings, ConfigRootInfo } from '../types'
 import { getRuntimeStatus, getGitRepoStatus, reinitializeRuntime } from './lib/runtime-init'
@@ -168,6 +170,7 @@ import { getTutorialContent, createWelcomeConversation } from './lib/tutorial-se
 import { getUserProfile, updateUserProfile } from './lib/user-profile-service'
 import { getSettings, updateSettings } from './lib/settings-service'
 import { setDockBadgeCount } from './lib/dock-badge-service'
+import { readSystemLogFile } from './lib/system-log-service'
 
 import { checkEnvironment } from './lib/environment-checker'
 import { fetchInstallerManifest, findInstallerSource } from './lib/installer-manifest'
@@ -938,6 +941,30 @@ export function registerIpcHandlers(): void {
     }
   )
 
+  // 读取系统日志。只允许读取固定日志文件，具体目录由 Electron app.getPath('logs') 决定。
+  ipcMain.handle(
+    SYSTEM_LOG_IPC_CHANNELS.READ,
+    async (_, input: SystemLogReadInput): Promise<SystemLogReadResult> => {
+      if (!input || (input.file !== 'main' && input.file !== 'renderer')) {
+        console.warn('[IPC] system-log:read 收到无效日志类型')
+        return readSystemLogFile({ logsDir: app.getPath('logs'), file: 'main' })
+      }
+      return readSystemLogFile({
+        logsDir: app.getPath('logs'),
+        file: input.file,
+        maxBytes: input.maxBytes,
+      })
+    }
+  )
+
+  // 打开系统日志目录，便于用户复制完整日志给开发者。
+  ipcMain.handle(
+    SYSTEM_LOG_IPC_CHANNELS.OPEN_DIR,
+    async (): Promise<void> => {
+      await shell.openPath(app.getPath('logs'))
+    }
+  )
+
   // 用系统默认应用打开任意文件（appName 需在 KNOWN_EDITORS 白名单内）
   ipcMain.handle(
     IPC_CHANNELS.SYSTEM_OPEN_FILE,
@@ -1477,6 +1504,16 @@ export function registerIpcHandlers(): void {
     SETTINGS_IPC_CHANNELS.RESET_CONFIG_ROOT,
     async (): Promise<ConfigRootInfo> => {
       return resetConfigRoot({ configDirName: getConfigDirName() })
+    }
+  )
+
+  // 完整重启应用，确保进程级数据目录缓存被清空并重新读取 bootstrap
+  ipcMain.handle(
+    SETTINGS_IPC_CHANNELS.RELAUNCH_APP,
+    async (): Promise<void> => {
+      console.log('[设置] 用户请求重启应用以应用数据目录变更')
+      app.relaunch()
+      setImmediate(() => app.exit(0))
     }
   )
 
@@ -2211,6 +2248,28 @@ export function registerIpcHandlers(): void {
     async (_, pluginId: string): Promise<void> => {
       const { uninstallUserPlugin } = await import('./lib/plugin-registry-service')
       uninstallUserPlugin(pluginId)
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.INSTALL_PLUGIN_ZIP,
+    async (event): Promise<AgentPluginInfo | null> => {
+      const sourceWindow = BrowserWindow.fromWebContents(event.sender)
+      const result = sourceWindow
+        ? await dialog.showOpenDialog(sourceWindow, {
+          title: '选择插件 Zip 安装包',
+          properties: ['openFile'],
+          filters: [{ name: 'Plugin Zip', extensions: ['zip'] }],
+        })
+        : await dialog.showOpenDialog({
+          title: '选择插件 Zip 安装包',
+          properties: ['openFile'],
+          filters: [{ name: 'Plugin Zip', extensions: ['zip'] }],
+        })
+      if (result.canceled || result.filePaths.length === 0) return null
+
+      const { installUserPluginZip } = await import('./lib/plugin-registry-service')
+      return installUserPluginZip(result.filePaths[0]!)
     }
   )
 

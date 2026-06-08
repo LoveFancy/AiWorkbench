@@ -6,7 +6,7 @@
  */
 
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import { IPC_CHANNELS, CHANNEL_IPC_CHANNELS, CHAT_IPC_CHANNELS, AGENT_IPC_CHANNELS, ENVIRONMENT_IPC_CHANNELS, INSTALLER_IPC_CHANNELS, PROXY_IPC_CHANNELS, GITHUB_RELEASE_IPC_CHANNELS, SYSTEM_PROMPT_IPC_CHANNELS, MEMORY_IPC_CHANNELS, CHAT_TOOL_IPC_CHANNELS, FEISHU_IPC_CHANNELS, DINGTALK_IPC_CHANNELS, WECHAT_IPC_CHANNELS, AUTOMATION_IPC_CHANNELS } from '@proma/shared'
+import { IPC_CHANNELS, CHANNEL_IPC_CHANNELS, CHAT_IPC_CHANNELS, AGENT_IPC_CHANNELS, ENVIRONMENT_IPC_CHANNELS, INSTALLER_IPC_CHANNELS, PROXY_IPC_CHANNELS, GITHUB_RELEASE_IPC_CHANNELS, SYSTEM_PROMPT_IPC_CHANNELS, MEMORY_IPC_CHANNELS, CHAT_TOOL_IPC_CHANNELS, FEISHU_IPC_CHANNELS, DINGTALK_IPC_CHANNELS, WECHAT_IPC_CHANNELS, AUTOMATION_IPC_CHANNELS, SYSTEM_LOG_IPC_CHANNELS } from '@proma/shared'
 import { USER_PROFILE_IPC_CHANNELS, SETTINGS_IPC_CHANNELS, SCRATCH_PAD_IPC_CHANNELS, APP_ICON_IPC_CHANNELS, DOCK_BADGE_IPC_CHANNELS, STORAGE_IPC_CHANNELS } from '../types'
 import type {
   RuntimeStatus,
@@ -119,6 +119,8 @@ import type {
   Automation,
   CreateAutomationInput,
   UpdateAutomationInput,
+  SystemLogReadInput,
+  SystemLogReadResult,
 } from '@proma/shared'
 import type {
   UserProfile,
@@ -199,6 +201,12 @@ export interface ElectronAPI {
 
   /** 在系统默认浏览器中打开外部链接 */
   openExternal: (url: string) => Promise<void>
+
+  /** 读取应用系统日志 */
+  readSystemLog: (input: SystemLogReadInput) => Promise<SystemLogReadResult>
+
+  /** 打开应用系统日志目录 */
+  openSystemLogDir: () => Promise<void>
 
   // ===== 窗口控制（Windows 自定义标题栏）=====
 
@@ -359,6 +367,9 @@ export interface ElectronAPI {
 
   /** 恢复默认应用数据目录 */
   resetConfigRoot: () => Promise<ConfigRootInfo>
+
+  /** 完整重启应用 */
+  relaunchApp: () => Promise<void>
 
   /** 获取系统主题（是否深色模式） */
   getSystemTheme: () => Promise<boolean>
@@ -528,6 +539,8 @@ export interface ElectronAPI {
   setAgentPluginEnabled: (pluginId: string, enabled: boolean) => Promise<void>
   /** 卸载用户安装的 Agent 插件 */
   uninstallAgentPlugin: (pluginId: string) => Promise<void>
+  /** 从 zip 包直接安装用户 Agent 插件 */
+  installAgentPluginZip: () => Promise<AgentPluginInfo | null>
   /** 列出插件市场 */
   listAgentPluginMarketplaces: () => Promise<AgentPluginMarketplace[]>
   /** 添加插件市场 */
@@ -1185,6 +1198,14 @@ const electronAPI: ElectronAPI = {
     return ipcRenderer.invoke(IPC_CHANNELS.OPEN_EXTERNAL, url)
   },
 
+  readSystemLog: (input: SystemLogReadInput) => {
+    return ipcRenderer.invoke(SYSTEM_LOG_IPC_CHANNELS.READ, input)
+  },
+
+  openSystemLogDir: () => {
+    return ipcRenderer.invoke(SYSTEM_LOG_IPC_CHANNELS.OPEN_DIR)
+  },
+
   // 窗口控制
   windowMinimize: () => {
     return ipcRenderer.invoke(IPC_CHANNELS.WINDOW_MINIMIZE)
@@ -1394,6 +1415,10 @@ const electronAPI: ElectronAPI = {
 
   resetConfigRoot: () => {
     return ipcRenderer.invoke(SETTINGS_IPC_CHANNELS.RESET_CONFIG_ROOT)
+  },
+
+  relaunchApp: () => {
+    return ipcRenderer.invoke(SETTINGS_IPC_CHANNELS.RELAUNCH_APP)
   },
 
   getSystemTheme: () => {
@@ -1637,6 +1662,10 @@ const electronAPI: ElectronAPI = {
 
   uninstallAgentPlugin: (pluginId: string) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.UNINSTALL_PLUGIN, pluginId)
+  },
+
+  installAgentPluginZip: () => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.INSTALL_PLUGIN_ZIP)
   },
 
   listAgentPluginMarketplaces: () => {

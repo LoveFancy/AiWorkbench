@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { ExpertGroupStatusBadge } from './ExpertGroupStatusBadge'
+import { getExpertSubagentLabel } from './expert-group-subagents'
 
 interface ExpertGroupDetailDialogProps {
   group: AgentExpertGroupInfo | null
@@ -58,7 +59,12 @@ export function ExpertGroupDetailDialog({ group, open, onOpenChange, onSummon }:
                 <h4 className="text-sm font-medium">专家成员</h4>
                 <div className="mt-2 flex flex-wrap gap-2">
                   <Badge variant="outline">{group.mainRole.name}</Badge>
-                  {(group.subagents ?? []).map((agent) => <Badge key={agent} variant="outline"><Bot size={12} className="mr-1" />{agent}</Badge>)}
+                  {(group.subagents ?? []).map((agent) => (
+                    <Badge key={agent} variant="outline" title={`调用名: ${agent}`}>
+                      <Bot size={12} className="mr-1" />
+                      {getExpertSubagentLabel(group, agent)}
+                    </Badge>
+                  ))}
                 </div>
               </section>
 

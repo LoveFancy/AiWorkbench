@@ -51,6 +51,14 @@ function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0) : []
 }
 
+function stringRecord(value: unknown): Record<string, string> | undefined {
+  if (!isRecord(value)) return undefined
+  const entries = Object.entries(value)
+    .filter((entry): entry is [string, string] => entry[0].trim().length > 0 && typeof entry[1] === 'string' && entry[1].trim().length > 0)
+    .map(([key, label]) => [key.trim(), label.trim()] as const)
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined
+}
+
 function positiveInteger(value: unknown): number | undefined {
   if (typeof value !== 'string' && typeof value !== 'number') return undefined
   const parsed = typeof value === 'number' ? value : Number.parseInt(value, 10)
@@ -61,7 +69,7 @@ function readJson(filePath: string): unknown {
   return JSON.parse(readFileSync(filePath, 'utf-8')) as unknown
 }
 
-function normalizeExpertManifest(raw: unknown, filePath: string): { manifest?: AgentExpertGroupManifest; issues: ExpertIssue[] } {
+function normalizeExpertManifest(raw: unknown, filePath: string, groupName: string): { manifest?: AgentExpertGroupManifest; issues: ExpertIssue[] } {
   if (!isRecord(raw)) {
     return { issues: [{ level: 'error', message: '专家团配置不是 JSON 对象' }] }
   }
@@ -69,11 +77,12 @@ function normalizeExpertManifest(raw: unknown, filePath: string): { manifest?: A
   const issues: ExpertIssue[] = []
   const mainRole = isRecord(raw.mainRole) ? raw.mainRole : {}
   const id = typeof raw.id === 'string' && raw.id.trim() ? raw.id.trim() : basename(filePath, '.json')
-  const name = typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim() : ''
+  const name = groupName.trim()
   const mainRoleName = typeof mainRole.name === 'string' && mainRole.name.trim() ? mainRole.name.trim() : ''
   const mainRolePrompt = typeof mainRole.prompt === 'string' && mainRole.prompt.trim() ? mainRole.prompt.trim() : ''
+  const subagentLabels = stringRecord(raw.subagentLabels)
 
-  if (!name) issues.push({ level: 'error', message: '专家团缺少 name' })
+  if (!name) issues.push({ level: 'error', message: '专家团缺少插件名称' })
   if (!mainRoleName) issues.push({ level: 'error', message: '专家团缺少 mainRole.name' })
   if (!mainRolePrompt) issues.push({ level: 'error', message: '专家团缺少 mainRole.prompt' })
 
@@ -92,6 +101,7 @@ function normalizeExpertManifest(raw: unknown, filePath: string): { manifest?: A
         prompt: mainRolePrompt,
       },
       subagents: stringArray(raw.subagents),
+      ...(subagentLabels && { subagentLabels }),
       builtinTools: stringArray(raw.builtinTools),
       skills: stringArray(raw.skills),
       mcpServers: stringArray(raw.mcpServers),
@@ -109,9 +119,9 @@ function normalizeExpertManifest(raw: unknown, filePath: string): { manifest?: A
   }
 }
 
-function readExpertManifest(filePath: string): { manifest?: AgentExpertGroupManifest; issues: ExpertIssue[] } {
+function readExpertManifest(filePath: string, groupName: string): { manifest?: AgentExpertGroupManifest; issues: ExpertIssue[] } {
   try {
-    return normalizeExpertManifest(readJson(filePath), filePath)
+    return normalizeExpertManifest(readJson(filePath), filePath, groupName)
   } catch (error) {
     return {
       issues: [{ level: 'error', message: `解析专家团配置失败: ${error instanceof Error ? error.message : String(error)}` }],
@@ -201,11 +211,11 @@ export function listAgentExpertGroups(paths?: ExpertGroupRegistryPaths): AgentEx
     const capabilities = plugin.capabilities.filter((capability) => capability.type === 'expert-group' && capability.relativePath)
     for (const capability of capabilities) {
       const filePath = join(plugin.path, capability.relativePath!)
-      const { manifest, issues } = readExpertManifest(filePath)
+      const { manifest, issues } = readExpertManifest(filePath, plugin.name)
       if (!manifest) {
         groups.push({
           id: capability.name,
-          name: capability.description ?? capability.name,
+          name: plugin.name,
           mainRole: { name: '', prompt: '' },
           sourcePluginId: plugin.id,
           sourceLabel: plugin.name,

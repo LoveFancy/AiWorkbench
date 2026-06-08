@@ -31,7 +31,7 @@ function tempRoot(): { root: string; paths: TestPaths; cleanup: () => void } {
   }
 }
 
-function createExpertPlugin(paths: TestPaths, name = 'workmate-experts'): string {
+function createExpertPlugin(paths: TestPaths, name = 'architecture-decision-team', displayName = '产品专家团'): string {
   const pluginDir = join(paths.builtinDir, name)
   mkdirSync(join(pluginDir, '.claude-plugin'), { recursive: true })
   mkdirSync(join(pluginDir, 'expert-groups'), { recursive: true })
@@ -40,9 +40,9 @@ function createExpertPlugin(paths: TestPaths, name = 'workmate-experts'): string
   writeFileSync(
     join(pluginDir, '.claude-plugin', 'plugin.json'),
     JSON.stringify({
-      name,
+      name: displayName,
       version: '1.0.0',
-      expertGroups: ['product-team'],
+      expertGroup: 'product-team',
     }),
     'utf-8',
   )
@@ -50,7 +50,7 @@ function createExpertPlugin(paths: TestPaths, name = 'workmate-experts'): string
     join(pluginDir, 'expert-groups', 'product-team.json'),
     JSON.stringify({
       id: 'product-team',
-      name: '产品专家团',
+      name: 'JSON 内部专家团名',
       description: '把想法整理成需求、PRD 和 Story。',
       introduction: '我是产品专家团，会先帮你梳理目标、约束和可行动方案。',
       mainRole: {
@@ -58,6 +58,9 @@ function createExpertPlugin(paths: TestPaths, name = 'workmate-experts'): string
         prompt: '你是产品专家团的主角色。',
       },
       subagents: ['requirement-analyst'],
+      subagentLabels: {
+        'requirement-analyst': '需求分析专家',
+      },
       builtinTools: ['web-search'],
       skills: ['prd-writer'],
       mcpServers: ['dpmp'],
@@ -100,8 +103,8 @@ describe('Agent 专家团管理器', () => {
       expect(groups[0]).toMatchObject({
         id: 'product-team',
         name: '产品专家团',
-        sourcePluginId: 'builtin:workmate-experts',
-        sourceLabel: 'workmate-experts',
+        sourcePluginId: 'builtin:architecture-decision-team',
+        sourceLabel: '产品专家团',
         sourcePluginVersion: '1.0.0',
         enabled: true,
         status: 'available',
@@ -115,7 +118,7 @@ describe('Agent 专家团管理器', () => {
     const temp = tempRoot()
     try {
       createExpertPlugin(temp.paths)
-      setPluginEnabled('builtin:workmate-experts', false, temp.paths)
+      setPluginEnabled('builtin:architecture-decision-team', false, temp.paths)
 
       const groups = listAgentExpertGroups(temp.paths)
 
@@ -134,12 +137,15 @@ describe('Agent 专家团管理器', () => {
 
       const group = getAgentExpertGroup({
         expertGroupId: 'product-team',
-        expertPluginId: 'builtin:workmate-experts',
+        expertPluginId: 'builtin:architecture-decision-team',
       }, temp.paths)
 
       expect(group?.mainRole.name).toBe('产品负责人')
       expect(group?.introduction).toBe('我是产品专家团，会先帮你梳理目标、约束和可行动方案。')
       expect(group?.tags).toEqual(['PRD', 'Story'])
+      expect(group?.subagentLabels).toEqual({
+        'requirement-analyst': '需求分析专家',
+      })
     } finally {
       temp.cleanup()
     }
@@ -152,7 +158,7 @@ describe('Agent 专家团管理器', () => {
 
       const runtime = resolveExpertGroupRuntime({
         expertGroupId: 'product-team',
-        expertPluginId: 'builtin:workmate-experts',
+        expertPluginId: 'builtin:architecture-decision-team',
       }, temp.paths)
 
       expect(runtime?.mainPrompt).toBe('你是产品专家团的主角色。')
@@ -176,12 +182,12 @@ describe('Agent 专家团管理器', () => {
     const temp = tempRoot()
     try {
       createExpertPlugin(temp.paths)
-      rmSync(join(temp.paths.builtinDir, 'workmate-experts', 'agents', 'requirement-analyst.md'))
+      rmSync(join(temp.paths.builtinDir, 'architecture-decision-team', 'agents', 'requirement-analyst.md'))
 
       const groups = listAgentExpertGroups(temp.paths)
       const runtime = resolveExpertGroupRuntime({
         expertGroupId: 'product-team',
-        expertPluginId: 'builtin:workmate-experts',
+        expertPluginId: 'builtin:architecture-decision-team',
       }, temp.paths)
 
       expect(groups[0]?.status).toBe('missing_subagent')
@@ -196,7 +202,7 @@ describe('Agent 专家团管理器', () => {
     const temp = tempRoot()
     try {
       createExpertPlugin(temp.paths)
-      rmSync(join(temp.paths.builtinDir, 'workmate-experts', 'skills', 'prd-writer'), { recursive: true, force: true })
+      rmSync(join(temp.paths.builtinDir, 'architecture-decision-team', 'skills', 'prd-writer'), { recursive: true, force: true })
 
       const groups = listAgentExpertGroups(temp.paths)
 
@@ -218,7 +224,7 @@ describe('Agent 专家团管理器', () => {
         'utf-8',
       )
       writeFileSync(
-        join(temp.paths.builtinDir, 'workmate-experts', 'expert-groups', 'product-team.json'),
+        join(temp.paths.builtinDir, 'architecture-decision-team', 'expert-groups', 'product-team.json'),
         JSON.stringify({
           id: 'product-team',
           name: '产品专家团',
@@ -231,7 +237,7 @@ describe('Agent 专家团管理器', () => {
         }),
         'utf-8',
       )
-      rmSync(join(temp.paths.builtinDir, 'workmate-experts', 'skills', 'prd-writer'), { recursive: true, force: true })
+      rmSync(join(temp.paths.builtinDir, 'architecture-decision-team', 'skills', 'prd-writer'), { recursive: true, force: true })
 
       const groups = listAgentExpertGroups(temp.paths)
 
@@ -248,7 +254,7 @@ describe('Agent 专家团管理器', () => {
     try {
       createExpertPlugin(temp.paths)
       writeFileSync(
-        join(temp.paths.builtinDir, 'workmate-experts', 'expert-groups', 'product-team.json'),
+        join(temp.paths.builtinDir, 'architecture-decision-team', 'expert-groups', 'product-team.json'),
         JSON.stringify({
           id: 'product-team',
           name: '产品专家团',

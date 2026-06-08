@@ -872,7 +872,9 @@ export interface AgentPluginManifest {
   repository?: string
   license?: string
   keywords?: string[]
-  /** 插件声明的专家团 ID 快速索引，对应 expert-groups/{id}.json */
+  /** 插件声明的唯一专家团 ID，对应 expert-groups/{id}.json */
+  expertGroup?: string
+  /** @deprecated 兼容旧插件；运行时只读取第一个专家团 ID。 */
   expertGroups?: string[]
 }
 
@@ -904,6 +906,8 @@ export interface AgentExpertGroupManifest {
   introduction?: string
   mainRole: AgentExpertGroupMainRole
   subagents?: string[]
+  /** SubAgent 调用名到中文显示名的映射；调用 SDK 时仍使用 subagents 中的英文 ID。 */
+  subagentLabels?: Record<string, string>
   /** WorkMate 内置工具声明，例如 web-search。运行时由 Orchestrator 注入对应 SDK MCP 工具。 */
   builtinTools?: string[]
   skills?: string[]
@@ -1649,6 +1653,8 @@ export const AGENT_IPC_CHANNELS = {
   SET_PLUGIN_ENABLED: 'agent:set-plugin-enabled',
   /** 卸载用户安装的 Agent 插件 */
   UNINSTALL_PLUGIN: 'agent:uninstall-plugin',
+  /** 从 zip 包直接安装用户 Agent 插件 */
+  INSTALL_PLUGIN_ZIP: 'agent:install-plugin-zip',
   /** 列出插件市场 */
   LIST_PLUGIN_MARKETPLACES: 'agent:list-plugin-marketplaces',
   /** 添加插件市场 */

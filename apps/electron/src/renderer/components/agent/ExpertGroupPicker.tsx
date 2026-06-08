@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { ExpertGroupCard } from '@/components/expert-groups/ExpertGroupCard'
 import { ExpertGroupDetailDialog } from '@/components/expert-groups/ExpertGroupDetailDialog'
+import { getExpertGroupSearchTerms } from '@/components/expert-groups/expert-group-subagents'
 
 interface ExpertGroupPickerProps {
   open: boolean
@@ -27,16 +28,7 @@ function matchesGroup(group: AgentExpertGroupInfo, query: string): boolean {
   const normalized = query.trim().toLowerCase()
   if (!normalized) return true
 
-  return [
-    group.name,
-    group.description,
-    group.mainRole.name,
-    group.sourceLabel,
-    ...(group.tags ?? []),
-    ...(group.subagents ?? []),
-    ...(group.skills ?? []),
-  ].filter((item): item is string => typeof item === 'string')
-    .some((item) => item.toLowerCase().includes(normalized))
+  return getExpertGroupSearchTerms(group).some((item) => item.toLowerCase().includes(normalized))
 }
 
 export function ExpertGroupPicker({
@@ -73,7 +65,7 @@ export function ExpertGroupPicker({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-3xl gap-4 p-0">
+        <DialogContent className="w-[min(92vw,1180px)] max-w-6xl gap-3 p-0">
           <DialogHeader className="px-5 pt-5">
             <div className="flex items-start justify-between gap-3 pr-8">
               <div>
@@ -82,7 +74,7 @@ export function ExpertGroupPicker({
                   召唤专家
                 </DialogTitle>
                 <DialogDescription className="mt-2">
-                  选择专家团后会创建一个新的 Agent 会话，并绑定对应的主角色、SubAgents 和插件能力。
+                  选择一个专家团，创建带专属主角色和协作能力的新 Agent 会话。
                 </DialogDescription>
               </div>
               <Button
@@ -99,7 +91,7 @@ export function ExpertGroupPicker({
           </DialogHeader>
 
           <div className="px-5">
-            <div className="relative">
+            <div className="relative max-w-xl">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={query}
@@ -110,21 +102,21 @@ export function ExpertGroupPicker({
             </div>
           </div>
 
-          <ScrollArea className="max-h-[560px] px-5 pb-5">
+          <ScrollArea className="max-h-[68vh] px-5 pb-5">
             {visibleGroups.length === 0 ? (
               <div className="rounded-lg bg-muted/50 px-4 py-10 text-center">
                 <Sparkles className="mx-auto size-8 text-muted-foreground" />
                 <p className="mt-3 text-sm text-muted-foreground">暂无匹配的专家团</p>
               </div>
             ) : (
-              <div className="space-y-5">
+              <div className="space-y-4">
                 {availableGroups.length > 0 && (
-                  <section className="space-y-3">
+                  <section className="space-y-2">
                     <div className="flex items-center justify-between">
                       <h3 className="text-sm font-medium">可召唤</h3>
                       <span className="text-xs text-muted-foreground">{availableGroups.length}</span>
                     </div>
-                    <div className="grid gap-3 md:grid-cols-2">
+                    <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                       {availableGroups.map((group) => (
                         <ExpertGroupCard
                           key={`${group.sourcePluginId}:${group.id}`}
@@ -139,12 +131,12 @@ export function ExpertGroupPicker({
                 )}
 
                 {issueGroups.length > 0 && (
-                  <section className="space-y-3">
+                  <section className="space-y-2">
                     <div className="flex items-center justify-between">
                       <h3 className="text-sm font-medium">不可召唤</h3>
                       <span className="text-xs text-muted-foreground">{issueGroups.length}</span>
                     </div>
-                    <div className="grid gap-3 md:grid-cols-2">
+                    <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                       {issueGroups.map((group) => (
                         <ExpertGroupCard
                           key={`${group.sourcePluginId}:${group.id}`}

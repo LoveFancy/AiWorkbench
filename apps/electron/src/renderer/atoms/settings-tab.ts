@@ -11,7 +11,7 @@
 
 import { atom } from 'jotai'
 
-export type SettingsTab = 'general' | 'channels' | 'proxy' | 'appearance' | 'about' | 'agent' | 'experts' | 'plugins' | 'prompts' | 'tools' | 'usage-log' | 'bots' | 'tutorial' | 'shortcuts' | 'voice-input' | 'migration' | 'storage'
+export type SettingsTab = 'general' | 'channels' | 'proxy' | 'appearance' | 'about' | 'agent' | 'experts' | 'plugins' | 'prompts' | 'tools' | 'usage-log' | 'system-log' | 'bots' | 'tutorial' | 'shortcuts' | 'voice-input' | 'migration' | 'storage'
 
 /** 当前设置标签页（不持久化，每次打开设置默认显示渠道） */
 export const settingsTabAtom = atom<SettingsTab>('channels')

@@ -554,7 +554,9 @@ function buildExpertModeSummary(runtime: ExpertGroupRuntime): string {
   if (agentEntries.length > 0) {
     lines.push('- 可调度 SubAgent:')
     for (const [name, agent] of agentEntries) {
-      lines.push(`  - ${name}: ${agent.description}`)
+      const displayName = runtime.group.subagentLabels?.[name]
+      const label = displayName ? `${displayName} (${name})` : name
+      lines.push(`  - ${label}: ${agent.description}`)
     }
   }
 

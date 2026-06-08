@@ -43,11 +43,11 @@ describe('Agent 会话管理器专家团绑定', () => {
       'channel-1',
       undefined,
       'product-team',
-      'builtin:workmate-experts',
+      'builtin:architecture-decision-team',
     )
 
     expect(session.expertGroupId).toBe('product-team')
-    expect(session.expertPluginId).toBe('builtin:workmate-experts')
+    expect(session.expertPluginId).toBe('builtin:architecture-decision-team')
   })
 
   test('创建专家团会话时写入自我介绍消息', async () => {
@@ -58,7 +58,7 @@ describe('Agent 会话管理器专家团绑定', () => {
       'channel-1',
       undefined,
       'product-team',
-      'builtin:workmate-experts',
+      'builtin:architecture-decision-team',
       '我是产品专家团，会先帮你梳理目标、约束和可行动方案。',
     )
 
@@ -85,7 +85,7 @@ describe('Agent 会话管理器专家团绑定', () => {
       'channel-1',
       undefined,
       'product-team',
-      'builtin:workmate-experts',
+      'builtin:architecture-decision-team',
     )
 
     expect(() => updateAgentSessionMeta(

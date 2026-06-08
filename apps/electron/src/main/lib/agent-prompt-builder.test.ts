@@ -81,15 +81,18 @@ describe('系统根提示词', () => {
             prompt: '你是产品专家团的主角色。',
           },
           subagents: ['requirement-analyst'],
+          subagentLabels: {
+            'requirement-analyst': '需求分析专家',
+          },
           builtinTools: ['web-search'],
           skills: ['prd-writer'],
           mcpServers: ['dpmp'],
-          sourcePluginId: 'builtin:workmate-experts',
-          sourceLabel: 'workmate-experts',
+          sourcePluginId: 'builtin:architecture-decision-team',
+          sourceLabel: '产品专家团',
           sourcePluginVersion: '1.0.0',
           sourcePluginKind: 'builtin',
-          sourcePluginPath: '/tmp/workmate-experts',
-          filePath: '/tmp/workmate-experts/expert-groups/product-team.json',
+          sourcePluginPath: '/tmp/architecture-decision-team',
+          filePath: '/tmp/architecture-decision-team/expert-groups/product-team.json',
           enabled: true,
           status: 'available',
           issues: [],
@@ -102,7 +105,7 @@ describe('系统根提示词', () => {
             tools: ['Read'],
           },
         },
-        pluginPaths: [{ type: 'local', path: '/tmp/workmate-experts' }],
+        pluginPaths: [{ type: 'local', path: '/tmp/architecture-decision-team' }],
         mcpServers: {
           dpmp: { type: 'stdio', command: 'dpmp', enabled: true },
         },
@@ -113,7 +116,7 @@ describe('系统根提示词', () => {
     expect(prompt).toContain('你是产品专家团的主角色。')
     expect(prompt).toContain('## 专家团模式')
     expect(prompt).toContain('当前专家团: 产品专家团')
-    expect(prompt).toContain('requirement-analyst: 需求分析专家')
+    expect(prompt).toContain('需求分析专家 (requirement-analyst): 需求分析专家')
     expect(prompt).toContain('mcp__workmate-web-search__web_search')
     expect(prompt).toContain('prd-writer')
     expect(prompt).toContain('dpmp')
@@ -128,12 +131,12 @@ describe('系统根提示词', () => {
           id: 'product-team',
           name: '产品专家团',
           mainRole: { name: '产品负责人', prompt: '主角色' },
-          sourcePluginId: 'builtin:workmate-experts',
-          sourceLabel: 'workmate-experts',
+          sourcePluginId: 'builtin:architecture-decision-team',
+          sourceLabel: '产品专家团',
           sourcePluginVersion: '1.0.0',
           sourcePluginKind: 'builtin',
-          sourcePluginPath: '/tmp/workmate-experts',
-          filePath: '/tmp/workmate-experts/expert-groups/product-team.json',
+          sourcePluginPath: '/tmp/architecture-decision-team',
+          filePath: '/tmp/architecture-decision-team/expert-groups/product-team.json',
           enabled: true,
           status: 'available',
           issues: [],

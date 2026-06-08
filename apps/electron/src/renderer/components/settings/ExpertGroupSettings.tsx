@@ -12,21 +12,13 @@ import {
 } from '@/atoms/agent-atoms'
 import { ExpertGroupCard } from '@/components/expert-groups/ExpertGroupCard'
 import { ExpertGroupDetailDialog } from '@/components/expert-groups/ExpertGroupDetailDialog'
+import { getExpertGroupSearchTerms } from '@/components/expert-groups/expert-group-subagents'
 import { useOpenSession } from '@/hooks/useOpenSession'
 
 function matchesGroup(group: AgentExpertGroupInfo, query: string): boolean {
   const normalized = query.trim().toLowerCase()
   if (!normalized) return true
-  return [
-    group.name,
-    group.description,
-    group.mainRole.name,
-    group.sourceLabel,
-    ...(group.tags ?? []),
-    ...(group.subagents ?? []),
-    ...(group.skills ?? []),
-  ].filter((item): item is string => typeof item === 'string')
-    .some((item) => item.toLowerCase().includes(normalized))
+  return getExpertGroupSearchTerms(group).some((item) => item.toLowerCase().includes(normalized))
 }
 
 interface GroupSectionProps {

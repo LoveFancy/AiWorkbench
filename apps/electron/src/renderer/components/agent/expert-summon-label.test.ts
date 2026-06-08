@@ -13,12 +13,12 @@ const architectureGroup: AgentExpertGroupInfo = {
   id: 'architecture-decision-team',
   name: '架构决策专家团',
   mainRole: { name: '主架构师', prompt: 'prompt' },
-  sourcePluginId: 'builtin:workmate-experts',
-  sourceLabel: 'workmate-experts',
+  sourcePluginId: 'builtin:architecture-decision-team',
+  sourceLabel: '架构决策专家团',
   sourcePluginVersion: '1.0.0',
   sourcePluginKind: 'builtin',
-  sourcePluginPath: '/plugins/workmate-experts',
-  filePath: '/plugins/workmate-experts/expert-groups/architecture-decision-team.json',
+  sourcePluginPath: '/plugins/architecture-decision-team',
+  filePath: '/plugins/architecture-decision-team/expert-groups/architecture-decision-team.json',
   enabled: true,
   status: 'available',
   issues: [],
@@ -32,6 +32,6 @@ test('专家会话显示绑定的专家团名称', () => {
   expect(getExpertSummonDisplayName({
     ...baseSession,
     expertGroupId: 'architecture-decision-team',
-    expertPluginId: 'builtin:workmate-experts',
+    expertPluginId: 'builtin:architecture-decision-team',
   }, [architectureGroup])).toBe('架构决策专家团')
 })

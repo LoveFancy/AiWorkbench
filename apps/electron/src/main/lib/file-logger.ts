@@ -26,7 +26,7 @@ interface RendererWindowLike {
 }
 
 const CONSOLE_METHODS: ConsoleMethod[] = ['debug', 'error', 'info', 'log', 'warn']
-export const DEFAULT_MAX_LOG_BYTES = 50 * 1024 * 1024
+export const DEFAULT_MAX_LOG_BYTES = 10 * 1024 * 1024
 
 let activeLogsDir: string | null = null
 let originalConsole: Partial<Record<ConsoleMethod, (...data: unknown[]) => void>> | null = null
@@ -100,6 +100,15 @@ function appendRollingFile(filePath: string, line: string, maxBytes: number): vo
   writeFileSync(filePath, tail + line, 'utf-8')
 }
 
+function trimExistingLogFile(filePath: string, maxBytes: number): void {
+  if (!existsSync(filePath)) return
+  const currentSize = statSync(filePath).size
+  if (currentSize <= maxBytes) return
+
+  const currentText = readFileSync(filePath, 'utf-8')
+  writeFileSync(filePath, trimTextToMaxBytesFromEnd(currentText, maxBytes), 'utf-8')
+}
+
 function appendLog(logsDir: string, fileName: string, level: string, values: unknown[], maxBytes = DEFAULT_MAX_LOG_BYTES): void {
   try {
     mkdirSync(logsDir, { recursive: true })
@@ -117,6 +126,9 @@ export function installFileLogger(logsDir: string, options: FileLoggerOptions = 
   activeMaxBytes = options.maxBytes ?? DEFAULT_MAX_LOG_BYTES
   shouldMirrorToConsole = options.mirrorToConsole ?? true
   originalConsole = {}
+
+  trimExistingLogFile(join(logsDir, 'main.log'), activeMaxBytes)
+  trimExistingLogFile(join(logsDir, 'renderer.log'), activeMaxBytes)
 
   for (const method of CONSOLE_METHODS) {
     originalConsole[method] = console[method].bind(console)

@@ -69,6 +69,12 @@ describe('插件安装更新进行中状态', () => {
     expect(pluginSettingsSource).toContain('disabled={isPending}')
     expect(pluginSettingsSource).toContain('animate-spin')
   })
+
+  test('Installed 页支持上传 zip 直接安装用户插件', () => {
+    expect(pluginSettingsSource).toContain('uploadingPluginZip')
+    expect(pluginSettingsSource).toContain('installAgentPluginZip')
+    expect(pluginSettingsSource).toContain('上传 Zip')
+  })
 })
 
 describe('插件市场分支配置', () => {
@@ -89,5 +95,13 @@ describe('插件市场分支配置', () => {
     expect(pluginSettingsSource).toContain('title={marketplace.source}')
     expect(pluginSettingsSource).toContain('CopyValueButton value={marketplace.source} label="插件市场地址"')
     expect(pluginSettingsSource).toContain('navigator.clipboard.writeText(value)')
+  })
+
+  test('市场页使用宽主工作区承载插件清单', () => {
+    expect(pluginSettingsSource).toContain("type MarketplaceDetailTab = 'plugins' | 'installed' | 'settings'")
+    expect(pluginSettingsSource).toContain('xl:grid-cols-[280px_minmax(0,1fr)]')
+    expect(pluginSettingsSource).toContain('市场插件')
+    expect(pluginSettingsSource).toContain('配置')
+    expect(pluginSettingsSource).not.toContain('xl:grid-cols-[minmax(0,1fr)_340px]')
   })
 })

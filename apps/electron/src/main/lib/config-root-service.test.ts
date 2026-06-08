@@ -79,6 +79,20 @@ describe('config-root-service', () => {
     expect(bootstrap.customConfigDir).toBe(customDir)
   })
 
+  test('保存后模拟完整进程重启会使用新目录并清除待生效状态', () => {
+    const homeDir = createTempHome()
+    const customDir = join(homeDir, 'proma-data')
+    resolveConfigDir({ homeDir, configDirName: '.workmate-dev' })
+    setConfigRoot(customDir, { homeDir, configDirName: '.workmate-dev' })
+
+    clearConfigRootOverride()
+    const info = getConfigRootInfo({ homeDir, configDirName: '.workmate-dev' })
+
+    expect(info.currentPath).toBe(customDir)
+    expect(info.pendingPath).toBeUndefined()
+    expect(info.requiresRestart).toBe(false)
+  })
+
   test('reset 后恢复默认目录配置', () => {
     const homeDir = createTempHome()
     const customDir = join(homeDir, 'proma-data')

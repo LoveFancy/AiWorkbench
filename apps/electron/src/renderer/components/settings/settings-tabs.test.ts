@@ -30,12 +30,14 @@ test('Chat 工具入口在设置页导航中可见', () => {
   expect(agentTabs.find((tab) => tab.id === 'tools')?.label).toBe('Chat 工具')
 })
 
-test('用量日志入口在设置页导航中可见', () => {
+test('系统日志入口在设置页导航中可见', () => {
   const generalTabs = getSettingsTabs('chat')
   const agentTabs = getSettingsTabs('agent')
 
-  expect(generalTabs.find((tab) => tab.id === 'usage-log')?.label).toBe('用量日志')
-  expect(agentTabs.find((tab) => tab.id === 'usage-log')?.label).toBe('用量日志')
+  expect(generalTabs.find((tab) => tab.id === 'system-log')?.label).toBe('系统日志')
+  expect(agentTabs.find((tab) => tab.id === 'system-log')?.label).toBe('系统日志')
+  expect(generalTabs.at(-1)?.id).toBe('system-log')
+  expect(agentTabs.at(-1)?.id).toBe('system-log')
 })
 
 test('Agent 模式下 Skill 和 MCP 配置入口文案正确', () => {
@@ -61,7 +63,7 @@ test('Agent 模式下专家团入口可见', () => {
 })
 
 test('隐藏非公开设置入口', () => {
-  const hiddenTabIds = ['voice-input', 'bots', 'migration']
+  const hiddenTabIds = ['voice-input', 'bots', 'migration', 'usage-log']
   const generalTabs = getSettingsTabs('chat')
   const agentTabs = getSettingsTabs('agent')
 

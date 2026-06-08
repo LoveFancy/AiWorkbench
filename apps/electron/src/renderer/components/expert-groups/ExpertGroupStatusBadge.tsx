@@ -14,7 +14,11 @@ const STATUS_LABELS: Record<AgentExpertGroupStatus, string> = {
 
 export function ExpertGroupStatusBadge({ status }: { status: AgentExpertGroupStatus }): React.ReactElement {
   if (status === 'available') {
-    return <Badge variant="secondary">{STATUS_LABELS[status]}</Badge>
+    return (
+      <Badge className="border-transparent bg-emerald-100 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-300">
+        {STATUS_LABELS[status]}
+      </Badge>
+    )
   }
   return <Badge variant="destructive">{STATUS_LABELS[status]}</Badge>
 }

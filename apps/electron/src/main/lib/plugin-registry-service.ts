@@ -5,8 +5,10 @@
  * 生成 SDK local plugin path 列表。
  */
 
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import AdmZip from 'adm-zip'
 import type {
   AgentPluginCapability,
   AgentPluginCapabilitySummary,
@@ -33,6 +35,11 @@ interface PluginRegistryPaths {
 interface PluginRuntimePath {
   type: 'local'
   path: string
+}
+
+interface InstallUserPluginZipOptions extends PluginRegistryPaths {
+  overwrite?: boolean
+  tempRoot?: string
 }
 
 interface PluginMcpServerDefinition {
@@ -75,6 +82,14 @@ function readJsonFile(filePath: string): unknown {
   return JSON.parse(readFileSync(filePath, 'utf-8')) as unknown
 }
 
+function pluginSlug(value: string, label: string): string {
+  const trimmed = value.trim()
+  if (!/^[a-zA-Z0-9._-]+$/.test(trimmed) || trimmed.startsWith('.')) {
+    throw new Error(`${label} 只能包含字母、数字、点、下划线和短横线`)
+  }
+  return trimmed
+}
+
 function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
 }
@@ -105,6 +120,7 @@ function normalizeManifest(raw: unknown, fallbackName: string): AgentPluginManif
     ...(typeof record.repository === 'string' && { repository: record.repository }),
     ...(typeof record.license === 'string' && { license: record.license }),
     keywords: stringArray(record.keywords),
+    ...(typeof record.expertGroup === 'string' && record.expertGroup.trim() && { expertGroup: record.expertGroup.trim() }),
     expertGroups: stringArray(record.expertGroups),
   }
 }
@@ -244,14 +260,13 @@ function discoverMcp(pluginPath: string, pluginId: string, sourceLabel: string, 
   }
 }
 
-function readExpertGroupTitle(filePath: string): { title?: string; issue?: AgentPluginCapability['issue'] } {
+function validateExpertGroupFile(filePath: string): { issue?: AgentPluginCapability['issue'] } {
   try {
     const raw = readJsonFile(filePath)
     if (!isRecord(raw)) {
       return { issue: { level: 'error', message: `专家团配置不是 JSON 对象: ${filePath}` } }
     }
-    const name = typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim() : undefined
-    return { ...(name && { title: name }) }
+    return {}
   } catch (error) {
     return {
       issue: {
@@ -270,60 +285,52 @@ function discoverExpertGroups(
   manifest: AgentPluginManifest,
 ): AgentPluginCapability[] {
   const groupsDir = join(pluginPath, 'expert-groups')
-  const indexed = new Set(manifest.expertGroups ?? [])
-  const discovered = new Set<string>()
-  const capabilities: AgentPluginCapability[] = []
+  const declaredGroups = manifest.expertGroup
+    ? [manifest.expertGroup]
+    : manifest.expertGroups ?? []
+  const discoveredGroups = existsSync(groupsDir)
+    ? readdirSync(groupsDir, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
+      .map((entry) => entry.name.replace(/\.json$/i, ''))
+      .sort((a, b) => a.localeCompare(b))
+    : []
+  const groupId = declaredGroups[0] ?? discoveredGroups[0]
 
-  for (const id of indexed) {
-    const relativePath = `expert-groups/${id}.json`
-    const filePath = join(pluginPath, relativePath)
-    discovered.add(id)
-    if (!existsSync(filePath)) {
-      capabilities.push({
-        type: 'expert-group',
-        name: id,
-        sourcePluginId: pluginId,
-        sourceLabel,
-        relativePath,
-        enabled,
-        issue: { level: 'error', message: `插件声明的专家团不存在: ${relativePath}` },
-      })
-      continue
-    }
-    const { title, issue } = readExpertGroupTitle(filePath)
-    capabilities.push({
+  if (!groupId) return []
+
+  const extraGroups = [
+    ...declaredGroups.slice(1),
+    ...discoveredGroups.filter((id) => id !== groupId),
+  ]
+  const warningMessage = extraGroups.length > 0
+    ? `每个插件只能声明一个专家团，已使用 ${groupId}，忽略 ${Array.from(new Set(extraGroups)).join('、')}`
+    : undefined
+  const relativePath = `expert-groups/${groupId}.json`
+  const filePath = join(pluginPath, relativePath)
+
+  if (!existsSync(filePath)) {
+    return [{
       type: 'expert-group',
-      name: id,
+      name: groupId,
       sourcePluginId: pluginId,
       sourceLabel,
       relativePath,
-      ...(title && { description: title }),
       enabled,
-      ...(issue && { issue }),
-    })
+      issue: { level: 'error', message: `插件声明的专家团不存在: ${relativePath}` },
+    }]
   }
 
-  if (!existsSync(groupsDir)) return capabilities
-
-  for (const entry of readdirSync(groupsDir, { withFileTypes: true })) {
-    if (!entry.isFile() || !entry.name.endsWith('.json')) continue
-    const id = entry.name.replace(/\.json$/i, '')
-    if (discovered.has(id)) continue
-    const relativePath = `expert-groups/${entry.name}`
-    const { title, issue } = readExpertGroupTitle(join(groupsDir, entry.name))
-    capabilities.push({
-      type: 'expert-group',
-      name: id,
-      sourcePluginId: pluginId,
-      sourceLabel,
-      relativePath,
-      ...(title && { description: title }),
-      enabled,
-      issue: issue ?? { level: 'warning', message: `专家团未在 plugin.json 的 expertGroups 中声明: ${id}` },
-    })
-  }
-
-  return capabilities
+  const { issue } = validateExpertGroupFile(filePath)
+  return [{
+    type: 'expert-group',
+    name: groupId,
+    sourcePluginId: pluginId,
+    sourceLabel,
+    relativePath,
+    description: sourceLabel,
+    enabled,
+    ...(issue ? { issue } : warningMessage ? { issue: { level: 'warning', message: warningMessage } } : {}),
+  }]
 }
 
 function normalizeMcpEntry(raw: unknown): McpServerEntry | null {
@@ -624,6 +631,118 @@ export function buildPluginRuntimePaths(paths?: PluginRegistryPaths): PluginRunt
       const runtimeDir = hasConfiguredMcpEnv(plugin, config) ? resolveRuntimeDir(resolved) : ''
       return { type: 'local' as const, path: runtimePluginPath(plugin, config, runtimeDir) }
     })
+}
+
+function extractPluginZipSafely(zipPath: string, extractDir: string): void {
+  const zip = new AdmZip(zipPath)
+
+  for (const entry of zip.getEntries()) {
+    const entryName = entry.entryName
+    const targetPath = resolve(extractDir, entryName)
+    const rel = relative(extractDir, targetPath)
+
+    if (!entryName || entryName.startsWith('/') || rel.startsWith('..') || isAbsolute(rel)) {
+      throw new Error('插件 zip 包包含不安全路径')
+    }
+
+    if (entry.isDirectory) {
+      mkdirSync(targetPath, { recursive: true })
+      continue
+    }
+
+    mkdirSync(dirname(targetPath), { recursive: true })
+    writeFileSync(targetPath, entry.getData())
+  }
+}
+
+function resolveExtractedPluginRoot(extractDir: string): string {
+  const rootManifestPath = join(extractDir, '.claude-plugin', 'plugin.json')
+  if (existsSync(rootManifestPath)) return extractDir
+
+  const pluginDirs = readdirSync(extractDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => join(extractDir, entry.name))
+    .filter((dir) => existsSync(join(dir, '.claude-plugin', 'plugin.json')))
+
+  if (pluginDirs.length === 1) return pluginDirs[0]!
+  throw new Error('插件 zip 包必须包含 .claude-plugin/plugin.json')
+}
+
+function resolvePluginInstallSlug(pluginRoot: string, extractDir: string, manifest: AgentPluginManifest): string {
+  if (pluginRoot !== extractDir) return pluginSlug(basename(pluginRoot), '插件目录名')
+  return pluginSlug(manifest.name, '插件名称')
+}
+
+function copyPluginAtomically(sourceDir: string, targetDir: string, overwrite: boolean): 'installed' | 'overwritten' {
+  const existed = existsSync(targetDir)
+  if (existed && !overwrite) throw new Error(`插件已存在: ${basename(targetDir)}`)
+
+  const parent = dirname(targetDir)
+  const tmp = join(parent, `.${basename(targetDir)}.installing-${Date.now()}`)
+  mkdirSync(parent, { recursive: true })
+  rmSync(tmp, { recursive: true, force: true })
+  cpSync(sourceDir, tmp, { recursive: true })
+
+  try {
+    if (existed) rmSync(targetDir, { recursive: true, force: true })
+    renameSync(tmp, targetDir)
+  } catch (error) {
+    rmSync(tmp, { recursive: true, force: true })
+    if (!existed) rmSync(targetDir, { recursive: true, force: true })
+    throw error
+  }
+
+  return existed ? 'overwritten' : 'installed'
+}
+
+export function installUserPluginZip(zipPath: string, options: InstallUserPluginZipOptions = {}): AgentPluginInfo {
+  if (!zipPath.toLowerCase().endsWith('.zip')) {
+    throw new Error('请选择 .zip 格式的插件包')
+  }
+  if (!existsSync(zipPath)) {
+    throw new Error(`插件 zip 包不存在: ${zipPath}`)
+  }
+
+  const resolved = registryPaths(options)
+  const tempRoot = options.tempRoot ?? tmpdir()
+  const extractDir = join(tempRoot, `proma-plugin-${Date.now()}`)
+
+  try {
+    mkdirSync(extractDir, { recursive: true })
+    extractPluginZipSafely(zipPath, extractDir)
+
+    const pluginRoot = resolveExtractedPluginRoot(extractDir)
+    const manifest = normalizeManifest(readJsonFile(join(pluginRoot, '.claude-plugin', 'plugin.json')), basename(pluginRoot))
+    const installSlug = resolvePluginInstallSlug(pluginRoot, extractDir, manifest)
+    const marketplaceId = 'local'
+    const pluginId = `user:${marketplaceId}/${installSlug}`
+    const targetDir = join(resolved.userDir, marketplaceId, installSlug)
+    const targetRel = relative(resolved.userDir, targetDir)
+    if (targetRel.startsWith('..') || isAbsolute(targetRel)) {
+      throw new Error('插件名称包含不安全路径')
+    }
+
+    const status = copyPluginAtomically(pluginRoot, targetDir, options.overwrite ?? false)
+    const config = readPluginsConfig({ configPath: resolved.configPath })
+    const previous = config.plugins[pluginId]
+    const now = new Date().toISOString()
+    config.plugins[pluginId] = {
+      ...previous,
+      enabled: previous?.enabled ?? true,
+      installedAt: previous?.installedAt ?? now,
+      updatedAt: status === 'overwritten' ? now : previous?.updatedAt,
+      sourceMarketplaceId: marketplaceId,
+      version: manifest.version,
+    }
+    writePluginsConfig(config, { configPath: resolved.configPath })
+
+    return {
+      ...pluginInfoFromPath('user', targetDir, pluginId, config),
+      sourceMarketplaceId: marketplaceId,
+    }
+  } finally {
+    rmSync(extractDir, { recursive: true, force: true })
+  }
 }
 
 export function uninstallUserPlugin(pluginId: string, paths?: PluginRegistryPaths): void {

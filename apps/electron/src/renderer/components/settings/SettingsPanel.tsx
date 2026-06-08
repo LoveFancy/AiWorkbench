@@ -35,6 +35,7 @@ import { PromptSettings } from "./PromptSettings";
 import { StorageSettings } from "./StorageSettings";
 import { ToolSettings } from "./ToolSettings";
 import { UsageLogSettings } from "./UsageLogSettings";
+import { SystemLogSettings } from "./SystemLogSettings";
 import { PluginSettings } from "./PluginSettings";
 import { ExpertGroupSettings } from "./ExpertGroupSettings";
 import { TutorialViewer } from "../tutorial/TutorialViewer";
@@ -59,6 +60,8 @@ function renderTabContent(tab: SettingsTab): React.ReactElement {
       return <ToolSettings />;
     case "usage-log":
       return <UsageLogSettings />;
+    case "system-log":
+      return <SystemLogSettings />;
     case "plugins":
       return <PluginSettings />;
     case "experts":
@@ -193,9 +196,15 @@ export function SettingsPanel({
         </div>
 
         {/* 右侧内容区域 */}
-        <ScrollArea className="flex-1">
-          <div className="px-6 py-4">{renderTabContent(activeTab)}</div>
-        </ScrollArea>
+        {activeTab === 'system-log' ? (
+          <div className="flex-1 min-w-0 min-h-0 px-6 py-4">
+            {renderTabContent(activeTab)}
+          </div>
+        ) : (
+          <ScrollArea className="flex-1">
+            <div className="px-6 py-4">{renderTabContent(activeTab)}</div>
+          </ScrollArea>
+        )}
       </div>
 
       {/* 退出拦截弹窗（侧边栏导航 / X 关闭 / Cmd+W） */}

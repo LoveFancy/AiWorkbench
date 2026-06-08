@@ -1,6 +1,6 @@
 {
-  "name": "workmate-experts",
-  "version": "0.1.9",
+  "name": "架构决策专家团",
+  "version": "0.1.11",
   "description": "WorkMate 内置专家团能力包",
   "author": {
     "name": "WorkMate"
@@ -12,7 +12,5 @@
     "architecture",
     "agent"
   ],
-  "expertGroups": [
-    "architecture-decision-team"
-  ]
+  "expertGroup": "architecture-decision-team"
 }
