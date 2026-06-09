@@ -1,0 +1,931 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "skill hub对接接口集合",
+    "description": "SkillHub统一对外接口文档",
+    "version": "1.0.0",
+    "contact": {
+      "name": "SkillHub Team"
+    }
+  },
+  "tags": [
+    {
+      "name": "auth"
+    },
+    {
+      "name": "skills"
+    },
+    {
+      "name": "permission"
+    }
+  ],
+  "paths": {
+    "/ai_skillhub_bff/api/v1/auth/token": {
+      "post": {
+        "summary": "签发Token",
+        "deprecated": false,
+        "description": "业务方调用，用于业务方为当前登录用户签发 JWT Token",
+        "operationId": "issueToken",
+        "tags": [
+          "auth"
+        ],
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "query",
+            "description": "业务方标识，与hub方进行约定",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功返回Token信息",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                },
+                "example": {
+                  "code": "200",
+                  "message": "操作成功",
+                  "success": true,
+                  "data": {
+                    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                    "tokenType": "Bearer",
+                    "expiresIn": 7200
+                  }
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    },
+    "/ai_skillhub_service/api/v1/skills/upload": {
+      "post": {
+        "summary": "上传技能包到JFrog仓库",
+        "deprecated": false,
+        "description": "上传技能包到JFrog仓库",
+        "operationId": "uploadSkill",
+        "tags": [
+          "skills"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "skillName": {
+                    "type": "string",
+                    "description": "技能名称",
+                    "example": "@ht-skills/weather-skill"
+                  },
+                  "version": {
+                    "type": "string",
+                    "description": "版本号",
+                    "example": "1.0.0"
+                  },
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "技能包文件",
+                    "example": ""
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "技能描述",
+                    "example": "提供天气查询功能的技能"
+                  },
+                  "category": {
+                    "type": "string",
+                    "description": "技能分类",
+                    "example": "工具"
+                  },
+                  "tags": {
+                    "type": "string",
+                    "description": "技能标签",
+                    "example": "AI,天气,查询"
+                  },
+                  "userName": {
+                    "type": "string",
+                    "description": "用户姓名",
+                    "example": ""
+                  },
+                  "userDepartment": {
+                    "type": "string",
+                    "description": "用户部门",
+                    "example": ""
+                  },
+                  "type": {
+                    "type": "integer",
+                    "description": "类型：0-公开，1-私有",
+                    "enum": [
+                      0,
+                      1
+                    ],
+                    "default": 0,
+                    "example": 0
+                  }
+                },
+                "required": [
+                  "skillName",
+                  "version",
+                  "file"
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "上传成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillUploadResponse"
+                },
+                "example": {
+                  "code": "200",
+                  "message": "操作成功",
+                  "success": true,
+                  "data": {
+                    "success": true,
+                    "code": 0,
+                    "message": "上传成功",
+                    "skillName": "@ht-skills/weather-skill",
+                    "version": "1.0.0",
+                    "fileSize": 102400,
+                    "uploadTime": "2026-04-27 12:00:00",
+                    "storagePath": "artifactory/skills/@ht-skills/weather-skill/1.0.0/package.tgz",
+                    "errorDetail": null
+                  }
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/ai_skillhub_service/api/v1/skills/download/{skillName}/{version}": {
+      "post": {
+        "summary": "下载技能包",
+        "deprecated": false,
+        "description": "下载技能包文件或保存到本地目录",
+        "operationId": "downloadSkill",
+        "tags": [
+          "skills"
+        ],
+        "parameters": [
+          {
+            "name": "skillName",
+            "in": "path",
+            "description": "技能名称",
+            "required": true,
+            "example": "@ht-skills/weather-skill",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "description": "版本号",
+            "required": true,
+            "example": "1.0.0",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功返回技能包文件内容（二进制流）",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/ai_skillhub_service/api/v1/market/skills/{name}": {
+      "get": {
+        "summary": "获取技能详情",
+        "deprecated": false,
+        "description": "包括基本信息、权限信息、版本历史等",
+        "operationId": "getSkillDetail",
+        "tags": [
+          "skills"
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Skill名称",
+            "required": true,
+            "example": "@ht-skills/weather-skill",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "description": "版本号（可选，不传则查询最新版本）",
+            "required": false,
+            "example": "1.0.0",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功返回技能详情",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillDetailResponse"
+                },
+                "example": {
+                  "code": "200",
+                  "message": "操作成功",
+                  "success": true,
+                  "data": {
+                    "skillName": "@ht-skills/weather-skill",
+                    "displayName": "天气技能",
+                    "description": "提供天气查询功能的技能",
+                    "category": "工具",
+                    "tags": [
+                      "AI",
+                      "天气"
+                    ],
+                    "owner": "k0892142",
+                    "ownerName": "张三",
+                    "version": "1.0.0",
+                    "author": "author@example.com",
+                    "license": "MIT",
+                    "readme": "# Weather Skill\n这是一个天气技能...",
+                    "dependencies": "{\"axios\":\"^1.0.0\"}",
+                    "envVars": "[{\"name\":\"API_KEY\",\"description\":\"API密钥\",\"required\":true}]",
+                    "downloadCount": 1000,
+                    "lastUpdated": "2026-04-20T10:30:00",
+                    "versions": [
+                      {
+                        "version": "1.0.0",
+                        "description": "初始版本",
+                        "publishedAt": "2026-04-20T10:30:00"
+                      }
+                    ],
+                    "status": "published",
+                    "permission": {
+                      "role": "0",
+                      "grantedAt": "2026-04-20T10:30:00",
+                      "grantedBy": "k0892142",
+                      "grantedByName": "张三"
+                    },
+                    "permissionApplicationStatus": 0,
+                    "createdAt": "2026-04-20T10:30:00",
+                    "updatedAt": "2026-04-20T10:30:00"
+                  }
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/ai_skillhub_service/api/v1/market/skills": {
+      "post": {
+        "summary": "技能列表查询",
+        "deprecated": false,
+        "description": "支持关键词、分类、环境筛选，支持排序和分页",
+        "operationId": "listSkills",
+        "tags": [
+          "skills"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillListRequest"
+              },
+              "example": {
+                "keyword": "天气",
+                "category": "工具",
+                "env": "all",
+                "page": 1,
+                "pageSize": 20,
+                "sort": "downloads",
+                "order": "desc"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "成功返回技能列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillListResponse"
+                },
+                "example": {
+                  "code": "200",
+                  "message": "操作成功",
+                  "success": true,
+                  "data": [
+                    {
+                      "skillName": "@ht-skills/weather-skill",
+                      "displayName": "天气技能",
+                      "description": "提供天气查询功能的技能",
+                      "category": "工具",
+                      "tags": [
+                        "AI",
+                        "天气"
+                      ],
+                      "owner": "k0892142",
+                      "ownerName": "张三",
+                      "version": "1.0.0",
+                      "author": "author@example.com",
+                      "license": "MIT",
+                      "readme": "这是一个技能的README文档",
+                      "dependencies": "{\"axios\":\"^1.0.0\"}",
+                      "envVars": "[{\"name\":\"API_KEY\",\"value\":\"secret\"}]",
+                      "downloadCount": 1000,
+                      "lastUpdated": "2026-04-20T10:30:00",
+                      "versions": [
+                        {
+                          "version": "1.0.0",
+                          "description": "初始版本",
+                          "publishedAt": "2026-04-20T10:30:00"
+                        }
+                      ],
+                      "status": "published",
+                      "permission": {
+                        "role": "0",
+                        "grantedAt": "2026-04-20T10:30:00",
+                        "grantedBy": "k0892142",
+                        "grantedByName": "张三"
+                      },
+                      "permissionApplicationStatus": 0,
+                      "createdAt": "2026-04-20T10:30:00",
+                      "updatedAt": "2026-04-20T10:30:00"
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/ai_skillhub_service/api/v1/permission/grant": {
+      "post": {
+        "summary": "主动授权",
+        "deprecated": false,
+        "description": "为用户或部门授予技能权限",
+        "operationId": "grantPermission",
+        "tags": [
+          "permission"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PermissionGrantRequest"
+              },
+              "example": {
+                "skillName": "skill1",
+                "user": {
+                  "userinfoList": [
+                    {
+                      "userId": "021877",
+                      "userName": "周士奇",
+                      "userDepartment": "信息技术部"
+                    }
+                  ],
+                  "deptCodeList": [
+                    "ZZ001013",
+                    "ZZ001"
+                  ]
+                },
+                "viewer": {
+                  "userinfoList": [
+                    {
+                      "userId": "021877",
+                      "userName": "周士奇",
+                      "userDepartment": "信息技术部"
+                    }
+                  ],
+                  "deptCodeList": [
+                    "ZZ001013"
+                  ]
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "授权成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BaseResponse"
+                },
+                "example": {
+                  "code": 200,
+                  "message": "授权成功",
+                  "data": null
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "TokenResult": {
+        "type": "object",
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "description": "token值"
+          },
+          "tokenType": {
+            "type": "string",
+            "description": "固定值，业务方无需关心"
+          },
+          "expiresIn": {
+            "type": "integer",
+            "format": "int64",
+            "description": "过期时间（秒）"
+          }
+        }
+      },
+      "TokenResponse": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "响应码，200表示成功"
+          },
+          "message": {
+            "type": "string",
+            "description": "响应消息"
+          },
+          "success": {
+            "type": "boolean",
+            "description": "是否成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/TokenResult"
+          }
+        }
+      },
+      "SkillUploadResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "是否成功"
+          },
+          "code": {
+            "type": "integer",
+            "description": "结果码：0成功，其他失败"
+          },
+          "message": {
+            "type": "string",
+            "description": "结果消息"
+          },
+          "skillName": {
+            "type": "string",
+            "description": "Skill名称"
+          },
+          "version": {
+            "type": "string",
+            "description": "版本号"
+          },
+          "fileSize": {
+            "type": "integer",
+            "description": "文件大小（字节）"
+          },
+          "uploadTime": {
+            "type": "string",
+            "description": "上传时间"
+          },
+          "storagePath": {
+            "type": "string",
+            "description": "JFrog存储路径"
+          },
+          "errorDetail": {
+            "type": "string",
+            "description": "异常信息（失败时）"
+          }
+        }
+      },
+      "SkillUploadResponse": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "响应码"
+          },
+          "message": {
+            "type": "string",
+            "description": "响应消息"
+          },
+          "success": {
+            "type": "boolean",
+            "description": "是否成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/SkillUploadResult"
+          }
+        }
+      },
+      "SkillVersionHistory": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string",
+            "description": "版本号"
+          },
+          "description": {
+            "type": "string",
+            "description": "该版本的描述"
+          },
+          "publishedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "发布时间"
+          }
+        }
+      },
+      "SkillPermission": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "角色：0-所有者，1-使用者，2-查看者",
+            "enum": [
+              "0",
+              "1",
+              "2"
+            ]
+          },
+          "grantedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "授权时间"
+          },
+          "grantedBy": {
+            "type": "string",
+            "description": "授权人工号"
+          },
+          "grantedByName": {
+            "type": "string",
+            "description": "授权人姓名"
+          }
+        }
+      },
+      "SkillMetadata": {
+        "type": "object",
+        "properties": {
+          "skillName": {
+            "type": "string",
+            "description": "Skill名称（含scope，如@ht-skills/weather-skill）"
+          },
+          "displayName": {
+            "type": "string",
+            "description": "显示名称（不含scope）"
+          },
+          "description": {
+            "type": "string",
+            "description": "Skill描述"
+          },
+          "category": {
+            "type": "string",
+            "description": "分类"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "标签列表"
+          },
+          "owner": {
+            "type": "string",
+            "description": "所有者工号"
+          },
+          "ownerName": {
+            "type": "string",
+            "description": "所有者姓名"
+          },
+          "version": {
+            "type": "string",
+            "description": "版本号（当前环境的版本）"
+          },
+          "author": {
+            "type": "string",
+            "description": "作者邮箱"
+          },
+          "license": {
+            "type": "string",
+            "description": "许可证类型"
+          },
+          "readme": {
+            "type": "string",
+            "description": "README文档内容"
+          },
+          "dependencies": {
+            "type": "string",
+            "description": "依赖包列表（JSON对象格式）"
+          },
+          "envVars": {
+            "type": "string",
+            "description": "环境变量配置（JSON数组格式）"
+          },
+          "downloadCount": {
+            "type": "integer",
+            "description": "下载量（当前环境的下载量）"
+          },
+          "lastUpdated": {
+            "type": "string",
+            "format": "date-time",
+            "description": "最后更新时间"
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SkillVersionHistory"
+            },
+            "description": "版本列表"
+          },
+          "status": {
+            "type": "string",
+            "description": "状态：published/draft/archived",
+            "enum": [
+              "published",
+              "draft",
+              "archived"
+            ]
+          },
+          "permission": {
+            "$ref": "#/components/schemas/SkillPermission"
+          },
+          "permissionApplicationStatus": {
+            "type": "integer",
+            "description": "权限申请状态：0-未申请，1-申请中"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "创建时间"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "最后更新时间"
+          },
+          "businessOwnerId": {
+            "type": "string",
+            "description": "业务负责人工号"
+          },
+          "businessOwnerName": {
+            "type": "string",
+            "description": "业务负责人姓名"
+          }
+        }
+      },
+      "SkillDetailResponse": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "响应码"
+          },
+          "message": {
+            "type": "string",
+            "description": "响应消息"
+          },
+          "success": {
+            "type": "boolean",
+            "description": "是否成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/SkillMetadata"
+          }
+        }
+      },
+      "SkillListRequest": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "description": "搜索关键词"
+          },
+          "category": {
+            "type": "string",
+            "description": "分类筛选"
+          },
+          "env": {
+            "type": "string",
+            "description": "环境筛选：test/prod/all，默认all",
+            "enum": [
+              "test",
+              "prod",
+              "all"
+            ],
+            "default": "all"
+          },
+          "page": {
+            "type": "integer",
+            "description": "页码，默认1",
+            "default": 1
+          },
+          "pageSize": {
+            "type": "integer",
+            "description": "每页数量，默认20，最大100",
+            "default": 20,
+            "maximum": 100
+          },
+          "sort": {
+            "type": "string",
+            "description": "排序字段：downloads/updated/name，默认downloads",
+            "enum": [
+              "downloads",
+              "updated",
+              "name"
+            ],
+            "default": "downloads"
+          },
+          "order": {
+            "type": "string",
+            "description": "排序方向：asc/desc，默认desc",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "default": "desc"
+          }
+        }
+      },
+      "SkillListResponse": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "响应码"
+          },
+          "message": {
+            "type": "string",
+            "description": "响应消息"
+          },
+          "success": {
+            "type": "boolean",
+            "description": "是否成功"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SkillMetadata"
+            },
+            "description": "技能列表"
+          }
+        }
+      },
+      "UserInfo": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "description": "用户工号"
+          },
+          "userName": {
+            "type": "string",
+            "description": "用户名"
+          },
+          "userDepartment": {
+            "type": "string",
+            "description": "用户部门"
+          }
+        }
+      },
+      "PermissionUserGroup": {
+        "type": "object",
+        "properties": {
+          "userinfoList": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserInfo"
+            },
+            "description": "用户信息列表"
+          },
+          "deptCodeList": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "部门代码列表"
+          }
+        }
+      },
+      "PermissionGrantRequest": {
+        "type": "object",
+        "properties": {
+          "skillName": {
+            "type": "string",
+            "description": "技能名称"
+          },
+          "user": {
+            "$ref": "#/components/schemas/PermissionUserGroup"
+          },
+          "viewer": {
+            "$ref": "#/components/schemas/PermissionUserGroup"
+          }
+        }
+      },
+      "BaseResponse": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "响应码"
+          },
+          "message": {
+            "type": "string",
+            "description": "响应消息"
+          },
+          "data": {
+            "type": "object",
+            "description": "响应数据",
+            "properties": {},
+            "nullable": true
+          }
+        }
+      }
+    },
+    "responses": {},
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "从鉴权接口获得的JWT Token"
+      }
+    }
+  },
+  "servers": [],
+  "security": []
+}
