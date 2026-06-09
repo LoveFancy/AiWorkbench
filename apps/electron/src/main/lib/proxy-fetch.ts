@@ -5,8 +5,10 @@
  * 用于渠道配置了代理地址时，让 AI API 请求走指定代理。
  */
 
-import { ProxyAgent, fetch as undiciFetch } from 'undici'
+import { Agent, ProxyAgent, fetch as undiciFetch } from 'undici'
 import type { RequestInfo, RequestInit } from 'undici'
+
+const DIRECT_DISPATCHER = new Agent()
 
 /**
  * 创建代理 fetch 函数
@@ -35,4 +37,19 @@ export function getFetchFn(proxyUrl?: string): typeof globalThis.fetch {
     return createProxyFetch(proxyUrl.trim())
   }
   return fetch
+}
+
+/**
+ * 创建显式直连 fetch 函数。
+ *
+ * 用于内网 API 或明确要求绕过代理的请求，避免继承应用代理配置
+ * 或 undici 全局 dispatcher 上的代理设置。
+ */
+export function createDirectFetch(): typeof globalThis.fetch {
+  return ((input: RequestInfo | URL, init?: RequestInit) => {
+    return undiciFetch(input as RequestInfo, {
+      ...init,
+      dispatcher: DIRECT_DISPATCHER,
+    })
+  }) as unknown as typeof globalThis.fetch
 }

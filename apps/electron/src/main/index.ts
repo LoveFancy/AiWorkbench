@@ -95,7 +95,7 @@ import { createApplicationMenu } from './menu'
 import { registerIpcHandlers } from './ipc'
 import { createTray, destroyTray, getTray } from './tray'
 import { initializeRuntime } from './lib/runtime-init'
-import { seedDefaultPlugins, seedDefaultSkills } from './lib/config-paths'
+import { getConfigDirPath, seedDefaultPlugins, seedDefaultSkills } from './lib/config-paths'
 import { upgradeDefaultSkillsInWorkspaces } from './lib/agent-workspace-manager'
 import { stopAllAgents, killOrphanedClaudeSubprocesses } from './lib/agent-service'
 import { stopAllGenerations } from './lib/chat-service'
@@ -106,7 +106,14 @@ import { initModelService, loadCacheFromDisk, initModelRefresh } from '../models
 import { registerPlatformModelsIpcHandlers } from '../platform-models'
 import { startChatToolsWatcher, stopChatToolsWatcher } from './lib/chat-tools-watcher'
 import { getIsQuitting, setQuitting } from './lib/app-lifecycle'
-import { registerBridge, startAllBridges, stopAllBridges } from './lib/bridge-registry'
+import {
+  registerBridge,
+  startAllBridges,
+  startBridgeSelfHealing,
+  stopAllBridges,
+  stopBridgeSelfHealing,
+} from './lib/bridge-registry'
+import { startScheduler, stopScheduler } from './lib/automation-scheduler'
 import { feishuBridgeManager } from './lib/feishu-bridge-manager'
 import { getFeishuMultiBotConfig } from './lib/feishu-config'
 import { stopFeishuSyncSleepBlocker, syncFeishuSyncSleepBlocker } from './lib/feishu-sleep-blocker'
@@ -144,8 +151,19 @@ registerBridge({
     const config = getFeishuMultiBotConfig()
     return config.bots.some((b) => b.enabled && b.appId && b.appSecret)
   },
+  needsRecovery: () => {
+    const config = getFeishuMultiBotConfig()
+    const states = feishuBridgeManager.getStates()
+    return config.bots.some((bot) => (
+      bot.enabled &&
+      !!bot.appId &&
+      !!bot.appSecret &&
+      states.bots[bot.id]?.status === 'error'
+    ))
+  },
   start: () => feishuBridgeManager.startAll(),
   stop: () => feishuBridgeManager.stopAll(),
+  recover: () => recoverEnabledFeishuBots(),
 })
 
 registerBridge({
@@ -154,8 +172,19 @@ registerBridge({
     const config = getDingTalkMultiBotConfig()
     return config.bots.some((b) => b.enabled && b.clientId && b.clientSecret)
   },
+  needsRecovery: () => {
+    const config = getDingTalkMultiBotConfig()
+    const states = dingtalkBridgeManager.getStates()
+    return config.bots.some((bot) => (
+      bot.enabled &&
+      !!bot.clientId &&
+      !!bot.clientSecret &&
+      states.bots[bot.id]?.status === 'error'
+    ))
+  },
   start: () => dingtalkBridgeManager.startAll(),
   stop: () => dingtalkBridgeManager.stopAll(),
+  recover: () => recoverEnabledDingTalkBots(),
 })
 
 registerBridge({
@@ -164,9 +193,44 @@ registerBridge({
     const config = getWeChatConfig()
     return !!(config.enabled && config.credentials)
   },
+  needsRecovery: () => wechatBridge.getStatus().status === 'error',
   start: () => wechatBridge.start(),
   stop: () => wechatBridge.stop(),
 })
+
+async function recoverEnabledFeishuBots(): Promise<void> {
+  const config = getFeishuMultiBotConfig()
+  let failedCount = 0
+  for (const bot of config.bots) {
+    if (!bot.enabled || !bot.appId || !bot.appSecret) continue
+    try {
+      await feishuBridgeManager.restartBot(bot.id)
+    } catch (error) {
+      failedCount++
+      console.error(`[飞书 BridgeManager] Bot "${bot.name}" 自愈恢复失败:`, error)
+    }
+  }
+  if (failedCount > 0) {
+    throw new Error(`${failedCount} 个飞书 Bot 自愈恢复失败`)
+  }
+}
+
+async function recoverEnabledDingTalkBots(): Promise<void> {
+  const config = getDingTalkMultiBotConfig()
+  let failedCount = 0
+  for (const bot of config.bots) {
+    if (!bot.enabled || !bot.clientId || !bot.clientSecret) continue
+    try {
+      await dingtalkBridgeManager.restartBot(bot.id)
+    } catch (error) {
+      failedCount++
+      console.error(`[钉钉 BridgeManager] Bot "${bot.name}" 自愈恢复失败:`, error)
+    }
+  }
+  if (failedCount > 0) {
+    throw new Error(`${failedCount} 个钉钉 Bot 自愈恢复失败`)
+  }
+}
 
 let mainWindow: BrowserWindow | null = null
 
@@ -439,10 +503,10 @@ async function bootstrap(): Promise<void> {
   // 必须在其他初始化之前执行，确保环境变量正确加载
   await safeAwait('initializeRuntime', () => initializeRuntime())
 
-  // 同步默认 Skills 模板到 ~/.proma/default-skills/
+  // 同步默认 Skills 模板到 ~/.workmate/default-skills/
   safeRun('seedDefaultSkills', seedDefaultSkills)
 
-  // 同步默认插件到 ~/.proma/default-plugins/
+  // 同步默认插件到 ~/.workmate/default-plugins/
   seedDefaultPlugins()
 
   // 升级所有工作区中版本过旧的默认 Skills
@@ -534,6 +598,10 @@ async function bootstrap(): Promise<void> {
 
   // 启动所有已注册的 Bridge（飞书/钉钉/微信等）
   await safeAwait('startAllBridges', () => startAllBridges())
+  safeRun('startBridgeSelfHealing', startBridgeSelfHealing)
+
+  // 启动定时任务调度器（恢复持久化的 active 任务）
+  safeRun('startScheduler', startScheduler)
 
   app.on('activate', () => {
     if (shouldSuppressVoiceDictationActivate()) {
@@ -578,14 +646,20 @@ function handleBootstrapFailure(err: unknown): void {
 
   try {
     const message = err instanceof Error ? (err.stack ?? err.message) : String(err)
+    let configDirPath = '~/.workmate（老用户可能是 ~/.proma）'
+    try {
+      configDirPath = getConfigDirPath()
+    } catch {
+      // 启动降级路径中不能因为数据目录解析失败而阻止错误弹窗。
+    }
     dialog.showErrorBox(
       'Proma 启动遇到错误',
       `部分功能可能不可用：\n\n${message}\n\n` +
         `日志位置：${app.getPath('logs')}\n\n` +
         `常见原因与排查：\n` +
         `1. 旧版 Proma 进程未退出（终端运行 killall Proma 后重试）\n` +
-        `2. ~/.proma/ 配置损坏（重命名 ~/.proma 后重启）\n` +
-        `3. 系统 Keychain 无法解密保存的凭证（删除 ~/.proma/feishu.json 等后重新登录）\n\n` +
+        `2. 数据目录配置损坏（重命名 ${configDirPath} 后重启）\n` +
+        `3. 系统 Keychain 无法解密保存的凭证（删除 ${configDirPath}/feishu.json 等后重新登录）\n\n` +
         `如需协助请到 GitHub Issues 反馈。`,
     )
   } catch {
@@ -637,7 +711,10 @@ app.on('before-quit', (event) => {
   // 停止 Chat 工具配置文件监听
   stopChatToolsWatcher()
   // 停止所有 Bridge
+  stopBridgeSelfHealing()
   stopAllBridges()
+  // 停止定时任务调度器
+  stopScheduler()
   // 释放飞书同步防休眠
   stopFeishuSyncSleepBlocker()
   // 注销全局快捷键
