@@ -155,6 +155,48 @@ function getApiKeyPlaceholder(provider: ProviderType): string {
     : '请输入 API Key'
 }
 
+interface ModelCapabilityToggleProps {
+  supportsMultimodal?: boolean
+  onChange: (supportsMultimodal: boolean) => void
+}
+
+function ModelCapabilityToggle({ supportsMultimodal, onChange }: ModelCapabilityToggleProps): React.ReactElement {
+  return (
+    <div
+      aria-label="模型能力"
+      className="inline-flex h-7 shrink-0 items-center rounded-md bg-muted p-0.5 text-xs shadow-sm"
+      title="切换模型是否支持多模态图片理解"
+    >
+      <button
+        type="button"
+        aria-pressed={!supportsMultimodal}
+        onClick={() => onChange(false)}
+        className={cn(
+          'h-6 min-w-[56px] rounded px-2 font-medium transition-colors',
+          !supportsMultimodal
+            ? 'bg-background text-foreground shadow-sm'
+            : 'text-muted-foreground hover:text-foreground'
+        )}
+      >
+        纯文本
+      </button>
+      <button
+        type="button"
+        aria-pressed={supportsMultimodal}
+        onClick={() => onChange(true)}
+        className={cn(
+          'h-6 min-w-[56px] rounded px-2 font-medium transition-colors',
+          supportsMultimodal
+            ? 'bg-emerald-500/15 text-emerald-700 shadow-sm dark:text-emerald-300'
+            : 'text-muted-foreground hover:text-foreground'
+        )}
+      >
+        多模态
+      </button>
+    </div>
+  )
+}
+
 export function ChannelForm({ channel, onSaved, onAutoSaved, onAgentEligibilityChange, onCancel }: ChannelFormProps): React.ReactElement {
   const isEdit = channel !== null
 
@@ -321,9 +363,9 @@ export function ChannelForm({ channel, onSaved, onAutoSaved, onAgentEligibilityC
   }
 
   /** 手工调整模型是否支持多模态图片理解 */
-  const handleToggleModelMultimodal = (modelId: string): void => {
+  const handleToggleModelMultimodal = (modelId: string, supportsMultimodal?: boolean): void => {
     setModels((prev) =>
-      prev.map((m) => (m.id === modelId ? { ...m, supportsMultimodal: !m.supportsMultimodal } : m))
+      prev.map((m) => (m.id === modelId ? { ...m, supportsMultimodal: supportsMultimodal ?? !m.supportsMultimodal } : m))
     )
   }
 
@@ -641,28 +683,20 @@ export function ChannelForm({ channel, onSaved, onAutoSaved, onAgentEligibilityC
                       <span className="text-muted-foreground ml-1">({model.id})</span>
                     )}
                   </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    type="button"
-                    onClick={() => handleToggleModelMultimodal(model.id)}
-                    className={cn(
-                      'h-7 min-w-[72px] flex-shrink-0 text-xs',
-                      model.supportsMultimodal
-                        ? 'border-emerald-500/35 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-300'
-                        : 'text-muted-foreground'
-                    )}
-                    title="切换模型是否支持多模态图片理解"
-                  >
-                    {model.supportsMultimodal ? '多模态' : '纯文本'}
-                  </Button>
+                  <ModelCapabilityToggle
+                    supportsMultimodal={model.supportsMultimodal}
+                    onChange={(supportsMultimodal) => handleToggleModelMultimodal(model.id, supportsMultimodal)}
+                  />
                   <Button
                     variant="outline"
                     size="sm"
                     type="button"
                     onClick={() => void handleTestModel(model)}
                     disabled={testingModelId !== null || !apiKey.trim() || !baseUrl.trim()}
-                    className="h-7 flex-shrink-0 text-xs"
+                    className={cn(
+                      'h-7 flex-shrink-0 cursor-pointer text-xs font-medium shadow-sm transition-all hover:bg-primary/10 hover:text-primary active:scale-[0.98]',
+                      testingModelId === model.id && 'cursor-wait'
+                    )}
                   >
                     {testingModelId === model.id ? (
                       <Loader2 size={12} className="animate-spin" />
