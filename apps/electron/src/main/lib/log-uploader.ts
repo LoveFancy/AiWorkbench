@@ -12,7 +12,7 @@ import { join } from 'node:path'
 import { existsSync, readFileSync } from 'node:fs'
 import { app } from 'electron'
 import { getUserProfile } from './user-profile-service'
-import { httpUpload } from '../../shared/hteip-client'
+import { httpUpload, resolveApiBase } from '../../shared/hteip-client'
 import type { HttpResponse } from '../../shared/hteip-client'
 import type { UserProfile } from '../../types'
 
@@ -113,7 +113,7 @@ async function httpUploadZip(
   formData.append('file', new Blob([new Uint8Array(zipBuffer)], { type: 'application/zip' }), clientFileName)
   formData.append('userId', jobId)
 
-  console.log('[日志上报]  POST %s', UPLOAD_PATH)
+  console.log('[日志上报]  POST %s', `${resolveApiBase()}${UPLOAD_PATH}`)
 
   const res: HttpResponse<UploadApiResponse> = await httpUpload<UploadApiResponse>(
     UPLOAD_PATH,
@@ -121,6 +121,7 @@ async function httpUploadZip(
   )
 
   if (res.ok && res.data?.code === 0 && res.data.data) {
+    console.log('[日志上报]  上传成功: %s (%d KB)', res.data.data.fileName, (res.data.data.fileSize / 1024).toFixed(1))
     return {
       success: true,
       fileName: res.data.data.fileName,
@@ -130,6 +131,7 @@ async function httpUploadZip(
   }
 
   const errorMsg = res.error || res.data?.message || `上传失败 (HTTP ${res.status})`
+  console.error('[日志上报]  上传失败: %s', errorMsg)
   return { success: false, error: errorMsg }
 }
 
@@ -146,6 +148,12 @@ export async function uploadSystemLog(
 
   const logsDir = app.getPath('logs')
   const logFiles = collectLogFiles(logsDir)
+
+  console.log(
+    '[日志上报] 收集到 %d 个日志文件: %s',
+    logFiles.length,
+    logFiles.map((f) => `${f.name} (${(f.data.byteLength / 1024).toFixed(1)} KB)`).join(', '),
+  )
 
   const zip = new AdmZip()
   for (const { name, data } of logFiles) {

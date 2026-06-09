@@ -136,7 +136,7 @@ function LoginDialog(): React.ReactElement {
   }
 
   return (
-    <div className="fixed inset-0 z-[9999] bg-black/50 flex items-center justify-center" onClick={() => setOpen(false)}>
+    <div className="fixed inset-0 z-[9999] bg-black/50 flex items-center justify-center">
       <div onClick={(e) => e.stopPropagation()}>
         <LoginView
           onLoginSuccess={handleLoginSuccess}

@@ -80,12 +80,31 @@ export async function checkForWorkmateUpgrade(
     return { hasUpdate: false }
   }
 
+  // ===== 诊断日志：打印服务端返回的关键字段 =====
+  console.log('[升级检测] 服务端返回 hasUpdate=true, 字段明细:')
+  console.log('[升级检测]   latestVersion=%s', api.latestVersion)
+  console.log('[升级检测]   releaseType=%s', api.releaseType)
+  console.log('[升级检测]   forceUpdate=%s', api.forceUpdate)
+  console.log('[升级检测]   downloadUrl=%s', api.downloadUrl ? '有' : '空')
+  console.log('[升级检测]   fileName=%s', api.fileName || '空')
+  console.log('[升级检测]   sha256=%s', api.sha256 ? '有' : '空')
+  console.log('[升级检测]   fileSize=%s', api.fileSize)
+  console.log('[升级检测]   packageType=%s', api.packageType)
+  console.log('[升级检测]   minVersion=%s', api.minVersion)
+  console.log('[升级检测]   hint=%s', api.hint)
+
   // ===== 端侧二次校验 =====
 
   // 1. downloadUrl 为空 → 不进入下载流程
   if (!api.downloadUrl) {
-    console.log('[升级检测] downloadUrl 为空, hint=%s', api.hint)
+    console.log('[升级检测] downloadUrl 为空, 阻止升级, hint=%s', api.hint)
     return { hasUpdate: false, hint: api.hint || '暂无可用安装包' }
+  }
+
+  // 1.5. fileName 为空 → 不进入下载流程（下载入口需要 fileName）
+  if (!api.fileName) {
+    console.log('[升级检测] fileName 为空, 阻止升级')
+    return { hasUpdate: false, hint: '服务端未提供安装包文件名' }
   }
 
   // 2. 版本方向校验

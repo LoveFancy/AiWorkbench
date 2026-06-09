@@ -45,6 +45,7 @@ let upgradeInfo: {
 
 function setStatus(status: UpdateStatus): void {
   currentStatus = status
+  console.log('[更新] setStatus: %s (win=%s)', status.status, win ? '有' : '无')
   win?.webContents?.send(UPDATER_IPC_CHANNELS.ON_STATUS_CHANGED, status)
 }
 
@@ -63,10 +64,10 @@ export async function checkForUpdates(manual = false): Promise<void> {
     return
   }
 
-  // 已下载完成，跳过
-  if (currentStatus.status === 'downloaded') {
-    console.log('[更新] 跳过：已下载完成，等待安装')
-    return
+  // 已下载完成时仍需放行，以便检测服务端是否暂停了此版本
+  const wasDownloaded = currentStatus.status === 'downloaded'
+  if (wasDownloaded) {
+    console.log('[更新] 已下载完成，向服务端验证版本是否仍有效')
   }
 
   checking = true
@@ -74,8 +75,8 @@ export async function checkForUpdates(manual = false): Promise<void> {
   try {
     setStatus({ status: 'checking' })
 
-    const platform = process.platform  // 'win32' | 'darwin' | 'linux'
-    const arch = process.arch           // 'x64' | 'arm64'
+    const platform = process.platform
+    const arch = process.arch
     const currentVersion = app.getVersion()
 
     const result = await checkForWorkmateUpgrade(currentVersion, platform, arch)
@@ -87,7 +88,52 @@ export async function checkForUpdates(manual = false): Promise<void> {
       } catch { /* 上报失败不影响主流程 */ }
     }
 
+    // ---- 已下载完成时的特殊处理：服务端可能取消/改变了此版本 ----
+    if (wasDownloaded) {
+      const oldVersion = upgradeInfo.latestVersion
+
+      if (!result.hasUpdate || result.latestVersion !== oldVersion) {
+        // 版本被暂停/撤回/变更 → 清理本地安装包和 manifest
+        console.log('[更新] 服务端已暂停/变更此版本 (hasUpdate=%s, old=%s, new=%s)，清理本地安装包',
+          result.hasUpdate, oldVersion, result.latestVersion)
+        if (upgradeInfo.fileName) {
+          deleteInstaller(upgradeInfo.fileName)
+        }
+        deleteManifest()
+        upgradeInfo = {}
+
+        if (!result.hasUpdate) {
+          if (result.hint) {
+            setStatus({ status: 'not-available', hint: result.hint })
+          } else if (manual) {
+            setStatus({ status: 'not-available' })
+          } else {
+            setStatus({ status: 'idle' })
+          }
+        } else {
+          // 版本变了，继续往下走正常更新流程
+          console.log('[更新] 版本变更，进入正常更新流程')
+        }
+        // 如果 result.hasUpdate 但版本已变 → 继续执行下面的更新逻辑
+        if (!result.hasUpdate) {
+          return
+        }
+      } else {
+        // 版本仍有效，重新推送 downloaded 状态
+        console.log('[更新] 已下载版本仍有效, 重新推送 downloaded')
+        setStatus({
+          status: 'downloaded',
+          version: oldVersion!,
+          releaseNotes: result.releaseNotes,
+          forceUpdate: result.forceUpdate,
+          releaseType: result.releaseType,
+        })
+        return
+      }
+    }
+
     if (!result.hasUpdate) {
+      console.log('[更新] 无可用更新, hint=%s', result.hint || '无')
       if (result.hint) {
         setStatus({ status: 'not-available', hint: result.hint })
       } else if (manual) {
@@ -108,6 +154,15 @@ export async function checkForUpdates(manual = false): Promise<void> {
       latestVersion: result.latestVersion,
       releaseType: result.releaseType,
     }
+
+    console.log('[更新] upgradeInfo 赋值完毕:')
+    console.log('[更新]   downloadUrl=%s', upgradeInfo.downloadUrl ? '有' : '空')
+    console.log('[更新]   fileName=%s', upgradeInfo.fileName || '空')
+    console.log('[更新]   sha256=%s', upgradeInfo.sha256 ? '有' : '空')
+    console.log('[更新]   fileSize=%s', upgradeInfo.fileSize)
+    console.log('[更新]   packageType=%s', upgradeInfo.packageType)
+    console.log('[更新]   latestVersion=%s', upgradeInfo.latestVersion)
+    console.log('[更新]   releaseType=%s', upgradeInfo.releaseType)
 
     setStatus({
       status: 'available',
@@ -137,6 +192,7 @@ export async function checkForUpdates(manual = false): Promise<void> {
       })
     } else {
       // 周期/自动检测失败不展示错误，静默恢复 idle
+      console.log('[更新] 自动检测异常(静默): %s', err instanceof Error ? err.message : String(err))
       setStatus({ status: 'idle' })
     }
   } finally {
@@ -249,9 +305,6 @@ function scheduleNextCheck(): void {
     checkTimer = null
   }
 
-  // 已下载完成时不再定时检查
-  if (currentStatus.status === 'downloaded') return
-
   const delay = randomInRange(6 * 3600_000, 8 * 3600_000)
   console.log('[更新] 下次周期检测 %d 小时后', Math.round(delay / 3600_000))
   checkTimer = setTimeout(() => {
@@ -261,6 +314,7 @@ function scheduleNextCheck(): void {
       scheduleNextCheck()
       return
     }
+    // 已下载时也继续周期检查，以便检测服务端是否暂停了此版本
     checkForUpdates().catch((err) => console.error('[更新] 周期检查失败:', err))
   }, delay)
 }
@@ -317,7 +371,14 @@ function restoreManifest(): void {
 
 /** 执行下载 */
 async function doDownload(): Promise<void> {
+  console.log('[更新] doDownload 入口:')
+  console.log('[更新]   downloadUrl=%s', upgradeInfo.downloadUrl || '空')
+  console.log('[更新]   fileName=%s', upgradeInfo.fileName || '空')
+
   if (!upgradeInfo.downloadUrl || !upgradeInfo.fileName) {
+    console.error('[更新] doDownload 被阻止: downloadUrl=%s fileName=%s',
+      upgradeInfo.downloadUrl ? '有' : '空',
+      upgradeInfo.fileName ? '有' : '空')
     setStatus({ status: 'error', error: '下载信息不完整' })
     return
   }
@@ -390,6 +451,7 @@ async function downloadAndSave(current: {
     packageType: upgradeInfo.packageType,
   })
 
+  console.log('[更新] manifest 已保存, 推送 downloaded 状态')
   setStatus({
     status: 'downloaded',
     version: current.version || '',
@@ -397,4 +459,5 @@ async function downloadAndSave(current: {
     forceUpdate: current.forceUpdate,
     releaseType: current.releaseType,
   })
+  console.log('[更新] downloaded 状态已推送')
 }

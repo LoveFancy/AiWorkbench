@@ -19,8 +19,9 @@ export function registerUpdaterIpc(): void {
 
   ipcMain.handle(
     UPDATER_IPC_CHANNELS.CHECK_FOR_UPDATES,
-    async (): Promise<void> => {
-      await checkForUpdates(true)
+    (): void => {
+      // 不 await，状态变更通过 updater:status-changed 事件推送
+      void checkForUpdates(true)
     }
   )
 

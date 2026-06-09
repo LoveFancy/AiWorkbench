@@ -570,8 +570,8 @@ async function bootstrap(): Promise<void> {
   // 启动 Chat 工具配置文件监听（Agent 创建工具后自动通知渲染进程）
   safeRun('startChatToolsWatcher', startChatToolsWatcher)
 
-  // 生产环境下初始化自动更新
-  if (app.isPackaged && mainWindow) {
+  // 初始化自动更新
+  if (mainWindow) {
     safeRun('initAutoUpdater', () => initAutoUpdater(mainWindow!))
   }
 
