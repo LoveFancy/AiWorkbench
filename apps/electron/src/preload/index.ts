@@ -661,13 +661,31 @@ export interface ElectronAPI {
   renameSkillEntry: (workspaceSlug: string, skillSlug: string, fromRelative: string, toRelative: string) => Promise<void>
 
   /** 获取华泰 SkillHub 清单 */
-  getHtSkillHubSkills: (workspaceSlug: string) => Promise<HtSkillHubSkill[]>
+  getHtSkillHubSkills: (workspaceSlug: string, page?: number, keyword?: string, category?: string) => Promise<HtSkillHubSkill[]>
 
   /** 读取华泰 SkillHub 远端 SKILL.md */
   readHtSkillHubSkill: (skillName: string) => Promise<string>
 
   /** 安装华泰 SkillHub Skill 到当前工作区 */
   installHtSkillHubSkill: (workspaceSlug: string, skillName: string, overwrite: boolean) => Promise<HtSkillHubInstallResult>
+
+  /** SkillHub 认证状态查询 */
+  getSkillHubAuthStatus: () => Promise<{ authenticated: boolean; expiresAt?: number; remainingSeconds?: number }>
+
+  /** SkillHub 认证（换票） */
+  skillHubAuthenticate: () => Promise<void>
+
+  /** 卸载 SkillHub Skill */
+  uninstallHtSkillHubSkill: (workspaceSlug: string, skillName: string) => Promise<void>
+
+  /** 检查 Skill 更新 */
+  checkSkillUpdates: (workspaceSlug: string) => Promise<Array<{ skillName: string; currentVersion?: string; latestVersion?: string; hasUpdate: boolean }>>
+
+  /** 批量安装 SkillHub Skill */
+  batchInstallHtSkillHubSkills: (workspaceSlug: string, skillNames: string[], overwrite?: boolean) => Promise<Array<{ skillName: string; status: 'installed' | 'overwritten'; enabled: boolean }>>
+
+  /** 批量卸载 SkillHub Skill */
+  batchUninstallHtSkillHubSkills: (workspaceSlug: string, skillNames: string[]) => Promise<void>
 
   /** 订阅 Agent 流式事件（返回清理函数） */
   onAgentStreamEvent: (callback: (event: AgentStreamEvent) => void) => () => void
@@ -1842,8 +1860,8 @@ const electronAPI: ElectronAPI = {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.RENAME_SKILL_ENTRY, workspaceSlug, skillSlug, fromRelative, toRelative)
   },
 
-  getHtSkillHubSkills: (workspaceSlug: string) => {
-    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_HT_SKILLHUB_SKILLS, workspaceSlug)
+  getHtSkillHubSkills: (workspaceSlug: string, page?: number, keyword?: string, category?: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_HT_SKILLHUB_SKILLS, workspaceSlug, page, keyword, category)
   },
 
   readHtSkillHubSkill: (skillName: string) => {
@@ -1852,6 +1870,30 @@ const electronAPI: ElectronAPI = {
 
   installHtSkillHubSkill: (workspaceSlug: string, skillName: string, overwrite: boolean) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.INSTALL_HT_SKILLHUB_SKILL, workspaceSlug, skillName, overwrite)
+  },
+
+  getSkillHubAuthStatus: () => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.SKILLHUB_AUTH_STATUS)
+  },
+
+  skillHubAuthenticate: () => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.SKILLHUB_AUTHENTICATE)
+  },
+
+  uninstallHtSkillHubSkill: (workspaceSlug: string, skillName: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.UNINSTALL_HT_SKILLHUB_SKILL, workspaceSlug, skillName)
+  },
+
+  checkSkillUpdates: (workspaceSlug: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.CHECK_SKILL_UPDATES, workspaceSlug)
+  },
+
+  batchInstallHtSkillHubSkills: (workspaceSlug: string, skillNames: string[], overwrite?: boolean) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.BATCH_INSTALL_HT_SKILLHUB, workspaceSlug, skillNames, overwrite)
+  },
+
+  batchUninstallHtSkillHubSkills: (workspaceSlug: string, skillNames: string[]) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.BATCH_UNINSTALL_HT_SKILLHUB, workspaceSlug, skillNames)
   },
 
   onAgentStreamEvent: (callback: (event: AgentStreamEvent) => void) => {

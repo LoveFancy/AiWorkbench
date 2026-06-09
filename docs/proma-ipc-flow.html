@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Proma IPC 开发流程</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  body { margin: 0; padding: 32px; background: #1a202c; color: #e2e8f0; font-family: system-ui, sans-serif; }
+  h1 { text-align: center; font-size: 28px; margin-bottom: 8px; }
+  .subtitle { text-align: center; color: #a0aec0; margin-bottom: 40px; }
+  .card { background: #2d3748; border-radius: 12px; padding: 28px; margin-bottom: 32px; box-shadow: 0 4px 24px rgba(0,0,0,0.3); }
+  .card h2 { margin-top: 0; font-size: 20px; color: #63b3ed; border-bottom: 1px solid #4a5568; padding-bottom: 12px; }
+  .mermaid { display: flex; justify-content: center; padding: 8px 0; }
+</style>
+</head>
+<body>
+
+<h1>🖥️ Proma 新增前后端功能 — 标准开发流程</h1>
+<p class="subtitle">shared → main → preload → renderer 五步走链路</p>
+
+<div class="card">
+  <h2>1. 时序图：文件修改顺序 & 数据流</h2>
+  <div class="mermaid">
+sequenceDiagram
+    participant Dev as 👨‍💻 开发者
+    participant Shared as 📦 @proma/shared
+    participant Main as ⚙️ main/ipc.ts
+    participant Lib as 🔧 main/lib/
+    participant Preload as 🔗 preload/index.ts
+    participant Renderer as 🖥️ renderer/
+
+    Note over Dev: 示例：导出会话为 ZIP
+
+    rect rgb(45, 55, 72)
+        Note over Shared: 步骤① 定义类型与IPC常量
+        Dev->>Shared: 新建 export-session.ts
+        Shared-->>Shared: ExportSessionInput<br/>ExportSessionResult<br/>EXPORT_SESSION_CHANNELS
+    end
+
+    rect rgb(40, 50, 38)
+        Note over Lib: 步骤② 编写后端服务
+        Dev->>Lib: 新建 session-export-service.ts
+        Lib-->>Lib: exportSessionAsZip()<br/>├─ 读 JSONL 消息<br/>├─ AdmZip 打包<br/>└─ 写入 exports/
+    end
+
+    rect rgb(55, 45, 35)
+        Note over Main: 步骤③ 注册 IPC 处理器
+        Dev->>Main: 添加 import + handler
+        Main-->>Main: ipcMain.handle(<br/>  'session:export-zip',<br/>  async (event, input) =><br/>    exportSessionAsZip(input)<br/>)
+    end
+
+    rect rgb(38, 45, 55)
+        Note over Preload: 步骤④ 暴露安全 API
+        Dev->>Preload: 类型声明区 → 方法签名
+        Dev->>Preload: 实现区 → ipcRenderer.invoke()
+        Preload-->>Preload: exportSession: (input) =><br/>  ipcRenderer.invoke(CHANNEL, input)
+    end
+
+    rect rgb(75, 55, 38)
+        Note over Renderer: 步骤⑤ 前端调用
+        Dev->>Renderer: 组件中调用
+        Renderer-->>Renderer: const r = await<br/>  window.electronAPI<br/>    .exportSession(input)
+    end
+
+    Note over Dev,Renderer: ✅ 类型安全 + 进程隔离 + 可独立测试
+  </div>
+</div>
+
+<div class="card">
+  <h2>2. 架构数据流方向图</h2>
+  <div class="mermaid">
+flowchart LR
+    subgraph 类型层["📦 @proma/shared"]
+        A["类型定义<br/>+ IPC 常量"]
+    end
+
+    subgraph 主进程["⚙️ Electron 主进程"]
+        B["ipc.ts<br/>注册 handler"]
+        C["main/lib/<br/>业务逻辑"]
+    end
+
+    subgraph 桥接层["🔗 Preload"]
+        D["preload/index.ts<br/>contextBridge"]
+    end
+
+    subgraph 渲染进程["🖥️ Renderer"]
+        E["React 组件<br/>window.electronAPI"]
+    end
+
+    A -.->|import type| B
+    A -.->|import type| D
+    A -.->|import type| E
+    B -->|调用| C
+    C -->|返回结果| B
+    B -->|IPC handle/invoke| D
+    D -->|曝光安全 API| E
+
+    style A fill:#2d3748,color:#63b3ed,stroke:#63b3ed,stroke-width:2px
+    style B fill:#2d3748,color:#f6ad55,stroke:#f6ad55,stroke-width:2px
+    style C fill:#2d3748,color:#f6ad55,stroke:#f6ad55,stroke-width:2px
+    style D fill:#2d3748,color:#68d391,stroke:#68d391,stroke-width:2px
+    style E fill:#2d3748,color:#fc8181,stroke:#fc8181,stroke-width:2px
+  </div>
+</div>
+
+<div class="card">
+  <h2>3. 推荐编码顺序</h2>
+  <div class="mermaid">
+flowchart TD
+    S(["🚀 开始"]) --> T1
+
+    T1["① packages/shared/src/types/<br/><b>定义类型 + IPC 通道</b><br/>ExportSessionInput<br/>ExportSessionResult<br/>SESSION_EXPORT_CHANNELS"]
+    T1 --> T2
+
+    T2["② apps/electron/src/main/lib/<br/><b>编写核心业务函数</b><br/>session-export-service.ts<br/>exportSessionAsZip()"]
+    T2 --> T3
+
+    T3["③ apps/electron/src/main/ipc.ts<br/><b>注册 ipcMain.handle()</b><br/>绑定 channel → handler"]
+    T3 --> T4
+
+    T4["④ apps/electron/src/preload/index.ts<br/><b>安全暴露 API</b><br/>类型声明区 + 实现区"]
+    T4 --> T5
+
+    T5["⑤ apps/electron/src/renderer/<br/><b>组件中调用</b><br/>window.electronAPI.xxx()"]
+    T5 --> E(["✅ 完成"])
+
+    T1 -.- N1("确保三方类型一致")
+    T3 -.- N2("只用 handle 不用 on")
+    T4 -.- N3("两处修改别漏<br/>声明 + 实现")
+    T5 -.- N4("只调 API<br/>不碰 fs/net")
+
+    style S fill:#2d3748,color:#a0aec0,stroke:#4a5568
+    style E fill:#276749,color:#68d391,stroke:#38a169,stroke-width:2px
+    style T1 fill:#2a4365,color:#63b3ed,stroke:#3182ce
+    style T2 fill:#2a4365,color:#63b3ed,stroke:#3182ce
+    style T3 fill:#2a4365,color:#63b3ed,stroke:#3182ce
+    style T4 fill:#2a4365,color:#63b3ed,stroke:#3182ce
+    style T5 fill:#2a4365,color:#63b3ed,stroke:#3182ce
+    style N1 fill:#744210,color:#fbd38d,stroke:#d69e2e
+    style N2 fill:#744210,color:#fbd38d,stroke:#d69e2e
+    style N3 fill:#744210,color:#fbd38d,stroke:#d69e2e
+    style N4 fill:#744210,color:#fbd38d,stroke:#d69e2e
+  </div>
+</div>
+
+<script>
+  mermaid.initialize({ startOnLoad: true, theme: 'dark', securityLevel: 'loose' });
+</script>
+</body>
+</html>

@@ -833,7 +833,13 @@ export interface WorkspaceCapabilities {
 /** 华泰 SkillHub 市场 Skill 条目 */
 export interface HtSkillHubSkill {
   name: string
+  displayName?: string
   description: string
+  version?: string
+  category?: string
+  tags?: string[]
+  author?: string
+  downloadCount?: number
   files: string[]
   installed: boolean
   enabled?: boolean
@@ -1647,6 +1653,18 @@ export const AGENT_IPC_CHANNELS = {
   READ_HT_SKILLHUB_SKILL: 'agent:read-ht-skillhub-skill',
   /** 安装华泰 SkillHub Skill */
   INSTALL_HT_SKILLHUB_SKILL: 'agent:install-ht-skillhub-skill',
+  /** SkillHub 认证状态查询 */
+  SKILLHUB_AUTH_STATUS: 'agent:skillhub-auth-status',
+  /** SkillHub 认证（换票） */
+  SKILLHUB_AUTHENTICATE: 'agent:skillhub-authenticate',
+  /** 卸载华泰 SkillHub Skill */
+  UNINSTALL_HT_SKILLHUB_SKILL: 'agent:uninstall-ht-skillhub-skill',
+  /** 检查已安装 SkillHub Skill 的更新 */
+  CHECK_SKILL_UPDATES: 'agent:check-skill-updates',
+  /** 批量安装 SkillHub Skill */
+  BATCH_INSTALL_HT_SKILLHUB: 'agent:batch-install-ht-skillhub',
+  /** 批量卸载 SkillHub Skill */
+  BATCH_UNINSTALL_HT_SKILLHUB: 'agent:batch-uninstall-ht-skillhub',
   /** 列出 Agent 插件 */
   LIST_PLUGINS: 'agent:list-plugins',
   /** 设置 Agent 插件启用状态 */
