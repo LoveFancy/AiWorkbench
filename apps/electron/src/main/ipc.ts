@@ -2200,9 +2200,9 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(
     AGENT_IPC_CHANNELS.GET_HT_SKILLHUB_SKILLS,
-    async (_, workspaceSlug: string, page?: number): Promise<HtSkillHubSkill[]> => {
+    async (_, workspaceSlug: string, page?: number, keyword?: string, category?: string): Promise<HtSkillHubSkill[]> => {
       const { fetchHtSkillHubIndex } = await import('./lib/skillhub-service')
-      return fetchHtSkillHubIndex(workspaceSlug, page)
+      return fetchHtSkillHubIndex(workspaceSlug, page, keyword, category)
     }
   )
 

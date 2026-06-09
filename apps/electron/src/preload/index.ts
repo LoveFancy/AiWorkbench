@@ -655,7 +655,7 @@ export interface ElectronAPI {
   renameSkillEntry: (workspaceSlug: string, skillSlug: string, fromRelative: string, toRelative: string) => Promise<void>
 
   /** 获取华泰 SkillHub 清单 */
-  getHtSkillHubSkills: (workspaceSlug: string, page?: number) => Promise<HtSkillHubSkill[]>
+  getHtSkillHubSkills: (workspaceSlug: string, page?: number, keyword?: string, category?: string) => Promise<HtSkillHubSkill[]>
 
   /** 读取华泰 SkillHub 远端 SKILL.md */
   readHtSkillHubSkill: (skillName: string) => Promise<string>
@@ -1850,8 +1850,8 @@ const electronAPI: ElectronAPI = {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.RENAME_SKILL_ENTRY, workspaceSlug, skillSlug, fromRelative, toRelative)
   },
 
-  getHtSkillHubSkills: (workspaceSlug: string, page?: number) => {
-    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_HT_SKILLHUB_SKILLS, workspaceSlug, page)
+  getHtSkillHubSkills: (workspaceSlug: string, page?: number, keyword?: string, category?: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_HT_SKILLHUB_SKILLS, workspaceSlug, page, keyword, category)
   },
 
   readHtSkillHubSkill: (skillName: string) => {

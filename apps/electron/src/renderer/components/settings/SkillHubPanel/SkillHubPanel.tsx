@@ -1,5 +1,5 @@
 import React from 'react'
-import { Search, RefreshCw, ShieldCheck, Sparkles, FolderOpen, Play, Pause, Download, RotateCw, Trash2, ArrowUp } from 'lucide-react'
+import { Search, RefreshCw, ShieldCheck, Sparkles, FolderOpen, Download, RotateCw, ArrowUp, Power, PowerOff, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -51,6 +51,12 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
   const [confirmOpen, setConfirmOpen] = React.useState(false)
   const confirmSkill = React.useRef<HtSkillHubSkill | null>(null)
 
+  // loadMore 用 ref 读取最新 query/category，避免因键入导致回调重建
+  const queryRef = React.useRef(query)
+  queryRef.current = query
+  const categoryRef = React.useRef(category)
+  categoryRef.current = category
+
   // ===== 认证状态 =====
   const [authStatus, setAuthStatus] = React.useState<{ authenticated: boolean; expiresAt?: number; remainingSeconds?: number } | null>(null)
   const [authLoading, setAuthLoading] = React.useState(false)
@@ -87,11 +93,11 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
     }
   }, [checkAuth])
 
-  const loadSkills = React.useCallback(async (): Promise<void> => {
+  const loadSkills = React.useCallback(async (keyword?: string, category?: string): Promise<void> => {
     setLoading(true)
     setPage(1)
     try {
-      const list = await window.electronAPI.getHtSkillHubSkills(workspaceSlug, 1)
+      const list = await window.electronAPI.getHtSkillHubSkills(workspaceSlug, 1, keyword, category)
       setSkills(list)
       setHasMore(list.length >= 20)
       setSelectedName((current) => current && list.some((s) => s.name === current) ? current : list[0]?.name ?? null)
@@ -111,7 +117,7 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
     if (!hasMore || loading) return
     const nextPage = page + 1
     try {
-      const list = await window.electronAPI.getHtSkillHubSkills(workspaceSlug, nextPage)
+      const list = await window.electronAPI.getHtSkillHubSkills(workspaceSlug, nextPage, queryRef.current || undefined, categoryRef.current || undefined)
       if (list.length === 0 || list.length < 20) setHasMore(false)
       setPage(nextPage)
       setSkills((prev) => [...prev, ...list])
@@ -154,6 +160,20 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
       if (authed) void loadSkills()
     })()
   }, [checkAuth, loadSkills])
+
+  // ===== 远端搜索（全部/未安装模式下，query 或 category 变化时请求 API）=====
+  // 注意：filter 切换由按钮 handler 统一触发 loadSkills，此 effect 仅响应输入变化
+  React.useEffect(() => {
+    if (filter !== 'all' && filter !== 'uninstalled') return
+    if (!authStatus?.authenticated) return
+
+    const q = query.trim()
+    const c = category.trim()
+    const timer = setTimeout(() => {
+      void loadSkills(q || undefined, c || undefined)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [query, category, authStatus?.authenticated, loadSkills])
 
   // ===== 操作处理 =====
 
@@ -265,11 +285,15 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
   const filteredSkills = React.useMemo(() => {
     const q = query.trim().toLowerCase()
     const cat = category.trim().toLowerCase()
+    // 全部/未安装模式：API 已按 keyword+category 过滤，客户端仅需按 installed 筛选
+    const serverFiltered = filter === 'all' || filter === 'uninstalled'
     return skills.filter((skill) => {
       if (filter === 'installed' && !skill.installed) return false
       if (filter === 'uninstalled' && skill.installed) return false
-      if (q && !skill.name.toLowerCase().includes(q) && !skill.description.toLowerCase().includes(q)) return false
-      if (cat && !(skill as any).category?.toLowerCase().includes(cat)) return false
+      if (!serverFiltered) {
+        if (q && !skill.name.toLowerCase().includes(q)) return false
+        if (cat && !(skill as any).category?.toLowerCase().includes(cat)) return false
+      }
       return true
     })
   }, [skills, query, category, filter])
@@ -336,7 +360,7 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
               <input
                 value={query}
                 onChange={(e) => { setQuery(e.target.value); setPage(1) }}
-                placeholder="搜索 Skill 名称或描述"
+                placeholder="搜索 Skill 名称"
                 className="w-full h-8 rounded-md border border-border bg-background pl-8 pr-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               />
             </div>
@@ -355,7 +379,15 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
                 <button
                   key={item.value}
                   type="button"
-                  onClick={() => setFilter(item.value as HubFilter)}
+                  onClick={() => {
+                    const f = item.value as HubFilter
+                    setFilter(f)
+                    if (f === 'all' || f === 'uninstalled') {
+                      void loadSkills(query.trim() || undefined, category.trim() || undefined)
+                    } else {
+                      void loadSkills()
+                    }
+                  }}
                   className={cn(
                     'h-7 rounded text-xs font-medium transition-colors',
                     filter === item.value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
@@ -452,6 +484,22 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8"
+                                onClick={() => void handleToggle(selectedSkill.name, selectedSkill.enabled !== false)}
+                              >
+                                {selectedSkill.enabled === false ? <Power size={16} /> : <PowerOff size={16} />}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>{selectedSkill.enabled === false ? '启用' : '禁用'}</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
                               <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openInstalledFolder(selectedSkill.name)}>
                                 <FolderOpen size={16} />
                               </Button>
@@ -459,21 +507,20 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
                             <TooltipContent>打开目录</TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
+
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <Button size="icon" variant="ghost" className="h-8 w-8"
-                                onClick={() => void handleToggle(selectedSkill.name, selectedSkill.enabled === false)}>
-                                {selectedSkill.enabled === false ? <Play size={16} /> : <Pause size={16} />}
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>{selectedSkill.enabled === false ? '启用' : '禁用'}</TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button size="icon" variant="ghost" className="h-8 w-8 text-red-600" onClick={() => void handleUninstall(selectedSkill.name)}>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 text-destructive hover:text-destructive"
+                                onClick={() => {
+                                  if (confirm(`确认卸载「${selectedSkill.name}」？`)) {
+                                    void handleUninstall(selectedSkill.name)
+                                  }
+                                }}
+                              >
                                 <Trash2 size={16} />
                               </Button>
                             </TooltipTrigger>
