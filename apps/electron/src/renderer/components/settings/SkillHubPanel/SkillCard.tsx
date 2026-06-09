@@ -32,7 +32,6 @@ export function SkillCard({
   skill, selected, filter, batchChecked, onToggleBatch, installing, onSelect, onInstall, onUpdate, hasUpdate,
 }: SkillCardProps): React.ReactElement {
   const isEnabled = skill.enabled !== false
-  const showButtons = filter !== 'all'
   const showBatch = filter === 'uninstalled'
 
   const onCardClick = () => {
@@ -92,7 +91,7 @@ export function SkillCard({
       </div>
 
       {/* 操作按钮 — uninstalled 模式下 hover 显示安装按钮；installed 模式不需要（右侧详情已提供） */}
-      {showButtons && !showBatch && filter === 'uninstalled' && (
+      {filter === 'uninstalled' && (
       <div className="mt-1.5 flex items-center gap-1 invisible group-hover:visible">
         <Button size="sm" variant="outline" className="h-6 text-[10px] px-1.5" onClick={(e) => { e.stopPropagation(); onInstall() }}>
           <Download size={10} />

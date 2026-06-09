@@ -11,7 +11,7 @@
  */
 
 import * as React from 'react'
-import { useAtom, useSetAtom } from 'jotai'
+import { atom, useAtom, useSetAtom } from 'jotai'
 import { useStore } from 'jotai'
 import {
   tabsAtom,
@@ -26,6 +26,9 @@ import {
   unviewedCompletedSessionIdsAtom,
 } from '@/atoms/agent-atoms'
 import { useSyncActiveTabSideEffects } from '@/hooks/useSyncActiveTabSideEffects'
+
+/** 当前等待用户确认关闭的 Tab ID（null 表示无待确认） */
+export const pendingCloseTabIdAtom = atom<string | null>(null)
 
 interface UseCloseTabReturn {
   /** 请求关闭当前会话入口 */
