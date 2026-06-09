@@ -12,7 +12,7 @@ interface SettingsSectionProps {
   /** 区块标题 */
   title: React.ReactNode
   /** 区块描述（可选） */
-  description?: string
+  description?: React.ReactNode
   /** 右侧操作按钮插槽（可选） */
   action?: React.ReactNode
   /** 子内容 */
