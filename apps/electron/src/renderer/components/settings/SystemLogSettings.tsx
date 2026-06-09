@@ -10,6 +10,7 @@ import type { SystemLogReadResult } from '@proma/shared'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { LogUploadButton } from './LogUploadButton'
 import { cn } from '@/lib/utils'
 
 type ActiveLogFile = 'main' | 'renderer'
@@ -203,6 +204,7 @@ export function SystemLogSettings(): React.ReactElement {
             <RefreshCw size={14} className={cn(loading && 'animate-spin')} />
             刷新
           </Button>
+          <LogUploadButton />
         </div>
       </div>
 

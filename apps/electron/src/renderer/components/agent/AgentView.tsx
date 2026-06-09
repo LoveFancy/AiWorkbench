@@ -2108,7 +2108,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
             {(!agentChannelId || !hasAvailableModel) && (
               <div className="flex items-center gap-2 px-4 py-2 text-sm text-amber-600 dark:text-amber-400">
                 <Settings size={14} />
-                <span>{!agentChannelId ? '请在设置中选择 Agent 供应商' : '暂无可用模型，请在设置中配置 API Key 并启用 Agent 模型'}</span>
+                <span>{!agentChannelId ? '请在设置 → 模型设置中选择 Agent 供应商' : '暂无可用模型，请在设置 → 模型设置中配置 API Key 并启用 Agent 模型'}</span>
                 <button
                   type="button"
                   className="text-xs underline underline-offset-2 hover:text-foreground transition-colors"
@@ -2181,8 +2181,8 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
                     ? '输入消息... (⌘/Ctrl+Enter 发送，Enter 换行，@ 引用文件，/ 命令或 Skill，# 调用 MCP，& 引用会话)'
                     : '输入消息... (Enter 发送，Shift+Enter 换行，@ 引用文件，/ 命令或 Skill，# 调用 MCP，& 引用会话)'
                   : !agentChannelId
-                    ? '请先在设置中选择 Agent 供应商'
-                    : '请先在设置中配置 API Key 并启用 Agent 模型'
+                    ? '请先在设置 → 模型设置中选择 Agent 供应商'
+                    : '请先在设置 → 模型设置中配置 API Key 并启用 Agent 模型'
               }
               disabled={!agentChannelId || !hasAvailableModel}
               autoFocusTrigger={sessionId}

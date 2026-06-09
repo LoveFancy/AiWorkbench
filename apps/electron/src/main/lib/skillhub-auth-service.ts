@@ -12,13 +12,13 @@ import { join } from 'node:path'
 import { getConfigDir, getSettingsPath } from './config-paths'
 import { readJsonFileSafe, writeJsonFileAtomic } from './safe-file'
 import { getToken } from '../../auth/auth-service'
+import { resolveApiBase } from '../../shared/hteip-client'
 
 // ===== 常量 =====
 
-const DEFAULT_SKILLHUB_AUTH_BASE = 'http://eiplite.htsc.com.cn'
 const DEFAULT_SKILLHUB_API_BASE = 'http://talentshub-uat.sit.saas.htsc'
 
-/** 从 settings.json 读取 skillHubBase（认证域名），未配置时回退到默认值 */
+/** 从 settings.json 读取 skillHubBase（认证域名），未配置时回退到 resolveApiBase() */
 export function getSkillHubBase(): string {
   const settingsPath = getSettingsPath()
   try {
@@ -29,12 +29,13 @@ export function getSkillHubBase(): string {
       }
     }
   } catch { /* settings.json 损坏时走默认 */ }
-  return DEFAULT_SKILLHUB_AUTH_BASE
+  return resolveApiBase()
 }
 
 /**
- * 从 settings.json 读取 skillHubApiBase，未配置时回退到 skillHubBase（向后兼容）。
- * 用于市场查询、详情、下载等 API 请求，与认证换票的 domain 可能不同。
+ * 从 settings.json 读取 skillHubApiBase，未配置时回退到 skillHubBase（向后兼容），
+ * 最终兜底到 DEFAULT_SKILLHUB_API_BASE。
+ * 用于市场查询、详情、下载等 API 请求，与认证换票的 domain 不同。
  */
 export function getSkillHubApiBase(): string {
   const settingsPath = getSettingsPath()
@@ -44,7 +45,6 @@ export function getSkillHubApiBase(): string {
       if (typeof settings.skillHubApiBase === 'string' && settings.skillHubApiBase.trim()) {
         return settings.skillHubApiBase.trim()
       }
-      // 未配 skillHubApiBase 时回退到 skillHubBase
       if (typeof settings.skillHubBase === 'string' && settings.skillHubBase.trim()) {
         return settings.skillHubBase.trim()
       }

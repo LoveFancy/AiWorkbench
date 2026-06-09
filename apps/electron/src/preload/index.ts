@@ -212,6 +212,12 @@ export interface ElectronAPI {
   /** 打开应用系统日志目录 */
   openSystemLogDir: () => Promise<void>
 
+  /** 上报系统日志到服务端 */
+  uploadSystemLog: () => Promise<
+    | { success: true; fileName: string; fileSize?: number; uploadedAt?: string }
+    | { success: false; error: string }
+  >
+
   // ===== 窗口控制（Windows 自定义标题栏）=====
 
   /** 最小化窗口 */
@@ -1232,6 +1238,10 @@ const electronAPI: ElectronAPI = {
 
   openSystemLogDir: () => {
     return ipcRenderer.invoke(SYSTEM_LOG_IPC_CHANNELS.OPEN_DIR)
+  },
+
+  uploadSystemLog: () => {
+    return ipcRenderer.invoke('system-log:upload')
   },
 
   // 窗口控制

@@ -1,5 +1,5 @@
 // 主进程
-export { initModelService, fetchUserModels, getModels, getApiKey, clearCache, loadCacheFromDisk, initModelRefresh, shutdownModelRefresh } from './model-service'
+export { fetchUserModels, getModels, getApiKey, clearCache, loadCacheFromDisk, initModelRefresh, shutdownModelRefresh } from './model-service'
 export { registerModelsIpcHandlers, MODELS_IPC_CHANNELS } from './ipc-handlers'
 
 // preload

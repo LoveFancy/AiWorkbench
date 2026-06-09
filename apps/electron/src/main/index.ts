@@ -102,7 +102,8 @@ import { stopAllGenerations } from './lib/chat-service'
 import { initAutoUpdater, cleanupUpdater } from './lib/updater/auto-updater'
 import { startWorkspaceWatcher, stopWorkspaceWatcher } from './lib/workspace-watcher'
 import { registerAuthIpcHandlers } from '../auth'
-import { initModelService, loadCacheFromDisk, initModelRefresh } from '../models'
+import { registerLogUploadIpc } from './lib/log-upload-ipc'
+import { loadCacheFromDisk, initModelRefresh } from '../models'
 import { registerPlatformModelsIpcHandlers } from '../platform-models'
 import { startChatToolsWatcher, stopChatToolsWatcher } from './lib/chat-tools-watcher'
 import { getIsQuitting, setQuitting } from './lib/app-lifecycle'
@@ -518,8 +519,8 @@ async function bootstrap(): Promise<void> {
 
   // Register IPC handlers
   registerIpcHandlers()
+  registerLogUploadIpc()
   registerAuthIpcHandlers()
-  initModelService()
   registerPlatformModelsIpcHandlers()
 
   // WorkMate 观测上报服务初始化

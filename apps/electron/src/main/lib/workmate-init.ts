@@ -11,16 +11,14 @@
 
 import { init as initObservability, shutdown as shutdownObservability } from './observability-service'
 import { registerGlobalErrorHandlers } from './error-handler'
-import { getEipGatewayBase } from '../../auth'
+import { resolveApiBase } from '../../shared/hteip-client'
 import type { ObservabilityConfig } from '../../types/workmate'
 
 let _serverUrl: string | null = null
 
 function getWorkmateServerUrl(): string {
   if (_serverUrl) return _serverUrl
-
-  const base = getEipGatewayBase()
-  _serverUrl = base.replace(/\/gateway\/?$/, '')
+  _serverUrl = resolveApiBase()
   return _serverUrl
 }
 
