@@ -140,7 +140,7 @@ export async function runAgent(
           reportAgentEvent({
             userId: getJobId() ?? 'unknown',
             question: input.userMessage,
-            modelId: input.modelId,
+            modelId: input.modelId ?? 'unknown',
             sessionId: input.sessionId,
             workspaceId: input.workspaceId,
             result: 'failure',
@@ -167,7 +167,7 @@ export async function runAgent(
             reportAgentEvent({
               userId: getJobId() ?? 'unknown',
               question: input.userMessage,
-              modelId: input.modelId,
+              modelId: input.modelId ?? 'unknown',
               sessionId: input.sessionId,
               workspaceId: input.workspaceId,
               result: 'success',
@@ -208,7 +208,7 @@ export async function runAgent(
       reportAgentEvent({
         userId: getJobId() ?? 'unknown',
         question: input.userMessage,
-        modelId: input.modelId,
+        modelId: input.modelId ?? 'unknown',
         sessionId: input.sessionId,
         workspaceId: input.workspaceId,
         result: 'failure',
@@ -264,7 +264,7 @@ export async function runAgentHeadless(
           reportAgentEvent({
             userId: getJobId() ?? 'unknown',
             question: runInput.userMessage,
-            modelId: runInput.modelId,
+            modelId: runInput.modelId ?? 'unknown',
             sessionId: runInput.sessionId,
             workspaceId: runInput.workspaceId,
             result: 'failure',
@@ -293,7 +293,7 @@ export async function runAgentHeadless(
             reportAgentEvent({
               userId: getJobId() ?? 'unknown',
               question: runInput.userMessage,
-              modelId: runInput.modelId,
+              modelId: runInput.modelId ?? 'unknown',
               sessionId: runInput.sessionId,
               workspaceId: runInput.workspaceId,
               result: 'success',
@@ -326,7 +326,7 @@ export async function runAgentHeadless(
             sessionId: runInput.sessionId,
             title: session?.title,
             workspaceId: runInput.workspaceId ?? session?.workspaceId,
-            modelId: runInput.modelId,
+            modelId: runInput.modelId ?? 'unknown',
             startedAt: persistedStartedAt,
           },
         })
@@ -346,7 +346,7 @@ export async function runAgentHeadless(
       reportAgentEvent({
         userId: getJobId() ?? 'unknown',
         question: runInput.userMessage,
-        modelId: runInput.modelId,
+        modelId: runInput.modelId ?? 'unknown',
         sessionId: runInput.sessionId,
         workspaceId: runInput.workspaceId,
         result: 'failure',

@@ -56,6 +56,8 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
   queryRef.current = query
   const categoryRef = React.useRef(category)
   categoryRef.current = category
+  const loadingMoreRef = React.useRef(false)
+  const requestIdRef = React.useRef(0)
 
   // ===== 认证状态 =====
   const [authStatus, setAuthStatus] = React.useState<{ authenticated: boolean; expiresAt?: number; remainingSeconds?: number } | null>(null)
@@ -94,10 +96,13 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
   }, [checkAuth])
 
   const loadSkills = React.useCallback(async (keyword?: string, category?: string): Promise<void> => {
+    const requestId = ++requestIdRef.current
+    loadingMoreRef.current = false
     setLoading(true)
     setPage(1)
     try {
       const list = await window.electronAPI.getHtSkillHubSkills(workspaceSlug, 1, keyword, category)
+      if (requestId !== requestIdRef.current) return
       setSkills(list)
       setHasMore(list.length >= 20)
       setSelectedName((current) => current && list.some((s) => s.name === current) ? current : list[0]?.name ?? null)
@@ -109,20 +114,25 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
       }
       toast.error('加载华泰 SkillHub 失败', { description: error instanceof Error ? error.message : '未知错误' })
     } finally {
-      setLoading(false)
+      if (requestId === requestIdRef.current) setLoading(false)
     }
   }, [workspaceSlug])
 
   const loadMore = React.useCallback(async (): Promise<void> => {
-    if (!hasMore || loading) return
+    if (!hasMore || loading || loadingMoreRef.current) return
+    loadingMoreRef.current = true
+    const requestId = requestIdRef.current
     const nextPage = page + 1
     try {
       const list = await window.electronAPI.getHtSkillHubSkills(workspaceSlug, nextPage, queryRef.current || undefined, categoryRef.current || undefined)
+      if (requestId !== requestIdRef.current) return
       if (list.length === 0 || list.length < 20) setHasMore(false)
       setPage(nextPage)
       setSkills((prev) => [...prev, ...list])
     } catch {
       setHasMore(false)
+    } finally {
+      loadingMoreRef.current = false
     }
   }, [workspaceSlug, page, hasMore, loading])
 
@@ -308,6 +318,15 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
     }
   }, [loadMore])
 
+  React.useEffect(() => {
+    if (filter !== 'uninstalled' || loading || !hasMore) return
+    const el = listRef.current
+    if (!el) return
+    if (el.scrollHeight <= el.clientHeight + 100) {
+      void loadMore()
+    }
+  }, [filter, filteredSkills.length, loading, hasMore, loadMore])
+
   return (
     <SettingsSection
       title="华泰 SkillHub"
@@ -360,7 +379,7 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
               <input
                 value={query}
                 onChange={(e) => { setQuery(e.target.value); setPage(1) }}
-                placeholder="搜索 Skill 名称"
+                placeholder="搜索 Skill 名称和描述"
                 className="w-full h-8 rounded-md border border-border bg-background pl-8 pr-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               />
             </div>
