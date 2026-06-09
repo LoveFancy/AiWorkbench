@@ -36,9 +36,10 @@ function UpdateCard(): React.ReactElement | null {
 
   // 每次打开关于页面时向服务端验证当前版本状态
   // （如服务端暂停了更新，可及时清理已下载的安装包）
+  // 使用静默模式：失败时不显示错误，避免打扰用户
   React.useEffect(() => {
     if (available) {
-      void checkForUpdates()
+      void checkForUpdates({ silent: true })
     }
   }, [available])
 

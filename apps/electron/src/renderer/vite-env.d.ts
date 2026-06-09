@@ -31,7 +31,7 @@ interface UpdateStatus {
 
 /** 更新 API（仅版本检测，不自动下载/安装） */
 interface UpdaterAPI {
-  checkForUpdates: () => Promise<void>
+  checkForUpdates: (opts?: { silent?: boolean }) => Promise<void>
   getStatus: () => Promise<UpdateStatus>
   onStatusChanged: (callback: (status: UpdateStatus) => void) => () => void
   quitAndInstall: () => Promise<void>

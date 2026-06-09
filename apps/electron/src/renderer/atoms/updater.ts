@@ -66,6 +66,6 @@ export function initializeUpdater(
 }
 
 /** 手动检查更新 */
-export async function checkForUpdates(): Promise<void> {
-  await window.electronAPI?.updater?.checkForUpdates()
+export async function checkForUpdates(opts?: { silent?: boolean }): Promise<void> {
+  await window.electronAPI?.updater?.checkForUpdates(opts)
 }

@@ -19,9 +19,9 @@ export function registerUpdaterIpc(): void {
 
   ipcMain.handle(
     UPDATER_IPC_CHANNELS.CHECK_FOR_UPDATES,
-    (): void => {
+    (_event, opts?: { silent?: boolean }): void => {
       // 不 await，状态变更通过 updater:status-changed 事件推送
-      void checkForUpdates(true)
+      void checkForUpdates(true, opts?.silent ?? false)
     }
   )
 

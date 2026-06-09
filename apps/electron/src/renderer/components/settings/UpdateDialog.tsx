@@ -67,16 +67,7 @@ export function UpdateDialog(): React.ReactElement | null {
       return
     }
 
-    // 出错时打开弹窗提示
-    if (
-      updateStatus.status === 'error' &&
-      updateStatus.error &&
-      shownVersionRef.current !== 'error-' + updateStatus.error
-    ) {
-      shownVersionRef.current = 'error-' + updateStatus.error
-      setDialogVersion('error')
-      setOpen(true)
-    }
+    // 检查失败不做弹窗，由 AboutSettings 页面内联展示
   }, [updateStatus.status, updateStatus.version, open, dialogVersion])
 
   const handleOpenChange = (nextOpen: boolean): void => {
@@ -104,26 +95,20 @@ export function UpdateDialog(): React.ReactElement | null {
 
   const isDownloading = updateStatus.status === 'downloading'
   const isDownloaded = updateStatus.status === 'downloaded'
-  const isError = updateStatus.status === 'error'
-  const isAvailable = updateStatus.status === 'available'
   const isRollback = updateStatus.releaseType === 'ROLLBACK'
   const isForce = updateStatus.forceUpdate
 
-  const title = isError
-    ? '更新检查失败'
-    : isDownloaded
-      ? (isRollback ? '回退安装已就绪' : '更新已就绪')
-      : isDownloading
-        ? (isRollback ? '正在下载回退版本' : '正在下载更新')
-        : (isRollback ? '发现回退版本' : '发现新版本')
+  const title = isDownloaded
+    ? (isRollback ? '回退安装已就绪' : '更新已就绪')
+    : isDownloading
+      ? (isRollback ? '正在下载回退版本' : '正在下载更新')
+      : (isRollback ? '发现回退版本' : '发现新版本')
 
-  const desc = isError
-    ? (updateStatus.error || '未知错误')
-    : isDownloaded
-      ? (isRollback ? `v${dialogVersion} 已下载完成，重启应用完成回退。` : `v${dialogVersion} 已下载完成，重启应用即可完成更新。`)
-      : isDownloading
-        ? (isRollback ? `正在下载 v${dialogVersion}...` : `正在下载 v${dialogVersion}...`)
-        : (isRollback ? `v${dialogVersion} 已发布，正在后台下载。` : `v${dialogVersion} 已发布，正在后台下载更新。`)
+  const desc = isDownloaded
+    ? (isRollback ? `v${dialogVersion} 已下载完成，重启应用完成回退。` : `v${dialogVersion} 已下载完成，重启应用即可完成更新。`)
+    : isDownloading
+      ? (isRollback ? `正在下载 v${dialogVersion}...` : `正在下载 v${dialogVersion}...`)
+      : (isRollback ? `v${dialogVersion} 已发布，正在后台下载。` : `v${dialogVersion} 已发布，正在后台下载更新。`)
 
   return (
     <AlertDialog open={open} onOpenChange={handleOpenChange}>

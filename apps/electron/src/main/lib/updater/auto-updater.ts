@@ -66,7 +66,7 @@ export function getUpdateStatus(): UpdateStatus {
 }
 
 /** 手动触发检查更新 */
-export async function checkForUpdates(manual = false): Promise<void> {
+export async function checkForUpdates(manual = false, silent = false): Promise<void> {
   // 并发保护
   if (checking) {
     console.log('[更新] 跳过：已在检查中')
@@ -198,7 +198,11 @@ export async function checkForUpdates(manual = false): Promise<void> {
       } catch { /* 上报失败不影响主流程 */ }
     }
 
-    if (manual) {
+    if (silent) {
+      // 静默检查（如设置页自动刷新）：失败时退回 idle，不打扰用户
+      console.log('[更新] 静默检测失败: %s', err instanceof Error ? err.message : String(err))
+      setStatus({ status: 'idle' })
+    } else if (manual) {
       setStatus({
         status: 'error',
         error: err instanceof Error ? err.message : String(err),
