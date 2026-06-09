@@ -34,6 +34,14 @@ function UpdateCard(): React.ReactElement | null {
   const status = useAtomValue(updateStatusAtom)
   const [showReleaseNotes, setShowReleaseNotes] = React.useState(false)
 
+  // 每次打开关于页面时向服务端验证当前版本状态
+  // （如服务端暂停了更新，可及时清理已下载的安装包）
+  React.useEffect(() => {
+    if (available) {
+      void checkForUpdates()
+    }
+  }, [available])
+
   if (!available) return null
 
   const handleCheck = (): void => {

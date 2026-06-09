@@ -43,6 +43,15 @@ let upgradeInfo: {
   releaseType?: 'UPGRADE' | 'ROLLBACK'
 } = {}
 
+/** 启动时从 manifest 恢复的待验证信息（服务端验证通过前不推送 downloaded 状态） */
+let pendingManifestInfo: {
+  version: string
+  releaseNotes?: string
+  forceUpdate: boolean
+  releaseType: 'UPGRADE' | 'ROLLBACK'
+  hint?: string
+} | null = null
+
 function setStatus(status: UpdateStatus): void {
   currentStatus = status
   console.log('[更新] setStatus: %s (win=%s)', status.status, win ? '有' : '无')
@@ -64,10 +73,11 @@ export async function checkForUpdates(manual = false): Promise<void> {
     return
   }
 
-  // 已下载完成时仍需放行，以便检测服务端是否暂停了此版本
-  const wasDownloaded = currentStatus.status === 'downloaded'
-  if (wasDownloaded) {
-    console.log('[更新] 已下载完成，向服务端验证版本是否仍有效')
+  // 本地有安装包待验证（downloaded 状态 或 启动时 manifest 恢复的待验证包）
+  const hasLocalInstaller = currentStatus.status === 'downloaded' || pendingManifestInfo !== null
+  if (hasLocalInstaller) {
+    console.log('[更新] 本地有安装包，向服务端验证版本是否仍有效 (mode=%s)',
+      pendingManifestInfo ? 'startup-pending' : 'downloaded')
   }
 
   checking = true
@@ -88,19 +98,21 @@ export async function checkForUpdates(manual = false): Promise<void> {
       } catch { /* 上报失败不影响主流程 */ }
     }
 
-    // ---- 已下载完成时的特殊处理：服务端可能取消/改变了此版本 ----
-    if (wasDownloaded) {
-      const oldVersion = upgradeInfo.latestVersion
+    // ---- 本地有安装包时的特殊处理：服务端可能取消/改变了此版本 ----
+    if (hasLocalInstaller) {
+      // 本地保存的版本号（downloaded 状态取 upgradeInfo，pending 取 pendingManifestInfo）
+      const localVersion = pendingManifestInfo?.version ?? upgradeInfo.latestVersion
 
-      if (!result.hasUpdate || result.latestVersion !== oldVersion) {
+      if (!result.hasUpdate || result.latestVersion !== localVersion) {
         // 版本被暂停/撤回/变更 → 清理本地安装包和 manifest
-        console.log('[更新] 服务端已暂停/变更此版本 (hasUpdate=%s, old=%s, new=%s)，清理本地安装包',
-          result.hasUpdate, oldVersion, result.latestVersion)
+        console.log('[更新] 服务端已暂停/变更此版本 (hasUpdate=%s, local=%s, server=%s)，清理本地安装包',
+          result.hasUpdate, localVersion, result.latestVersion)
         if (upgradeInfo.fileName) {
           deleteInstaller(upgradeInfo.fileName)
         }
         deleteManifest()
         upgradeInfo = {}
+        pendingManifestInfo = null
 
         if (!result.hasUpdate) {
           if (result.hint) {
@@ -119,11 +131,12 @@ export async function checkForUpdates(manual = false): Promise<void> {
           return
         }
       } else {
-        // 版本仍有效，重新推送 downloaded 状态
-        console.log('[更新] 已下载版本仍有效, 重新推送 downloaded')
+        // 版本仍有效，推送 downloaded 状态（pending 转为正式 downloaded）
+        console.log('[更新] 本地安装包仍有效, 推送 downloaded 状态')
+        pendingManifestInfo = null
         setStatus({
           status: 'downloaded',
-          version: oldVersion!,
+          version: localVersion!,
           releaseNotes: result.releaseNotes,
           forceUpdate: result.forceUpdate,
           releaseType: result.releaseType,
@@ -264,15 +277,23 @@ export function initAutoUpdater(mainWindow: BrowserWindow): void {
 
   console.log('[更新] WorkMate 升级检测初始化')
 
-  // 1. 恢复 manifest（上次下载未安装的包）
-  restoreManifest()
+  // 1. 恢复 manifest（上次下载未安装的包），仅加载到 upgradeInfo，不推送状态
+  const hasPendingManifest = restoreManifest()
 
-  // 2. 启动随机首检
-  const firstDelay = randomInRange(10_000, 3_600_000)  // 10秒~60分钟
-  console.log('[更新] 首检延迟 %d 秒', Math.round(firstDelay / 1000))
-  checkTimer = setTimeout(() => {
-    checkForUpdates().catch((err) => console.error('[更新] 首次检查失败:', err))
-  }, firstDelay)
+  // 2. 启动首次检测
+  if (hasPendingManifest) {
+    // 有未安装的安装包，立即向服务端验证版本是否仍有效
+    console.log('[更新] 发现待验证安装包，立即向服务端验证')
+    checkTimer = setTimeout(() => {
+      checkForUpdates().catch((err) => console.error('[更新] 首次检查失败:', err))
+    }, 3_000)  // 3秒后触发，给窗口初始化留时间
+  } else {
+    const firstDelay = randomInRange(10_000, 3_600_000)  // 10秒~60分钟
+    console.log('[更新] 首检延迟 %d 秒', Math.round(firstDelay / 1000))
+    checkTimer = setTimeout(() => {
+      checkForUpdates().catch((err) => console.error('[更新] 首次检查失败:', err))
+    }, firstDelay)
+  }
 
   // 窗口关闭时清理
   mainWindow.on('closed', () => {
@@ -319,11 +340,11 @@ function scheduleNextCheck(): void {
   }, delay)
 }
 
-/** 恢复上次下载的 manifest */
-function restoreManifest(): void {
+/** 恢复上次下载的 manifest，仅加载到 upgradeInfo，不推送状态 */
+function restoreManifest(): boolean {
   try {
     const manifest = loadManifest()
-    if (!manifest) return
+    if (!manifest) return false
 
     // 版本方向仍有效
     if (manifest.releaseType && !isValidVersionDirection(
@@ -332,7 +353,7 @@ function restoreManifest(): void {
       console.log('[更新] manifest 版本方向失效，删除')
       deleteInstaller(manifest.fileName)
       deleteManifest()
-      return
+      return false
     }
 
     // 文件存在
@@ -341,10 +362,10 @@ function restoreManifest(): void {
     if (!existsSync(path)) {
       console.log('[更新] manifest 安装包不存在，删除')
       deleteManifest()
-      return
+      return false
     }
 
-    // 恢复内部信息
+    // 恢复内部信息（不推送 downloaded 状态，由首次 checkForUpdates 向服务端验证后推送）
     upgradeInfo = {
       fileName: manifest.fileName,
       sha256: manifest.sha256,
@@ -354,18 +375,21 @@ function restoreManifest(): void {
     upgradeInfo.releaseType = manifest.releaseType
     upgradeInfo.latestVersion = manifest.version
 
-    setStatus({
-      status: 'downloaded',
+    // 暂存版本信息，供首次 checkForUpdates 验证后使用
+    pendingManifestInfo = {
       version: manifest.version,
       releaseNotes: manifest.releaseNotes,
       forceUpdate: manifest.forceUpdate,
       releaseType: manifest.releaseType,
       hint: manifest.hint,
-    })
-    console.log('[更新] manifest 恢复成功 version=%s', manifest.version)
+    }
+
+    console.log('[更新] manifest 数据已加载 version=%s，等待服务端验证', manifest.version)
+    return true
   } catch (err) {
     console.error('[更新] manifest 恢复异常:', err)
     deleteManifest()
+    return false
   }
 }
 
