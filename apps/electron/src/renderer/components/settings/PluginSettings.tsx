@@ -2,6 +2,8 @@ import * as React from 'react'
 import {
   AlertTriangle,
   ArrowLeft,
+  Check,
+  Copy,
   Download,
   ExternalLink,
   FolderPlus,
@@ -13,6 +15,7 @@ import {
   Search,
   Settings2,
   Trash2,
+  Upload,
 } from 'lucide-react'
 import type {
   AgentPluginInfo,
@@ -40,6 +43,7 @@ import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
 type PluginSettingsTab = 'discover' | 'installed' | 'marketplaces' | 'errors'
+type MarketplaceDetailTab = 'plugins' | 'installed' | 'settings'
 
 interface PluginErrorItem {
   id: string
@@ -63,6 +67,8 @@ function capabilityLabel(type: AgentPluginCapability['type']): string {
       return 'Agent'
     case 'mcp':
       return 'MCP'
+    case 'expert-group':
+      return '专家团'
   }
 }
 
@@ -100,13 +106,14 @@ function summarizeCapabilities(plugin: AgentPluginInfo): string {
       acc[capability.type] += 1
       return acc
     },
-    { skill: 0, command: 0, agent: 0, mcp: 0 },
+    { skill: 0, command: 0, agent: 0, mcp: 0, 'expert-group': 0 },
   )
   return [
     counts.skill > 0 ? `${counts.skill} Skills` : null,
     counts.command > 0 ? `${counts.command} Commands` : null,
     counts.agent > 0 ? `${counts.agent} Agents` : null,
     counts.mcp > 0 ? `${counts.mcp} MCP` : null,
+    counts['expert-group'] > 0 ? `${counts['expert-group']} 专家团` : null,
   ].filter(Boolean).join(' · ') || '暂无能力'
 }
 
@@ -116,7 +123,7 @@ function groupCapabilities(capabilities: AgentPluginCapability[]): Record<AgentP
       acc[capability.type].push(capability)
       return acc
     },
-    { skill: [], command: [], agent: [], mcp: [] },
+    { skill: [], command: [], agent: [], mcp: [], 'expert-group': [] },
   )
 }
 
@@ -166,6 +173,11 @@ interface InferredMarketplaceInput {
   name: string
   source: string
   type: AgentPluginMarketplaceType
+  branch?: string
+}
+
+function supportsMarketplaceBranch(type: AgentPluginMarketplaceType): boolean {
+  return type === 'github' || type === 'gitee' || type === 'gitlab'
 }
 
 function slugFromMarketplaceSource(source: string): string {
@@ -183,6 +195,23 @@ function slugFromMarketplaceSource(source: string): string {
   if (gitSshMatch?.[1]) return gitSshMatch[1].split('/').at(-1)?.replace(/\.git$/, '') ?? 'marketplace'
   const last = trimmed.split(/[\\/]/).filter(Boolean).at(-1) ?? 'marketplace'
   return last.replace(/\.git$/, '').replace(/\.json$/, '') || 'marketplace'
+}
+
+function inferMarketplaceBranchFromSource(source: string, type: AgentPluginMarketplaceType): string | undefined {
+  if (type !== 'github' && type !== 'gitee' && type !== 'gitlab') return undefined
+  if (!/^https?:\/\//i.test(source)) return undefined
+
+  try {
+    const url = new URL(source)
+    const segments = url.pathname.split('/').filter(Boolean)
+    const treeIndex = type === 'gitlab'
+      ? segments.findIndex((segment, index) => segment === 'tree' && segments[index - 1] === '-')
+      : segments.indexOf('tree')
+    const branch = treeIndex >= 0 ? segments[treeIndex + 1] : undefined
+    return branch ? decodeURIComponent(branch) : undefined
+  } catch {
+    return undefined
+  }
 }
 
 export function inferMarketplaceInput(sourceText: string): InferredMarketplaceInput {
@@ -206,11 +235,13 @@ export function inferMarketplaceInput(sourceText: string): InferredMarketplaceIn
 
   const rawId = slugFromMarketplaceSource(source)
   const id = rawId.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'marketplace'
+  const branch = inferMarketplaceBranchFromSource(source, type)
   return {
     id,
     name: id,
     source,
     type,
+    ...(branch && { branch }),
   }
 }
 
@@ -230,7 +261,9 @@ export function PluginSettings(): React.ReactElement {
   const [editingMcp, setEditingMcp] = React.useState<AgentPluginCapability | null>(null)
   const [mcpEnvText, setMcpEnvText] = React.useState('')
   const [marketplaceSourceInput, setMarketplaceSourceInput] = React.useState('')
+  const [marketplaceBranchInput, setMarketplaceBranchInput] = React.useState('main')
   const [pendingPluginOperations, setPendingPluginOperations] = React.useState<Set<string>>(new Set())
+  const [uploadingPluginZip, setUploadingPluginZip] = React.useState(false)
 
   const capabilities = React.useMemo(() => {
     const items = plugins.flatMap((plugin) => plugin.capabilities)
@@ -416,12 +449,35 @@ export function PluginSettings(): React.ReactElement {
     }
   }
 
+  const handleInstallPluginZip = async (): Promise<void> => {
+    if (uploadingPluginZip) return
+    setUploadingPluginZip(true)
+    try {
+      const installed = await window.electronAPI.installAgentPluginZip()
+      if (!installed) return
+      setActiveTab('installed')
+      setInstalledQuery('')
+      setInstalledDetailPluginId(installed.id)
+      toast.success(`插件已安装: ${installed.name}`)
+      await loadAll()
+    } catch (error) {
+      toast.error('安装插件失败', { description: error instanceof Error ? error.message : '未知错误' })
+    } finally {
+      setUploadingPluginZip(false)
+    }
+  }
+
   const handleAddMarketplace = async (): Promise<void> => {
     try {
       const inferred = inferMarketplaceInput(marketplaceSourceInput)
-      await window.electronAPI.addAgentPluginMarketplace(inferred)
+      const branch = marketplaceBranchInput.trim()
+      await window.electronAPI.addAgentPluginMarketplace({
+        ...inferred,
+        ...(supportsMarketplaceBranch(inferred.type) && branch ? { branch } : {}),
+      })
       await window.electronAPI.refreshAgentPluginMarketplace(inferred.id)
       setMarketplaceSourceInput('')
+      setMarketplaceBranchInput('main')
       setAddMarketplaceOpen(false)
       toast.success('插件市场已添加')
       await loadAll()
@@ -456,6 +512,20 @@ export function PluginSettings(): React.ReactElement {
       await loadAll()
     } catch (error) {
       toast.error('更新插件市场失败', { description: error instanceof Error ? error.message : '未知错误' })
+    }
+  }
+
+  const handleUpdateMarketplaceBranch = async (marketplace: AgentPluginMarketplace, branch: string): Promise<void> => {
+    try {
+      const trimmed = branch.trim()
+      await window.electronAPI.updateAgentPluginMarketplace(marketplace.id, {
+        branch: trimmed || undefined,
+        lastError: undefined,
+      })
+      toast.success('插件市场分支已更新')
+      await loadAll()
+    } catch (error) {
+      toast.error('更新插件市场分支失败', { description: error instanceof Error ? error.message : '未知错误' })
     }
   }
 
@@ -608,7 +678,7 @@ export function PluginSettings(): React.ReactElement {
               )
             })}
           </div>
-          {!loading && visibleDiscover.length === 0 && <EmptyState text="暂无可安装插件，请先添加并刷新插件市场" />}
+          {!loading && visibleDiscover.length === 0 && <EmptyState text="暂无可安装 Claude Code 插件，请先添加并刷新 Claude Code 类型插件市场" />}
         </TabsContent>
 
         <TabsContent value="installed" className="space-y-3">
@@ -628,9 +698,15 @@ export function PluginSettings(): React.ReactElement {
             />
           ) : (
             <div className="space-y-4">
-              <div className="relative">
-                <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <Input value={installedQuery} onChange={(event) => setInstalledQuery(event.target.value)} placeholder="搜索已安装插件" className="pl-9" />
+              <div className="flex items-center gap-2">
+                <div className="relative min-w-0 flex-1">
+                  <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <Input value={installedQuery} onChange={(event) => setInstalledQuery(event.target.value)} placeholder="搜索已安装插件" className="pl-9" />
+                </div>
+                <Button variant="outline" onClick={() => void handleInstallPluginZip()} disabled={uploadingPluginZip}>
+                  {uploadingPluginZip ? <Loader2 size={16} className="mr-2 animate-spin" /> : <Upload size={16} className="mr-2" />}
+                  <span>{uploadingPluginZip ? '安装中' : '上传 Zip'}</span>
+                </Button>
               </div>
               {attentionPlugins.length > 0 && (
                 <PluginListSection
@@ -664,14 +740,14 @@ export function PluginSettings(): React.ReactElement {
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <h3 className="text-sm font-medium">插件市场</h3>
-              <p className="mt-1 text-xs text-muted-foreground">GitHub、Gitee、Raw URL 或本地 marketplace.json。</p>
+              <p className="mt-1 text-xs text-muted-foreground">当前仅支持 Claude Code 类型插件市场，来源可使用 GitHub、Gitee、GitLab、Raw URL 或本地 marketplace.json。</p>
             </div>
             <Button onClick={() => setAddMarketplaceOpen(true)}>
               <FolderPlus size={16} className="mr-2" />
               添加市场
             </Button>
           </div>
-          <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
             <div className="space-y-2">
               {marketplaces.map((marketplace) => (
                 <button
@@ -712,6 +788,7 @@ export function PluginSettings(): React.ReactElement {
               installedPlugins={selectedMarketplace ? installedPluginsByMarketplace.get(selectedMarketplace.id) ?? [] : []}
               loading={loading}
               onToggle={handleToggleMarketplace}
+              onUpdateBranch={handleUpdateMarketplaceBranch}
               onBrowse={handleBrowseMarketplace}
               onRefresh={handleRefreshMarketplace}
               onRemove={handleRemoveMarketplace}
@@ -743,21 +820,41 @@ export function PluginSettings(): React.ReactElement {
           <DialogHeader>
             <DialogTitle>添加插件市场</DialogTitle>
             <DialogDescription>
-              输入市场来源即可，系统会自动识别 GitHub、Gitee、GitLab、Raw URL 或本地路径。
+              当前仅支持 Claude Code 类型插件市场。输入市场来源后，系统会自动识别 GitHub、Gitee、GitLab、Raw URL 或本地路径。
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <div className="mb-2 text-sm font-medium">Marketplace source</div>
+              <div className="mb-2 text-sm font-medium">市场来源</div>
               <Input
                 value={marketplaceSourceInput}
-                onChange={(event) => setMarketplaceSourceInput(event.target.value)}
+                onChange={(event) => {
+                  const nextSource = event.target.value
+                  setMarketplaceSourceInput(nextSource)
+                  try {
+                    const inferred = nextSource.trim() ? inferMarketplaceInput(nextSource) : null
+                    if (inferred && !supportsMarketplaceBranch(inferred.type)) setMarketplaceBranchInput('')
+                    if (inferred?.branch) setMarketplaceBranchInput(inferred.branch)
+                    if (inferred && supportsMarketplaceBranch(inferred.type) && !inferred.branch && !marketplaceBranchInput.trim()) setMarketplaceBranchInput('main')
+                  } catch {
+                    // 输入过程中允许暂时不可解析
+                  }
+                }}
                 placeholder="owner/repo、GitLab/Gitee/GitHub 仓库、https://.../marketplace.json 或 ./path/to/marketplace"
                 autoFocus
               />
             </div>
+            <div>
+              <div className="mb-2 text-sm font-medium">读取分支</div>
+              <Input
+                value={marketplaceBranchInput}
+                onChange={(event) => setMarketplaceBranchInput(event.target.value)}
+                placeholder="main 或 master"
+                disabled={!inferredMarketplacePreview || !supportsMarketplaceBranch(inferredMarketplacePreview.type)}
+              />
+            </div>
             <div className="rounded-md bg-zinc-950 px-4 py-3 font-mono text-sm text-zinc-100 dark:bg-zinc-900">
-              <div className="font-semibold">Examples:</div>
+              <div className="font-semibold">示例：</div>
               <div className="mt-2 space-y-1 text-zinc-400">
                 <div>· owner/repo (GitHub)</div>
                 <div>· http://gitlab.htzq.htsc.com.cn/aidev/ht-dev-plugins/claudecode-plugin-marketplace</div>
@@ -774,7 +871,16 @@ export function PluginSettings(): React.ReactElement {
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAddMarketplaceOpen(false)}>取消</Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setMarketplaceSourceInput('')
+                setMarketplaceBranchInput('main')
+                setAddMarketplaceOpen(false)
+              }}
+            >
+              取消
+            </Button>
             <Button disabled={!marketplaceSourceInput.trim()} onClick={() => void handleAddMarketplace()}>
               <FolderPlus size={16} className="mr-2" />
               添加
@@ -1025,8 +1131,37 @@ function DetailField({ label, value }: { label: string; value: string }): React.
   return (
     <div className="min-w-0">
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="truncate font-medium">{value}</div>
+      <div className="truncate font-medium" title={value}>{value}</div>
     </div>
+  )
+}
+
+function CopyValueButton({ value, label }: { value: string; label: string }): React.ReactElement {
+  const [copied, setCopied] = React.useState(false)
+
+  const handleCopy = React.useCallback(async (): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(true)
+      toast.success(`${label}已复制`)
+      window.setTimeout(() => setCopied(false), 1200)
+    } catch (error) {
+      console.error(`[插件设置] 复制${label}失败:`, error)
+      toast.error(`${label}复制失败`)
+    }
+  }, [label, value])
+
+  return (
+    <Button
+      type="button"
+      size="icon"
+      variant="ghost"
+      className="size-7 shrink-0"
+      title={copied ? '已复制' : `复制${label}`}
+      onClick={handleCopy}
+    >
+      {copied ? <Check size={14} /> : <Copy size={14} />}
+    </Button>
   )
 }
 
@@ -1090,6 +1225,7 @@ function MarketplaceDetailPanel({
   installedPlugins,
   loading,
   onToggle,
+  onUpdateBranch,
   onBrowse,
   onRefresh,
   onRemove,
@@ -1099,79 +1235,156 @@ function MarketplaceDetailPanel({
   installedPlugins: AgentPluginInfo[]
   loading: boolean
   onToggle: (marketplace: AgentPluginMarketplace, enabled: boolean) => Promise<void>
+  onUpdateBranch: (marketplace: AgentPluginMarketplace, branch: string) => Promise<void>
   onBrowse: (marketplace: AgentPluginMarketplace) => void
   onRefresh: (id: string) => Promise<void>
   onRemove: (id: string) => Promise<void>
 }): React.ReactElement {
+  const [branchDraft, setBranchDraft] = React.useState('main')
+  const [activeDetailTab, setActiveDetailTab] = React.useState<MarketplaceDetailTab>('plugins')
+
+  React.useEffect(() => {
+    setBranchDraft(marketplace?.branch ?? 'main')
+    setActiveDetailTab('plugins')
+  }, [marketplace?.id, marketplace?.branch])
+
   if (!marketplace) {
     return <EmptyState text="选择一个插件市场查看详情" />
   }
+  const canConfigureBranch = supportsMarketplaceBranch(marketplace.type)
+
   return (
-    <aside className="rounded-lg bg-card p-4 shadow-sm xl:sticky xl:top-4 xl:self-start">
-      <div className="flex items-start justify-between gap-3">
+    <section className="min-w-0 rounded-lg bg-card p-4 shadow-sm">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-semibold">{marketplace.name}</h3>
+            <h3 className="text-lg font-semibold">{marketplace.name}</h3>
             <Badge variant={marketplace.enabled ? 'secondary' : 'outline'}>{marketplace.enabled ? '已启用' : '已禁用'}</Badge>
+            <Badge variant="outline">{marketplace.type}</Badge>
+            {marketplace.lastError && <Badge variant="destructive">错误</Badge>}
           </div>
-          <p className="mt-1 truncate text-sm text-muted-foreground">{marketplace.source}</p>
+          <div className="mt-1 flex min-w-0 items-center gap-1">
+            <p className="min-w-0 truncate text-sm text-muted-foreground" title={marketplace.source}>{marketplace.source}</p>
+            <CopyValueButton value={marketplace.source} label="插件市场地址" />
+          </div>
         </div>
-        <Switch checked={marketplace.enabled} onCheckedChange={(checked) => void onToggle(marketplace, checked)} />
+        <div className="flex shrink-0 items-center gap-3">
+          <span className="text-sm text-muted-foreground">{marketplace.enabled ? '启用' : '禁用'}</span>
+          <Switch checked={marketplace.enabled} onCheckedChange={(checked) => void onToggle(marketplace, checked)} />
+        </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+      <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-5">
         <DetailField label="类型" value={marketplace.type} />
+        <DetailField label="分支" value={marketplace.branch ?? 'main'} />
         <DetailField label="可用插件" value={String(availablePlugins.length)} />
         <DetailField label="已安装" value={String(installedPlugins.length)} />
         <DetailField label="最近刷新" value={formatDateTime(marketplace.lastRefreshAt)} />
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        <Button size="sm" variant="outline" onClick={() => onBrowse(marketplace)}>
-          <List size={14} className="mr-1" />
-          浏览
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => void onRefresh(marketplace.id)}>
-          <RefreshCw size={14} className={cn('mr-1', loading && 'animate-spin')} />
-          刷新
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => void onRemove(marketplace.id)}>
-          <Trash2 size={14} className="mr-1" />
-          删除
-        </Button>
-      </div>
-
-      {marketplace.lastError && (
-        <div className="mt-4 max-h-28 overflow-auto break-words rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {marketplace.lastError}
-        </div>
-      )}
-
-      <div className="mt-4 space-y-2 border-t pt-4">
-        <div className="text-sm font-medium">已安装插件</div>
-        {installedPlugins.length > 0 ? installedPlugins.map((plugin) => (
-          <div key={plugin.id} className="flex items-center justify-between gap-3 rounded-md bg-muted/40 px-3 py-2 text-sm">
-            <span className="min-w-0 truncate font-medium">{plugin.name}</span>
-            <Badge variant={plugin.enabled ? 'secondary' : 'outline'}>{plugin.enabled ? '启用' : '禁用'}</Badge>
-          </div>
-        )) : (
-          <p className="text-sm text-muted-foreground">暂无已安装插件</p>
-        )}
-      </div>
-
-      <div className="mt-4 space-y-2 border-t pt-4">
-        <div className="text-sm font-medium">市场插件</div>
-        {availablePlugins.slice(0, 8).map((plugin) => (
-          <div key={`${plugin.marketplaceId}:${plugin.name}`} className="rounded-md bg-muted/40 px-3 py-2 text-sm">
-            <div className="flex items-center justify-between gap-3">
-              <span className="min-w-0 truncate font-medium">{plugin.name}</span>
-              {plugin.installed && <Badge variant="secondary">已安装</Badge>}
+      <div className="mt-4 flex flex-col gap-3 border-t pt-4 xl:flex-row xl:items-end xl:justify-between">
+        <div className="min-w-0 flex-1">
+          {canConfigureBranch && (
+            <div className="max-w-xl space-y-2">
+              <div className="text-sm font-medium">读取分支</div>
+              <div className="flex gap-2">
+                <Input
+                  value={branchDraft}
+                  onChange={(event) => setBranchDraft(event.target.value)}
+                  placeholder="main 或 master"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void onUpdateBranch(marketplace, branchDraft)}
+                  disabled={branchDraft.trim() === (marketplace.branch ?? 'main')}
+                >
+                  保存
+                </Button>
+              </div>
             </div>
-            {plugin.description && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{plugin.description}</p>}
-          </div>
-        ))}
-        {availablePlugins.length > 8 && <p className="text-xs text-muted-foreground">还有 {availablePlugins.length - 8} 个插件</p>}
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" onClick={() => onBrowse(marketplace)}>
+            <List size={14} className="mr-1" />
+            浏览
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => void onRefresh(marketplace.id)}>
+            <RefreshCw size={14} className={cn('mr-1', loading && 'animate-spin')} />
+            刷新
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => void onRemove(marketplace.id)}>
+            <Trash2 size={14} className="mr-1" />
+            删除
+          </Button>
+        </div>
       </div>
-    </aside>
+
+      <Tabs value={activeDetailTab} onValueChange={(value) => setActiveDetailTab(value as MarketplaceDetailTab)} className="mt-5">
+        <TabsList className="grid w-full max-w-lg grid-cols-3">
+          <TabsTrigger value="plugins">市场插件</TabsTrigger>
+          <TabsTrigger value="installed">已安装</TabsTrigger>
+          <TabsTrigger value="settings">配置</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="plugins" className="mt-4">
+          {availablePlugins.length > 0 ? (
+            <div className="grid gap-3 lg:grid-cols-2">
+              {availablePlugins.map((plugin) => (
+                <div key={`${plugin.marketplaceId}:${plugin.name}`} className="rounded-md bg-muted/40 px-4 py-3 text-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium">{plugin.name}</span>
+                        {plugin.version && <span className="text-xs text-muted-foreground">{plugin.version}</span>}
+                        {plugin.installed && <Badge variant="secondary">已安装</Badge>}
+                      </div>
+                      {plugin.description && <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{plugin.description}</p>}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState text="暂无市场插件，请先刷新该市场" />
+          )}
+        </TabsContent>
+
+        <TabsContent value="installed" className="mt-4">
+          {installedPlugins.length > 0 ? (
+            <div className="grid gap-3 lg:grid-cols-2">
+              {installedPlugins.map((plugin) => (
+                <div key={plugin.id} className="flex items-start justify-between gap-3 rounded-md bg-muted/40 px-4 py-3 text-sm">
+                  <div className="min-w-0">
+                    <div className="truncate font-medium">{plugin.name}</div>
+                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{plugin.description ?? '暂无描述'}</p>
+                  </div>
+                  <Badge variant={plugin.enabled ? 'secondary' : 'outline'}>{plugin.enabled ? '启用' : '禁用'}</Badge>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState text="暂无已安装插件" />
+          )}
+        </TabsContent>
+
+        <TabsContent value="settings" className="mt-4 space-y-4">
+          <div className="grid gap-3 text-sm md:grid-cols-2">
+            <DetailField label="插件市场地址" value={marketplace.source} />
+            <DetailField label="ID" value={marketplace.id} />
+            <DetailField label="读取分支" value={marketplace.branch ?? 'main'} />
+            <DetailField label="最近刷新" value={formatDateTime(marketplace.lastRefreshAt)} />
+          </div>
+          {marketplace.lastError ? (
+            <div className="max-h-40 overflow-auto break-words rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {marketplace.lastError}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">暂无市场错误</p>
+          )}
+        </TabsContent>
+      </Tabs>
+    </section>
   )
 }

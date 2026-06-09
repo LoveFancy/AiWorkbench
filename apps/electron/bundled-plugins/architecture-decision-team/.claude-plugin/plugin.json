@@ -1,0 +1,16 @@
+{
+  "name": "架构决策专家团",
+  "version": "0.1.11",
+  "description": "WorkMate 内置专家团能力包",
+  "author": {
+    "name": "WorkMate"
+  },
+  "license": "MIT",
+  "keywords": [
+    "expert-group",
+    "product",
+    "architecture",
+    "agent"
+  ],
+  "expertGroup": "architecture-decision-team"
+}

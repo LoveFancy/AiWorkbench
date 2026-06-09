@@ -59,6 +59,26 @@ describe('华泰 SkillHub 服务', () => {
     }
   })
 
+  test('安装 SkillHub Skill 时写入 SkillHub 分组', async () => {
+    const workspace = createTempWorkspace()
+    try {
+      await installHtSkillHubSkill({
+        workspaceSlug: 'default',
+        skill: marketSkill(),
+        overwrite: false,
+        activeDir: workspace.activeDir,
+        inactiveDir: workspace.inactiveDir,
+        fetchText: async (url) => url.endsWith('/SKILL.md')
+          ? '---\nname: ht-wiki-cli\ndescription: 查询华泰 Wiki 内容\n---\n\n# 使用说明\n'
+          : '# downloaded',
+      })
+
+      expect(readFileSync(join(workspace.activeDir, 'ht-wiki-cli', 'SKILL.md'), 'utf-8')).toContain('group: SkillHub')
+    } finally {
+      workspace.cleanup()
+    }
+  })
+
   test('覆盖已禁用 Skill 时仍保持禁用状态', async () => {
     const workspace = createTempWorkspace()
     try {

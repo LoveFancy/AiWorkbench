@@ -32,3 +32,14 @@ test('Skills 设置支持上传 zip 包安装到当前工作区', () => {
   expect(source).toContain('installingZipSkill')
   expect(source).toContain('已安装 Skill')
 })
+
+test('Skills 内置分组标题不显示 Proma 来源标记', () => {
+  expect(source).toContain("group.isBuiltin ? 'built-in' : group.prefix")
+  expect(source).not.toContain('PROMA')
+})
+
+test('Skills 设置按已安装 SkillHub 清单归组', () => {
+  expect(source).toContain('skillHubSlugs')
+  expect(source).toContain('getHtSkillHubSkills(workspaceSlug)')
+  expect(source).toContain('groupSkillsByPrefix(skills, defaultSkillSlugs, skillHubSlugs)')
+})

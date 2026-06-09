@@ -40,6 +40,7 @@ interface AddMarketplaceInput {
   name: string
   source: string
   type: AgentPluginMarketplaceType
+  branch?: string
 }
 
 interface MarketManifestPlugin {
@@ -89,6 +90,76 @@ function slugSafe(value: string, label: string): string {
   return trimmed
 }
 
+function normalizeMarketplaceBranch(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+  if (!/^[A-Za-z0-9._/-]+$/.test(trimmed) || trimmed.startsWith('/') || trimmed.endsWith('/') || trimmed.includes('..')) {
+    throw new Error('插件市场分支只能包含字母、数字、点、下划线、短横线和斜杠')
+  }
+  return trimmed
+}
+
+function marketplaceBranch(marketplace: AgentPluginMarketplace): string {
+  return normalizeMarketplaceBranch(marketplace.branch) ?? 'main'
+}
+
+interface MarketplaceRepositorySource {
+  root: string
+  subPath: string
+}
+
+function joinUrlSegments(...segments: string[]): string {
+  return segments
+    .map((segment) => segment.replace(/^\/+|\/+$/g, ''))
+    .filter(Boolean)
+    .join('/')
+}
+
+function splitUrlPath(pathname: string): string[] {
+  return pathname.split('/').filter(Boolean)
+}
+
+function removeBranchSegments(segments: string[], branch: string): string[] {
+  const branchSegments = branch.split('/').filter(Boolean)
+  const matchesConfiguredBranch = branchSegments.length > 0
+    && branchSegments.every((segment, index) => segments[index] === segment)
+  if (matchesConfiguredBranch) return segments.slice(branchSegments.length)
+  return segments.slice(1)
+}
+
+function normalizeMarketplaceRepositorySource(marketplace: AgentPluginMarketplace, branch: string): MarketplaceRepositorySource {
+  const fallback = { root: marketplace.source.replace(/\/$/, ''), subPath: '' }
+  if (!/^https?:\/\//i.test(marketplace.source)) return fallback
+
+  try {
+    const url = new URL(marketplace.source)
+    const segments = splitUrlPath(url.pathname)
+
+    if ((marketplace.type === 'github' || marketplace.type === 'gitee') && segments.length >= 2) {
+      const treeIndex = segments.indexOf('tree')
+      if (treeIndex >= 2) {
+        const root = `${url.origin}/${segments.slice(0, 2).join('/')}`
+        const subPath = joinUrlSegments(...removeBranchSegments(segments.slice(treeIndex + 1), branch))
+        return { root, subPath }
+      }
+    }
+
+    if (marketplace.type === 'gitlab') {
+      const treeIndex = segments.findIndex((segment, index) => segment === 'tree' && segments[index - 1] === '-')
+      if (treeIndex > 1) {
+        const root = `${url.origin}/${segments.slice(0, treeIndex - 1).join('/')}`
+        const subPath = joinUrlSegments(...removeBranchSegments(segments.slice(treeIndex + 1), branch))
+        return { root, subPath }
+      }
+    }
+  } catch {
+    return fallback
+  }
+
+  return fallback
+}
+
 function readJson(path: string): unknown {
   return JSON.parse(readFileSync(path, 'utf-8')) as unknown
 }
@@ -132,6 +203,7 @@ export function readPluginMarketplacesConfig(input?: Pick<PluginMarketplacePaths
           name: typeof item.name === 'string' ? item.name : '',
           source: typeof item.source === 'string' ? item.source : '',
           type: parseMarketplaceType(item.type),
+          ...(normalizeMarketplaceBranch(item.branch) && { branch: normalizeMarketplaceBranch(item.branch) }),
           enabled: typeof item.enabled === 'boolean' ? item.enabled : true,
           addedAt: typeof item.addedAt === 'string' ? item.addedAt : new Date().toISOString(),
           lastRefreshAt: typeof item.lastRefreshAt === 'string' || item.lastRefreshAt === null ? item.lastRefreshAt : null,
@@ -168,6 +240,7 @@ export function addPluginMarketplace(marketplace: AddMarketplaceInput, input?: P
       name: marketplace.name.trim() || id,
       source: marketplace.source.trim(),
       type: marketplace.type,
+      branch: normalizeMarketplaceBranch(marketplace.branch),
       enabled: true,
       lastError: undefined,
     }
@@ -180,6 +253,7 @@ export function addPluginMarketplace(marketplace: AddMarketplaceInput, input?: P
     name: marketplace.name.trim() || id,
     source: marketplace.source.trim(),
     type: marketplace.type,
+    branch: normalizeMarketplaceBranch(marketplace.branch),
     enabled: true,
     addedAt: new Date().toISOString(),
     lastRefreshAt: null,
@@ -274,18 +348,21 @@ function formatMarketplaceHttpError(marketplace: AgentPluginMarketplace, url: st
 }
 
 function resolveMarketplaceManifestUrl(marketplace: AgentPluginMarketplace): string {
+  const branch = marketplaceBranch(marketplace)
+  const repository = normalizeMarketplaceRepositorySource(marketplace, branch)
+  const manifestPath = joinUrlSegments(repository.subPath, '.claude-plugin/marketplace.json')
   if (marketplace.type === 'github') {
-    return marketplace.source
+    return repository.root
       .replace('github.com/', 'raw.githubusercontent.com/')
-      .replace(/\/?$/, '/main/.claude-plugin/marketplace.json')
+      .replace(/\/?$/, `/${branch}/${manifestPath}`)
   }
   if (marketplace.type === 'gitee') {
-    return marketplace.source
-      .replace(/\/?$/, '/raw/main/.claude-plugin/marketplace.json')
+    return repository.root
+      .replace(/\/?$/, `/raw/${branch}/${manifestPath}`)
   }
   if (marketplace.type === 'gitlab') {
-    return marketplace.source
-      .replace(/\/?$/, '/-/raw/main/.claude-plugin/marketplace.json')
+    return repository.root
+      .replace(/\/?$/, `/-/raw/${branch}/${manifestPath}`)
   }
   return marketplace.source
 }
