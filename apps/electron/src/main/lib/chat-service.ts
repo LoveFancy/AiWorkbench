@@ -492,6 +492,19 @@ export async function sendMessage(
           model: modelId,
         })
       }
+
+      // 上报用户中止事件（仅上报用户问题，不带上报模型回复，防止日志过大）
+      try {
+        reportChatEvent({
+          userId: getJobId() ?? 'unknown',
+          question: userMessage,
+          modelId,
+          result: 'failure',
+          responseDurationMs: Date.now() - startTime,
+          error: new Error('用户中止'),
+        })
+      } catch { /* 上报失败不影响主流程 */ }
+
       return
     }
 
