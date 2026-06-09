@@ -615,6 +615,7 @@ ${skillList}
         </TabsContent>
 
         {/* ===== 华泰 SkillHub Tab ===== */}
+        {activeTab === 'skillhub' && (
         <TabsContent value="skillhub" className="mt-4 space-y-4">
           <SkillHubPanel
             workspaceSlug={workspaceSlug}
@@ -624,6 +625,7 @@ ${skillList}
             skillsDir={skillsDir}
           />
         </TabsContent>
+        )}
 
         {/* ===== MCP Tab ===== */}
         <TabsContent value="mcp" className="mt-4 space-y-4">
@@ -799,6 +801,7 @@ function SkillListPanel({ skills, defaultSkillSlugs, skillHubSlugs, selectedSlug
                     onOpenFolder={() => openSkillFolder(skill.slug)}
                     onUpdate={skill.hasUpdate ? () => onUpdate(skill.slug) : undefined}
                     isBuiltin={group.isBuiltin}
+                    hideManagementActions={group.prefix === 'SkillHub'}
                     indented
                   />
                 ))}
@@ -838,9 +841,10 @@ interface SkillCompactItemProps {
   onUpdate?: () => void
   indented?: boolean
   isBuiltin?: boolean
+  hideManagementActions?: boolean
 }
 
-function SkillCompactItem({ skill, displayName, selected, onSelect, onDelete, onToggle, onOpenFolder, onUpdate, indented, isBuiltin }: SkillCompactItemProps): React.ReactElement {
+function SkillCompactItem({ skill, displayName, selected, onSelect, onDelete, onToggle, onOpenFolder, onUpdate, indented, isBuiltin, hideManagementActions }: SkillCompactItemProps): React.ReactElement {
   return (
     <div
       role="button"
@@ -878,7 +882,7 @@ function SkillCompactItem({ skill, displayName, selected, onSelect, onDelete, on
         >
           <FolderOpen size={12} />
         </span>
-        {!isBuiltin && (
+        {!isBuiltin && !hideManagementActions && (
           <span
             role="button"
             onClick={(e) => { e.stopPropagation(); onDelete() }}
@@ -888,12 +892,14 @@ function SkillCompactItem({ skill, displayName, selected, onSelect, onDelete, on
           </span>
         )}
       </div>
-      <Switch
-        checked={skill.enabled}
-        onCheckedChange={(checked) => { onToggle(checked) }}
-        onClick={(e) => e.stopPropagation()}
-        className="flex-shrink-0 scale-75"
-      />
+      {!hideManagementActions && (
+        <Switch
+          checked={skill.enabled}
+          onCheckedChange={(checked) => { onToggle(checked) }}
+          onClick={(e) => e.stopPropagation()}
+          className="flex-shrink-0 scale-75"
+        />
+      )}
     </div>
   )
 }

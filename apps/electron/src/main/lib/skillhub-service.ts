@@ -295,6 +295,9 @@ export async function installHtSkillHubSkill(input: InstallHtSkillHubSkillInput)
       throw new Error('安装包不完整，缺少 SKILL.md')
     }
 
+    // 安装完成后删除 .zip（避免残留在 skill 目录中）
+    rmSync(zipPath, { force: true })
+
     if (existsSync(activePath)) {
       rmSync(activePath, { recursive: true, force: true })
     }

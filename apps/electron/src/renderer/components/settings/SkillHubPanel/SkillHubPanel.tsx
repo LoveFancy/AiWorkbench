@@ -470,6 +470,16 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
                             <TooltipContent>{selectedSkill.enabled === false ? '启用' : '禁用'}</TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button size="icon" variant="ghost" className="h-8 w-8 text-red-600" onClick={() => void handleUninstall(selectedSkill.name)}>
+                                <Trash2 size={16} />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>卸载</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                       </>
                     )}
                     {updates.has(selectedSkill.name) ? (
@@ -497,18 +507,7 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
                         </Tooltip>
                       </TooltipProvider>
                     )}
-                    {selectedSkill.installed && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button size="icon" variant="ghost" className="h-8 w-8 text-red-600" onClick={() => void handleUninstall(selectedSkill.name)}>
-                              <Trash2 size={16} />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>卸载</TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
+
                   </div>
                 </div>
               </div>
