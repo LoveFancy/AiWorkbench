@@ -7,7 +7,7 @@
 
 import * as React from 'react'
 import { useAtom } from 'jotai'
-import { Camera, FolderOpen, ImagePlus, Volume2 } from 'lucide-react'
+import { Camera, FolderOpen, ImagePlus, RotateCw, Volume2 } from 'lucide-react'
 import Picker from '@emoji-mart/react'
 import data from '@emoji-mart/data'
 import {
@@ -142,6 +142,18 @@ export function GeneralSettings(): React.ReactElement {
       console.error('[通用设置] 设置数据目录失败:', error)
       setConfigRootError(error instanceof Error ? error.message : '设置数据目录失败')
     } finally {
+      setIsConfigRootBusy(false)
+    }
+  }
+
+  /** 完整重启应用，使数据目录变更真正生效 */
+  const handleRelaunchApp = async (): Promise<void> => {
+    setIsConfigRootBusy(true)
+    try {
+      await window.electronAPI.relaunchApp()
+    } catch (error) {
+      console.error('[通用设置] 重启应用失败:', error)
+      setConfigRootError(error instanceof Error ? error.message : '重启应用失败')
       setIsConfigRootBusy(false)
     }
   }
@@ -304,6 +316,17 @@ export function GeneralSettings(): React.ReactElement {
                 <FolderOpen size={14} />
                 选择目录
               </Button>
+              {configRootInfo?.requiresRestart && (
+                <Button
+                  size="sm"
+                  className="h-8 shrink-0 gap-1.5 rounded-md px-3 text-[12px]"
+                  disabled={isConfigRootBusy}
+                  onClick={handleRelaunchApp}
+                >
+                  <RotateCw size={14} />
+                  立即重启
+                </Button>
+              )}
             </div>
           </SettingsRow>
           <SettingsToggle

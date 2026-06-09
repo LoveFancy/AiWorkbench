@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -27,8 +27,8 @@ afterEach(() => {
 })
 
 describe('文件日志', () => {
-  test('默认单个日志文件最大为 50MB', () => {
-    expect(DEFAULT_MAX_LOG_BYTES).toBe(50 * 1024 * 1024)
+  test('默认单个日志文件最大为 10MB', () => {
+    expect(DEFAULT_MAX_LOG_BYTES).toBe(10 * 1024 * 1024)
   })
 
   test('主进程 console 会同步写入 main.log', () => {
@@ -91,6 +91,21 @@ describe('文件日志', () => {
       const content = readFileSync(join(temp.dir, 'main.log'), 'utf-8')
       expect(Buffer.byteLength(content)).toBeLessThanOrEqual(120)
       expect(content).toContain('第二条日志')
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('初始化时会裁剪超过默认上限的历史日志文件', () => {
+    const temp = createTempLogsDir()
+    try {
+      const oldContent = '旧日志'.repeat(80)
+      writeFileSync(join(temp.dir, 'main.log'), oldContent, 'utf-8')
+
+      installFileLogger(temp.dir, { maxBytes: 120, mirrorToConsole: false })
+
+      expect(statSync(join(temp.dir, 'main.log')).size).toBeLessThanOrEqual(120)
+      expect(readFileSync(join(temp.dir, 'main.log'), 'utf-8')).toContain('旧日志')
     } finally {
       temp.cleanup()
     }

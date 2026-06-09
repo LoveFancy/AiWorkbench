@@ -2,11 +2,13 @@ import { describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import AdmZip from 'adm-zip'
 
 import {
   buildPluginMcpServers,
   buildPluginRuntimePaths,
   getPluginCapabilitySummary,
+  installUserPluginZip,
   listInstalledPlugins,
   readPluginsConfig,
   setPluginEnabled,
@@ -47,6 +49,36 @@ function createPlugin(root: string, name: string, version = '1.0.0', mcpCommand 
   return pluginDir
 }
 
+function createExpertPlugin(root: string, name: string, displayName = name): string {
+  const pluginDir = createPlugin(root, name)
+  mkdirSync(join(pluginDir, 'expert-groups'), { recursive: true })
+  writeFileSync(
+    join(pluginDir, '.claude-plugin', 'plugin.json'),
+    JSON.stringify({
+      name: displayName,
+      version: '1.0.0',
+      description: `${displayName} 描述`,
+      author: { name: 'Qinxiao' },
+      keywords: ['expert'],
+      expertGroup: 'product-team',
+    }),
+    'utf-8',
+  )
+  writeFileSync(
+    join(pluginDir, 'expert-groups', 'product-team.json'),
+    JSON.stringify({
+      id: 'product-team',
+      name: '产品专家团',
+      mainRole: {
+        name: '产品负责人',
+        prompt: '你是产品专家团的主角色。',
+      },
+    }),
+    'utf-8',
+  )
+  return pluginDir
+}
+
 describe('插件注册表服务', () => {
   test('扫描内置和用户插件并汇总能力', () => {
     const temp = tempRoot()
@@ -66,6 +98,73 @@ describe('插件注册表服务', () => {
       expect(plugins.every((plugin) => plugin.enabled)).toBe(true)
       expect(plugins[0]?.capabilities.map((capability) => capability.type).sort()).toEqual(['agent', 'command', 'mcp', 'skill'])
       expect(plugins[1]?.sourceMarketplaceId).toBe('market')
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('扫描插件声明的专家团能力', () => {
+    const temp = tempRoot()
+    try {
+      const builtinDir = join(temp.root, 'default-plugins')
+      const userDir = join(temp.root, 'user-plugins')
+      const configPath = join(temp.root, 'plugins.json')
+      createExpertPlugin(builtinDir, 'architecture-decision-team', '产品插件专家团')
+
+      const plugins = listInstalledPlugins({ builtinDir, userDir, configPath })
+      const expertCapabilities = plugins[0]?.capabilities.filter((capability) => capability.type === 'expert-group')
+
+      expect(expertCapabilities).toEqual([
+        {
+          type: 'expert-group',
+          name: 'product-team',
+          sourcePluginId: 'builtin:architecture-decision-team',
+          sourceLabel: '产品插件专家团',
+          relativePath: 'expert-groups/product-team.json',
+          description: '产品插件专家团',
+          enabled: true,
+        },
+      ])
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('每个插件最多暴露一个专家团能力', () => {
+    const temp = tempRoot()
+    try {
+      const builtinDir = join(temp.root, 'default-plugins')
+      const userDir = join(temp.root, 'user-plugins')
+      const configPath = join(temp.root, 'plugins.json')
+      const pluginDir = createExpertPlugin(builtinDir, 'architecture-decision-team')
+      writeFileSync(
+        join(pluginDir, '.claude-plugin', 'plugin.json'),
+        JSON.stringify({
+          name: '旧插件专家团',
+          version: '1.0.0',
+          expertGroups: ['product-team', 'architecture-team'],
+        }),
+        'utf-8',
+      )
+      writeFileSync(
+        join(pluginDir, 'expert-groups', 'architecture-team.json'),
+        JSON.stringify({
+          id: 'architecture-team',
+          name: '架构专家团',
+          mainRole: { name: '架构师', prompt: '你是架构师。' },
+        }),
+        'utf-8',
+      )
+
+      const plugins = listInstalledPlugins({ builtinDir, userDir, configPath })
+      const expertCapabilities = plugins[0]?.capabilities.filter((capability) => capability.type === 'expert-group') ?? []
+
+      expect(expertCapabilities).toHaveLength(1)
+      expect(expertCapabilities[0]).toMatchObject({
+        name: 'product-team',
+        relativePath: 'expert-groups/product-team.json',
+      })
+      expect(expertCapabilities[0]?.issue?.message).toContain('每个插件只能声明一个专家团')
     } finally {
       temp.cleanup()
     }
@@ -207,6 +306,74 @@ describe('插件注册表服务', () => {
         userDir: join(temp.root, 'user-plugins'),
         configPath: join(temp.root, 'plugins.json'),
       })).toThrow('非法插件 ID')
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('从 zip 直接安装用户插件到 local 分组', () => {
+    const temp = tempRoot()
+    try {
+      const sourceDir = createPlugin(temp.root, 'uploaded-plugin', '1.2.0')
+      const zipPath = join(temp.root, 'uploaded-plugin.zip')
+      const zip = new AdmZip()
+      zip.addLocalFolder(sourceDir, 'uploaded-plugin')
+      zip.writeZip(zipPath)
+
+      const installed = installUserPluginZip(zipPath, {
+        builtinDir: join(temp.root, 'default-plugins'),
+        userDir: join(temp.root, 'user-plugins'),
+        configPath: join(temp.root, 'plugins.json'),
+      })
+
+      expect(installed.id).toBe('user:local/uploaded-plugin')
+      expect(installed.sourceMarketplaceId).toBe('local')
+      expect(installed.version).toBe('1.2.0')
+      expect(installed.capabilities.map((capability) => capability.type).sort()).toEqual(['agent', 'command', 'mcp', 'skill'])
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('zip 安装使用目录名作为插件 ID，manifest name 作为展示名', () => {
+    const temp = tempRoot()
+    try {
+      const sourceDir = createExpertPlugin(temp.root, 'architecture-decision-team', '架构决策专家团')
+      const zipPath = join(temp.root, 'architecture-decision-team.zip')
+      const zip = new AdmZip()
+      zip.addLocalFolder(sourceDir, 'architecture-decision-team')
+      zip.writeZip(zipPath)
+
+      const installed = installUserPluginZip(zipPath, {
+        builtinDir: join(temp.root, 'default-plugins'),
+        userDir: join(temp.root, 'user-plugins'),
+        configPath: join(temp.root, 'plugins.json'),
+      })
+
+      expect(installed.id).toBe('user:local/architecture-decision-team')
+      expect(installed.name).toBe('架构决策专家团')
+      expect(installed.capabilities.find((capability) => capability.type === 'expert-group')).toMatchObject({
+        sourceLabel: '架构决策专家团',
+        description: '架构决策专家团',
+      })
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('直接安装用户插件 zip 时拒绝缺少 manifest 的包', () => {
+    const temp = tempRoot()
+    try {
+      const zipPath = join(temp.root, 'bad-plugin.zip')
+      const zip = new AdmZip()
+      zip.addFile('bad-plugin/README.md', Buffer.from('# Bad', 'utf-8'))
+      zip.writeZip(zipPath)
+
+      expect(() => installUserPluginZip(zipPath, {
+        builtinDir: join(temp.root, 'default-plugins'),
+        userDir: join(temp.root, 'user-plugins'),
+        configPath: join(temp.root, 'plugins.json'),
+      })).toThrow('必须包含 .claude-plugin/plugin.json')
     } finally {
       temp.cleanup()
     }

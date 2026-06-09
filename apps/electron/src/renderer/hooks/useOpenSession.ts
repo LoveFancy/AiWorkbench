@@ -6,7 +6,7 @@
  */
 
 import * as React from 'react'
-import { useAtom, useAtomValue, useSetAtom, useStore } from 'jotai'
+import { useSetAtom, useStore } from 'jotai'
 import {
   tabsAtom,
   activeTabIdAtom,
@@ -17,6 +17,8 @@ import {
 } from '@/atoms/tab-atoms'
 import { previewFileMapAtom } from '@/atoms/preview-atoms'
 import { appModeAtom } from '@/atoms/app-mode'
+import { activeViewAtom } from '@/atoms/active-view'
+import { automationFormAtom } from '@/atoms/automation-atoms'
 import { currentConversationIdAtom } from '@/atoms/chat-atoms'
 import {
   currentAgentSessionIdAtom,
@@ -29,17 +31,19 @@ type OpenSessionFn = (type: TabType, sessionId: string, title: string) => void
 
 export function useOpenSession(): OpenSessionFn {
   const store = useStore()
-  const [tabs, setTabs] = useAtom(tabsAtom)
+  const setTabs = useSetAtom(tabsAtom)
   const setActiveTabId = useSetAtom(activeTabIdAtom)
   const setAppMode = useSetAtom(appModeAtom)
+  const setActiveView = useSetAtom(activeViewAtom)
+  const setAutomationForm = useSetAtom(automationFormAtom)
   const setCurrentConversationId = useSetAtom(currentConversationIdAtom)
   const setCurrentAgentSessionId = useSetAtom(currentAgentSessionIdAtom)
-  const agentSessions = useAtomValue(agentSessionsAtom)
   const setCurrentAgentWorkspaceId = useSetAtom(currentAgentWorkspaceIdAtom)
   const setUnviewedCompleted = useSetAtom(unviewedCompletedSessionIdsAtom)
 
   return React.useCallback(
     (type: TabType, sessionId: string, title: string): void => {
+      const currentTabs = store.get(tabsAtom)
       // 切回 agent 会话时，若该会话上次开着预览 Tab 则一并重建并回到上次视图
       const restore = type === 'agent'
         ? buildOpenTabRestore(
@@ -48,9 +52,11 @@ export function useOpenSession(): OpenSessionFn {
             store.get(previewFileMapAtom),
           )
         : undefined
-      const result = openTab(tabs, { type, sessionId, title }, restore)
+      const result = openTab(currentTabs, { type, sessionId, title }, restore)
       setTabs(result.tabs)
       setActiveTabId(result.activeTabId)
+      setAutomationForm({ open: false, draft: null })
+      setActiveView('conversations')
 
       if (type === 'chat') {
         setAppMode('chat')
@@ -68,7 +74,7 @@ export function useOpenSession(): OpenSessionFn {
         })
 
         // 同步 workspaceId，确保与 TabBar 切换行为一致
-        const session = agentSessions.find((s) => s.id === sessionId)
+        const session = store.get(agentSessionsAtom).find((s) => s.id === sessionId)
         if (session?.workspaceId) {
           setCurrentAgentWorkspaceId(session.workspaceId)
           window.electronAPI.updateSettings({
@@ -81,6 +87,6 @@ export function useOpenSession(): OpenSessionFn {
         setCurrentAgentSessionId(null)
       }
     },
-    [tabs, setTabs, setActiveTabId, setAppMode, setCurrentConversationId, setCurrentAgentSessionId, agentSessions, setCurrentAgentWorkspaceId, setUnviewedCompleted],
+    [store, setTabs, setActiveTabId, setAutomationForm, setActiveView, setAppMode, setCurrentConversationId, setCurrentAgentSessionId, setCurrentAgentWorkspaceId, setUnviewedCompleted],
   )
 }

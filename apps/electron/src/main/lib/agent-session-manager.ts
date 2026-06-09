@@ -38,7 +38,6 @@ import type {
   AgentSessionReferenceSearchResult,
 } from '@proma/shared'
 import { getConversationMessages } from './conversation-manager'
-import { clearNanoBananaAgentHistory } from './chat-tools/nano-banana-mcp'
 
 /**
  * 会话索引文件格式
@@ -100,6 +99,9 @@ export function createAgentSession(
   title?: string,
   channelId?: string,
   workspaceId?: string,
+  expertGroupId?: string,
+  expertPluginId?: string,
+  expertIntroduction?: string,
 ): AgentSessionMeta {
   const index = readIndex()
   const now = Date.now()
@@ -109,6 +111,8 @@ export function createAgentSession(
     title: title || '新 Agent 会话',
     channelId,
     workspaceId,
+    expertGroupId,
+    expertPluginId,
     createdAt: now,
     updatedAt: now,
   }
@@ -118,6 +122,11 @@ export function createAgentSession(
 
   // 确保消息目录存在
   getAgentSessionsDir()
+
+  const introduction = expertIntroduction?.trim()
+  if (introduction) {
+    appendSDKMessages(meta.id, [createAssistantIntroductionMessage(introduction, now)])
+  }
 
   // 若有工作区，创建 session 级别子文件夹并初始化 .claude / .context
   if (workspaceId) {
@@ -154,6 +163,18 @@ export function createAgentSession(
 
   console.log(`[Agent 会话] 已创建会话: ${meta.title} (${meta.id})`)
   return meta
+}
+
+function createAssistantIntroductionMessage(content: string, createdAt: number): SDKMessage {
+  return {
+    type: 'assistant',
+    message: {
+      content: [{ type: 'text', text: content }],
+    },
+    parent_tool_use_id: null,
+    _createdAt: createdAt,
+    _synthetic: 'expert_introduction',
+  } as unknown as SDKMessage
 }
 
 /**
@@ -377,8 +398,12 @@ function convertLegacyMessage(legacy: AgentMessage): SDKMessage {
  */
 export function updateAgentSessionMeta(
   id: string,
-  updates: Partial<Pick<AgentSessionMeta, 'title' | 'channelId' | 'sdkSessionId' | 'workspaceId' | 'pinned' | 'archived' | 'attachedDirectories' | 'attachedFiles' | 'forkSourceDir' | 'forkSourceSdkSessionId' | 'resumeAtMessageUuid' | 'stoppedByUser' | 'permissionMode' | 'completedButUnconfirmed'>>,
+  updates: Partial<Pick<AgentSessionMeta, 'title' | 'channelId' | 'sdkSessionId' | 'workspaceId' | 'pinned' | 'archived' | 'attachedDirectories' | 'attachedFiles' | 'forkSourceDir' | 'forkSourceSdkSessionId' | 'resumeAtMessageUuid' | 'stoppedByUser' | 'permissionMode' | 'completedButUnconfirmed' | 'sourceAutomationId'>>,
 ): AgentSessionMeta {
+  if ('expertGroupId' in updates || 'expertPluginId' in updates) {
+    throw new Error('专家团绑定不能在会话创建后修改')
+  }
+
   const index = readIndex()
   const idx = index.sessions.findIndex((s) => s.id === id)
 
@@ -448,7 +473,7 @@ export function deleteAgentSession(id: string): void {
   console.log(`[Agent 会话] 已删除会话: ${removed.title} (${removed.id})`)
 
   // 清理 Nano Banana 生图历史
-  clearNanoBananaAgentHistory(id)
+  clearNanoBananaHistoryForSession(id)
 
   // 清理 SDK 关联数据（file-history 和 projects 下的 session JSONL）
   const sdkSessionIds = [removed.sdkSessionId, removed.forkSourceSdkSessionId].filter(Boolean) as string[]
@@ -490,6 +515,15 @@ export function deleteAgentSession(id: string): void {
         }
       } catch { /* ignore */ }
     }
+  }
+}
+
+function clearNanoBananaHistoryForSession(sessionId: string): void {
+  try {
+    const { clearNanoBananaAgentHistory } = require('./chat-tools/nano-banana-mcp') as typeof import('./chat-tools/nano-banana-mcp')
+    clearNanoBananaAgentHistory(sessionId)
+  } catch (error) {
+    console.warn(`[Agent 会话] 清理 Nano Banana 生图历史失败 (${sessionId}):`, error)
   }
 }
 
@@ -1260,7 +1294,7 @@ export function autoArchiveAgentSessions(daysThreshold: number): number {
   let count = 0
 
   for (const session of index.sessions) {
-    if (!session.pinned && !session.manualWorking && !session.completedButUnconfirmed && !session.archived && session.updatedAt < threshold) {
+    if (!session.pinned && !session.archived && session.updatedAt < threshold) {
       session.archived = true
       count++
     }

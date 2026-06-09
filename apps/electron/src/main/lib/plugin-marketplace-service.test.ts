@@ -420,6 +420,45 @@ describe('插件市场服务', () => {
     }
   })
 
+  test('Gitee 市场子目录地址会解析到对应目录的 raw marketplace.json', async () => {
+    const temp = tempRoot()
+    try {
+      const marketplacesPath = join(temp.root, 'plugin-marketplaces.json')
+      const servicePaths = {
+        marketplacesPath,
+        cacheDir: join(temp.root, 'cache'),
+        userPluginsDir: join(temp.root, 'user-plugins'),
+        pluginsConfigPath: join(temp.root, 'plugins.json'),
+      }
+      const requestedUrls: string[] = []
+      globalThis.fetch = (async (input: Parameters<typeof fetch>[0]) => {
+        requestedUrls.push(String(input))
+        return new Response(JSON.stringify({
+          name: 'Baoyu Skills',
+          plugins: [{ name: 'frontend-design', source: './plugins/frontend-design' }],
+        }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }) as unknown as typeof fetch
+
+      addPluginMarketplace({
+        id: 'baoyu-skills',
+        name: '',
+        source: 'https://gitee.com/lovefancy315/plugins-marketplace-all/tree/master/baoyu-skills',
+        type: 'gitee',
+        branch: 'master',
+      }, servicePaths)
+
+      await refreshPluginMarketplace('baoyu-skills', servicePaths)
+
+      expect(requestedUrls).toEqual(['https://gitee.com/lovefancy315/plugins-marketplace-all/raw/master/baoyu-skills/.claude-plugin/marketplace.json'])
+      expect(listPluginMarketplaces({ marketplacesPath })[0]?.branch).toBe('master')
+    } finally {
+      temp.cleanup()
+    }
+  })
+
   test('GitLab 市场仓库地址会解析到 raw marketplace.json', async () => {
     const temp = tempRoot()
     try {
@@ -453,6 +492,45 @@ describe('插件市场服务', () => {
 
       expect(requestedUrls).toEqual(['http://gitlab.htzq.htsc.com.cn/aidev/ht-dev-plugins/claudecode-plugin-marketplace/-/raw/main/.claude-plugin/marketplace.json'])
       expect(listPluginMarketplaces({ marketplacesPath })[0]?.type).toBe('gitlab')
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('GitLab 市场支持配置读取分支', async () => {
+    const temp = tempRoot()
+    try {
+      const marketplacesPath = join(temp.root, 'plugin-marketplaces.json')
+      const servicePaths = {
+        marketplacesPath,
+        cacheDir: join(temp.root, 'cache'),
+        userPluginsDir: join(temp.root, 'user-plugins'),
+        pluginsConfigPath: join(temp.root, 'plugins.json'),
+      }
+      const requestedUrls: string[] = []
+      globalThis.fetch = (async (input: Parameters<typeof fetch>[0]) => {
+        requestedUrls.push(String(input))
+        return new Response(JSON.stringify({
+          name: 'HT Dev Plugins',
+          plugins: [{ name: 'frontend-design', source: './plugins/frontend-design' }],
+        }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }) as unknown as typeof fetch
+
+      addPluginMarketplace({
+        id: 'ht-dev-plugins',
+        name: '',
+        source: 'http://gitlab.htzq.htsc.com.cn/aidev/ht-dev-plugins/claudecode-plugin-marketplace',
+        type: 'gitlab',
+        branch: 'master',
+      }, servicePaths)
+
+      await refreshPluginMarketplace('ht-dev-plugins', servicePaths)
+
+      expect(requestedUrls).toEqual(['http://gitlab.htzq.htsc.com.cn/aidev/ht-dev-plugins/claudecode-plugin-marketplace/-/raw/master/.claude-plugin/marketplace.json'])
+      expect(listPluginMarketplaces({ marketplacesPath })[0]?.branch).toBe('master')
     } finally {
       temp.cleanup()
     }

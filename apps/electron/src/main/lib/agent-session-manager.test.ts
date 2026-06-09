@@ -1,0 +1,96 @@
+import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import type { AgentSessionMeta } from '@proma/shared'
+
+let root = ''
+let clearConfigRootOverride: typeof import('./config-root-service.ts').clearConfigRootOverride
+let setConfigRoot: typeof import('./config-root-service.ts').setConfigRoot
+
+mock.module('electron', () => ({
+  app: {
+    isPackaged: false,
+    getPath: () => root,
+  },
+  dialog: {},
+  BrowserWindow: class {},
+}))
+
+beforeAll(async () => {
+  const configRootService = await import('./config-root-service.ts')
+  clearConfigRootOverride = configRootService.clearConfigRootOverride
+  setConfigRoot = configRootService.setConfigRoot
+
+  clearConfigRootOverride()
+  root = mkdtempSync(join(tmpdir(), 'proma-agent-sessions-'))
+  process.env.HOME = root
+  process.env.PROMA_DEV = '0'
+  setConfigRoot(join(root, '.workmate-test'), { homeDir: root, configDirName: '.workmate-dev' })
+})
+
+afterAll(() => {
+  clearConfigRootOverride?.()
+  if (root) rmSync(root, { recursive: true, force: true })
+})
+
+describe('Agent 会话管理器专家团绑定', () => {
+  test('创建会话时写入专家团绑定', async () => {
+    const { createAgentSession } = await import('./agent-session-manager.ts')
+
+    const session = createAgentSession(
+      '产品专家团 · 新任务',
+      'channel-1',
+      undefined,
+      'product-team',
+      'builtin:architecture-decision-team',
+    )
+
+    expect(session.expertGroupId).toBe('product-team')
+    expect(session.expertPluginId).toBe('builtin:architecture-decision-team')
+  })
+
+  test('创建专家团会话时写入自我介绍消息', async () => {
+    const { createAgentSession, getAgentSessionSDKMessages } = await import('./agent-session-manager.ts')
+
+    const session = createAgentSession(
+      '产品专家团 · 新任务',
+      'channel-1',
+      undefined,
+      'product-team',
+      'builtin:architecture-decision-team',
+      '我是产品专家团，会先帮你梳理目标、约束和可行动方案。',
+    )
+
+    const messages = getAgentSessionSDKMessages(session.id)
+    expect(messages).toHaveLength(1)
+    expect(messages[0]).toMatchObject({
+      type: 'assistant',
+      message: {
+        content: [
+          {
+            type: 'text',
+            text: '我是产品专家团，会先帮你梳理目标、约束和可行动方案。',
+          },
+        ],
+      },
+      parent_tool_use_id: null,
+    })
+  })
+
+  test('更新会话元数据时拒绝修改专家团绑定', async () => {
+    const { createAgentSession, updateAgentSessionMeta } = await import('./agent-session-manager.ts')
+    const session = createAgentSession(
+      '产品专家团 · 新任务',
+      'channel-1',
+      undefined,
+      'product-team',
+      'builtin:architecture-decision-team',
+    )
+
+    expect(() => updateAgentSessionMeta(
+      session.id,
+      { expertGroupId: 'other-team' } as Partial<AgentSessionMeta>,
+    )).toThrow('专家团绑定不能在会话创建后修改')
+  })
+})

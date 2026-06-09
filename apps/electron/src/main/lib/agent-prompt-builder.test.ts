@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { buildSystemPrompt } from './agent-prompt-builder.ts'
+import { buildAgentsForSession, buildSystemPrompt } from './agent-prompt-builder.ts'
 import { BUILTIN_DEFAULT_PROMPT_STRING } from '@proma/shared'
 
 describe('系统根提示词', () => {
@@ -31,7 +31,7 @@ describe('系统根提示词', () => {
     expect(prompt).toContain('不要自行拼装 Python 安装流程')
   })
 
-  test('Agent 根提示词要求需要外部实时信息时主动使用联网检索 Skill', () => {
+  test('Agent 根提示词要求需要外部实时信息时主动使用 WorkMate 联网检索能力', () => {
     const prompt = buildSystemPrompt({
       sessionId: 'test-session',
       permissionMode: 'bypassPermissions',
@@ -41,6 +41,7 @@ describe('系统根提示词', () => {
 
     expect(prompt).toContain('## 联网检索策略')
     expect(prompt).toContain('当前、近期、外部公开信息')
+    expect(prompt).toContain('mcp__workmate-web-search__web_search')
     expect(prompt).toContain('web-search')
     expect(prompt).toContain('不要编造外部信息')
   })
@@ -63,5 +64,98 @@ describe('系统根提示词', () => {
   test('Chat 内置提示词要求可见思考过程优先使用中文', () => {
     expect(BUILTIN_DEFAULT_PROMPT_STRING).toContain('可见思考过程、推理摘要和最终回复都优先使用中文')
     expect(BUILTIN_DEFAULT_PROMPT_STRING).toContain('`thinking`、`thinking block`、`reasoning`')
+  })
+
+  test('专家团模式注入主角色与可调度资源摘要', () => {
+    const prompt = buildSystemPrompt({
+      sessionId: 'test-session',
+      permissionMode: 'bypassPermissions',
+      memoryEnabled: false,
+      claudeAvailable: true,
+      expertRuntime: {
+        group: {
+          id: 'product-team',
+          name: '产品专家团',
+          mainRole: {
+            name: '产品负责人',
+            prompt: '你是产品专家团的主角色。',
+          },
+          subagents: ['requirement-analyst'],
+          subagentLabels: {
+            'requirement-analyst': '需求分析专家',
+          },
+          builtinTools: ['web-search'],
+          skills: ['prd-writer'],
+          mcpServers: ['dpmp'],
+          sourcePluginId: 'builtin:architecture-decision-team',
+          sourceLabel: '产品专家团',
+          sourcePluginVersion: '1.0.0',
+          sourcePluginKind: 'builtin',
+          sourcePluginPath: '/tmp/architecture-decision-team',
+          filePath: '/tmp/architecture-decision-team/expert-groups/product-team.json',
+          enabled: true,
+          status: 'available',
+          issues: [],
+        },
+        mainPrompt: '你是产品专家团的主角色。',
+        agents: {
+          'requirement-analyst': {
+            description: '需求分析专家',
+            prompt: '你负责需求分析。',
+            tools: ['Read'],
+          },
+        },
+        pluginPaths: [{ type: 'local', path: '/tmp/architecture-decision-team' }],
+        mcpServers: {
+          dpmp: { type: 'stdio', command: 'dpmp', enabled: true },
+        },
+        promptHints: ['当任务需要 PRD 时，优先考虑使用产品专家团。'],
+      },
+    })
+
+    expect(prompt).toContain('你是产品专家团的主角色。')
+    expect(prompt).toContain('## 专家团模式')
+    expect(prompt).toContain('当前专家团: 产品专家团')
+    expect(prompt).toContain('需求分析专家 (requirement-analyst): 需求分析专家')
+    expect(prompt).toContain('mcp__workmate-web-search__web_search')
+    expect(prompt).toContain('prd-writer')
+    expect(prompt).toContain('dpmp')
+    expect(prompt).toContain('可见思考过程、推理摘要和最终回复都优先使用中文')
+  })
+
+  test('专家团 SubAgent 覆盖同名内置 SubAgent', () => {
+    const agents = buildAgentsForSession({
+      claudeAvailable: true,
+      expertRuntime: {
+        group: {
+          id: 'product-team',
+          name: '产品专家团',
+          mainRole: { name: '产品负责人', prompt: '主角色' },
+          sourcePluginId: 'builtin:architecture-decision-team',
+          sourceLabel: '产品专家团',
+          sourcePluginVersion: '1.0.0',
+          sourcePluginKind: 'builtin',
+          sourcePluginPath: '/tmp/architecture-decision-team',
+          filePath: '/tmp/architecture-decision-team/expert-groups/product-team.json',
+          enabled: true,
+          status: 'available',
+          issues: [],
+        },
+        mainPrompt: '主角色',
+        agents: {
+          researcher: {
+            description: '产品调研专家',
+            prompt: '只做产品调研。',
+            tools: ['Read'],
+          },
+        },
+        pluginPaths: [],
+        mcpServers: {},
+        promptHints: [],
+      },
+    })
+
+    expect(agents.researcher?.description).toBe('产品调研专家')
+    expect(agents.explorer).toBeDefined()
   })
 })

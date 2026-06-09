@@ -7,7 +7,7 @@
 
 import { atom } from 'jotai'
 import { atomFamily, atomWithStorage } from 'jotai/utils'
-import type { AgentSessionMeta, AgentEvent, AgentWorkspace, AgentPendingFile, RetryAttempt, PromaPermissionMode, PermissionRequest, AskUserRequest, ExitPlanModeRequest, ThinkingConfig, AgentEffort, SDKMessage, UnstagedChangesResult } from '@proma/shared'
+import type { AgentSessionMeta, AgentEvent, AgentWorkspace, AgentPendingFile, RetryAttempt, PromaPermissionMode, PermissionRequest, AskUserRequest, ExitPlanModeRequest, ThinkingConfig, AgentEffort, SDKMessage, UnstagedChangesResult, AgentExpertGroupInfo } from '@proma/shared'
 import { PROMA_DEFAULT_PERMISSION_MODE } from '@proma/shared'
 import { calculateDockBadgeCount, countPendingRequests } from '@/lib/dock-badge-count'
 
@@ -59,6 +59,11 @@ export function finalizeStreamingActivities(
 /** Agent 会话的流式状态 */
 export interface AgentStreamState {
   running: boolean
+  /**
+   * 后台任务等待态（软空闲）：本轮主体已结束、UI 可输入，但 SDK 通道仍开着等后台任务唤醒。
+   * 此状态下 running 为 false，但服务端 activeSessions 仍保留，新消息必须走注入通道而非新建 run。
+   */
+  backgroundWaiting?: boolean
   content: string
   toolActivities: ToolActivity[]
   model?: string
@@ -197,6 +202,7 @@ export interface AgentPendingPrompt {
 
 export const agentSessionsAtom = atom<AgentSessionMeta[]>([])
 export const agentWorkspacesAtom = atom<AgentWorkspace[]>([])
+export const agentExpertGroupsAtom = atom<AgentExpertGroupInfo[]>([])
 export const currentAgentWorkspaceIdAtom = atom<string | null>(null)
 /** 全局默认渠道 ID（新会话继承用，从 settings.json 加载） */
 export const agentChannelIdAtom = atom<string | null>(null)
@@ -211,6 +217,28 @@ export const agentSessionChannelMapAtom = atom<Map<string, string>>(new Map())
 export const agentSessionModelMapAtom = atom<Map<string, string>>(new Map())
 export const currentAgentSessionIdAtom = atom<string | null>(null)
 export const agentStreamingStatesAtom = atom<Map<string, AgentStreamState>>(new Map())
+
+export const loadAgentExpertGroupsAtom = atom(null, async (_get, set) => {
+  const groups = await window.electronAPI.listAgentExpertGroups()
+  set(agentExpertGroupsAtom, groups)
+})
+
+export const createExpertSessionAtom = atom(null, async (get, set, group: AgentExpertGroupInfo) => {
+  const currentSessionId = get(currentAgentSessionIdAtom)
+  const currentSession = currentSessionId
+    ? get(agentSessionsAtom).find((session) => session.id === currentSessionId)
+    : undefined
+  const session = await window.electronAPI.createAgentSession(
+    `${group.name} · 新任务`,
+    currentSession?.channelId ?? get(agentChannelIdAtom) ?? undefined,
+    currentSession?.workspaceId ?? get(currentAgentWorkspaceIdAtom) ?? undefined,
+    group.id,
+    group.sourcePluginId,
+    group.introduction,
+  )
+  set(agentSessionsAtom, (prev) => [session, ...prev.filter((item) => item.id !== session.id)])
+  return session
+})
 
 /** Agent 流式结束后是否保持过程组展开，默认收起以降低结果阅读干扰 */
 export const agentProcessGroupsKeepExpandedAtom = atomWithStorage<boolean>(
@@ -509,9 +537,6 @@ export type SessionIndicatorStatus = 'idle' | 'running' | 'blocked' | 'completed
 /** 已完成但用户尚未查看的会话 ID 集合 */
 export const unviewedCompletedSessionIdsAtom = atom<Set<string>>(new Set<string>())
 
-/** Working 区域"已完成"组：后台完成后暂留，用户确认完成、重新运行或归档/删除时移除 */
-export const workingDoneSessionIdsAtom = atom<Set<string>>(new Set<string>())
-
 let lastIndicatorSignature = ''
 let lastIndicatorMap = new Map<string, SessionIndicatorStatus>()
 
@@ -695,6 +720,10 @@ export function applyAgentEvent(
         retrying: undefined,
         ...finalizeStreamingActivities(prev.toolActivities),
       }
+
+    case 'run_resumed':
+      // 后台任务完成自动唤醒：从"空闲可输入"恢复到运行态（防御性，监听器已显式处理）。
+      return { ...prev, running: true, backgroundWaiting: false }
 
     case 'typed_error':
       // 处理类型化错误（TypedError）
@@ -981,6 +1010,59 @@ export interface BackgroundTask {
   elapsedSeconds: number
   /** 任务意图/描述 */
   intent?: string
+}
+
+export function applyBackgroundTaskEvent(tasks: BackgroundTask[], event: AgentEvent): BackgroundTask[] {
+  switch (event.type) {
+    case 'task_backgrounded':
+      if (tasks.some((task) => task.toolUseId === event.toolUseId)) return tasks
+      return [...tasks, {
+        id: event.taskId,
+        type: 'agent',
+        toolUseId: event.toolUseId,
+        startTime: Date.now(),
+        elapsedSeconds: 0,
+        intent: event.intent,
+      }]
+
+    case 'task_progress':
+      return tasks.map((task) => {
+        const matchesTool = task.toolUseId === event.toolUseId
+        const matchesTask = event.taskId ? task.id === event.taskId : false
+        if (!matchesTool && !matchesTask) return task
+        return {
+          ...task,
+          elapsedSeconds: event.elapsedSeconds ?? task.elapsedSeconds,
+          intent: event.description ?? task.intent,
+        }
+      })
+
+    case 'task_notification':
+      return tasks.filter((task) => {
+        if (event.toolUseId && task.toolUseId === event.toolUseId) return false
+        return task.id !== event.taskId
+      })
+
+    case 'shell_backgrounded':
+      if (tasks.some((task) => task.toolUseId === event.toolUseId)) return tasks
+      return [...tasks, {
+        id: event.shellId,
+        type: 'shell',
+        toolUseId: event.toolUseId,
+        startTime: Date.now(),
+        elapsedSeconds: 0,
+        intent: event.command || event.intent,
+      }]
+
+    case 'shell_killed': {
+      const target = tasks.find((task) => task.id === event.shellId)
+      if (!target) return tasks
+      return tasks.filter((task) => task.toolUseId !== target.toolUseId)
+    }
+
+    default:
+      return tasks
+  }
 }
 
 /**
