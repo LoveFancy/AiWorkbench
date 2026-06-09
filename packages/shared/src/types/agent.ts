@@ -512,6 +512,7 @@ export type AgentEvent =
   | { type: 'tool_use_summary'; summary: string; precedingToolUseIds: string[] }
   // 控制流
   | { type: 'complete'; stopReason?: string; usage?: AgentEventUsage }
+  | { type: 'run_resumed' }
   | { type: 'error'; message: string }
   | { type: 'typed_error'; error: TypedError }
   // 重试机制
@@ -561,6 +562,7 @@ export type PromaEvent =
   | { type: 'permission_mode_changed'; mode: PromaPermissionMode }
   | { type: 'title_updated'; title: string }
   | { type: 'external_run_started'; source: AgentExternalRunSource; sessionId: string; title?: string; workspaceId?: string; modelId?: string; startedAt: number }
+  | { type: 'run_resumed'; sessionId: string }
 
 /** 外部入口触发 Agent 运行的来源 */
 export type AgentExternalRunSource = 'feishu' | 'dingtalk' | 'wechat' | 'bridge'
@@ -589,6 +591,10 @@ export interface AgentSessionMeta {
   sdkSessionId?: string
   /** 所属工作区 ID */
   workspaceId?: string
+  /** 该会话绑定的专家团 ID；创建后不可修改 */
+  expertGroupId?: string
+  /** 该会话绑定的专家团来源插件 ID；创建后不可修改 */
+  expertPluginId?: string
   /** 是否置顶 */
   pinned?: boolean
   /** 是否已归档 */
@@ -603,14 +609,16 @@ export interface AgentSessionMeta {
   forkSourceSdkSessionId?: string
   /** 回退后的 resume 截断点：下次发消息时传给 SDK resumeSessionAt（消费后清除） */
   resumeAtMessageUuid?: string
-  /** 手动标记为工作中 */
+  /** 历史兼容字段：旧版手动保留状态 */
   manualWorking?: boolean
-  /** Agent 执行完成但用户尚未确认（跨重启保留在工作中列表） */
+  /** Agent 执行完成但用户尚未清除完成状态 */
   completedButUnconfirmed?: boolean
   /** 最后一次流式执行是否被用户主动中断 */
   stoppedByUser?: boolean
   /** 该会话当前的权限模式（持久化到磁盘，重启后恢复）。未设置时新会话默认 auto */
   permissionMode?: PromaPermissionMode
+  /** 来源定时任务 ID（该会话由定时任务自动创建/复用时标记，用于侧栏显示钟表图标 + 跳转设置） */
+  sourceAutomationId?: string
   /** 创建时间戳 */
   createdAt: number
   /** 更新时间戳 */
@@ -771,6 +779,8 @@ export interface SkillMeta {
   slug: string
   name: string
   description?: string
+  /** UI 分组名，用于把 Proma 内嵌 Skills 收拢到同一组 */
+  group?: string
   icon?: string
   version?: string
   enabled: boolean
@@ -840,7 +850,7 @@ export interface HtSkillHubInstallResult {
 
 export type AgentPluginKind = 'builtin' | 'user'
 
-export type AgentPluginCapabilityType = 'skill' | 'command' | 'agent' | 'mcp'
+export type AgentPluginCapabilityType = 'skill' | 'command' | 'agent' | 'mcp' | 'expert-group'
 
 export type AgentPluginIssueLevel = 'warning' | 'error'
 
@@ -862,6 +872,65 @@ export interface AgentPluginManifest {
   repository?: string
   license?: string
   keywords?: string[]
+  /** 插件声明的唯一专家团 ID，对应 expert-groups/{id}.json */
+  expertGroup?: string
+  /** @deprecated 兼容旧插件；运行时只读取第一个专家团 ID。 */
+  expertGroups?: string[]
+}
+
+export type AgentExpertGroupStatus =
+  | 'available'
+  | 'plugin_disabled'
+  | 'plugin_uninstalled'
+  | 'invalid_manifest'
+  | 'missing_subagent'
+  | 'missing_skill'
+  | 'mcp_conflict'
+
+export interface AgentExpertGroupMainRole {
+  name: string
+  prompt: string
+}
+
+export interface AgentExpertGroupToolsPolicy {
+  mode: 'inherit' | 'restrict'
+  allowedTools?: string[]
+  disallowedTools?: string[]
+}
+
+export interface AgentExpertGroupManifest {
+  id: string
+  name: string
+  description?: string
+  /** 专家团被唤起后展示给用户的自我介绍 */
+  introduction?: string
+  mainRole: AgentExpertGroupMainRole
+  subagents?: string[]
+  /** SubAgent 调用名到中文显示名的映射；调用 SDK 时仍使用 subagents 中的英文 ID。 */
+  subagentLabels?: Record<string, string>
+  /** WorkMate 内置工具声明，例如 web-search。运行时由 Orchestrator 注入对应 SDK MCP 工具。 */
+  builtinTools?: string[]
+  skills?: string[]
+  mcpServers?: string[]
+  tags?: string[]
+  samplePrompts?: string[]
+  toolsPolicy?: AgentExpertGroupToolsPolicy
+}
+
+export interface AgentExpertGroupInfo extends AgentExpertGroupManifest {
+  sourcePluginId: string
+  sourceLabel: string
+  /** 来源插件版本 */
+  sourcePluginVersion: string
+  sourcePluginKind: AgentPluginKind
+  sourcePluginPath: string
+  filePath: string
+  enabled: boolean
+  status: AgentExpertGroupStatus
+  issues: Array<{
+    level: AgentPluginIssueLevel
+    message: string
+  }>
 }
 
 export interface AgentPluginCapability {
@@ -936,6 +1005,8 @@ export interface AgentPluginMarketplace {
   name: string
   source: string
   type: AgentPluginMarketplaceType
+  /** 仓库型市场读取 .claude-plugin/marketplace.json 的分支，默认 main */
+  branch?: string
   enabled: boolean
   addedAt: string
   lastRefreshAt?: string | null
@@ -1034,6 +1105,10 @@ export interface AgentSendInput {
   mentionedSessionIds?: string[]
   /** 渲染进程生成的流式开始时间戳，主进程原样回传到 STREAM_COMPLETE，确保竞态保护比较的是同一个值 */
   startedAt?: number
+  /** 触发来源：用户手动 vs 定时任务自动触发（用于 UI 区分标记） */
+  triggeredBy?: 'user' | 'automation'
+  /** 定时任务执行上下文（注入到系统提示词，用户不可见） */
+  automationContext?: string
 }
 
 // ===== Agent 队列消息 =====
@@ -1158,6 +1233,8 @@ export interface AgentStreamCompletePayload {
   startedAt?: number
   /** SDK result 消息的 subtype（success / error_max_turns / error_max_budget_usd / error_during_execution 等） */
   resultSubtype?: string
+  /** 本轮主体结束但仍有后台任务/定时任务在飞行：UI 进入"空闲可输入"态，等待任务完成自动唤醒 */
+  backgroundTasksPending?: boolean
 }
 
 // ===== 文件浏览器 =====
@@ -1476,10 +1553,8 @@ export const AGENT_IPC_CHANNELS = {
   MIGRATE_CHAT_TO_AGENT: 'agent:migrate-chat-to-agent',
   /** 切换会话置顶状态 */
   TOGGLE_PIN: 'agent:toggle-pin',
-  /** 切换会话手动工作中状态 */
-  TOGGLE_MANUAL_WORKING: 'agent:toggle-manual-working',
-  /** 确认会话已完成（清除 completedButUnconfirmed 和 manualWorking） */
-  CONFIRM_WORKING_DONE: 'agent:confirm-working-done',
+  /** 清除会话完成状态（兼容清除旧版 manualWorking）。channel 值保留旧名以兼容已缓存的 preload */
+  CLEAR_COMPLETION_STATE: 'agent:confirm-working-done',
   /** 切换会话归档状态 */
   TOGGLE_ARCHIVE: 'agent:toggle-archive',
   /** 搜索会话消息内容 */
@@ -1542,6 +1617,8 @@ export const AGENT_IPC_CHANNELS = {
   TOGGLE_SKILL: 'agent:toggle-skill',
   /** 获取其他工作区的 Skill 列表 */
   GET_OTHER_WORKSPACE_SKILLS: 'agent:get-other-workspace-skills',
+  /** 获取默认 Skills 的 slug 列表（来自 ~/.proma/default-skills/） */
+  GET_DEFAULT_SKILL_SLUGS: 'agent:get-default-skill-slugs',
   /** 从其他工作区导入 Skill 到当前工作区 */
   IMPORT_SKILL_FROM_WORKSPACE: 'agent:import-skill-from-workspace',
   /** 上传 zip 包安装 Skill 到当前工作区 */
@@ -1576,6 +1653,8 @@ export const AGENT_IPC_CHANNELS = {
   SET_PLUGIN_ENABLED: 'agent:set-plugin-enabled',
   /** 卸载用户安装的 Agent 插件 */
   UNINSTALL_PLUGIN: 'agent:uninstall-plugin',
+  /** 从 zip 包直接安装用户 Agent 插件 */
+  INSTALL_PLUGIN_ZIP: 'agent:install-plugin-zip',
   /** 列出插件市场 */
   LIST_PLUGIN_MARKETPLACES: 'agent:list-plugin-marketplaces',
   /** 添加插件市场 */
@@ -1594,6 +1673,10 @@ export const AGENT_IPC_CHANNELS = {
   INSTALL_MARKETPLACE_PLUGIN: 'agent:install-marketplace-plugin',
   /** 获取 Agent 插件能力摘要 */
   GET_PLUGIN_CAPABILITIES: 'agent:get-plugin-capabilities',
+  /** 列出 Agent 专家团 */
+  LIST_EXPERT_GROUPS: 'agent:list-expert-groups',
+  /** 获取 Agent 专家团详情 */
+  GET_EXPERT_GROUP: 'agent:get-expert-group',
   /** 配置插件 MCP 环境变量 */
   CONFIGURE_PLUGIN_MCP_ENV: 'agent:configure-plugin-mcp-env',
   /** 测试插件 MCP */

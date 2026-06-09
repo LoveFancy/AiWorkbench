@@ -10,6 +10,7 @@
  */
 
 import type { PromaPermissionMode, AgentDefinition } from '@proma/shared'
+import type { ExpertGroupRuntime } from './agent-expert-group-manager'
 import { getUserProfile } from './user-profile-service'
 import { getWorkspaceMcpConfig } from './agent-workspace-manager'
 import { getConfigDirPath } from './config-paths'
@@ -130,6 +131,16 @@ export function buildBuiltinAgents(claudeAvailable = true): Record<string, Agent
   return agents
 }
 
+export function buildAgentsForSession(input: {
+  claudeAvailable?: boolean
+  expertRuntime?: ExpertGroupRuntime | null
+}): Record<string, AgentDefinition> {
+  return {
+    ...buildBuiltinAgents(input.claudeAvailable !== false),
+    ...(input.expertRuntime?.agents ?? {}),
+  }
+}
+
 /** buildSystemPrompt 所需的上下文 */
 interface SystemPromptContext {
   workspaceName?: string
@@ -142,6 +153,8 @@ interface SystemPromptContext {
   claudeAvailable?: boolean
   /** DeepSeek 系列主模型下，运行时固定注入给 SubAgent 的模型 */
   deepSeekSubagentModel?: string
+  /** 会话绑定的专家团运行时配置 */
+  expertRuntime?: ExpertGroupRuntime | null
 }
 
 /**
@@ -160,9 +173,16 @@ export function buildSystemPrompt(ctx: SystemPromptContext): string {
   const sections: string[] = []
 
   // Agent 角色定义
-  sections.push(`# WorkMate 伴行 Agent
+  if (ctx.expertRuntime) {
+    sections.push(`# ${ctx.expertRuntime.group.name}
+
+${ctx.expertRuntime.mainPrompt}`)
+    sections.push(buildExpertModeSummary(ctx.expertRuntime))
+  } else {
+    sections.push(`# WorkMate 伴行 Agent
 
 你是 WorkMate 伴行 Agent — 一个集成在 WorkMate 伴行桌面应用中的通用AI助手，由 Claude Agent SDK 驱动。你有极强的自主性和主观能动性，可以完成任何任务，尽最大努力帮助用户。`)
+  }
 
   // 语言规则必须靠前，覆盖 SDK preset 中可能默认英文的思考输出。
   sections.push(`## 语言规则
@@ -181,10 +201,10 @@ export function buildSystemPrompt(ctx: SystemPromptContext): string {
 - 读取 docx、pdf、pptx、xlsx 等文档内容时，必须优先通过对应 Skill 读取或转换，不要直接把二进制文件或不可读内容交给模型猜测
 - 如果缺少对应 Skill 或 Skill 读取失败，应说明失败原因，并请用户提供可读取的文本版本或允许安装/启用对应 Skill`)
 
-  // 联网检索策略：让 Agent 在外部事实可能变化时主动使用默认 Skill。
+  // 联网检索策略：让 Agent 在外部事实可能变化时主动使用内置工具或默认 Skill。
   sections.push(`## 联网检索策略
 
-当用户诉求依赖当前、近期、外部公开信息，或你对事实有不确定性时，必须主动调用已启用的 \`web-search\` Skill 补充信息后再回答。
+当用户诉求依赖当前、近期、外部公开信息，或你对事实有不确定性时，必须主动调用已启用的 WorkMate 联网检索能力补充信息后再回答。
 
 ### 需要联网检索的典型场景
 
@@ -196,7 +216,8 @@ export function buildSystemPrompt(ctx: SystemPromptContext): string {
 
 ### 执行规则
 
-- 优先调用 \`web-search\` Skill，按该 Skill 的 \`SKILL.md\` 执行搜索脚本
+- 如果可用，优先调用内置 MCP 工具 \`mcp__workmate-web-search__web_search\`
+- 如果内置 MCP 工具不可用，再调用 \`web-search\` Skill，按该 Skill 的 \`SKILL.md\` 执行搜索脚本
 - 搜索关键词要简洁具体；结果太宽泛时继续缩窄查询
 - 回答时引用搜索结果 URL
 - 如果联网检索失败，说明失败原因，不要编造外部信息
@@ -214,7 +235,7 @@ export function buildSystemPrompt(ctx: SystemPromptContext): string {
 
 **核心原则：先探索再行动，用 SubAgent 保持主上下文干净。**
 
-当前使用的是 DeepSeek 系列模型，Proma 已在运行时将所有 SubAgent 固定到 \`${DEEPSEEK_SUBAGENT_MODEL_ID}\`。调用 SubAgent 时不要通过 \`model\` 参数指定模型，也不要使用 haiku/sonnet/opus 等 Claude 模型别名，否则可能导致兼容端点调用失败。
+当前使用的是 DeepSeek 系列模型，WorkMate 已在运行时将所有 SubAgent 固定到 \`${DEEPSEEK_SUBAGENT_MODEL_ID}\`。调用 SubAgent 时不要通过 \`model\` 参数指定模型，也不要使用 haiku/sonnet/opus 等 Claude 模型别名，否则可能导致兼容端点调用失败。
 
 ### 内置 SubAgent
 
@@ -389,6 +410,7 @@ ${subagentList}
 - 提供清晰的选项列表，降低用户输入的复杂度
 - 每个选项附带简短说明，帮助用户快速决策
 - 拆分多个独立问题为多个 AskUserQuestion 调用，避免一次性提问过多
+- 当问题内容可能很长或需要开放回答时，直接在对话里问用户，不要调用 AskUserQuestion
 - 特别是在触发 brainstorming / 头脑风暴类 Skill 时，**必须**通过 AskUserQuestion 逐步引导用户明确需求和方向，而非让用户自己大段输入
 - 发现用户的假设或判断可能有误时，主动指出并提供依据，不要盲目附和`)
 
@@ -509,9 +531,68 @@ ${subagentList}
 3. 自称 WorkMate 伴行 Agent，你会非常积极的维护有价值的文档，并总能在交互中帮助用户改善用法或者沉淀/更新 Skills 等来优化未来的工作流程和表现，以及更趋近于自动化完成任务，你区分的清楚哪些是工作区级别哪些是会话级别的
 4. 日常交流简洁直接；但当任务的交付物本身就是文本输出时（分析报告、文档、方案对比），完整输出内容，不要压缩
 5. **会话恢复**：每次收到新任务时，先检查会话级和工作区级两个 \`.context/\` 目录（note.md、todo.md）以及当前目录的 CLAUDE.md
-6. **自检习惯**：复杂任务执行过程中，定期回顾 CLAUDE.md 和两级 .context/ 中的内容，确保行为与已记录的规范和计划保持一致`)
+6. **自检习惯**：复杂任务执行过程中，定期回顾 CLAUDE.md 和两级 .context/ 中的内容，确保行为与已记录的规范和计划保持一致
+7. **定时任务**：Proma 内置了持久化的定时任务系统（Automation），更适合长期反复、无人值守、有稳定价值的场景。**不要用 TaskCreate、CronCreate 或 Bash cron**，它们都不是真正的 Proma 定时任务。
+   \`automation\` 是 Proma 内嵌 Skill，遇到可能反复、长期、持续关注、自动检查、定期汇总、运行记录复盘、已有任务维护等需求时，宁可先触发此 Skill 判断是否适合，也不要漏掉潜在的自动化机会；再通过 Proma 内置的 automation MCP 工具创建、查看、修改、暂停、删除或试运行任务。
+   如果只是一次性任务、短期提醒、需要用户实时判断、执行结果没有长期价值，明确告诉用户不建议创建定时任务。
+   创建后，用户可以在侧边栏的自动任务按钮进入定时任务管理页面查看和编辑。`)
+
 
   return sections.join('\n\n')
+}
+
+function buildExpertModeSummary(runtime: ExpertGroupRuntime): string {
+  const lines: string[] = [
+    '## 专家团模式',
+    '',
+    `- 当前专家团: ${runtime.group.name}`,
+    `- 主角色: ${runtime.group.mainRole.name}`,
+    `- 来源插件: ${runtime.group.sourceLabel}`,
+  ]
+
+  const agentEntries = Object.entries(runtime.agents)
+  if (agentEntries.length > 0) {
+    lines.push('- 可调度 SubAgent:')
+    for (const [name, agent] of agentEntries) {
+      const displayName = runtime.group.subagentLabels?.[name]
+      const label = displayName ? `${displayName} (${name})` : name
+      lines.push(`  - ${label}: ${agent.description}`)
+    }
+  }
+
+  if (runtime.group.skills?.length) {
+    lines.push('- 推荐 Skills:')
+    for (const skill of runtime.group.skills) {
+      lines.push(`  - ${skill}`)
+    }
+  }
+
+  if (runtime.group.builtinTools?.length) {
+    lines.push('- WorkMate 内置工具:')
+    for (const tool of runtime.group.builtinTools) {
+      const detail = tool === 'web-search'
+        ? 'mcp__workmate-web-search__web_search'
+        : tool
+      lines.push(`  - ${tool}: ${detail}`)
+    }
+  }
+
+  const mcpNames = Object.keys(runtime.mcpServers)
+  if (mcpNames.length > 0) {
+    lines.push('- 可用 MCP:')
+    for (const name of mcpNames) {
+      lines.push(`  - ${name}`)
+    }
+  }
+
+  if (runtime.promptHints.length > 0) {
+    lines.push('- 调度提示:')
+    for (const hint of runtime.promptHints) {
+      lines.push(`  - ${hint}`)
+    }
+  }
+
+  return lines.join('\n')
 }
 
 // ===== 动态 Per-Message 上下文 =====

@@ -274,6 +274,7 @@ export const SETTINGS_IPC_CHANNELS = {
   CHOOSE_CONFIG_ROOT: 'settings:choose-config-root',
   SET_CONFIG_ROOT: 'settings:set-config-root',
   RESET_CONFIG_ROOT: 'settings:reset-config-root',
+  RELAUNCH_APP: 'settings:relaunch-app',
   GET_SYSTEM_THEME: 'settings:get-system-theme',
   ON_SYSTEM_THEME_CHANGED: 'settings:system-theme-changed',
   /** 用户手动切换主题时广播给所有窗口 */

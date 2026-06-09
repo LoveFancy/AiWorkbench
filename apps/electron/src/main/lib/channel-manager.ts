@@ -24,7 +24,7 @@ import type {
   ProviderType,
 } from '@proma/shared'
 import { PROVIDER_DEFAULT_URLS } from '@proma/shared'
-import { getFetchFn } from './proxy-fetch'
+import { createDirectFetch, getFetchFn } from './proxy-fetch'
 import { getEffectiveProxyUrl } from './proxy-settings-service'
 import {
   normalizeBaseUrl,
@@ -511,9 +511,8 @@ export async function testChannelDirect(input: FetchModelsInput): Promise<Channe
  * 直接测试单个模型（无需已保存渠道）
  */
 export async function testChannelModelDirect(input: ChannelModelTestInput): Promise<ChannelModelTestResult> {
-  const proxyUrl = await getEffectiveProxyUrl()
   try {
-    return await testChannelModelWithFetch(input, getFetchFn(proxyUrl))
+    return await testChannelModelWithFetch(input, createDirectFetch())
   } catch (error) {
     const message = error instanceof Error ? error.message : '未知错误'
     return { success: false, message: `模型测试失败: ${message}` }

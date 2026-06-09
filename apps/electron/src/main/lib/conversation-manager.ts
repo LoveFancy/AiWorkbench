@@ -15,7 +15,6 @@ import {
   getConversationsDir,
   getConversationMessagesPath,
 } from './config-paths'
-import { deleteConversationAttachments, deleteAttachment } from './attachment-service'
 import type { ConversationMeta, ChatMessage, RecentMessagesResult, MessageSearchResult } from '@proma/shared'
 
 /**
@@ -279,7 +278,7 @@ export function deleteConversation(id: string): void {
   console.log(`[对话管理] 已删除对话: ${removed.title} (${removed.id})`)
 
   // 删除对话附件目录
-  deleteConversationAttachments(id)
+  deleteAttachmentsForConversation(id)
 }
 
 /**
@@ -304,7 +303,7 @@ export function deleteMessage(conversationId: string, messageId: string): ChatMe
   // 删除消息关联的附件文件
   if (targetMessage?.attachments) {
     for (const attachment of targetMessage.attachments) {
-      deleteAttachment(attachment.localPath)
+      deleteAttachmentFile(attachment.localPath)
     }
   }
 
@@ -347,13 +346,25 @@ export function truncateMessagesFrom(
     if (idx === 0 && preserveFirstMessageAttachments) return
 
     msg.attachments.forEach((attachment) => {
-      deleteAttachment(attachment.localPath)
+      deleteAttachmentFile(attachment.localPath)
     })
   })
 
   saveConversationMessages(conversationId, kept)
   console.log(`[对话管理] 已从消息截断: ${messageId} (对话 ${conversationId})`)
   return kept
+}
+
+function getAttachmentService(): typeof import('./attachment-service') {
+  return require('./attachment-service') as typeof import('./attachment-service')
+}
+
+function deleteAttachmentsForConversation(conversationId: string): void {
+  getAttachmentService().deleteConversationAttachments(conversationId)
+}
+
+function deleteAttachmentFile(filePath: string): void {
+  getAttachmentService().deleteAttachment(filePath)
 }
 
 /**

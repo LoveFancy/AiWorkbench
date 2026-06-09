@@ -6,6 +6,7 @@ import { describe, expect, test } from 'bun:test'
 import type { AgentPluginInfo, WorkspaceMcpConfig } from '@proma/shared'
 
 import {
+  getDefaultSkillInitialEnabled,
   getWorkspaceCapabilitiesFromSources,
   installSkillZipToWorkspace,
 } from './agent-workspace-manager.ts'
@@ -66,6 +67,14 @@ describe('Agent 工作区能力聚合', () => {
     })
 
     expect(capabilities.skills).toEqual([])
+  })
+})
+
+describe('默认 Skill 初始启用状态', () => {
+  test('配置类 Skill 内置但默认不启用', () => {
+    expect(getDefaultSkillInitialEnabled('feishu-lark-setup')).toBe(false)
+    expect(getDefaultSkillInitialEnabled('huatai-email-setup')).toBe(false)
+    expect(getDefaultSkillInitialEnabled('find-skills')).toBe(true)
   })
 })
 

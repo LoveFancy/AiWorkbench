@@ -24,6 +24,16 @@ describe('插件市场输入推断', () => {
     })
   })
 
+  test('Gitee 仓库子目录地址自动识别读取分支', () => {
+    expect(inferMarketplaceInput('https://gitee.com/lovefancy315/plugins-marketplace-all/tree/master/baoyu-skills')).toEqual({
+      id: 'baoyu-skills',
+      name: 'baoyu-skills',
+      source: 'https://gitee.com/lovefancy315/plugins-marketplace-all/tree/master/baoyu-skills',
+      type: 'gitee',
+      branch: 'master',
+    })
+  })
+
   test('GitLab 仓库地址自动识别为 gitlab', () => {
     expect(inferMarketplaceInput('http://gitlab.htzq.htsc.com.cn/aidev/ht-dev-plugins/claudecode-plugin-marketplace')).toEqual({
       id: 'claudecode-plugin-marketplace',
@@ -58,5 +68,40 @@ describe('插件安装更新进行中状态', () => {
     expect(pluginSettingsSource).toContain('isPending')
     expect(pluginSettingsSource).toContain('disabled={isPending}')
     expect(pluginSettingsSource).toContain('animate-spin')
+  })
+
+  test('Installed 页支持上传 zip 直接安装用户插件', () => {
+    expect(pluginSettingsSource).toContain('uploadingPluginZip')
+    expect(pluginSettingsSource).toContain('installAgentPluginZip')
+    expect(pluginSettingsSource).toContain('上传 Zip')
+  })
+})
+
+describe('插件市场分支配置', () => {
+  test('添加和详情页使用中文文案配置读取分支', () => {
+    expect(pluginSettingsSource).toContain('marketplaceBranchInput')
+    expect(pluginSettingsSource).toContain('市场来源')
+    expect(pluginSettingsSource).toContain('读取分支')
+    expect(pluginSettingsSource).toContain('示例：')
+    expect(pluginSettingsSource).not.toContain('Marketplace source')
+    expect(pluginSettingsSource).not.toContain('Marketplace branch')
+    expect(pluginSettingsSource).not.toContain('Examples:')
+    expect(pluginSettingsSource).toContain('handleUpdateMarketplaceBranch')
+    expect(pluginSettingsSource).toContain('marketplace.branch ??')
+    expect(pluginSettingsSource).toContain('branch:')
+  })
+
+  test('市场详情中的长来源地址支持查看完整值和复制', () => {
+    expect(pluginSettingsSource).toContain('title={marketplace.source}')
+    expect(pluginSettingsSource).toContain('CopyValueButton value={marketplace.source} label="插件市场地址"')
+    expect(pluginSettingsSource).toContain('navigator.clipboard.writeText(value)')
+  })
+
+  test('市场页使用宽主工作区承载插件清单', () => {
+    expect(pluginSettingsSource).toContain("type MarketplaceDetailTab = 'plugins' | 'installed' | 'settings'")
+    expect(pluginSettingsSource).toContain('xl:grid-cols-[280px_minmax(0,1fr)]')
+    expect(pluginSettingsSource).toContain('市场插件')
+    expect(pluginSettingsSource).toContain('配置')
+    expect(pluginSettingsSource).not.toContain('xl:grid-cols-[minmax(0,1fr)_340px]')
   })
 })
