@@ -5,7 +5,6 @@
  */
 
 import { httpGet } from '../../../shared/hteip-client'
-import { getEipGatewayBase } from '../../../auth'
 import { compareVersion, isValidVersionDirection } from './workmate-version'
 
 /** 服务端 check 接口原始响应 */
@@ -55,14 +54,13 @@ export async function checkForWorkmateUpgrade(
   platform: string,
   arch: string,
 ): Promise<CheckResult> {
-  const base = getEipGatewayBase()
-  // 去掉 /gateway 后缀：登录用 /gateway/login，升级检测用 /workmate/upgrade/check
-  const gatewayHost = base.replace(/\/gateway\/?$/, '')
-  const url = `${gatewayHost}/workmate/upgrade/check?currentVersion=${encodeURIComponent(currentVersion)}&platform=${encodeURIComponent(platform)}&arch=${encodeURIComponent(arch)}`
+  const uptimePath = '/workmate/upgrade/check'
 
-  console.log('[升级检测] 请求 %s', url)
+  console.log('[升级检测] 请求 %s (current=%s platform=%s arch=%s)', uptimePath, currentVersion, platform, arch)
 
-  const res = await httpGet<{ code: number; data: CheckApiResponse }>(url)
+  const res = await httpGet<{ code: number; data: CheckApiResponse }>(uptimePath, {
+    params: { currentVersion, platform, arch },
+  })
 
   if (!res.ok) {
     console.error('[升级检测] 网络错误 status=%d err=%s', res.status, res.error)
