@@ -1,5 +1,5 @@
 import React from 'react'
-import { Search, RefreshCw, ShieldCheck, Sparkles, FolderOpen, Download, RotateCw, ArrowUp } from 'lucide-react'
+import { Search, RefreshCw, ShieldCheck, Sparkles, FolderOpen, Download, RotateCw, ArrowUp, Power, PowerOff, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -484,6 +484,22 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8"
+                                onClick={() => void handleToggle(selectedSkill.name, selectedSkill.enabled !== false)}
+                              >
+                                {selectedSkill.enabled === false ? <Power size={16} /> : <PowerOff size={16} />}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>{selectedSkill.enabled === false ? '启用' : '禁用'}</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
                               <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openInstalledFolder(selectedSkill.name)}>
                                 <FolderOpen size={16} />
                               </Button>
@@ -492,6 +508,25 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
                           </Tooltip>
                         </TooltipProvider>
 
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 text-destructive hover:text-destructive"
+                                onClick={() => {
+                                  if (confirm(`确认卸载「${selectedSkill.name}」？`)) {
+                                    void handleUninstall(selectedSkill.name)
+                                  }
+                                }}
+                              >
+                                <Trash2 size={16} />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>卸载</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                       </>
                     )}
                     {updates.has(selectedSkill.name) ? (
