@@ -379,7 +379,7 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
               <input
                 value={query}
                 onChange={(e) => { setQuery(e.target.value); setPage(1) }}
-                placeholder="搜索 Skill 名称"
+                placeholder="搜索 Skill 名称和描述"
                 className="w-full h-8 rounded-md border border-border bg-background pl-8 pr-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               />
             </div>
