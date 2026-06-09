@@ -185,8 +185,8 @@ export async function downloadSkillHubZip(skillName: string, version: string): P
 
 // ===== SkillHub 管理操作 =====
 
-export async function fetchHtSkillHubIndex(workspaceSlug?: string, page?: number): Promise<HtSkillHubSkillWithStatus[]> {
-  const remoteSkills = await fetchSkillHubSkills({ page: page ?? 1, pageSize: 20 })
+export async function fetchHtSkillHubIndex(workspaceSlug?: string, page?: number, keyword?: string, category?: string): Promise<HtSkillHubSkillWithStatus[]> {
+  const remoteSkills = await fetchSkillHubSkills({ page: page ?? 1, pageSize: 20, keyword, category })
 
   const skills: HtSkillHubSkill[] = remoteSkills.map((raw) => ({
     name: raw.skillName,
