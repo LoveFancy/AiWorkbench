@@ -38,7 +38,7 @@ export function getEipGatewayBase(): string {
 }
 
 /** 强制重新登录天数：自 Token 初始签发起超过此天数必须重新登录 */
-const FORCED_REAUTH_DAYS = 180
+const FORCED_REAUTH_DAYS = 30
 
 function getAuthFilePath(): string {
   return join(pathProvider.getConfigDir(), AUTH_FILE)
@@ -47,7 +47,7 @@ function getAuthFilePath(): string {
 // ===== 总入口：完整登录流程 =====
 
 export async function loginWithEipGateway(
-  username: string, password: string, longTermDays: number = 365,
+  username: string, password: string, longTermDays: number = 30,
 ): Promise<LoginResult> {
   console.log('[Auth] 开始登录流程 username=%s days=%d base=%s', username, longTermDays, getEipGatewayBase())
 
