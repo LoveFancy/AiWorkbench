@@ -286,7 +286,7 @@ export function ChannelSettings(): React.ReactElement {
       {/* 区块一：自定义模型配置 */}
       <SettingsSection
         title="自定义模型配置"
-        description="手动配置 AI 供应商连接、API Key 和模型。支持 Anthropic / OpenAI 等协议"
+        description={<>手动配置 AI 供应商连接、API Key 和模型， 支持 Anthropic / OpenAI 协议。可在下方 <strong>Agent 供应商</strong> 中进行配置</>}
         action={
           <Button size="sm" onClick={() => setViewMode('create')}>
             <Plus size={16} />
@@ -323,14 +323,14 @@ export function ChannelSettings(): React.ReactElement {
       {/* 区块二：Agent 供应商 */}
       <SettingsSection
         title="Agent 供应商"
-        description="启用 Agent 模式可用的供应商，支持同时开启多个渠道，在 Agent 模式下可直接切换"
+        description="供应商来源于上方的泰为平台模型和自定义模型配置。支持同时开启多个供应商，在 Agent 模式下可自由切换使用"
       >
         {loading ? (
           <div className="text-sm text-muted-foreground py-8 text-center">加载中...</div>
         ) : allAgentCapableChannels.length === 0 ? (
           <SettingsCard divided={false}>
             <div className="text-sm text-muted-foreground py-8 text-center">
-              暂无可用的 Anthropic 兼容渠道，请先在上方添加 Anthropic / DeepSeek / Kimi / MiniMax 渠道并启用，或登录 OA 获取平台模型
+              暂无可用的 Agent 供应商，请先在上方"泰为平台模型"中登录 OA 获取平台模型，或在"自定义模型配置"中添加 Anthropic / DeepSeek / Kimi / MiniMax 等兼容渠道并启用
             </div>
           </SettingsCard>
         ) : (

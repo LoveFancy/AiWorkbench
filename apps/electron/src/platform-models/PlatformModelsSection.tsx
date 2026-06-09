@@ -78,7 +78,7 @@ export function PlatformModelsSection(): React.ReactElement {
   return (
     <SettingsSection
       title="泰为平台模型"
-      description="登录 OA 后自动获取您在泰为大模型平台申请的模型和 API Key"
+      description={<>登录 OA 后自动获取您在泰为大模型平台申请的模型和 API Key，可在下方 <strong>Agent 供应商</strong> 中进行配置</>}
       action={
         isLoggedIn ? (
           <Button size="sm" variant="outline" onClick={handleFetch} disabled={loading}>

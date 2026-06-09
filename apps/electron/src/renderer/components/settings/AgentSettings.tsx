@@ -330,7 +330,7 @@ ${skillList}
 
   const handleConfigViaChat = async (promptMessage: string): Promise<void> => {
     if (!agentChannelId) {
-      alert('请先在渠道设置中选择 Agent 供应商')
+      alert('请先在设置 → 模型设置中选择 Agent 供应商')
       return
     }
     try {
