@@ -51,7 +51,7 @@ const SUBAGENT_METADATA: Record<string, SubAgentMetadata> = {
    - 给出简洁的修改建议
 
 保持客观、具体，不要泛泛而谈。如果代码质量很好，直接说"审查通过，无需修改"。`,
-    tools: ['Read', 'Glob', 'Grep', 'Bash'],
+    tools: ['Read', 'Glob', 'Grep', 'Bash', 'WebFetch'],
     defaultModel: 'haiku',
     usageHint: '代码修改完成后做质量检查',
   },
@@ -82,7 +82,7 @@ const SUBAGENT_METADATA: Record<string, SubAgentMetadata> = {
 - **参考来源**：代码中的相关实现或外部资料
 
 保持客观，给出有依据的建议。`,
-    tools: ['Read', 'Glob', 'Grep', 'Bash', 'WebSearch', 'WebFetch'],
+    tools: ['Read', 'Glob', 'Grep', 'Bash'],
     defaultModel: 'haiku',
     usageHint: '调研技术方案、对比多个选项',
   },
@@ -201,7 +201,7 @@ ${ctx.expertRuntime.mainPrompt}`)
 - 读取 docx、pdf、pptx、xlsx 等文档内容时，必须优先通过对应 Skill 读取或转换，不要直接把二进制文件或不可读内容交给模型猜测
 - 如果缺少对应 Skill 或 Skill 读取失败，应说明失败原因，并请用户提供可读取的文本版本或允许安装/启用对应 Skill`)
 
-  // 联网检索策略：让 Agent 在外部事实可能变化时主动使用内置工具或默认 Skill。
+  // 联网检索策略：让 Agent 在外部事实可能变化时主动使用 WorkMate 内置联网检索。
   sections.push(`## 联网检索策略
 
 当用户诉求依赖当前、近期、外部公开信息，或你对事实有不确定性时，必须主动调用已启用的 WorkMate 联网检索能力补充信息后再回答。
@@ -216,8 +216,10 @@ ${ctx.expertRuntime.mainPrompt}`)
 
 ### 执行规则
 
-- 如果可用，优先调用内置 MCP 工具 \`mcp__workmate-web-search__web_search\`
-- 如果内置 MCP 工具不可用，再调用 \`web-search\` Skill，按该 Skill 的 \`SKILL.md\` 执行搜索脚本
+- 如果可用，优先调用 WorkMate 内置联网检索工具 \`mcp__workmate-web-search__web_search\`
+- 该工具会直连 Compass 搜索服务，并绕过系统代理和代理环境变量
+- 不要调用 SDK 原生 WebSearch；搜索必须走 WorkMate 内置联网检索工具
+- WebFetch 仅用于打开已知 URL，不用于搜索关键词或替代联网检索
 - 搜索关键词要简洁具体；结果太宽泛时继续缩窄查询
 - 回答时引用搜索结果 URL
 - 如果联网检索失败，说明失败原因，不要编造外部信息
@@ -423,7 +425,7 @@ ${subagentList}
 2. 完成计划后，**不要立即调用 ExitPlanMode**
 3. 先向用户展示计划摘要，以及完整的计划文档的路径地址，然后等待用户确认后再退出计划模式
 4. 用户确认执行后，再调用 ExitPlanMode 退出计划模式
-5. 在计划模式下，你可以使用 Read、Glob、Grep、WebSearch 等只读工具进行调研，也可以使用 Bash 执行只读命令（如 find、grep、cat、ls、head、tail 等）；但不能使用 Edit 或 Bash 写操作命令（如 rm、mv、sed -i、> 重定向等）`)
+5. 在计划模式下，你可以使用 Read、Glob、Grep、WebFetch 等只读工具进行调研，其中 WebFetch 仅用于打开已知 URL；需要联网检索时只能使用 WorkMate 内置联网检索工具，不能使用 SDK 原生 WebSearch；也可以使用 Bash 执行只读命令（如 find、grep、cat、ls、head、tail 等），但不能使用 Edit 或 Bash 写操作命令（如 rm、mv、sed -i、> 重定向等）`)
   } else {
     sections.push(`## 计划模式文件路径
 

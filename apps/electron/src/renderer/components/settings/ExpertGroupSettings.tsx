@@ -108,9 +108,6 @@ export function ExpertGroupSettings(): React.ReactElement {
     () => groups.filter((group) => matchesGroup(group, query)),
     [groups, query],
   )
-  const builtin = visible.filter((group) => group.sourcePluginKind === 'builtin' && group.status === 'available')
-  const user = visible.filter((group) => group.sourcePluginKind === 'user' && group.status === 'available')
-  const issues = visible.filter((group) => group.status !== 'available')
 
   return (
     <div className="space-y-6">
@@ -149,9 +146,7 @@ export function ExpertGroupSettings(): React.ReactElement {
         </div>
       ) : (
         <div className="space-y-6">
-          <GroupSection title="内置专家团" groups={builtin} onOpen={setSelected} onSummon={(group) => void handleSummon(group)} />
-          <GroupSection title="插件专家团" groups={user} onOpen={setSelected} onSummon={(group) => void handleSummon(group)} />
-          <GroupSection title="异常" groups={issues} onOpen={setSelected} onSummon={(group) => void handleSummon(group)} />
+          <GroupSection title="全部专家团" groups={visible} onOpen={setSelected} onSummon={(group) => void handleSummon(group)} />
         </div>
       )}
 

@@ -11,11 +11,18 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
+import {
+  buildLogSegments,
+  getDisplayedLogEntries,
+  parseLogEntries,
+  type LogEntry,
+  type LogLevelFilter,
+} from './system-log-utils'
 
 type ActiveLogFile = 'main' | 'renderer'
-type LogLevelFilter = 'all' | 'INFO' | 'WARN' | 'ERROR'
 
-const MAX_LOG_BYTES = 10 * 1024 * 1024
+const MAX_LOG_BYTES = 2 * 1024 * 1024
+const MAX_RENDERED_LOG_ENTRIES = 400
 
 const LOG_OPTIONS: Array<{ value: ActiveLogFile; label: string }> = [
   { value: 'main', label: '主进程' },
@@ -29,11 +36,6 @@ const LOG_LEVEL_OPTIONS: Array<{ value: LogLevelFilter; label: string }> = [
   { value: 'ERROR', label: 'ERROR' },
 ]
 
-interface LogSegment {
-  text: string
-  matched: boolean
-}
-
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
@@ -43,81 +45,6 @@ function formatBytes(bytes: number): string {
 function formatUpdatedAt(updatedAt: number | null): string {
   if (!updatedAt) return '未生成'
   return new Date(updatedAt).toLocaleString()
-}
-
-function countMatches(content: string, query: string): number {
-  const keyword = query.trim()
-  if (!keyword) return 0
-
-  let count = 0
-  let start = 0
-  const source = content.toLowerCase()
-  const target = keyword.toLowerCase()
-
-  while (start < source.length) {
-    const index = source.indexOf(target, start)
-    if (index === -1) break
-    count += 1
-    start = index + target.length
-  }
-
-  return count
-}
-
-function splitLogEntries(content: string): string[] {
-  const entries: string[] = []
-  let current: string[] = []
-
-  for (const line of content.split(/\r?\n/)) {
-    if (!line && current.length === 0) continue
-    if (/^\d{4}-\d{2}-\d{2}T/.test(line) && current.length > 0) {
-      entries.push(current.join('\n'))
-      current = []
-    }
-    if (line) current.push(line)
-  }
-
-  if (current.length > 0) entries.push(current.join('\n'))
-  return entries
-}
-
-export function reverseLogLines(content: string): string {
-  return splitLogEntries(content).reverse().join('\n')
-}
-
-export function getVisibleLogContent(content: string, level: LogLevelFilter): string {
-  const entries = splitLogEntries(content)
-  const filtered = level === 'all'
-    ? entries
-    : entries.filter((entry) => entry.includes(`[${level}]`))
-
-  return filtered.reverse().join('\n')
-}
-
-function buildLogSegments(content: string, query: string): LogSegment[] {
-  const keyword = query.trim()
-  if (!keyword) return [{ text: content, matched: false }]
-
-  const segments: LogSegment[] = []
-  const source = content.toLowerCase()
-  const target = keyword.toLowerCase()
-  let cursor = 0
-
-  while (cursor < content.length) {
-    const index = source.indexOf(target, cursor)
-    if (index === -1) break
-    if (index > cursor) {
-      segments.push({ text: content.slice(cursor, index), matched: false })
-    }
-    segments.push({ text: content.slice(index, index + keyword.length), matched: true })
-    cursor = index + keyword.length
-  }
-
-  if (cursor < content.length) {
-    segments.push({ text: content.slice(cursor), matched: false })
-  }
-
-  return segments.length > 0 ? segments : [{ text: content, matched: false }]
 }
 
 function LogContent({ content, searchQuery }: { content: string; searchQuery: string }): React.ReactElement {
@@ -140,6 +67,14 @@ function LogContent({ content, searchQuery }: { content: string; searchQuery: st
   )
 }
 
+function LogEntryContent({ entry, searchQuery }: { entry: LogEntry; searchQuery: string }): React.ReactElement {
+  return (
+    <span className="block border-b border-border/30 py-1 last:border-b-0">
+      <LogContent content={entry.text} searchQuery={searchQuery} />
+    </span>
+  )
+}
+
 export function SystemLogSettings(): React.ReactElement {
   const [activeFile, setActiveFile] = React.useState<ActiveLogFile>('main')
   const [logResult, setLogResult] = React.useState<SystemLogReadResult | null>(null)
@@ -148,6 +83,8 @@ export function SystemLogSettings(): React.ReactElement {
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const logViewportRef = React.useRef<HTMLDivElement | null>(null)
+  const deferredSearchQuery = React.useDeferredValue(searchQuery)
+  const searchPending = searchQuery !== deferredSearchQuery
 
   const scrollToTop = React.useCallback(() => {
     const viewport = logViewportRef.current
@@ -177,13 +114,17 @@ export function SystemLogSettings(): React.ReactElement {
     void handleRefresh()
   }, [handleRefresh])
 
-  const visibleContent = React.useMemo(
-    () => getVisibleLogContent(logResult?.content ?? '', activeLevel),
-    [activeLevel, logResult?.content],
+  const logEntries = React.useMemo(
+    () => parseLogEntries(logResult?.content ?? ''),
+    [logResult?.content],
   )
-  const matchCount = React.useMemo(() => countMatches(visibleContent, searchQuery), [visibleContent, searchQuery])
+  const displayedLogEntries = React.useMemo(
+    () => getDisplayedLogEntries(logEntries, activeLevel, deferredSearchQuery, MAX_RENDERED_LOG_ENTRIES),
+    [activeLevel, deferredSearchQuery, logEntries],
+  )
   const activeMeta = LOG_OPTIONS.find((option) => option.value === activeFile)!
   const activeLabel = activeMeta.label
+  const activeSearchQuery = deferredSearchQuery.trim().length >= 2 ? deferredSearchQuery : ''
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
@@ -267,7 +208,17 @@ export function SystemLogSettings(): React.ReactElement {
             <span>读取最近 {formatBytes(logResult?.readBytes ?? 0)}</span>
             {logResult?.truncated && <span>已截断，仅展示最近日志</span>}
             <span>更新 {formatUpdatedAt(logResult?.updatedAt ?? null)}</span>
-            {searchQuery.trim() && <span>匹配 {matchCount} 处</span>}
+            {searchQuery.trim() && displayedLogEntries.searchSkipped && <span>输入至少 2 个字符开始搜索</span>}
+            {activeSearchQuery && (
+              <span>
+                匹配 {displayedLogEntries.totalMatches} 处
+                {displayedLogEntries.hasMoreEntries ? `，仅显示前 ${MAX_RENDERED_LOG_ENTRIES} 条日志` : ''}
+                {searchPending ? '，正在更新' : ''}
+              </span>
+            )}
+            {!activeSearchQuery && displayedLogEntries.hasMoreEntries && (
+              <span>仅显示最近 {MAX_RENDERED_LOG_ENTRIES} 条日志</span>
+            )}
           </div>
         </div>
       </div>
@@ -287,8 +238,10 @@ export function SystemLogSettings(): React.ReactElement {
             <span className="text-muted-foreground">正在读取日志...</span>
           ) : logResult?.exists === false ? (
             <span className="text-muted-foreground">日志文件尚未生成。</span>
-          ) : visibleContent ? (
-            <LogContent content={visibleContent} searchQuery={searchQuery} />
+          ) : displayedLogEntries.entries.length > 0 ? (
+            displayedLogEntries.entries.map((entry) => (
+              <LogEntryContent key={entry.id} entry={entry} searchQuery={activeSearchQuery} />
+            ))
           ) : (
             <span className="text-muted-foreground">暂无日志内容。</span>
           )}

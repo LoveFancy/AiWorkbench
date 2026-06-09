@@ -16,4 +16,12 @@ describe('专家团设置页', () => {
     expect(expertGroupSettingsSource).toContain('const setSettingsOpen = useSetAtom(settingsOpenAtom)')
     expect(expertGroupSettingsSource).toContain('setSettingsOpen(false)')
   })
+
+  test('专家团平铺展示，不再按内置和插件拆分分区', () => {
+    expect(expertGroupSettingsSource).not.toContain('title="内置专家团"')
+    expect(expertGroupSettingsSource).not.toContain('title="插件专家团"')
+    expect(expertGroupSettingsSource).toContain('title="全部专家团"')
+    expect(expertGroupSettingsSource).not.toContain('const builtin = visible.filter')
+    expect(expertGroupSettingsSource).not.toContain('const user = visible.filter')
+  })
 })

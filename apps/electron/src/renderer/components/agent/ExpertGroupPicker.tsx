@@ -65,7 +65,7 @@ export function ExpertGroupPicker({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="w-[min(92vw,1180px)] max-w-6xl gap-3 p-0">
+        <DialogContent className="w-[min(92vw,760px)] max-w-3xl gap-3 p-0">
           <DialogHeader className="px-5 pt-5">
             <div className="flex items-start justify-between gap-3 pr-8">
               <div>
@@ -116,7 +116,7 @@ export function ExpertGroupPicker({
                       <h3 className="text-sm font-medium">可召唤</h3>
                       <span className="text-xs text-muted-foreground">{availableGroups.length}</span>
                     </div>
-                    <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                    <div className="grid gap-2 md:grid-cols-2">
                       {availableGroups.map((group) => (
                         <ExpertGroupCard
                           key={`${group.sourcePluginId}:${group.id}`}
@@ -136,7 +136,7 @@ export function ExpertGroupPicker({
                       <h3 className="text-sm font-medium">不可召唤</h3>
                       <span className="text-xs text-muted-foreground">{issueGroups.length}</span>
                     </div>
-                    <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                    <div className="grid gap-2 md:grid-cols-2">
                       {issueGroups.map((group) => (
                         <ExpertGroupCard
                           key={`${group.sourcePluginId}:${group.id}`}

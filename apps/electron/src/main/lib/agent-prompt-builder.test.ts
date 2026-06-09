@@ -42,7 +42,10 @@ describe('系统根提示词', () => {
     expect(prompt).toContain('## 联网检索策略')
     expect(prompt).toContain('当前、近期、外部公开信息')
     expect(prompt).toContain('mcp__workmate-web-search__web_search')
-    expect(prompt).toContain('web-search')
+    expect(prompt).toContain('不要调用 SDK 原生 WebSearch')
+    expect(prompt).toContain('WebFetch 仅用于打开已知 URL')
+    expect(prompt).toContain('直连 Compass 搜索服务')
+    expect(prompt).not.toContain('web-search` Skill')
     expect(prompt).toContain('不要编造外部信息')
   })
 

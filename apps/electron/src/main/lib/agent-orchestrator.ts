@@ -84,6 +84,12 @@ function sdkPermissionModeForPromaMode(mode: PromaPermissionMode): PromaPermissi
   return PROMA_PERMISSION_MODE_CONFIG[mode].sdkMode
 }
 
+const SDK_NATIVE_SEARCH_TOOLS = ['WebSearch'] as const
+
+function mergeDisallowedTools(disallowedTools?: readonly string[]): string[] {
+  return Array.from(new Set([...SDK_NATIVE_SEARCH_TOOLS, ...(disallowedTools ?? [])]))
+}
+
 /**
  * 从 stderr 中提取 API 错误信息
  *
@@ -763,10 +769,7 @@ export class AgentOrchestrator {
   private async injectWebSearchTools(
     sdk: typeof import('@anthropic-ai/claude-agent-sdk'),
     mcpServers: Record<string, Record<string, unknown>>,
-    enabled: boolean,
   ): Promise<void> {
-    if (!enabled) return
-
     try {
       const { injectWebSearchMcpServer } = await import('./chat-tools/web-search-mcp')
       await injectWebSearchMcpServer(sdk, mcpServers)
@@ -1267,6 +1270,7 @@ export class AgentOrchestrator {
       const mcpServers = this.buildMcpServers(workspaceSlug)
       await this.injectMemoryTools(sdk, mcpServers)
       await this.injectNanoBananaTools(sdk, mcpServers, sessionId, agentCwd)
+      await this.injectWebSearchTools(sdk, mcpServers)
       await injectAutomationMcpServer(sdk, mcpServers, {
         sessionId,
         channelId,
@@ -1282,11 +1286,6 @@ export class AgentOrchestrator {
 
       if (expertRuntime) {
         Object.assign(mcpServers, expertRuntime.mcpServers)
-        await this.injectWebSearchTools(
-          sdk,
-          mcpServers,
-          expertRuntime.group.builtinTools?.includes('web-search') ?? false,
-        )
         console.log(`[Agent 编排] 已加载专家团: ${expertRuntime.group.name}`)
       }
 
@@ -1418,7 +1417,7 @@ export class AgentOrchestrator {
 
       // Plan 模式下允许的只读工具（不包含 Write/Edit/Bash 等写操作）
       const PLAN_MODE_ALLOWED_TOOLS = new Set([
-        'Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch',
+        'Read', 'Glob', 'Grep', 'WebFetch',
         'Agent', 'TodoRead', 'TodoWrite', 'TaskOutput',
         'TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet',
         'ListMcpResourcesTool', 'ReadMcpResourceTool',
@@ -1633,7 +1632,7 @@ export class AgentOrchestrator {
         ...(appSettings.agentMaxBudgetUsd != null && appSettings.agentMaxBudgetUsd > 0 && {
           maxBudgetUsd: appSettings.agentMaxBudgetUsd,
         }),
-        ...(expertRuntime?.disallowedTools?.length && { disallowedTools: expertRuntime.disallowedTools }),
+        disallowedTools: mergeDisallowedTools(expertRuntime?.disallowedTools),
         // 1M context window: 支持的模型自动启用 beta（Claude: Sonnet 4+ / Opus 4.6+ / 4.7 / 4.8、DeepSeek V4 系列）
         // 未启用时 SDK 默认 200K 并在约 150K 触发压缩；启用后上限提升至 1M
         ...(supports1MContext(modelId || DEFAULT_MODEL_ID) && {

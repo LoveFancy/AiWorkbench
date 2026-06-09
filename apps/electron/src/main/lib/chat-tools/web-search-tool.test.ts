@@ -7,6 +7,8 @@ import {
   getBuiltinWebSearchApiKey,
   parseCompassSearchResponse,
   testWebSearchConnection,
+  WEB_SEARCH_TOOL_DEFINITIONS,
+  WEB_SEARCH_TOOL_META,
 } from './web-search-tool.ts'
 
 describe('数智中台联网搜索工具', () => {
@@ -43,6 +45,22 @@ describe('数智中台联网搜索工具', () => {
     const request = buildCompassSearchRequest('黄金怎么样', 'secret', { timeRange: 'OneWeek' })
 
     expect(JSON.parse(String(request.init.body)).TimeRange).toBe('OneWeek')
+  })
+
+  test('工具提示要求根据检索内容判断不同的时效范围', () => {
+    const instructions = WEB_SEARCH_TOOL_META.systemPromptAppend ?? ''
+    const toolDefinition = WEB_SEARCH_TOOL_DEFINITIONS[0]
+    const timeRangeProperty = toolDefinition?.parameters.properties.timeRange
+    if (!timeRangeProperty) throw new Error('web_search 缺少 timeRange 参数定义')
+    const timeRangeDescription = timeRangeProperty.description ?? ''
+
+    expect(instructions).toContain('根据问题的时效性选择 timeRange')
+    expect(instructions).toContain('OneDay')
+    expect(instructions).toContain('OneWeek')
+    expect(instructions).toContain('OneMonth')
+    expect(instructions).toContain('OneYear')
+    expect(instructions).toContain('结果不足时可以扩大时间范围')
+    expect(timeRangeDescription).toContain('Choose by content freshness')
   })
 
   test('解析常见搜索响应字段并格式化为带链接的结果列表', () => {
@@ -162,6 +180,51 @@ describe('数智中台联网搜索工具', () => {
       expect(result.content).toBe('未找到相关结果。')
     } finally {
       globalThis.fetch = originalFetch
+    }
+  })
+
+  test('执行联网搜索时记录查询参数和返回摘要，便于排查 Agent 搜索无内容问题', async () => {
+    const originalInfo = console.info
+    const logs: string[] = []
+    console.info = (...args: unknown[]) => {
+      logs.push(args.map((item) => typeof item === 'string' ? item : JSON.stringify(item)).join(' '))
+    }
+
+    try {
+      const directFetch = async () => {
+        return new Response(JSON.stringify({
+          result: {
+            resultCount: 1,
+            webResults: [
+              {
+                title: '黄金价格上涨',
+                url: 'https://example.com/gold',
+                snippet: '黄金受避险需求影响上涨。',
+              },
+            ],
+          },
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+
+      await executeWebSearchTool({
+        id: 'tool-1',
+        name: 'web_search',
+        arguments: { query: '黄金怎么样', timeRange: 'OneWeek' },
+      }, directFetch)
+
+      const joinedLogs = logs.join('\n')
+      expect(joinedLogs).toContain('[联网搜索] 请求')
+      expect(joinedLogs).toContain('[联网搜索] 返回')
+      expect(joinedLogs).toContain('黄金怎么样')
+      expect(joinedLogs).toContain('OneWeek')
+      expect(joinedLogs).toContain('resultCount')
+      expect(joinedLogs).toContain('黄金受避险需求影响上涨')
+      expect(joinedLogs).not.toContain(getBuiltinWebSearchApiKey())
+    } finally {
+      console.info = originalInfo
     }
   })
 

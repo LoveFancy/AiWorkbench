@@ -10,8 +10,7 @@ export const SAFE_TOOLS: readonly string[] = [
   'Read',            // 文件读取
   'Glob',            // 文件名搜索
   'Grep',            // 内容搜索
-  'WebSearch',       // 网络搜索
-  'WebFetch',        // 网页获取
+  'WebFetch',        // 网页获取（仅打开已知 URL，不用于搜索）
   'TodoRead',        // Todo 列表读取
   'TodoWrite',       // Todo 列表写入（无安全风险）
   'TaskOutput',      // 后台任务输出

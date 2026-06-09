@@ -117,7 +117,7 @@ function Section({ title, automations, onEdit, onRefresh, variant }: SectionProp
   const handleRunNow = async (e: React.MouseEvent, a: Automation): Promise<void> => {
     e.stopPropagation()
     toast.success(`已开始运行「${a.name}」`, {
-      description: '本次任务会创建新的 Agent 会话，可在左侧会话列表查看',
+      description: '本次任务会创建新的 Agent 会话，可在会话列表中查看',
     })
     try {
       await window.electronAPI.runAutomationNow(a.id)
@@ -257,7 +257,7 @@ function EmptyState({ onCreate }: { onCreate: () => void }): React.ReactElement 
         <div className="text-[16px] font-medium text-foreground/85">暂无定时任务</div>
         <div className="text-[13px] text-foreground/50 leading-relaxed max-w-md">
           定时任务可以让 AI 周期性地执行某项任务，如每天总结新邮件、每小时检查 GitHub 仓库等。
-          也可以在对话中用「以后每隔 X 分钟…」让 Proma 自动识别并创建。
+          也可以在对话中用「以后每隔 X 分钟…」让 WorkMate 自动识别并创建。
         </div>
       </div>
       <button
