@@ -1,17 +1,38 @@
 /**
  * 自动更新相关类型定义
  *
- * 检测新版本 → 自动下载 → 用户确认后重启安装
+ * WorkMate Server 升级链路：检测 → 下载 → 校验 → 安装
  */
 
-/** 更新状态 */
+/** 更新状态（渲染端可见字段，不暴露内部字段如 sha256/fileSize） */
 export type UpdateStatus =
   | { status: 'idle' }
   | { status: 'checking' }
-  | { status: 'available'; version: string; releaseNotes?: string }
-  | { status: 'downloading'; version: string; progress: DownloadProgress }
-  | { status: 'downloaded'; version: string }
-  | { status: 'not-available' }
+  | { status: 'not-available'; hint?: string }
+  | {
+      status: 'available'
+      version: string
+      releaseNotes?: string
+      forceUpdate?: boolean
+      releaseType?: 'UPGRADE' | 'ROLLBACK'
+      hint?: string
+    }
+  | {
+      status: 'downloading'
+      version: string
+      releaseNotes?: string
+      progress: DownloadProgress
+      forceUpdate?: boolean
+      releaseType?: 'UPGRADE' | 'ROLLBACK'
+    }
+  | {
+      status: 'downloaded'
+      version: string
+      releaseNotes?: string
+      forceUpdate?: boolean
+      releaseType?: 'UPGRADE' | 'ROLLBACK'
+      hint?: string
+    }
   | { status: 'error'; error: string }
 
 /** 下载进度 */
@@ -20,7 +41,7 @@ export interface DownloadProgress {
   percent: number
   /** 已下载字节数 */
   transferred: number
-  /** 总字节数 */
+  /** 总字节数，-1 表示未知 */
   total: number
   /** 下载速度（字节/秒） */
   bytesPerSecond: number

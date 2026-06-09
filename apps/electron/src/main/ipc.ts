@@ -4377,4 +4377,33 @@ export function registerIpcHandlers(): void {
       return win && !win.isDestroyed() ? win.isMaximized() : false
     }
   )
+
+  // ===== WorkMate 观测上报 =====
+  ipcMain.handle(
+    'workmate:report-renderer-error',
+    async (_event, payload: {
+      name: string
+      message: string
+      stack?: string
+      componentStack?: string
+    }) => {
+      // 延迟导入避免循环依赖
+      const { normalizeRendererErrorPayload } = await import('./lib/observability-ipc-handler')
+      const normalized = normalizeRendererErrorPayload(payload)
+      if (!normalized) return
+
+      const { reportErrorEvent } = await import('./lib/observability-service')
+      const error = new Error(normalized.message)
+      error.name = normalized.name
+      if (normalized.stack) {
+        error.stack = normalized.stack
+      }
+      reportErrorEvent(error, {
+        tags: {
+          source: 'renderer-error-boundary',
+          componentStack: normalized.componentStack ?? '',
+        },
+      })
+    }
+  )
 }
