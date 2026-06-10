@@ -10,6 +10,7 @@ import { join } from 'node:path'
 import { getInactiveSkillsDir, getWorkspaceSkillsDir } from './config-paths'
 import { getAllWorkspaceSkills } from './agent-workspace-manager'
 import { getValidSkillHubToken, getSkillHubApiBase } from './skillhub-auth-service'
+import { getToken } from '../../auth/auth-service'
 
 export interface HtSkillHubSkill {
   name: string
@@ -65,6 +66,7 @@ function formatErrorResponse(text: string): string {
 
 async function skillHubFetch(path: string, init?: RequestInit): Promise<Response> {
   const token = await getValidSkillHubToken()
+  const eipgwToken = getToken()
   const base = getSkillHubApiBase()
   const url = `${base}${path}`
   const method = init?.method ?? 'GET'
@@ -77,6 +79,7 @@ async function skillHubFetch(path: string, init?: RequestInit): Promise<Response
   const buildHeaders = (t: string): Record<string, string> => ({
     ...(init?.headers as Record<string, string> | undefined),
     Authorization: `Bearer ${t}`,
+    ...(eipgwToken ? { Cookie: `EIPGW-TOKEN=${eipgwToken}` } : {}),
   })
 
   const makeRequest = (t: string) => fetch(url, { ...init, headers: buildHeaders(t) })
@@ -158,7 +161,7 @@ export async function fetchSkillHubSkills(query: SkillListQuery = {}): Promise<S
   if (query.category) reqBody.category = query.category
   if (query.env) reqBody.env = query.env
 
-  const response = await skillHubFetch('/ai_skillhub_service/api/v1/market/skills', {
+  const response = await skillHubFetch('/workmate/skillhub/ai_skillhub_service/api/v1/market/skills', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(reqBody),
@@ -170,7 +173,7 @@ export async function fetchSkillHubSkills(query: SkillListQuery = {}): Promise<S
 
 export async function fetchSkillHubDetail(skillName: string): Promise<SkillMetadataRaw> {
   const response = await skillHubFetch(
-    `/ai_skillhub_service/api/v1/market/skills/${encodeURIComponent(skillName)}`
+    `/workmate/skillhub/ai_skillhub_service/api/v1/market/skills/${encodeURIComponent(skillName)}`
   )
 
   const body = await response.json() as { code: string; data: SkillMetadataRaw }
@@ -178,7 +181,7 @@ export async function fetchSkillHubDetail(skillName: string): Promise<SkillMetad
 }
 
 export async function downloadSkillHubZip(skillName: string, version: string): Promise<Response> {
-  const url = `/ai_skillhub_service/api/v1/skills/download/${encodeURIComponent(skillName)}/${encodeURIComponent(version)}`
+  const url = `/workmate/skillhub/ai_skillhub_service/api/v1/skills/download/${encodeURIComponent(skillName)}/${encodeURIComponent(version)}`
   console.log('[SkillHub] 下载 Skill name=%s version=%s', skillName, version)
   const response = await skillHubFetch(url, { method: 'POST' })
 
