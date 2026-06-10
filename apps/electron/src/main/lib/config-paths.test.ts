@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
-import { clearConfigDirNameForTest, resolveDefaultConfigDirName } from './config-paths'
+import { clearConfigDirNameForTest, resolveDefaultConfigBaseDir, resolveDefaultConfigDirName } from './config-paths'
 
 function createTempHome(): string {
   return join(tmpdir(), `workmate-config-paths-${crypto.randomUUID()}`)
@@ -37,5 +37,25 @@ describe('配置目录默认名称', () => {
     mkdirSync(join(homeDir, '.workmate'), { recursive: true })
 
     expect(resolveDefaultConfigDirName(homeDir, '.workmate', '.proma')).toBe('.workmate')
+  })
+
+  test('Windows 新用户默认把正式版 .workmate 放到 D 盘根目录', () => {
+    const homeDir = createTempHome()
+
+    expect(resolveDefaultConfigBaseDir(homeDir, '.workmate', 'win32', 'D:\\', true)).toBe('D:\\')
+  })
+
+  test('Windows 没有 D 盘时回退到用户目录，避免应用启动失败', () => {
+    const homeDir = createTempHome()
+
+    expect(resolveDefaultConfigBaseDir(homeDir, '.workmate', 'win32', 'D:\\', false)).toBe(homeDir)
+  })
+
+  test('Windows 已有用户数据目录时继续使用用户目录，避免自动迁移', () => {
+    const homeDir = createTempHome()
+    mkdirSync(join(homeDir, '.workmate'), { recursive: true })
+
+    expect(resolveDefaultConfigBaseDir(homeDir, '.workmate', 'win32')).toBe(homeDir)
+    expect(resolveDefaultConfigBaseDir(homeDir, '.proma', 'win32')).toBe(homeDir)
   })
 })

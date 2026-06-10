@@ -246,7 +246,6 @@ const PROVIDER_LOGO_MAP: Record<ProviderType, string> = {
   'zhipu-coding': ZhipuLogo,
   minimax: MiniMaxLogo,
   'huatai-anthropic': DefaultLogo,
-  'huatai-openai': DefaultLogo,
   doubao: DoubaoLogo,
   qwen: QwenLogo,
   xiaomi: XiaomiLogo,

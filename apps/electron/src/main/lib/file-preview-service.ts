@@ -13,6 +13,7 @@ import { createHash } from 'node:crypto'
 import AdmZip from 'adm-zip'
 import { DOMParser } from '@xmldom/xmldom'
 import type { OfficePreviewResult } from '@proma/shared'
+import { readTextFile } from './text-decoder'
 
 const require = createRequire(__filename)
 const PDFJS_PACKAGE = 'pdfjs-dist'
@@ -537,7 +538,7 @@ export function resolveAndReadFile(filePath: string, basePaths?: string[]): { re
   try {
     const st = statSync(safePath)
     if (st.size > MAX_FILE_SIZE) return null
-    const content = readFileSync(safePath, 'utf-8')
+    const content = readTextFile(safePath)
     return { resolvedPath: safePath, content }
   } catch {
     return null

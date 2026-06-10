@@ -1,7 +1,7 @@
 import { accessSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { constants } from 'node:fs'
 import { homedir } from 'node:os'
-import { isAbsolute, join, parse, resolve } from 'node:path'
+import { isAbsolute, join, parse, resolve, win32 } from 'node:path'
 
 interface ConfigRootBootstrap {
   customConfigDir?: string
@@ -17,7 +17,9 @@ export interface ConfigRootInfo {
 
 export interface ConfigRootServiceOptions {
   homeDir?: string
+  defaultBaseDir?: string
   configDirName: string
+  platform?: NodeJS.Platform
 }
 
 let activeConfigDir: string | undefined
@@ -31,11 +33,13 @@ export function clearConfigRootOverride(): void {
 }
 
 export function getDefaultConfigDir(options: ConfigRootServiceOptions): string {
-  return join(getHomeDir(options), options.configDirName)
+  const pathJoin = options.platform === 'win32' ? win32.join : join
+  return pathJoin(options.defaultBaseDir ?? getHomeDir(options), options.configDirName)
 }
 
 function getBootstrapPath(options: ConfigRootServiceOptions): string {
-  return join(getDefaultConfigDir(options), 'config-root.json')
+  const pathJoin = options.platform === 'win32' ? win32.join : join
+  return pathJoin(getDefaultConfigDir(options), 'config-root.json')
 }
 
 function ensureDirectory(dirPath: string): void {

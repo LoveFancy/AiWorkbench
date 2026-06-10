@@ -208,7 +208,7 @@ import { permissionService } from './lib/agent-permission-service'
 import { askUserService } from './lib/agent-ask-user-service'
 import { exitPlanService } from './lib/agent-exit-plan-service'
 import { listAgentSlashCommands } from './lib/agent-slash-command-service'
-import { getAgentSessionWorkspacePath, getAgentWorkspacesDir, getWorkspaceSkillsDir, getWorkspaceFilesDir, getScratchPadPath, getConfigDirName } from './lib/config-paths'
+import { getAgentSessionWorkspacePath, getAgentWorkspacesDir, getWorkspaceSkillsDir, getWorkspaceFilesDir, getScratchPadPath, getConfigRootOptions } from './lib/config-paths'
 import { getConfigRootInfo, resetConfigRoot, setConfigRoot } from './lib/config-root-service'
 import { calculateStorageStats, cleanupStorage, cleanupTempFiles } from './lib/storage-service'
 import type { CleanupOptions } from './lib/storage-service'
@@ -1469,7 +1469,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     SETTINGS_IPC_CHANNELS.GET_CONFIG_ROOT,
     async (): Promise<ConfigRootInfo> => {
-      return getConfigRootInfo({ configDirName: getConfigDirName() })
+      return getConfigRootInfo(getConfigRootOptions())
     }
   )
 
@@ -1487,7 +1487,7 @@ export function registerIpcHandlers(): void {
 
       if (result.canceled || result.filePaths.length === 0) return null
 
-      return setConfigRoot(result.filePaths[0]!, { configDirName: getConfigDirName() })
+      return setConfigRoot(result.filePaths[0]!, getConfigRootOptions())
     }
   )
 
@@ -1495,7 +1495,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     SETTINGS_IPC_CHANNELS.SET_CONFIG_ROOT,
     async (_, dirPath: string): Promise<ConfigRootInfo> => {
-      return setConfigRoot(dirPath, { configDirName: getConfigDirName() })
+      return setConfigRoot(dirPath, getConfigRootOptions())
     }
   )
 
@@ -1503,7 +1503,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     SETTINGS_IPC_CHANNELS.RESET_CONFIG_ROOT,
     async (): Promise<ConfigRootInfo> => {
-      return resetConfigRoot({ configDirName: getConfigDirName() })
+      return resetConfigRoot(getConfigRootOptions())
     }
   )
 

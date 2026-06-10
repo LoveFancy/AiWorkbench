@@ -6,12 +6,13 @@
  * - PDF：使用 pdf-parse 提取文本
  * - DOC：使用 word-extractor 提取文本（旧版 Word）
  * - DOCX/XLSX/PPTX/ODP/ODS/ODT：使用 officeparser 提取文本
- * - TXT/MD/CSV/JSON/XML/HTML/JS/TS/PY 等：直接 UTF-8 读取
+ * - TXT/MD/CSV/JSON/XML/HTML/JS/TS/PY 等：自动识别 UTF-8/GBK/GB18030 读取
  */
 
 import { readFileSync } from 'node:fs'
 import { extname } from 'node:path'
 import { resolveAttachmentPath } from './config-paths'
+import { readTextFile } from './text-decoder'
 
 // ===== 文件类型分类 =====
 
@@ -21,7 +22,7 @@ const OFFICE_EXTENSIONS = new Set([
   '.odt', '.odp', '.ods',
 ])
 
-/** 纯文本格式（直接 UTF-8 读取） */
+/** 纯文本格式（自动识别 UTF-8/GBK/GB18030 读取） */
 const TEXT_EXTENSIONS = new Set([
   '.txt', '.md', '.csv', '.json', '.xml', '.html',
   '.js', '.ts', '.py', '.yaml', '.yml', '.toml',
@@ -62,7 +63,7 @@ export function isDocumentAttachment(mediaType: string): boolean {
  * - .pdf → pdf-parse
  * - .doc → word-extractor
  * - .docx/.xlsx/.pptx/.odt/.odp/.ods → officeparser
- * - .txt/.md/... → 直接 UTF-8 读取
+ * - .txt/.md/... → 自动识别 UTF-8/GBK/GB18030 读取
  *
  * @param filePath 文件的完整路径
  * @returns 提取的纯文本内容
@@ -88,12 +89,12 @@ export async function extractTextFromFile(filePath: string): Promise<string> {
 
   // 纯文本格式
   if (TEXT_EXTENSIONS.has(ext)) {
-    return readFileSync(filePath, 'utf-8')
+    return readTextFile(filePath)
   }
 
   // 未知格式：尝试当作文本读取
   console.warn(`[文档解析] 未知格式 ${ext}，尝试作为文本读取: ${filePath}`)
-  return readFileSync(filePath, 'utf-8')
+  return readTextFile(filePath)
 }
 
 /**

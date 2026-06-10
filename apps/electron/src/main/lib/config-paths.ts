@@ -2,7 +2,9 @@
  * 配置路径工具
  *
  * 管理 WorkMate 应用的本地配置文件路径。
- * 新用户配置默认存储在 ~/.workmate/ 目录下。
+ * 新用户配置默认存储在本地数据目录：
+ * - Windows 正式版：D:\.workmate\（减少 C 盘占用）
+ * - 其他系统/开发模式：~/.workmate/ 或 ~/.workmate-dev/
  * 已存在 ~/.proma/ 的老用户继续使用原目录，不自动迁移或重命名。
  */
 
@@ -10,6 +12,7 @@ import { join, basename } from 'node:path'
 import { mkdirSync, existsSync, cpSync, rmSync, readdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { resolveConfigDir } from './config-root-service'
+import type { ConfigRootServiceOptions } from './config-root-service'
 
 /**
  * 获取配置目录名称
@@ -30,6 +33,20 @@ export function resolveDefaultConfigDirName(homeDir: string, preferredName: stri
   if (existsSync(preferredDir)) return preferredName
   if (existsSync(legacyDir)) return legacyName
   return preferredName
+}
+
+export function resolveDefaultConfigBaseDir(
+  homeDir: string,
+  configDirName: string,
+  platform: NodeJS.Platform = process.platform,
+  windowsDefaultBaseDir = 'D:\\',
+  windowsDefaultBaseExists = existsSync(windowsDefaultBaseDir),
+): string {
+  if (platform !== 'win32') return homeDir
+  if (configDirName !== '.workmate') return homeDir
+  if (existsSync(join(homeDir, '.workmate'))) return homeDir
+  if (existsSync(join(homeDir, '.proma'))) return homeDir
+  return windowsDefaultBaseExists ? windowsDefaultBaseDir : homeDir
 }
 
 export function getConfigDirName(): string {
@@ -57,15 +74,27 @@ export function clearConfigDirNameForTest(): void {
   _configDirName = undefined
 }
 
+export function getConfigRootOptions(): ConfigRootServiceOptions {
+  const homeDir = homedir()
+  const configDirName = getConfigDirName()
+  return {
+    homeDir,
+    configDirName,
+    defaultBaseDir: resolveDefaultConfigBaseDir(homeDir, configDirName),
+    platform: process.platform,
+  }
+}
+
 /**
  * 获取配置目录路径
  *
- * 新用户开发模式返回 ~/.workmate-dev/，正式版本返回 ~/.workmate/。
+ * 新用户开发模式返回 ~/.workmate-dev/，正式版本在 Windows 返回 D:\.workmate/，
+ * 其他系统返回 ~/.workmate/。
  * 老用户已有 ~/.proma-dev/ 或 ~/.proma/ 时继续返回旧目录。
  * 如果目录不存在则自动创建。
  */
 export function getConfigDir(): string {
-  const configDir = resolveConfigDir({ homeDir: homedir(), configDirName: getConfigDirName() })
+  const configDir = resolveConfigDir(getConfigRootOptions())
 
   if (!existsSync(configDir)) {
     mkdirSync(configDir, { recursive: true })
@@ -79,7 +108,7 @@ export function getConfigDir(): string {
  * 获取当前应用数据目录路径，但不创建目录。
  */
 export function getConfigDirPath(): string {
-  return resolveConfigDir({ homeDir: homedir(), configDirName: getConfigDirName() })
+  return resolveConfigDir(getConfigRootOptions())
 }
 
 /**

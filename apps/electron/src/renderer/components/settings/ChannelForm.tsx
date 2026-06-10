@@ -84,7 +84,7 @@ interface ChannelFormProps {
 }
 
 /** 所有可选供应商 */
-const PROVIDER_OPTIONS: ProviderType[] = ['anthropic', 'anthropic-compatible', 'openai', 'huatai-anthropic', 'huatai-openai', 'deepseek', 'google', 'kimi-api', 'kimi-coding', 'zhipu', 'zhipu-coding', 'minimax', 'doubao', 'qwen', 'xiaomi', 'xiaomi-token-plan', 'custom']
+const PROVIDER_OPTIONS: ProviderType[] = ['anthropic', 'anthropic-compatible', 'openai', 'huatai-anthropic', 'deepseek', 'google', 'kimi-api', 'kimi-coding', 'zhipu', 'zhipu-coding', 'minimax', 'doubao', 'qwen', 'xiaomi', 'xiaomi-token-plan', 'custom']
 
 /** 供应商选项（用于 SettingsSelect） */
 const PROVIDER_SELECT_OPTIONS = PROVIDER_OPTIONS.map((p) => ({
@@ -106,7 +106,6 @@ const PROVIDER_CHAT_PATHS: Record<ProviderType, string> = {
   'zhipu-coding': '/messages',
   minimax: '/v1/messages',
   'huatai-anthropic': '/v1/messages',
-  'huatai-openai': '/chat/completions',
   doubao: '/chat/completions',
   qwen: '/chat/completions',
   xiaomi: '/v1/messages',
@@ -150,7 +149,7 @@ function isAgentEligibleChannel(channel: Pick<Channel, 'id' | 'provider' | 'enab
 }
 
 function getApiKeyPlaceholder(provider: ProviderType): string {
-  return provider === 'huatai-anthropic' || provider === 'huatai-openai'
+  return provider === 'huatai-anthropic'
     ? '请输入从中台申请到的 API Key'
     : '请输入 API Key'
 }

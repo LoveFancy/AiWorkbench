@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import {
   clearConfigRootOverride,
+  getDefaultConfigDir,
   getConfigRootInfo,
   resolveConfigDir,
   resetConfigRoot,
@@ -28,6 +29,17 @@ describe('config-root-service', () => {
     expect(info.customPath).toBeUndefined()
     expect(info.pendingPath).toBeUndefined()
     expect(info.requiresRestart).toBe(false)
+  })
+
+  test('支持 Windows D 盘根目录作为默认数据目录基础路径', () => {
+    const homeDir = createTempHome()
+
+    expect(getDefaultConfigDir({
+      homeDir,
+      configDirName: '.workmate',
+      defaultBaseDir: 'D:\\',
+      platform: 'win32',
+    })).toBe('D:\\.workmate')
   })
 
   test('bootstrap 配置存在且合法时使用自定义数据目录', () => {

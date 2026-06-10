@@ -35,7 +35,6 @@ const adapterRegistry = new Map<ProviderType, ProviderAdapter>([
   ['zhipu-coding', new AnthropicAdapter('zhipu-coding')], // 智谱 Coding Plan 订阅制（强制 User-Agent）
   ['minimax', new AnthropicAdapter('minimax')], // MiniMax 使用 Anthropic 兼容协议
   ['huatai-anthropic', new AnthropicAdapter('huatai-anthropic')], // 华泰 Anthropic 兼容协议
-  ['huatai-openai', new OpenAIAdapter()],  // 华泰 OpenAI 兼容协议
   ['doubao', new OpenAIAdapter()],        // 豆包使用 OpenAI 兼容协议
   ['qwen', new OpenAIAdapter()],          // 通义千问使用 OpenAI 兼容协议
   ['xiaomi', new AnthropicAdapter('xiaomi')],                       // 小米 MiMo API 使用 Anthropic 兼容协议

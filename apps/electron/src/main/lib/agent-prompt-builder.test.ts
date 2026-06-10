@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 
-import { buildAgentsForSession, buildSystemPrompt } from './agent-prompt-builder.ts'
+import { buildAgentsForSession, buildDynamicContext, buildSystemPrompt } from './agent-prompt-builder.ts'
 import { BUILTIN_DEFAULT_PROMPT_STRING } from '@proma/shared'
 
 describe('系统根提示词', () => {
-  test('Agent 根提示词要求可见思考过程优先使用中文', () => {
+  test('Agent 根提示词要求可见思考过程必须使用中文', () => {
     const prompt = buildSystemPrompt({
       sessionId: 'test-session',
       permissionMode: 'bypassPermissions',
@@ -12,10 +12,23 @@ describe('系统根提示词', () => {
       claudeAvailable: true,
     })
 
-    expect(prompt).toContain('可见思考过程、推理摘要和最终回复都优先使用中文')
+    expect(prompt).toContain('可见思考过程、推理摘要和最终回复必须使用中文')
     expect(prompt).toContain('## 语言规则')
     expect(prompt).toContain('`thinking`、`thinking block`、`reasoning`')
     expect(prompt.indexOf('## 语言规则')).toBeLessThan(prompt.indexOf('## 工具使用指南'))
+  })
+
+  test('动态上下文每轮注入语言规则以覆盖 resume 旧会话', () => {
+    const context = buildDynamicContext({
+      workspaceName: '默认工作区',
+      workspaceSlug: 'default',
+      agentCwd: '/tmp/session',
+    })
+
+    expect(context).toContain('本轮语言规则')
+    expect(context).toContain('可见思考过程、推理摘要和最终回复必须使用中文')
+    expect(context).toContain('即使当前是接续旧会话')
+    expect(context.indexOf('本轮语言规则')).toBeLessThan(context.indexOf('当前时间'))
   })
 
   test('Agent 根提示词要求缺少 Python 环境时使用内置安装 Skill', () => {
@@ -29,6 +42,21 @@ describe('系统根提示词', () => {
     expect(prompt).toContain('需要 Python 环境')
     expect(prompt).toContain('install-python')
     expect(prompt).toContain('不要自行拼装 Python 安装流程')
+  })
+
+  test('Agent 根提示词要求 Windows 下执行脚本避免 Bash 转义路径', () => {
+    const prompt = buildSystemPrompt({
+      sessionId: 'test-session',
+      permissionMode: 'bypassPermissions',
+      memoryEnabled: false,
+      claudeAvailable: true,
+    })
+
+    expect(prompt).toContain('Windows 路径执行规则')
+    expect(prompt).toContain('优先使用相对路径')
+    expect(prompt).toContain('node ./generate_chunxiao.js')
+    expect(prompt).toContain('C:/Users/012950/.proma')
+    expect(prompt).toContain('不要直接写未加引号的 C:\\Users\\...')
   })
 
   test('Agent 根提示词要求需要外部实时信息时主动使用 WorkMate 联网检索能力', () => {
@@ -64,8 +92,8 @@ describe('系统根提示词', () => {
     expect(prompt).toContain('必须优先通过对应 Skill 读取或转换')
   })
 
-  test('Chat 内置提示词要求可见思考过程优先使用中文', () => {
-    expect(BUILTIN_DEFAULT_PROMPT_STRING).toContain('可见思考过程、推理摘要和最终回复都优先使用中文')
+  test('Chat 内置提示词要求可见思考过程必须使用中文', () => {
+    expect(BUILTIN_DEFAULT_PROMPT_STRING).toContain('可见思考过程、推理摘要和最终回复必须使用中文')
     expect(BUILTIN_DEFAULT_PROMPT_STRING).toContain('`thinking`、`thinking block`、`reasoning`')
   })
 
@@ -123,7 +151,7 @@ describe('系统根提示词', () => {
     expect(prompt).toContain('mcp__workmate-web-search__web_search')
     expect(prompt).toContain('prd-writer')
     expect(prompt).toContain('dpmp')
-    expect(prompt).toContain('可见思考过程、推理摘要和最终回复都优先使用中文')
+    expect(prompt).toContain('可见思考过程、推理摘要和最终回复必须使用中文')
   })
 
   test('专家团 SubAgent 覆盖同名内置 SubAgent', () => {

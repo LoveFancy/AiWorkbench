@@ -318,7 +318,6 @@ export async function testChannel(channelId: string): Promise<ChannelTestResult>
         return await testAnthropicCompatible(channel.baseUrl, apiKey, proxyUrl, channel.provider)
       case 'openai':
       case 'zhipu':
-      case 'huatai-openai':
       case 'doubao':
       case 'qwen':
       case 'custom':
@@ -491,7 +490,6 @@ export async function testChannelDirect(input: FetchModelsInput): Promise<Channe
         return await testAnthropicCompatible(input.baseUrl, input.apiKey, proxyUrl, input.provider)
       case 'openai':
       case 'zhipu':
-      case 'huatai-openai':
       case 'doubao':
       case 'qwen':
       case 'custom':
@@ -545,7 +543,6 @@ export async function fetchModels(input: FetchModelsInput): Promise<FetchModelsR
         return await fetchAnthropicCompatibleModels(input.baseUrl, input.apiKey, proxyUrl, input.provider)
       case 'openai':
       case 'zhipu':
-      case 'huatai-openai':
       case 'doubao':
       case 'qwen':
       case 'custom':

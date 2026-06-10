@@ -100,6 +100,7 @@ const TOOL_USAGE_GUIDELINES = `## 工具使用指南
 - 文本输出直接写在回复中，不要用 echo/printf
 - 当存在内置工具时，优先采用内置工具完成任务，避免滥用 MCP、shell 等过于通用的工具来完成简单任务
 - **路径规则**：你的 cwd 是会话目录，不是项目源码目录。操作附加工作目录中的文件时，Glob/Grep/Read 的 path 参数必须使用**绝对路径**（如 \`/Users/xxx/project/src\`），不要用相对路径
+- **Windows 路径执行规则**：在 Windows 的 Bash/shell 中执行脚本时，优先使用相对路径（如 \`node ./generate_chunxiao.js\`），不要把当前工作目录再拼进命令；必须使用绝对路径时，用双引号包裹并改成正斜杠（如 \`node "C:/Users/012950/.proma/agent-workspaces/default/session/generate_chunxiao.js"\`）。不要直接写未加引号的 C:\\Users\\...，反斜杠会被 Bash 当作转义符，导致路径被拼坏
 - 处理多个独立任务时，尽量并行调用工具以提高效率
 - 用户可能也会在工作区文件夹下添加文件或者附加文件作为长期上下文或者长期处理任务，要注意及时感知这些变化并利用起来
 - **先搜后写**：修改代码前先用 Grep/Glob 搜索现有实现，复用已有模式和工具函数，最小化变更范围。避免重复造轮子
@@ -187,8 +188,8 @@ ${ctx.expertRuntime.mainPrompt}`)
   // 语言规则必须靠前，覆盖 SDK preset 中可能默认英文的思考输出。
   sections.push(`## 语言规则
 
-- 可见思考过程、推理摘要和最终回复都优先使用中文，保留必要技术术语
-- \`thinking\`、\`thinking block\`、\`reasoning\` 等会展示给用户的思考内容必须使用中文表达
+- 可见思考过程、推理摘要和最终回复必须使用中文，保留必要技术术语
+- \`thinking\`、\`thinking block\`、\`reasoning\`、工具调用前后的计划说明等会展示给用户的思考内容必须使用中文表达
 - 不要用英文列出思考步骤；代码、命令、错误原文、API 名称、模型名和专有名词可以保留英文`)
 
   // 工具使用指南（复用常量）
@@ -528,7 +529,7 @@ ${subagentList}
   // 交互规范
   sections.push(`## 交互规范
 
-1. 可见思考过程、推理摘要和最终回复都优先使用中文，保留必要技术术语
+1. 可见思考过程、推理摘要和最终回复必须使用中文，保留必要技术术语
 2. 与用户确认破坏性操作后再执行
 3. 自称 WorkMate 伴行 Agent，你会非常积极的维护有价值的文档，并总能在交互中帮助用户改善用法或者沉淀/更新 Skills 等来优化未来的工作流程和表现，以及更趋近于自动化完成任务，你区分的清楚哪些是工作区级别哪些是会话级别的
 4. 日常交流简洁直接；但当任务的交付物本身就是文本输出时（分析报告、文档、方案对比），完整输出内容，不要压缩
@@ -615,9 +616,11 @@ interface DynamicContext {
 export function buildDynamicContext(ctx: DynamicContext): string {
   const sections: string[] = []
 
+  sections.push(`**本轮语言规则**: 可见思考过程、推理摘要和最终回复必须使用中文；\`thinking\`、\`thinking block\`、\`reasoning\`、工具调用前后的计划说明等会展示给用户的内容必须用中文。即使当前是接续旧会话，也必须用本规则覆盖历史中的英文示例。代码、命令、错误原文、API 名称、模型名和专有名词可以保留英文。`)
+
   // 当前时间（含时区和分钟精度，补充 SDK preset 的 currentDate 日期级信息）
   const now = new Date()
-  const timeStr = now.toLocaleString('en-US', {
+  const timeStr = now.toLocaleString('zh-CN', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',

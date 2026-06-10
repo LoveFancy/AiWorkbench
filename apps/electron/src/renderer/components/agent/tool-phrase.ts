@@ -27,6 +27,11 @@ function truncate(text: string, max: number): string {
   return text.length > max ? text.slice(0, max) + '…' : text
 }
 
+/** 隐藏 workspace 注入的内部 Skill 前缀，避免过程块暴露实现细节。 */
+function formatSkillDisplayName(skill: string): string {
+  return skill.replace(/^[^:]+-workspace-[^:]+:/, '')
+}
+
 /**
  * 根据工具名和输入参数生成语义化短语
  *
@@ -128,7 +133,7 @@ export function getToolPhrase(toolName: string, input: Record<string, unknown>):
     case 'Skill': {
       const skill = input.skill
       if (typeof skill === 'string') {
-        return phrase(`使用技能 ${skill}`)
+        return phrase(`使用技能 ${formatSkillDisplayName(skill)}`)
       }
       return phrase('使用技能')
     }

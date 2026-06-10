@@ -20,7 +20,6 @@ export type ProviderType =
   | 'zhipu-coding'
   | 'minimax'
   | 'huatai-anthropic'
-  | 'huatai-openai'
   | 'doubao'
   | 'qwen'
   | 'xiaomi'
@@ -42,7 +41,6 @@ export const PROVIDER_DEFAULT_URLS: Record<ProviderType, string> = {
   'zhipu-coding': 'https://open.bigmodel.cn/api/anthropic',
   minimax: 'https://api.minimaxi.com/anthropic',
   'huatai-anthropic': 'http://168.63.65.40:8090/llm-service/v1/messages',
-  'huatai-openai': 'http://168.63.65.40:8090/llm-service/v1/chat/completions',
   doubao: 'https://ark.cn-beijing.volces.com/api/v3',
   qwen: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
   xiaomi: 'https://api.xiaomimimo.com/anthropic',
@@ -90,10 +88,6 @@ export const PROVIDER_DEFAULT_MODELS: Partial<Record<ProviderType, ChannelModel[
     { id: 'saas-deepseek-v4-flash', name: 'saas-deepseek-v4-flash', enabled: false, supportsMultimodal: false },
     { id: 'saas-deepseek-v4-pro', name: 'saas-deepseek-v4-pro', enabled: false, supportsMultimodal: false },
   ],
-  'huatai-openai': [
-    { id: 'local-deepseek-v4-pro', name: 'local-deepseek-v4-pro', enabled: true },
-    { id: 'local-deepseek-v32', name: 'local-deepseek-v32', enabled: true },
-  ],
   xiaomi: [
     { id: 'mimo-v2.5-pro', name: 'MiMo V2.5 Pro', enabled: true },
     { id: 'mimo-v2-pro', name: 'MiMo V2 Pro', enabled: true },
@@ -125,7 +119,6 @@ export const PROVIDER_LABELS: Record<ProviderType, string> = {
   'zhipu-coding': '智谱 Coding Plan',
   minimax: 'MiniMax (API&编程包)',
   'huatai-anthropic': '华泰（Anthropic 格式）',
-  'huatai-openai': '华泰（OpenAI 格式）',
   doubao: '豆包',
   qwen: '通义千问',
   xiaomi: '小米 MiMo (API)',
