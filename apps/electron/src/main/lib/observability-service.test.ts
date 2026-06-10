@@ -48,7 +48,7 @@ describe('观测上报事件处理', () => {
     expect(normalized.question!.length).toBeLessThan(event.question!.length)
     expect(normalized.error!.message.length).toBeLessThan(event.error!.message.length)
     expect(normalized.error!.stack!.length).toBeLessThan(event.error!.stack!.length)
-    expect(normalized.tags!.componentStack.length).toBeLessThan(event.tags!.componentStack.length)
+    expect(normalized.tags!.componentStack!.length).toBeLessThan(event.tags!.componentStack!.length)
     expect(getSerializedEventBytes(normalized)).toBe(Buffer.byteLength(JSON.stringify(normalized), 'utf8'))
   })
 
