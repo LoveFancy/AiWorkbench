@@ -70,10 +70,28 @@ describe('插件安装更新进行中状态', () => {
     expect(pluginSettingsSource).toContain('animate-spin')
   })
 
-  test('Installed 页支持上传 zip 直接安装用户插件', () => {
+  test('标签页使用中文文案', () => {
+    expect(pluginSettingsSource).toContain('<TabsTrigger value="discover">发现</TabsTrigger>')
+    expect(pluginSettingsSource).toContain('<TabsTrigger value="installed">已安装</TabsTrigger>')
+    expect(pluginSettingsSource).toContain('<TabsTrigger value="marketplaces">插件市场</TabsTrigger>')
+    expect(pluginSettingsSource).toContain('<TabsTrigger value="errors">异常')
+    expect(pluginSettingsSource).not.toContain('<TabsTrigger value="discover">Discover</TabsTrigger>')
+    expect(pluginSettingsSource).not.toContain('<TabsTrigger value="installed">Installed</TabsTrigger>')
+    expect(pluginSettingsSource).not.toContain('<TabsTrigger value="marketplaces">Marketplaces</TabsTrigger>')
+  })
+
+  test('Discover 页支持上传 zip 直接安装用户插件', () => {
     expect(pluginSettingsSource).toContain('uploadingPluginZip')
     expect(pluginSettingsSource).toContain('installAgentPluginZip')
     expect(pluginSettingsSource).toContain('上传 Zip')
+    expect(pluginSettingsSource.indexOf('上传 Zip')).toBeLessThan(pluginSettingsSource.indexOf('<TabsContent value="installed"'))
+  })
+
+  test('插件详情路径字段 hover 显示完整路径', () => {
+    expect(pluginSettingsSource).toContain("import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'")
+    expect(pluginSettingsSource).toContain('<DetailField label="Path" value={plugin.path} tooltipValue={plugin.path} />')
+    expect(pluginSettingsSource).toContain('<TooltipContent side="top"')
+    expect(pluginSettingsSource).toContain('{tooltipValue}')
   })
 })
 

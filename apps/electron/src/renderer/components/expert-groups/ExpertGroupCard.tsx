@@ -33,6 +33,11 @@ export function ExpertGroupCard({ group, onOpen, onSummon, compact = false }: Ex
               <div className="flex min-w-0 items-center gap-1.5">
                 <h3 className="truncate text-sm font-semibold">{group.name}</h3>
                 <ExpertGroupStatusBadge status={group.status} />
+                {group.sourcePluginKind === 'builtin' && (
+                  <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[11px]">
+                    内置
+                  </Badge>
+                )}
               </div>
               <p className="mt-1 truncate text-xs text-muted-foreground">主角色：{group.mainRole.name || '未配置'}</p>
             </div>

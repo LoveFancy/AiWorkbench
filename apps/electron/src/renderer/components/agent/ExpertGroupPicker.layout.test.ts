@@ -6,9 +6,11 @@ const cardSource = await Bun.file(join(import.meta.dir, '..', 'expert-groups', '
 const statusBadgeSource = await Bun.file(join(import.meta.dir, '..', 'expert-groups', 'ExpertGroupStatusBadge.tsx')).text()
 
 describe('召唤专家弹框布局', () => {
-  test('弹框更宽且可在大屏一行展示三个专家团卡片', () => {
-    expect(pickerSource).toContain('max-w-6xl')
-    expect(pickerSource).toContain('xl:grid-cols-3')
+  test('弹框宽度收敛到内容友好的尺寸且最多展示两列专家团卡片', () => {
+    expect(pickerSource).toContain('w-[min(92vw,760px)]')
+    expect(pickerSource).toContain('max-w-3xl')
+    expect(pickerSource).toContain('md:grid-cols-2')
+    expect(pickerSource).not.toContain('xl:grid-cols-3')
   })
 
   test('召唤弹框中的紧凑卡片不展示专家团 ID chip', () => {

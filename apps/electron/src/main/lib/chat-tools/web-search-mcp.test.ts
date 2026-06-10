@@ -10,6 +10,7 @@ import {
 interface CapturedTool {
   name: string
   description: string
+  schema: Record<string, { description?: string }>
   handler: (args: WebSearchMcpArgs) => Promise<WebSearchMcpResult>
 }
 
@@ -20,10 +21,10 @@ describe('Agent 内置联网搜索 MCP 工具', () => {
       tool: (
         name: string,
         description: string,
-        _schema: Record<string, unknown>,
+        schema: Record<string, { description?: string }>,
         handler: (args: WebSearchMcpArgs) => Promise<WebSearchMcpResult>,
       ) => {
-        const tool = { name, description, handler }
+        const tool = { name, description, schema, handler }
         capturedTools.push(tool)
         return tool
       },
@@ -39,6 +40,8 @@ describe('Agent 内置联网搜索 MCP 工具', () => {
     expect(server).toMatchObject({ name: 'workmate-web-search', version: '1.0.0' })
     expect(tool.name).toBe('web_search')
     expect(tool.description).toContain('WorkMate')
+    expect(tool.schema.timeRange?.description).toContain('Choose by content freshness')
+    expect(tool.schema.timeRange?.description).toContain('Broaden if results are insufficient')
 
     const result = await tool.handler({ query: 'Claude Code 版本', timeRange: 'OneWeek' })
 

@@ -37,7 +37,7 @@ export const WEB_SEARCH_TOOL_META: ChatToolMeta = {
     {
       name: 'timeRange',
       type: 'string',
-      description: '检索有效期，默认 OneMonth。可选: OneDay, OneWeek, OneMonth, OneYear',
+      description: '检索有效期。根据内容时效性选择：OneDay、OneWeek、OneMonth、OneYear；默认 OneMonth',
       required: false,
       enum: [...WEB_SEARCH_TIME_RANGE_VALUES],
     },
@@ -56,7 +56,12 @@ export const WEB_SEARCH_TOOL_META: ChatToolMeta = {
 - 用户明确要求搜索或查找信息
 
 搜索时使用简洁明确的关键词，返回结果后综合整理回答用户。
-默认检索近一个月内容；如用户指定“近一天 / 近一周 / 近一年”等有效期，将 timeRange 分别设为 OneDay / OneWeek / OneYear。
+根据问题的时效性选择 timeRange：
+- OneDay：今天、现在、实时行情、突发新闻、正在发生的事件
+- OneWeek：本周、最近几天、近期发布、短期事件进展
+- OneMonth：默认范围，适合最新版本、近期政策、产品动态、招聘、常规现状确认
+- OneYear：年度趋势、生态调研、较稳定但可能变化的技术资料、历史回顾
+如用户明确指定时间范围，优先按用户要求选择最接近的 timeRange；结果不足时可以扩大时间范围后再次搜索。
 </web_search_instructions>`,
 }
 
@@ -72,7 +77,7 @@ export const WEB_SEARCH_TOOL_DEFINITIONS: ToolDefinition[] = [
         query: { type: 'string', description: 'Search query string' },
         timeRange: {
           type: 'string',
-          description: 'Search time range. Defaults to OneMonth.',
+          description: 'Search time range. Choose by content freshness: OneDay for today/live/breaking updates, OneWeek for recent days, OneMonth for default current facts and releases, OneYear for trends or stable-but-changing research. Broaden if results are insufficient.',
           enum: [...WEB_SEARCH_TIME_RANGE_VALUES],
         },
       },
@@ -302,6 +307,78 @@ function getNestedValue(record: Record<string, unknown>, path: string): unknown 
   return current
 }
 
+function readNumberFromPaths(data: unknown, paths: string[]): number | undefined {
+  if (!isRecord(data)) return undefined
+  for (const path of paths) {
+    const value = getNestedValue(data, path)
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+    if (typeof value === 'string' && value.trim()) {
+      const numeric = Number(value)
+      if (Number.isFinite(numeric)) return numeric
+    }
+  }
+  return undefined
+}
+
+function previewLogText(value: string | undefined, maxLength = 220): string | undefined {
+  if (!value) return undefined
+  const compact = value.replace(/\s+/g, ' ').trim()
+  if (compact.length <= maxLength) return compact
+  return `${compact.slice(0, maxLength)}...`
+}
+
+function getCompassResponseResultCount(data: unknown): number | undefined {
+  return readNumberFromPaths(data, [
+    'result.resultCount',
+    'result.count',
+    'result.total',
+    'data.resultCount',
+    'data.count',
+    'data.total',
+    'resultCount',
+    'count',
+    'total',
+  ])
+}
+
+function logWebSearchRequest(query: string, timeRange: WebSearchTimeRange, endpoint: string): void {
+  console.info('[联网搜索] 请求', {
+    query,
+    timeRange,
+    endpoint,
+  })
+}
+
+function logWebSearchHttpError(query: string, timeRange: WebSearchTimeRange, status: number, errorText: string): void {
+  console.warn('[联网搜索] 请求失败', {
+    query,
+    timeRange,
+    status,
+    errorText: previewLogText(errorText),
+  })
+}
+
+function logWebSearchResponse(
+  query: string,
+  timeRange: WebSearchTimeRange,
+  status: number,
+  data: unknown,
+  results: CompassSearchResult[],
+): void {
+  console.info('[联网搜索] 返回', {
+    query,
+    timeRange,
+    status,
+    resultCount: getCompassResponseResultCount(data) ?? results.length,
+    parsedCount: results.length,
+    summaries: results.slice(0, 5).map((result) => ({
+      title: result.title,
+      url: result.url,
+      summary: previewLogText(result.content),
+    })),
+  })
+}
+
 function findResultArray(data: unknown): unknown[] {
   if (Array.isArray(data)) return data
   if (!isRecord(data)) return []
@@ -403,10 +480,12 @@ export async function executeWebSearchTool(
     }
 
     const request = buildCompassSearchRequest(query, getBuiltinWebSearchApiKey(), { timeRange })
+    logWebSearchRequest(query, timeRange, request.url)
     const response = await fetchFn(request.url, request.init)
 
     if (!response.ok) {
       const errorText = await response.text()
+      logWebSearchHttpError(query, timeRange, response.status, errorText)
       return {
         toolCallId: toolCall.id,
         content: `搜索请求失败 (${response.status}): ${errorText}`,
@@ -416,6 +495,7 @@ export async function executeWebSearchTool(
 
     const data = await response.json() as unknown
     const results = parseCompassSearchResponse(data)
+    logWebSearchResponse(query, timeRange, response.status, data, results)
     return {
       toolCallId: toolCall.id,
       content: formatCompassSearchResults(results),

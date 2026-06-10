@@ -29,7 +29,7 @@ describe('WorkMate 内置专家团配置', () => {
     expect(prompt).toContain('不要先启动一个外部技术调研专家')
   })
 
-  test('架构决策专家团通过 WorkMate 内置 web_search 联网，不直接暴露 WebSearch 和 WebFetch 工具', () => {
+  test('架构决策专家团通过 WorkMate 内置 web_search 联网，保留 WebFetch 打开已知 URL', () => {
     const group = JSON.parse(readFileSync(
       join(pluginRoot, 'expert-groups', 'architecture-decision-team.json'),
       'utf-8',
@@ -38,10 +38,11 @@ describe('WorkMate 内置专家团配置', () => {
 
     expect(group.builtinTools).toContain('web-search')
     expect(group.skills ?? []).not.toContain('web-search')
-    expect(group.toolsPolicy?.disallowedTools).toEqual(['WebSearch', 'WebFetch'])
+    expect(group.toolsPolicy?.disallowedTools).toEqual(['WebSearch'])
     expect(researcher).toContain('mcp__workmate-web-search__web_search')
+    expect(researcher).toContain('- WebFetch')
+    expect(researcher).toContain('WebFetch 仅用于打开已知 URL')
     expect(researcher).not.toContain('- WebSearch')
-    expect(researcher).not.toContain('- WebFetch')
   })
 
   test('架构决策专家团子专家提供中文显示名', () => {
