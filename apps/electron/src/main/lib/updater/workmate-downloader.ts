@@ -24,6 +24,29 @@ export interface DownloadCallbacks {
   onProgress: (percent: number, transferred: number, total: number, bytesPerSecond: number) => void
 }
 
+function isLocalHttpHost(hostname: string): boolean {
+  return hostname === 'localhost' || hostname.startsWith('127.')
+}
+
+export function validateInstallerDownloadSecurity(
+  url: string,
+  expectedSha256: string | undefined,
+): asserts expectedSha256 is string {
+  const parsedUrl = new URL(url)
+  if (parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') {
+    throw new Error('不支持的下载协议')
+  }
+  if (parsedUrl.protocol === 'http:' && !isLocalHttpHost(parsedUrl.hostname)) {
+    throw new Error('生产环境下载安装包必须使用 HTTPS')
+  }
+  if (!expectedSha256) {
+    throw new Error('安装包缺少 SHA-256 校验值')
+  }
+  if (!/^[a-fA-F0-9]{64}$/.test(expectedSha256)) {
+    throw new Error('安装包 SHA-256 校验值格式非法')
+  }
+}
+
 /**
  * 下载安装包。
  *
@@ -40,6 +63,8 @@ export async function downloadInstaller(
   expectedFileSize: number | undefined,
   callbacks: DownloadCallbacks,
 ): Promise<DownloadResult> {
+  validateInstallerDownloadSecurity(url, expectedSha256)
+
   const tmpPath = getInstallerPath(`${fileName}.tmp`)
   const finalPath = getInstallerPath(fileName)
 
@@ -126,7 +151,7 @@ export async function downloadInstaller(
   }
 
   // 校验 SHA-256
-  if (expectedSha256 && sha256 !== expectedSha256) {
+  if (sha256 !== expectedSha256) {
     await unlink(tmpPath).catch(() => {})
     throw new Error(`SHA-256 校验失败：期望 ${expectedSha256}，实际 ${sha256}`)
   }

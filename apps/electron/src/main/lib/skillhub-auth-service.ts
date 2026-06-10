@@ -210,7 +210,7 @@ export async function getValidSkillHubToken(): Promise<string> {
   // 已有有效 token 直接返回（不走锁）
   const cached = getCachedValidToken()
   if (cached) {
-    console.log('[SkillHub 认证] 使用缓存 Token:', cached.substring(0, 20) + '…')
+    console.log('[SkillHub 认证] 使用缓存 Token')
     return cached
   }
 

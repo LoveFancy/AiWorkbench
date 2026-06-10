@@ -107,6 +107,11 @@ export async function checkForWorkmateUpgrade(
     return { hasUpdate: false, hint: '服务端未提供安装包文件名' }
   }
 
+  if (!api.sha256) {
+    console.log('[升级检测] sha256 为空, 阻止升级')
+    return { hasUpdate: false, hint: '服务端未提供安装包 SHA-256 校验值' }
+  }
+
   // 2. 版本方向校验
   if (api.releaseType && api.latestVersion) {
     if (!isValidVersionDirection(currentVersion, api.latestVersion, api.releaseType)) {
