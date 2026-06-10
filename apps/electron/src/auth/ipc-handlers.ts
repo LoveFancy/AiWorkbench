@@ -14,11 +14,17 @@ export function registerAuthIpcHandlers(): void {
     return { isLoggedIn: isLoggedIn(), jobId: getJobId() }
   })
 
-  ipcMain.handle(AUTH_IPC_CHANNELS.CHECK_SESSION, () => {
+  ipcMain.handle(AUTH_IPC_CHANNELS.CHECK_SESSION, async () => {
     const info = getAuthInfo()
     if (!info) {
       return { isLoggedIn: false }
     }
+
+    // 恢复持久化登录时上报一次登录记录（动态 import 避免循环依赖）
+    import('../main/lib/observability-service').then(
+      ({ reportLoginEvent }) => reportLoginEvent(info.jobId, 'success'),
+    ).catch(() => { /* 上报失败不影响主流程 */ })
+
     return {
       isLoggedIn: true,
       jobId: info.jobId,
