@@ -333,7 +333,8 @@ describe('插件市场服务', () => {
   test('GitHub 市场的相对插件路径解析为仓库内路径', async () => {
     const temp = tempRoot()
     try {
-      const sourcePlugin = join(temp.root, 'remote-source')
+      const sourceRepo = join(temp.root, 'remote-source')
+      const sourcePlugin = join(sourceRepo, 'plugins', 'frontend-design')
       mkdirSync(join(sourcePlugin, '.claude-plugin'), { recursive: true })
       writeFileSync(
         join(sourcePlugin, '.claude-plugin', 'plugin.json'),
@@ -373,10 +374,10 @@ describe('插件市场服务', () => {
           mkdirSync(target, { recursive: true })
           return undefined
         },
-        copyClonedFixture: sourcePlugin,
+        copyClonedFixture: sourceRepo,
       })
 
-      expect(cloneCalls).toEqual(['https://github.com/org/plugins/plugins/frontend-design'])
+      expect(cloneCalls).toEqual(['https://github.com/org/plugins'])
     } finally {
       temp.cleanup()
     }
@@ -539,7 +540,8 @@ describe('插件市场服务', () => {
   test('Gitee 市场的相对插件路径解析为仓库内路径', async () => {
     const temp = tempRoot()
     try {
-      const sourcePlugin = join(temp.root, 'remote-source')
+      const sourceRepo = join(temp.root, 'remote-source')
+      const sourcePlugin = join(sourceRepo, 'plugins', 'frontend-design')
       mkdirSync(join(sourcePlugin, '.claude-plugin'), { recursive: true })
       writeFileSync(
         join(sourcePlugin, '.claude-plugin', 'plugin.json'),
@@ -579,10 +581,10 @@ describe('插件市场服务', () => {
           mkdirSync(target, { recursive: true })
           return undefined
         },
-        copyClonedFixture: sourcePlugin,
+        copyClonedFixture: sourceRepo,
       })
 
-      expect(cloneCalls).toEqual(['https://gitee.com/topsecwp/ECC/plugins/frontend-design'])
+      expect(cloneCalls).toEqual(['https://gitee.com/topsecwp/ECC'])
     } finally {
       temp.cleanup()
     }
@@ -591,7 +593,8 @@ describe('插件市场服务', () => {
   test('GitLab 市场的相对插件路径解析为仓库内路径', async () => {
     const temp = tempRoot()
     try {
-      const sourcePlugin = join(temp.root, 'remote-source')
+      const sourceRepo = join(temp.root, 'remote-source')
+      const sourcePlugin = join(sourceRepo, 'plugins', 'frontend-design')
       mkdirSync(join(sourcePlugin, '.claude-plugin'), { recursive: true })
       writeFileSync(
         join(sourcePlugin, '.claude-plugin', 'plugin.json'),
@@ -631,10 +634,10 @@ describe('插件市场服务', () => {
           mkdirSync(target, { recursive: true })
           return undefined
         },
-        copyClonedFixture: sourcePlugin,
+        copyClonedFixture: sourceRepo,
       })
 
-      expect(cloneCalls).toEqual(['http://gitlab.htzq.htsc.com.cn/aidev/ht-dev-plugins/claudecode-plugin-marketplace/plugins/frontend-design'])
+      expect(cloneCalls).toEqual(['http://gitlab.htzq.htsc.com.cn/aidev/ht-dev-plugins/claudecode-plugin-marketplace'])
     } finally {
       temp.cleanup()
     }
