@@ -61,6 +61,7 @@ describe('内置 Skill 元数据', () => {
     const skills = listDefaultSkillFrontmatters()
 
     expect(skills.map((skill) => skill.name)).not.toContain('proma-coach')
+    expect(skills.map((skill) => skill.name)).not.toContain('web-search')
     expect(skills.map((skill) => skill.name)).toContain('workmate-coach')
     for (const skill of skills) {
       expectChineseDescription(skill)

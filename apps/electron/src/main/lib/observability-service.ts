@@ -266,6 +266,8 @@ async function doFlushQueue(): Promise<void> {
       headers['Cookie'] = `EIPGW-TOKEN=${token}`
     }
 
+    console.log('[观测上报] 开始上报, url=%s, events=%d', config.url, batch.length)
+
     const response = await fetch(config.url, {
       method: 'POST',
       headers,
@@ -286,7 +288,7 @@ async function doFlushQueue(): Promise<void> {
     // 失败时回写到队列头部（保持事件顺序），同时用 eventId 去重写入磁盘
     eventQueue.unshift(...batch)
     writeToDiskCache(batch)
-    console.warn('[观测上报] 上报失败，已回写队列并落盘:', error)
+    console.warn('[观测上报] 上报失败, url=%s, events=%d, error=', config.url, batch.length, error)
   } finally {
     isFlushing = false
     currentFlushPromise = null

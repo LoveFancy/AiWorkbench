@@ -32,11 +32,46 @@ describe('testChannelModelWithFetch', () => {
       'Content-Type': 'application/json',
     })
     expect(JSON.parse(String(requestInit?.body))).toEqual({
-      messages: [{ role: 'user', content: '你是谁' }],
+      messages: [{ role: 'user', content: '只回复 ECHO，不要输出其他内容。' }],
       stream: false,
       model: 'local-deepseek-v4-flash',
       max_tokens: 2000,
       temperature: 0.8,
+    })
+  })
+
+  test('DeepSeek 模型测试使用 Anthropic 兼容 messages 请求', async () => {
+    let requestUrl = ''
+    let requestInit: RequestInit | undefined
+    const fetchFn = (async (url: string | URL | Request, init?: RequestInit) => {
+      requestUrl = String(url)
+      requestInit = init
+      return new Response(JSON.stringify({
+        content: [{ type: 'text', text: '我是 DeepSeek' }],
+      }), { status: 200 })
+    }) as typeof fetch
+
+    const result = await testChannelModelWithFetch({
+      provider: 'deepseek',
+      baseUrl: 'https://api.deepseek.com/anthropic',
+      apiKey: 'deepseek-key',
+      model: 'deepseek-v4-pro',
+    }, fetchFn)
+
+    expect(result).toEqual({
+      success: true,
+      message: '模型响应正常',
+      content: '我是 DeepSeek',
+    })
+    expect(requestUrl).toBe('https://api.deepseek.com/anthropic/messages')
+    expect(requestInit?.method).toBe('POST')
+    expect(requestInit?.headers).toEqual({
+      'X-Api-Key': 'deepseek-key',
+      'Content-Type': 'application/json',
+    })
+    expect(JSON.parse(String(requestInit?.body))).toMatchObject({
+      messages: [{ role: 'user', content: '只回复 ECHO，不要输出其他内容。' }],
+      model: 'deepseek-v4-pro',
     })
   })
 

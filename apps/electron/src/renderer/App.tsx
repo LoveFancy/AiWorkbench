@@ -33,12 +33,22 @@ export default function App(): React.ReactElement {
   const [isLoading, setIsLoading] = React.useState(true)
   const [showOnboarding, setShowOnboarding] = React.useState(false)
 
-  // 初始化：检查是否需要显示 Onboarding
+  // 初始化：恢复登录状态 + 检查是否需要显示 Onboarding
   // macOS/Linux 上 SDK 自带 claude native binary 不依赖宿主 Node/Git；
   // Windows 上仍需 Git Bash/WSL，由 Onboarding Step 2 与聊天错误卡片引导用户安装。
   React.useEffect(() => {
     const initialize = async () => {
       try {
+        // 1. 恢复登录状态（从磁盘 auth.json 检查 Token 是否有效）
+        const session = await window.electronAPI.auth.checkSession()
+        if (session.isLoggedIn) {
+          store.set(authStateAtom, {
+            isLoggedIn: true,
+            jobId: session.jobId,
+          })
+        }
+
+        // 2. 检查是否需要显示 Onboarding
         const settings = await window.electronAPI.getSettings()
         if (!settings.onboardingCompleted) {
           setShowOnboarding(true)
@@ -136,7 +146,7 @@ function LoginDialog(): React.ReactElement {
   }
 
   return (
-    <div className="fixed inset-0 z-[9999] bg-black/50 flex items-center justify-center" onClick={() => setOpen(false)}>
+    <div className="fixed inset-0 z-[9999] bg-black/50 flex items-center justify-center">
       <div onClick={(e) => e.stopPropagation()}>
         <LoginView
           onLoginSuccess={handleLoginSuccess}

@@ -9,6 +9,7 @@ import { createWriteStream, existsSync, mkdirSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { rename, unlink } from 'node:fs/promises'
 import { getUpgradeDir, getInstallerPath } from './workmate-manifest'
+import { getToken } from '../../../auth'
 
 export interface DownloadResult {
   /** 最终安装包路径 */
@@ -50,7 +51,13 @@ export async function downloadInstaller(
 
   console.log('[下载] 开始下载 %s → %s', url, tmpPath)
 
-  const response = await fetch(url)
+  const headers: Record<string, string> = {}
+  const token = getToken()
+  if (token) {
+    headers['Cookie'] = `EIPGW-TOKEN=${token}`
+  }
+
+  const response = await fetch(url, { headers })
 
   if (!response.ok) {
     throw new Error(`下载失败 HTTP ${response.status}`)

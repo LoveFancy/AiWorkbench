@@ -31,6 +31,7 @@ import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   Dialog,
   DialogContent,
@@ -626,10 +627,10 @@ export function PluginSettings(): React.ReactElement {
 
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as PluginSettingsTab)}>
         <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="discover">Discover</TabsTrigger>
-          <TabsTrigger value="installed">Installed</TabsTrigger>
-          <TabsTrigger value="marketplaces">Marketplaces</TabsTrigger>
-          <TabsTrigger value="errors">Errors{errors.length > 0 ? ` (${errors.length})` : ''}</TabsTrigger>
+          <TabsTrigger value="discover">发现</TabsTrigger>
+          <TabsTrigger value="installed">已安装</TabsTrigger>
+          <TabsTrigger value="marketplaces">插件市场</TabsTrigger>
+          <TabsTrigger value="errors">异常{errors.length > 0 ? ` (${errors.length})` : ''}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="discover" className="space-y-3">
@@ -639,6 +640,10 @@ export function PluginSettings(): React.ReactElement {
               <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索插件" className="pl-9" />
             </div>
             <Button onClick={() => { setDiscoverMarketplaceId(null); void loadAll() }}>搜索</Button>
+            <Button variant="outline" onClick={() => void handleInstallPluginZip()} disabled={uploadingPluginZip}>
+              {uploadingPluginZip ? <Loader2 size={16} className="mr-2 animate-spin" /> : <Upload size={16} className="mr-2" />}
+              <span>{uploadingPluginZip ? '安装中' : '上传 Zip'}</span>
+            </Button>
           </div>
           {discoverMarketplaceId && (
             <div className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-sm">
@@ -703,10 +708,6 @@ export function PluginSettings(): React.ReactElement {
                   <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   <Input value={installedQuery} onChange={(event) => setInstalledQuery(event.target.value)} placeholder="搜索已安装插件" className="pl-9" />
                 </div>
-                <Button variant="outline" onClick={() => void handleInstallPluginZip()} disabled={uploadingPluginZip}>
-                  {uploadingPluginZip ? <Loader2 size={16} className="mr-2 animate-spin" /> : <Upload size={16} className="mr-2" />}
-                  <span>{uploadingPluginZip ? '安装中' : '上传 Zip'}</span>
-                </Button>
               </div>
               {attentionPlugins.length > 0 && (
                 <PluginListSection
@@ -1041,7 +1042,7 @@ function InstalledPluginDetailPage({
           <DetailField label="Updated" value={formatDateTime(plugin.updatedAt ?? plugin.installedAt)} />
           <DetailField label="Source" value={marketplaceName} />
           <DetailField label="License" value={plugin.license ?? '未知'} />
-          <DetailField label="Path" value={plugin.path} />
+          <DetailField label="Path" value={plugin.path} tooltipValue={plugin.path} />
           <DetailField label="Capabilities" value={summarizeCapabilities({ ...plugin, capabilities })} />
         </div>
 
@@ -1127,11 +1128,21 @@ function InstalledPluginDetailPage({
   )
 }
 
-function DetailField({ label, value }: { label: string; value: string }): React.ReactElement {
+function DetailField({ label, value, tooltipValue }: { label: string; value: string; tooltipValue?: string }): React.ReactElement {
+  const content = <div className="truncate font-medium" title={value}>{value}</div>
   return (
     <div className="min-w-0">
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="truncate font-medium" title={value}>{value}</div>
+      {tooltipValue ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {content}
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-xl break-all font-mono text-xs leading-relaxed">
+            {tooltipValue}
+          </TooltipContent>
+        </Tooltip>
+      ) : content}
     </div>
   )
 }

@@ -361,6 +361,29 @@ describe('插件注册表服务', () => {
     }
   })
 
+  test('上传用户插件 zip 时拒绝重复的专家团 ID', () => {
+    const temp = tempRoot()
+    try {
+      const builtinDir = join(temp.root, 'default-plugins')
+      const userDir = join(temp.root, 'user-plugins')
+      const configPath = join(temp.root, 'plugins.json')
+      createExpertPlugin(builtinDir, 'builtin-architecture-team', '内置架构专家团')
+      const sourceDir = createExpertPlugin(temp.root, 'uploaded-architecture-team', '上传架构专家团')
+      const zipPath = join(temp.root, 'uploaded-architecture-team.zip')
+      const zip = new AdmZip()
+      zip.addLocalFolder(sourceDir, 'uploaded-architecture-team')
+      zip.writeZip(zipPath)
+
+      expect(() => installUserPluginZip(zipPath, {
+        builtinDir,
+        userDir,
+        configPath,
+      })).toThrow('已存在相同专家团 ID: product-team')
+    } finally {
+      temp.cleanup()
+    }
+  })
+
   test('直接安装用户插件 zip 时拒绝缺少 manifest 的包', () => {
     const temp = tempRoot()
     try {

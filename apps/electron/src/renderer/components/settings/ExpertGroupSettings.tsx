@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Search, Sparkles } from 'lucide-react'
+import { Loader2, Search, Sparkles, Upload } from 'lucide-react'
 import type { AgentExpertGroupInfo } from '@proma/shared'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { toast } from 'sonner'
@@ -10,6 +10,7 @@ import {
   createExpertSessionAtom,
   loadAgentExpertGroupsAtom,
 } from '@/atoms/agent-atoms'
+import { settingsOpenAtom } from '@/atoms/settings-tab'
 import { ExpertGroupCard } from '@/components/expert-groups/ExpertGroupCard'
 import { ExpertGroupDetailDialog } from '@/components/expert-groups/ExpertGroupDetailDialog'
 import { getExpertGroupSearchTerms } from '@/components/expert-groups/expert-group-subagents'
@@ -54,10 +55,12 @@ export function ExpertGroupSettings(): React.ReactElement {
   const groups = useAtomValue(agentExpertGroupsAtom)
   const loadGroups = useSetAtom(loadAgentExpertGroupsAtom)
   const createExpertSession = useSetAtom(createExpertSessionAtom)
+  const setSettingsOpen = useSetAtom(settingsOpenAtom)
   const openSession = useOpenSession()
   const [query, setQuery] = React.useState('')
   const [selected, setSelected] = React.useState<AgentExpertGroupInfo | null>(null)
   const [loading, setLoading] = React.useState(false)
+  const [uploadingExpertGroupZip, setUploadingExpertGroupZip] = React.useState(false)
 
   const refresh = React.useCallback(async (): Promise<void> => {
     setLoading(true)
@@ -76,17 +79,35 @@ export function ExpertGroupSettings(): React.ReactElement {
     if (group.status !== 'available') return
     const session = await createExpertSession(group)
     openSession('agent', session.id, session.title)
+    setSettingsOpen(false)
     toast.success(`已召唤${group.name}`)
     setSelected(null)
-  }, [createExpertSession, openSession])
+  }, [createExpertSession, openSession, setSettingsOpen])
+
+  const handleInstallExpertGroupZip = React.useCallback(async (): Promise<void> => {
+    if (uploadingExpertGroupZip) return
+    setUploadingExpertGroupZip(true)
+    try {
+      const installed = await window.electronAPI.installAgentPluginZip()
+      if (!installed) return
+      await loadGroups()
+      const hasExpertGroup = installed.capabilities.some((capability) => capability.type === 'expert-group')
+      if (hasExpertGroup) {
+        toast.success(`专家团插件已安装: ${installed.name}`)
+      } else {
+        toast.warning(`插件已安装，但未发现专家团: ${installed.name}`)
+      }
+    } catch (error) {
+      toast.error('安装专家团失败', { description: error instanceof Error ? error.message : '未知错误' })
+    } finally {
+      setUploadingExpertGroupZip(false)
+    }
+  }, [loadGroups, uploadingExpertGroupZip])
 
   const visible = React.useMemo(
     () => groups.filter((group) => matchesGroup(group, query)),
     [groups, query],
   )
-  const builtin = visible.filter((group) => group.sourcePluginKind === 'builtin' && group.status === 'available')
-  const user = visible.filter((group) => group.sourcePluginKind === 'user' && group.status === 'available')
-  const issues = visible.filter((group) => group.status !== 'available')
 
   return (
     <div className="space-y-6">
@@ -97,9 +118,15 @@ export function ExpertGroupSettings(): React.ReactElement {
             查看内置和插件提供的专家团，诊断依赖状态，并创建专家会话。
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={loading}>
-          刷新
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => void handleInstallExpertGroupZip()} disabled={uploadingExpertGroupZip}>
+            {uploadingExpertGroupZip ? <Loader2 size={14} className="mr-1 animate-spin" /> : <Upload size={14} className="mr-1" />}
+            {uploadingExpertGroupZip ? '安装中' : '上传专家团 Zip'}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={loading}>
+            刷新
+          </Button>
+        </div>
       </div>
 
       <div className="relative max-w-md">
@@ -119,9 +146,7 @@ export function ExpertGroupSettings(): React.ReactElement {
         </div>
       ) : (
         <div className="space-y-6">
-          <GroupSection title="内置专家团" groups={builtin} onOpen={setSelected} onSummon={(group) => void handleSummon(group)} />
-          <GroupSection title="插件专家团" groups={user} onOpen={setSelected} onSummon={(group) => void handleSummon(group)} />
-          <GroupSection title="异常" groups={issues} onOpen={setSelected} onSummon={(group) => void handleSummon(group)} />
+          <GroupSection title="全部专家团" groups={visible} onOpen={setSelected} onSummon={(group) => void handleSummon(group)} />
         </div>
       )}
 

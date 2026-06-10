@@ -21,40 +21,53 @@ import {
   AlertDialogAction,
 } from '@/components/ui/alert-dialog'
 import { updateStatusAtom } from '@/atoms/updater'
+import { markdownToHtml } from '@/lib/markdown-rich-text'
 
 export function UpdateDialog(): React.ReactElement | null {
   const updateStatus = useAtomValue(updateStatusAtom)
   const [open, setOpen] = React.useState(false)
   const [dialogVersion, setDialogVersion] = React.useState<string | null>(null)
   const shownVersionRef = React.useRef<string | null>(null)
-  const postponedDownloadedVersionRef = React.useRef<string | null>(null)
+  const userDismissedVersionRef = React.useRef<string | null>(null)
 
   React.useEffect(() => {
+    console.log('[UpdateDialog] useEffect status=%s version=%s open=%s dialogVersion=%s',
+      updateStatus.status, updateStatus.version, open, dialogVersion)
+
+    // 有可用更新 / 正在下载 → 打开弹窗（首次发现该版本时）
     if (
-      updateStatus.status === 'available' &&
+      (updateStatus.status === 'available' || updateStatus.status === 'downloading') &&
       updateStatus.version &&
       shownVersionRef.current !== updateStatus.version
     ) {
       const version = updateStatus.version
       shownVersionRef.current = version
-      postponedDownloadedVersionRef.current = null
+      userDismissedVersionRef.current = null
       setDialogVersion(version)
-
+      console.log('[UpdateDialog] %s: 打开弹窗 version=%s', updateStatus.status, version)
       setOpen(true)
+      return
     }
 
-    // 下载完成时如果弹窗已关闭，重新弹出提醒用户
+    // 下载完成，弹窗内容自动切换（标题/按钮由 isDownloaded 驱动）
+    // 如果弹窗已被关闭则重新弹出
     if (
       updateStatus.status === 'downloaded' &&
-      updateStatus.version &&
-      !open &&
-      postponedDownloadedVersionRef.current !== updateStatus.version
+      updateStatus.version
     ) {
+      console.log('[UpdateDialog] downloaded: open=%s dismissedRef=%s',
+        open, userDismissedVersionRef.current)
       if (dialogVersion !== updateStatus.version) {
         setDialogVersion(updateStatus.version)
       }
-      setOpen(true)
+      if (!open && userDismissedVersionRef.current !== updateStatus.version) {
+        console.log('[UpdateDialog] downloaded: 重新打开弹窗 version=%s', updateStatus.version)
+        setOpen(true)
+      }
+      return
     }
+
+    // 检查失败不做弹窗，由 AboutSettings 页面内联展示
   }, [updateStatus.status, updateStatus.version, open, dialogVersion])
 
   const handleOpenChange = (nextOpen: boolean): void => {
@@ -62,8 +75,9 @@ export function UpdateDialog(): React.ReactElement | null {
     if (!nextOpen && updateStatus.forceUpdate && updateStatus.status === 'downloaded') {
       return
     }
+    // 用户关闭已下载弹窗 → 记录为已忽略
     if (!nextOpen && updateStatus.status === 'downloaded' && dialogVersion) {
-      postponedDownloadedVersionRef.current = dialogVersion
+      userDismissedVersionRef.current = dialogVersion
     }
     setOpen(nextOpen)
   }
@@ -123,11 +137,12 @@ export function UpdateDialog(): React.ReactElement | null {
           </div>
         )}
 
-        {/* Release Notes（直接从 status 获取，不调 GitHub API） */}
+        {/* Release Notes（Markdown 渲染） */}
         {!isDownloading && updateStatus.releaseNotes && (
-          <div className="max-h-64 overflow-y-auto rounded-md border p-3 text-xs whitespace-pre-wrap text-muted-foreground">
-            {updateStatus.releaseNotes}
-          </div>
+          <div
+            className="max-h-64 overflow-y-auto rounded-md border p-3 text-xs prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
+            dangerouslySetInnerHTML={{ __html: markdownToHtml(updateStatus.releaseNotes) }}
+          />
         )}
 
         <AlertDialogFooter>

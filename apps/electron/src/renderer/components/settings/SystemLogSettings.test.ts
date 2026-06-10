@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { join } from 'node:path'
 
 const source = await Bun.file(join(import.meta.dir, 'SystemLogSettings.tsx')).text()
+const utilsSource = await Bun.file(join(import.meta.dir, 'system-log-utils.ts')).text()
 const settingsPanelSource = await Bun.file(join(import.meta.dir, 'SettingsPanel.tsx')).text()
 const preloadSource = await Bun.file(join(import.meta.dir, '..', '..', '..', 'preload', 'index.ts')).text()
 const mainIpcSource = await Bun.file(join(import.meta.dir, '..', '..', '..', 'main', 'ipc.ts')).text()
@@ -33,11 +34,19 @@ describe('系统日志设置页', () => {
   })
 
   test('支持日志级别过滤和时间倒序展示', () => {
-    expect(source).toContain("type LogLevelFilter = 'all' | 'INFO' | 'WARN' | 'ERROR'")
+    expect(utilsSource).toContain("export type LogLevelFilter = 'all' | 'INFO' | 'WARN' | 'ERROR'")
     expect(source).toContain('LOG_LEVEL_OPTIONS')
     expect(source).toContain('activeLevel')
-    expect(source).toContain('getVisibleLogContent')
-    expect(source).toContain('reverseLogLines')
+    expect(source).toContain('parseLogEntries')
+    expect(source).toContain('getDisplayedLogEntries')
+    expect(utilsSource).toContain('rawEntries.reverse()')
+  })
+
+  test('搜索使用延迟查询和有限条目渲染，避免每次输入全量高亮日志', () => {
+    expect(source).toContain('React.useDeferredValue(searchQuery)')
+    expect(source).toContain('MAX_RENDERED_LOG_ENTRIES')
+    expect(source).toContain('displayedLogEntries.entries.map')
+    expect(source).not.toContain('countMatches')
   })
 
   test('日志阅读区不使用黑底终端样式', () => {

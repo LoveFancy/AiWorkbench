@@ -1,5 +1,5 @@
-import type { ChannelModelTestInput, ChannelModelTestResult } from '@proma/shared'
-import { normalizeAnthropicBaseUrl } from '@proma/core'
+import type { ChannelModelTestInput, ChannelModelTestResult, ProviderType } from '@proma/shared'
+import { normalizeAnthropicProviderUrl } from '@proma/core'
 
 interface AnthropicTextBlock {
   type?: string
@@ -58,26 +58,39 @@ function formatResponseData(data: unknown): string {
   }
 }
 
-function buildAnthropicMessagesUrl(baseUrl: string): string {
-  return `${normalizeAnthropicBaseUrl(baseUrl)}/messages`
+const ANTHROPIC_PROTOCOL_PROVIDERS: ReadonlySet<ProviderType> = new Set<ProviderType>([
+  'anthropic',
+  'anthropic-compatible',
+  'deepseek',
+  'kimi-api',
+  'kimi-coding',
+  'zhipu-coding',
+  'minimax',
+  'huatai-anthropic',
+  'xiaomi',
+  'xiaomi-token-plan',
+])
+
+function buildAnthropicMessagesUrl(baseUrl: string, provider: ProviderType): string {
+  return `${normalizeAnthropicProviderUrl(baseUrl, provider)}/messages`
 }
 
 export async function testChannelModelWithFetch(
   input: ChannelModelTestInput,
   fetchFn: typeof fetch,
 ): Promise<ChannelModelTestResult> {
-  if (input.provider !== 'huatai-anthropic') {
+  if (!ANTHROPIC_PROTOCOL_PROVIDERS.has(input.provider)) {
     return { success: false, message: `暂不支持测试该供应商的模型: ${input.provider}` }
   }
 
-  const response = await fetchFn(buildAnthropicMessagesUrl(input.baseUrl), {
+  const response = await fetchFn(buildAnthropicMessagesUrl(input.baseUrl, input.provider), {
     method: 'POST',
     headers: {
       'X-Api-Key': input.apiKey,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      messages: [{ role: 'user', content: '你是谁' }],
+      messages: [{ role: 'user', content: '只回复 ECHO，不要输出其他内容。' }],
       stream: false,
       model: input.model,
       max_tokens: 2000,

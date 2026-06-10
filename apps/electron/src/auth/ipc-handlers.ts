@@ -1,9 +1,10 @@
 import { ipcMain } from 'electron'
-import { loginWithEipGateway, getJobId, isLoggedIn, logout } from './auth-service'
+import { loginWithEipGateway, getJobId, isLoggedIn, logout, getAuthInfo } from './auth-service'
 import { onLoginSuccess } from '../main/lib/updater/auto-updater'
 
 export const AUTH_IPC_CHANNELS = {
   GET_AUTH_STATE: 'auth:get-state',
+  CHECK_SESSION: 'auth:check-session',
   LOGIN: 'auth:login',
   LOGOUT: 'auth:logout',
 } as const
@@ -11,6 +12,18 @@ export const AUTH_IPC_CHANNELS = {
 export function registerAuthIpcHandlers(): void {
   ipcMain.handle(AUTH_IPC_CHANNELS.GET_AUTH_STATE, () => {
     return { isLoggedIn: isLoggedIn(), jobId: getJobId() }
+  })
+
+  ipcMain.handle(AUTH_IPC_CHANNELS.CHECK_SESSION, () => {
+    const info = getAuthInfo()
+    if (!info) {
+      return { isLoggedIn: false }
+    }
+    return {
+      isLoggedIn: true,
+      jobId: info.jobId,
+      needsReauth: info.needsReauth,
+    }
   })
 
   ipcMain.handle(AUTH_IPC_CHANNELS.LOGIN, async (_event, username: string, password: string, days?: number) => {

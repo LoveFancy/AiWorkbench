@@ -14,6 +14,7 @@ import {
   SettingsRow,
 } from './primitives'
 import { updateStatusAtom, updaterAvailableAtom, checkForUpdates } from '@/atoms/updater'
+import { markdownToHtml } from '@/lib/markdown-rich-text'
 import {
   environmentCheckResultAtom,
   hasEnvironmentIssuesAtom,
@@ -31,32 +32,47 @@ const APP_VERSION = __APP_VERSION__
 function UpdateCard(): React.ReactElement | null {
   const available = useAtomValue(updaterAvailableAtom)
   const status = useAtomValue(updateStatusAtom)
-  const [checking, setChecking] = React.useState(false)
   const [showReleaseNotes, setShowReleaseNotes] = React.useState(false)
+
+  // 每次打开关于页面时向服务端验证当前版本状态
+  // （如服务端暂停了更新，可及时清理已下载的安装包）
+  // 使用静默模式：失败时不显示错误，避免打扰用户
+  React.useEffect(() => {
+    if (available) {
+      void checkForUpdates({ silent: true })
+    }
+  }, [available])
 
   if (!available) return null
 
-  const handleCheck = async (): Promise<void> => {
-    setChecking(true)
-    try {
-      await checkForUpdates()
-    } finally {
-      setTimeout(() => setChecking(false), 1000)
-    }
+  const handleCheck = (): void => {
+    // IPC 不阻塞，状态变更通过 updater:status-changed 事件推送
+    void checkForUpdates()
   }
 
   const handleQuitAndInstall = (): void => {
     window.electronAPI.updater?.quitAndInstall()
   }
 
-  const isChecking = checking || status.status === 'checking' || status.status === 'downloading'
+  const isChecking = status.status === 'checking' || status.status === 'downloading'
   const hasReleaseNotes = !!status.releaseNotes
+
+  const formatBytes = (bytes: number): string => {
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  }
 
   return (
     <SettingsCard>
       <SettingsRow label="软件更新">
         <div className="flex items-center gap-3">
-          <StatusText status={status.status} version={status.version} error={status.error} hint={status.hint} />
+          <StatusText
+            status={status.status}
+            version={status.version}
+            error={status.error}
+            hint={status.hint}
+            progress={status.progress}
+          />
 
           {status.status === 'downloaded' ? (
             <button
@@ -64,8 +80,10 @@ function UpdateCard(): React.ReactElement | null {
               className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
             >
               <RotateCw className="h-3.5 w-3.5" />
-              立即重启
+              {status.releaseType === 'ROLLBACK' ? '立即回退' : '立即重启更新'}
             </button>
+          ) : status.status === 'downloading' ? (
+            <span className="text-xs text-muted-foreground">{status.progress?.percent ?? 0}%</span>
           ) : (
             <button
               onClick={handleCheck}
@@ -83,14 +101,33 @@ function UpdateCard(): React.ReactElement | null {
         </div>
       </SettingsRow>
 
+      {/* 下载进度条 */}
+      {status.status === 'downloading' && status.progress && (
+        <div className="px-4 pb-3 space-y-1.5">
+          <div className="h-1.5 w-full rounded-full bg-secondary overflow-hidden">
+            <div
+              className="h-full bg-primary transition-all duration-300"
+              style={{ width: `${status.progress.total <= 0 ? 0 : status.progress.percent}%` }}
+            />
+          </div>
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>
+              {formatBytes(status.progress.transferred)}
+              {status.progress.total > 0 ? ` / ${formatBytes(status.progress.total)}` : ' / 未知大小'}
+            </span>
+            <span>{formatBytes(status.progress.bytesPerSecond)}/s</span>
+          </div>
+        </div>
+      )}
+
       {/* Release Notes（从 status 直接获取，不调 GitHub API） */}
-      {status.status === 'available' && hasReleaseNotes && (
+      {(status.status === 'available' || status.status === 'downloading' || status.status === 'downloaded') && (
         <div className="px-4 pb-4 border-t">
           <button
             onClick={() => setShowReleaseNotes(!showReleaseNotes)}
             className="w-full flex items-center justify-between py-3 text-left hover:opacity-80 transition-opacity"
           >
-            <span className="text-sm font-medium">更新日志</span>
+            <span className="text-sm font-medium">发布说明</span>
             {showReleaseNotes ? (
               <ChevronUp className="h-4 w-4 text-muted-foreground" />
             ) : (
@@ -99,9 +136,12 @@ function UpdateCard(): React.ReactElement | null {
           </button>
 
           {showReleaseNotes && (
-            <div className="mt-2 text-xs whitespace-pre-wrap text-muted-foreground">
-              {status.releaseNotes}
-            </div>
+            <div
+              className="mt-2 text-xs prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
+              dangerouslySetInnerHTML={{
+                __html: hasReleaseNotes ? markdownToHtml(status.releaseNotes!) : '<p>暂无更新说明</p>',
+              }}
+            />
           )}
         </div>
       )}
@@ -110,11 +150,12 @@ function UpdateCard(): React.ReactElement | null {
 }
 
 /** 状态文字组件 */
-function StatusText({ status, version, error, hint }: {
+function StatusText({ status, version, error, hint, progress }: {
   status: string
   version?: string
   error?: string
   hint?: string
+  progress?: { percent: number; transferred: number; total: number; bytesPerSecond: number }
 }): React.ReactElement {
   switch (status) {
     case 'checking':
@@ -130,7 +171,7 @@ function StatusText({ status, version, error, hint }: {
       return (
         <span className="text-xs text-muted-foreground flex items-center gap-1">
           <Loader2 className="h-3 w-3 animate-spin" />
-          正在下载 v{version}
+          正在下载 v{version} ({progress?.percent ?? 0}%)
         </span>
       )
     case 'downloaded':

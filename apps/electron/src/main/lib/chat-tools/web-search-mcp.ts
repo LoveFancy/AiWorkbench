@@ -51,7 +51,7 @@ export async function createWebSearchMcpServer(
         'Search current public web information through the built-in WorkMate Compass search service. Use this for recent facts, external evidence, technology ecosystem research, release notes, vendor status, and source-backed architecture decisions.',
         {
           query: z.string().describe('Search query string. Keep it concise and specific.'),
-          timeRange: z.enum(['OneDay', 'OneWeek', 'OneMonth', 'OneYear']).optional().describe('Search time range. Defaults to OneMonth.'),
+          timeRange: z.enum(['OneDay', 'OneWeek', 'OneMonth', 'OneYear']).optional().describe('Search time range. Choose by content freshness: OneDay for today/live/breaking updates, OneWeek for recent days, OneMonth for default current facts and releases, OneYear for trends or stable-but-changing research. Broaden if results are insufficient.'),
         },
         async (args): Promise<WebSearchMcpResult> => {
           try {
