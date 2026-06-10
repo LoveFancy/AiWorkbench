@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { AlertTriangle, RotateCw } from 'lucide-react'
+import { reportRendererErrorViaIpc } from '../../lib/observability-ipc'
 
 interface TabErrorBoundaryProps {
   sessionId: string
@@ -27,6 +28,23 @@ export class TabErrorBoundary extends React.Component<
 
   override componentDidCatch(error: unknown, info: React.ErrorInfo): void {
     console.error('[TabErrorBoundary] 渲染异常:', error, info.componentStack)
+
+    // 上报到主进程观测服务
+    if (error instanceof Error) {
+      void reportRendererErrorViaIpc({
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+        componentStack: info.componentStack ?? undefined,
+      })
+    } else {
+      void reportRendererErrorViaIpc({
+        name: 'UnknownError',
+        message: String(error),
+        stack: undefined,
+        componentStack: info.componentStack ?? undefined,
+      })
+    }
   }
 
   private handleReset = (): void => {

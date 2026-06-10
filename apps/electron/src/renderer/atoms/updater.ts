@@ -22,6 +22,9 @@ export interface UpdateStatus {
   releaseNotes?: string
   progress?: DownloadProgress
   error?: string
+  hint?: string
+  forceUpdate?: boolean
+  releaseType?: 'UPGRADE' | 'ROLLBACK'
 }
 
 /** 更新状态 atom */
@@ -49,7 +52,6 @@ export function initializeUpdater(
 ): () => void {
   const updater = window.electronAPI?.updater
   if (!updater) {
-    // updater 不可用（开源构建），直接返回空清理函数
     return () => {}
   }
 
@@ -64,6 +66,6 @@ export function initializeUpdater(
 }
 
 /** 手动检查更新 */
-export async function checkForUpdates(): Promise<void> {
-  await window.electronAPI?.updater?.checkForUpdates()
+export async function checkForUpdates(opts?: { silent?: boolean }): Promise<void> {
+  await window.electronAPI?.updater?.checkForUpdates(opts)
 }

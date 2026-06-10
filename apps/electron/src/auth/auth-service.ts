@@ -24,7 +24,7 @@ export function setAuthPathProviderForTest(provider: AuthPathProvider | null): v
 }
 
 /** 从 settings.json 读取 eipGatewayBase，未配置时回退到生产地址 */
-function getEipGatewayBase(): string {
+export function getEipGatewayBase(): string {
   const settingsPath = pathProvider.getSettingsPath()
   try {
     if (existsSync(settingsPath)) {
@@ -38,7 +38,7 @@ function getEipGatewayBase(): string {
 }
 
 /** 强制重新登录天数：自 Token 初始签发起超过此天数必须重新登录 */
-const FORCED_REAUTH_DAYS = 180
+const FORCED_REAUTH_DAYS = 30
 
 function getAuthFilePath(): string {
   return join(pathProvider.getConfigDir(), AUTH_FILE)
@@ -47,7 +47,7 @@ function getAuthFilePath(): string {
 // ===== 总入口：完整登录流程 =====
 
 export async function loginWithEipGateway(
-  username: string, password: string, longTermDays: number = 365,
+  username: string, password: string, longTermDays: number = 30,
 ): Promise<LoginResult> {
   console.log('[Auth] 开始登录流程 username=%s days=%d base=%s', username, longTermDays, getEipGatewayBase())
 
@@ -88,14 +88,10 @@ async function login(
   const url = `${base}/login`
   console.log('[Auth] POST %s', url)
 
-  // 从 base URL 解析 Origin / Host，避免写死
-  let origin = 'http://eip.htsc.com.cn'
-  let host = 'eip.htsc.com.cn'
-  try {
-    const parsed = new URL(base)
-    origin = parsed.origin
-    host = parsed.host
-  } catch { /* 保持回退值 */ }
+  // 从 base URL 解析 Origin / Host
+  const parsed = new URL(base)
+  const origin = parsed.origin
+  const host = parsed.host
 
   try {
     const response = await fetch(url, {

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { settingsTabAtom, channelFormDirtyAtom, settingsCloseRequestedAtom } from "@/atoms/settings-tab";
+import { hasUpdateAtom } from "@/atoms/updater";
 import type { SettingsTab } from "@/atoms/settings-tab";
 import { appModeAtom } from "@/atoms/app-mode";
 import {
@@ -92,6 +93,7 @@ export function SettingsPanel({
   const channelFormDirty = useAtomValue(channelFormDirtyAtom);
   const [closeRequested, setCloseRequested] = useAtom(settingsCloseRequestedAtom);
   const appMode = useAtomValue(appModeAtom);
+  const hasUpdate = useAtomValue(hasUpdateAtom);
 
   /** 统一的退出拦截对话框状态 */
   type PendingAction = { type: 'tab'; tabId: SettingsTab } | { type: 'close' } | null
@@ -182,7 +184,7 @@ export function SettingsPanel({
                 key={tab.id}
                 onClick={() => handleTabChange(tab.id)}
                 className={cn(
-                  "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                  "relative flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
                   activeTab === tab.id
                     ? "bg-muted text-foreground font-medium"
                     : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
@@ -190,6 +192,9 @@ export function SettingsPanel({
               >
                 {tab.icon}
                 <span>{tab.label}</span>
+                {tab.id === 'about' && hasUpdate && (
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-red-500" />
+                )}
               </button>
             ))}
           </nav>

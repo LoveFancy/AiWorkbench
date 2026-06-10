@@ -157,6 +157,10 @@ export interface ElectronAPI {
   // ===== WorkMate 平台模型 =====
   platformModels: PlatformModelsElectronAPI
 
+  // ===== WorkMate 观测上报 =====
+  /** 上报渲染进程错误到主进程观测服务 */
+  reportRendererError: (payload: { name: string; message: string; stack?: string; componentStack?: string }) => Promise<void>
+
   // ===== 运行时相关 =====
 
   /**
@@ -207,6 +211,12 @@ export interface ElectronAPI {
 
   /** 打开应用系统日志目录 */
   openSystemLogDir: () => Promise<void>
+
+  /** 上报系统日志到服务端 */
+  uploadSystemLog: () => Promise<
+    | { success: true; fileName: string; fileSize?: number; uploadedAt?: string }
+    | { success: false; error: string }
+  >
 
   // ===== 窗口控制（Windows 自定义标题栏）=====
 
@@ -651,13 +661,31 @@ export interface ElectronAPI {
   renameSkillEntry: (workspaceSlug: string, skillSlug: string, fromRelative: string, toRelative: string) => Promise<void>
 
   /** 获取华泰 SkillHub 清单 */
-  getHtSkillHubSkills: (workspaceSlug: string) => Promise<HtSkillHubSkill[]>
+  getHtSkillHubSkills: (workspaceSlug: string, page?: number, keyword?: string, category?: string) => Promise<HtSkillHubSkill[]>
 
   /** 读取华泰 SkillHub 远端 SKILL.md */
   readHtSkillHubSkill: (skillName: string) => Promise<string>
 
   /** 安装华泰 SkillHub Skill 到当前工作区 */
   installHtSkillHubSkill: (workspaceSlug: string, skillName: string, overwrite: boolean) => Promise<HtSkillHubInstallResult>
+
+  /** SkillHub 认证状态查询 */
+  getSkillHubAuthStatus: () => Promise<{ authenticated: boolean; expiresAt?: number; remainingSeconds?: number }>
+
+  /** SkillHub 认证（换票） */
+  skillHubAuthenticate: () => Promise<void>
+
+  /** 卸载 SkillHub Skill */
+  uninstallHtSkillHubSkill: (workspaceSlug: string, skillName: string) => Promise<void>
+
+  /** 检查 Skill 更新 */
+  checkSkillUpdates: (workspaceSlug: string) => Promise<Array<{ skillName: string; currentVersion?: string; latestVersion?: string; hasUpdate: boolean }>>
+
+  /** 批量安装 SkillHub Skill */
+  batchInstallHtSkillHubSkills: (workspaceSlug: string, skillNames: string[], overwrite?: boolean) => Promise<Array<{ skillName: string; status: 'installed' | 'overwritten'; enabled: boolean }>>
+
+  /** 批量卸载 SkillHub Skill */
+  batchUninstallHtSkillHubSkills: (workspaceSlug: string, skillNames: string[]) => Promise<void>
 
   /** 订阅 Agent 流式事件（返回清理函数） */
   onAgentStreamEvent: (callback: (event: AgentStreamEvent) => void) => () => void
@@ -887,13 +915,16 @@ export interface ElectronAPI {
 
   /** 更新 API */
   updater?: {
-    checkForUpdates: () => Promise<void>
+    checkForUpdates: (opts?: { silent?: boolean }) => Promise<void>
     getStatus: () => Promise<{
       status: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error'
       version?: string
       releaseNotes?: string
       progress?: { percent: number; transferred: number; total: number; bytesPerSecond: number }
       error?: string
+      hint?: string
+      forceUpdate?: boolean
+      releaseType?: 'UPGRADE' | 'ROLLBACK'
     }>
     onStatusChanged: (callback: (status: {
       status: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error'
@@ -901,6 +932,9 @@ export interface ElectronAPI {
       releaseNotes?: string
       progress?: { percent: number; transferred: number; total: number; bytesPerSecond: number }
       error?: string
+      hint?: string
+      forceUpdate?: boolean
+      releaseType?: 'UPGRADE' | 'ROLLBACK'
     }) => void) => () => void
     quitAndInstall: () => Promise<void>
   }
@@ -1204,6 +1238,10 @@ const electronAPI: ElectronAPI = {
 
   openSystemLogDir: () => {
     return ipcRenderer.invoke(SYSTEM_LOG_IPC_CHANNELS.OPEN_DIR)
+  },
+
+  uploadSystemLog: () => {
+    return ipcRenderer.invoke('system-log:upload')
   },
 
   // 窗口控制
@@ -1822,8 +1860,8 @@ const electronAPI: ElectronAPI = {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.RENAME_SKILL_ENTRY, workspaceSlug, skillSlug, fromRelative, toRelative)
   },
 
-  getHtSkillHubSkills: (workspaceSlug: string) => {
-    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_HT_SKILLHUB_SKILLS, workspaceSlug)
+  getHtSkillHubSkills: (workspaceSlug: string, page?: number, keyword?: string, category?: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_HT_SKILLHUB_SKILLS, workspaceSlug, page, keyword, category)
   },
 
   readHtSkillHubSkill: (skillName: string) => {
@@ -1832,6 +1870,30 @@ const electronAPI: ElectronAPI = {
 
   installHtSkillHubSkill: (workspaceSlug: string, skillName: string, overwrite: boolean) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.INSTALL_HT_SKILLHUB_SKILL, workspaceSlug, skillName, overwrite)
+  },
+
+  getSkillHubAuthStatus: () => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.SKILLHUB_AUTH_STATUS)
+  },
+
+  skillHubAuthenticate: () => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.SKILLHUB_AUTHENTICATE)
+  },
+
+  uninstallHtSkillHubSkill: (workspaceSlug: string, skillName: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.UNINSTALL_HT_SKILLHUB_SKILL, workspaceSlug, skillName)
+  },
+
+  checkSkillUpdates: (workspaceSlug: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.CHECK_SKILL_UPDATES, workspaceSlug)
+  },
+
+  batchInstallHtSkillHubSkills: (workspaceSlug: string, skillNames: string[], overwrite?: boolean) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.BATCH_INSTALL_HT_SKILLHUB, workspaceSlug, skillNames, overwrite)
+  },
+
+  batchUninstallHtSkillHubSkills: (workspaceSlug: string, skillNames: string[]) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.BATCH_UNINSTALL_HT_SKILLHUB, workspaceSlug, skillNames)
   },
 
   onAgentStreamEvent: (callback: (event: AgentStreamEvent) => void) => {
@@ -2152,7 +2214,7 @@ const electronAPI: ElectronAPI = {
 
   // 自动更新
   updater: {
-    checkForUpdates: () => ipcRenderer.invoke('updater:check'),
+    checkForUpdates: (opts) => ipcRenderer.invoke('updater:check', opts),
     getStatus: () => ipcRenderer.invoke('updater:get-status'),
     onStatusChanged: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, status: Parameters<typeof callback>[0]): void => callback(status)
@@ -2566,6 +2628,11 @@ const electronAPI: ElectronAPI = {
 
   // ===== WorkMate 平台模型 =====
   ...createPlatformModelsPreloadApi(),
+
+  // ===== WorkMate 观测上报 =====
+  reportRendererError: (payload: { name: string; message: string; stack?: string; componentStack?: string }) => {
+    return ipcRenderer.invoke('workmate:report-renderer-error', payload)
+  },
 
   // ===== 定时任务（Automation）=====
   listAutomations: () => ipcRenderer.invoke(AUTOMATION_IPC_CHANNELS.LIST),

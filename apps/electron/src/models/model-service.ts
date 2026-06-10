@@ -1,7 +1,7 @@
 import { safeStorage } from 'electron'
-import { readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { writeFileSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { getConfigDir, getSettingsPath } from '../main/lib/config-paths'
+import { getConfigDir } from '../main/lib/config-paths'
 import { getJobId } from '../auth'
 import { httpGet } from '../shared/hteip-client'
 import type { ModelInfo, ModelListResponse, ModelsCache } from './types'
@@ -9,22 +9,8 @@ import type { ModelInfo, ModelListResponse, ModelsCache } from './types'
 const CACHE_FILE = 'models-cache.json'
 const DEFAULT_TTL_MS = 3_600_000  // 1 小时
 
-let _serverUrl: string | null = null
-
-/** 初始化模型服务（由 main/index.ts 调用） */
-export function initModelService(): void {
-  const settingsPath = getSettingsPath()
-  try {
-    if (existsSync(settingsPath)) {
-      const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'))
-      if (typeof settings.workmateServerUrl === 'string' && settings.workmateServerUrl.trim()) {
-        _serverUrl = settings.workmateServerUrl.trim()
-        return
-      }
-    }
-  } catch { /* ignore */ }
-  _serverUrl = 'http://localhost:6173'
-}
+/** 模型列表接口路径（域名由 hteip-client 内部 resolveApiBase() 拼接） */
+const MODELS_PATH = '/workmate/models'
 
 function cachePath(): string {
   return join(getConfigDir(), CACHE_FILE)
@@ -46,7 +32,7 @@ export async function fetchUserModels(
 ): Promise<ModelListResponse> {
   const currentJobId = getJobId()
 
-  if (!currentJobId || !_serverUrl) {
+  if (!currentJobId) {
     return { apiKey: '', models: [], total: 0 }
   }
 
@@ -54,9 +40,7 @@ export async function fetchUserModels(
     return { apiKey: l1ApiKey ?? '', models: l1Models, total: l1Total }
   }
 
-  const { ok, data } = await httpGet<{ code: number; data: ModelListResponse }>(
-    `${_serverUrl}/workmate/models`,
-  )
+  const { ok, data } = await httpGet<{ code: number; data: ModelListResponse }>(MODELS_PATH)
 
   if (!ok || !data || data.code !== 0) {
     return fallbackToOldCache(currentJobId)

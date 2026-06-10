@@ -33,6 +33,7 @@ import type { McpServerEntry, SkillMeta, OtherWorkspaceSkillsGroup, WorkspaceMcp
 import { SettingsSection, SettingsCard, SettingsRow } from './primitives'
 import { McpServerForm } from './McpServerForm'
 import { SkillFilesPanel } from './SkillFilesPanel'
+import { SkillHubPanel } from './SkillHubPanel/SkillHubPanel'
 import { useOpenSession } from '@/hooks/useOpenSession'
 
 // ===== Types =====
@@ -330,7 +331,7 @@ ${skillList}
 
   const handleConfigViaChat = async (promptMessage: string): Promise<void> => {
     if (!agentChannelId) {
-      alert('请先在渠道设置中选择 Agent 供应商')
+      alert('请先在设置 → 模型设置中选择 Agent 供应商')
       return
     }
     try {
@@ -614,8 +615,9 @@ ${skillList}
         </TabsContent>
 
         {/* ===== 华泰 SkillHub Tab ===== */}
+        {activeTab === 'skillhub' && (
         <TabsContent value="skillhub" className="mt-4 space-y-4">
-          <HtSkillHubPanel
+          <SkillHubPanel
             workspaceSlug={workspaceSlug}
             workspaceName={currentWorkspace.name}
             refreshKey={skillHubRefreshKey}
@@ -623,6 +625,7 @@ ${skillList}
             skillsDir={skillsDir}
           />
         </TabsContent>
+        )}
 
         {/* ===== MCP Tab ===== */}
         <TabsContent value="mcp" className="mt-4 space-y-4">
@@ -798,6 +801,7 @@ function SkillListPanel({ skills, defaultSkillSlugs, skillHubSlugs, selectedSlug
                     onOpenFolder={() => openSkillFolder(skill.slug)}
                     onUpdate={skill.hasUpdate ? () => onUpdate(skill.slug) : undefined}
                     isBuiltin={group.isBuiltin}
+                    hideManagementActions={group.prefix === 'SkillHub'}
                     indented
                   />
                 ))}
@@ -837,9 +841,10 @@ interface SkillCompactItemProps {
   onUpdate?: () => void
   indented?: boolean
   isBuiltin?: boolean
+  hideManagementActions?: boolean
 }
 
-function SkillCompactItem({ skill, displayName, selected, onSelect, onDelete, onToggle, onOpenFolder, onUpdate, indented, isBuiltin }: SkillCompactItemProps): React.ReactElement {
+function SkillCompactItem({ skill, displayName, selected, onSelect, onDelete, onToggle, onOpenFolder, onUpdate, indented, isBuiltin, hideManagementActions }: SkillCompactItemProps): React.ReactElement {
   return (
     <div
       role="button"
@@ -877,7 +882,7 @@ function SkillCompactItem({ skill, displayName, selected, onSelect, onDelete, on
         >
           <FolderOpen size={12} />
         </span>
-        {!isBuiltin && (
+        {!isBuiltin && !hideManagementActions && (
           <span
             role="button"
             onClick={(e) => { e.stopPropagation(); onDelete() }}
@@ -887,12 +892,14 @@ function SkillCompactItem({ skill, displayName, selected, onSelect, onDelete, on
           </span>
         )}
       </div>
-      <Switch
-        checked={skill.enabled}
-        onCheckedChange={(checked) => { onToggle(checked) }}
-        onClick={(e) => e.stopPropagation()}
-        className="flex-shrink-0 scale-75"
-      />
+      {!hideManagementActions && (
+        <Switch
+          checked={skill.enabled}
+          onCheckedChange={(checked) => { onToggle(checked) }}
+          onClick={(e) => e.stopPropagation()}
+          className="flex-shrink-0 scale-75"
+        />
+      )}
     </div>
   )
 }
@@ -1110,285 +1117,6 @@ function SkillDetailPanel({ skill, workspaceSlug, onSaved }: SkillDetailPanelPro
         </TabsContent>
       </Tabs>
     </div>
-  )
-}
-
-// ===== 华泰 SkillHub Panel =====
-
-interface HtSkillHubPanelProps {
-  workspaceSlug: string
-  workspaceName: string
-  refreshKey: number
-  onInstalled: () => void
-  skillsDir: string
-}
-
-type HubFilter = 'all' | 'installed' | 'uninstalled'
-
-function HtSkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInstalled, skillsDir }: HtSkillHubPanelProps): React.ReactElement {
-  const [skills, setSkills] = React.useState<HtSkillHubSkill[]>([])
-  const [selectedName, setSelectedName] = React.useState<string | null>(null)
-  const [query, setQuery] = React.useState('')
-  const [filter, setFilter] = React.useState<HubFilter>('all')
-  const [loading, setLoading] = React.useState(true)
-  const [detailContent, setDetailContent] = React.useState<string | null>(null)
-  const [detailLoading, setDetailLoading] = React.useState(false)
-  const [installing, setInstalling] = React.useState<string | null>(null)
-
-  const loadSkills = React.useCallback(async (): Promise<void> => {
-    setLoading(true)
-    try {
-      const list = await window.electronAPI.getHtSkillHubSkills(workspaceSlug)
-      setSkills(list)
-      setSelectedName((current) => current && list.some((skill) => skill.name === current)
-        ? current
-        : list[0]?.name ?? null)
-    } catch (error) {
-      console.error('[华泰 SkillHub] 加载清单失败:', error)
-      toast.error('加载华泰 SkillHub 失败', { description: error instanceof Error ? error.message : '未知错误' })
-    } finally {
-      setLoading(false)
-    }
-  }, [workspaceSlug])
-
-  React.useEffect(() => {
-    void loadSkills()
-  }, [loadSkills, refreshKey])
-
-  React.useEffect(() => {
-    if (!selectedName) {
-      setDetailContent(null)
-      return
-    }
-    let cancelled = false
-    setDetailLoading(true)
-    window.electronAPI.readHtSkillHubSkill(selectedName)
-      .then((content) => {
-        if (!cancelled) setDetailContent(content)
-      })
-      .catch((error) => {
-        console.error('[华泰 SkillHub] 加载 Skill 说明失败:', error)
-        if (!cancelled) setDetailContent(null)
-      })
-      .finally(() => {
-        if (!cancelled) setDetailLoading(false)
-      })
-    return () => { cancelled = true }
-  }, [selectedName])
-
-  const selectedSkill = skills.find((skill) => skill.name === selectedName) ?? null
-
-  const filteredSkills = React.useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return skills.filter((skill) => {
-      if (filter === 'installed' && !skill.installed) return false
-      if (filter === 'uninstalled' && skill.installed) return false
-      if (!q) return true
-      return skill.name.toLowerCase().includes(q) || skill.description.toLowerCase().includes(q)
-    })
-  }, [skills, query, filter])
-
-  const handleInstall = async (skill: HtSkillHubSkill): Promise<void> => {
-    const overwrite = skill.installed
-    if (overwrite && !window.confirm(`确认覆盖安装 Skill「${skill.name}」？当前工作区内同名 Skill 的全部文件会被替换。`)) {
-      return
-    }
-
-    setInstalling(skill.name)
-    try {
-      const result = await window.electronAPI.installHtSkillHubSkill(workspaceSlug, skill.name, overwrite)
-      toast.success(result.status === 'overwritten' ? `已覆盖安装: ${skill.name}` : `已安装: ${skill.name}`, {
-        description: result.enabled ? '该 Skill 已启用，Agent 新会话可加载。' : '该 Skill 当前仍处于禁用状态。',
-      })
-      onInstalled()
-      await loadSkills()
-    } catch (error) {
-      console.error('[华泰 SkillHub] 安装失败:', error)
-      toast.error('安装失败', { description: error instanceof Error ? error.message : '未知错误' })
-    } finally {
-      setInstalling(null)
-    }
-  }
-
-  const openInstalledFolder = (skillName: string): void => {
-    if (skillsDir) window.electronAPI.openFile(`${skillsDir}/${skillName}`)
-  }
-
-  return (
-    <SettingsSection
-      title={
-        <span className="inline-flex items-center gap-1.5">
-          华泰 SkillHub
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span
-                aria-label="华泰 SkillHub 说明"
-                className="inline-flex cursor-help text-muted-foreground hover:text-foreground"
-              >
-                <Info size={15} />
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="right" className="max-w-sm text-xs leading-6">
-              SkillHub 是泰为平台提供的公司级技能中枢平台，提供 Skills 元数据管理，权限管理，版本管理，开发调试，上传下载等全生命周期管理能力。
-            </TooltipContent>
-          </Tooltip>
-        </span>
-      }
-      description={`当前工作区: ${workspaceName}`}
-      action={
-        <Button size="sm" variant="outline" onClick={() => void loadSkills()} disabled={loading}>
-          <RefreshCw size={14} className={loading ? 'animate-spin' : undefined} />
-          <span>刷新</span>
-        </Button>
-      }
-    >
-      <div className="flex border border-border rounded-lg overflow-hidden min-h-[520px] max-h-[calc(100vh-260px)]">
-        <div className="w-80 flex-shrink-0 border-r border-border bg-muted/20 flex flex-col min-h-0 max-h-[calc(100vh-260px)]">
-          <div className="p-3 border-b border-border space-y-2">
-            <div className="relative">
-              <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="搜索 Skill 名称或描述"
-                className="w-full h-8 rounded-md border border-border bg-background pl-8 pr-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-              />
-            </div>
-            <div className="grid grid-cols-3 gap-1 rounded-md bg-background/70 p-1">
-              {[
-                { value: 'all', label: '全部' },
-                { value: 'installed', label: '已安装' },
-                { value: 'uninstalled', label: '未安装' },
-              ].map((item) => (
-                <button
-                  key={item.value}
-                  type="button"
-                  onClick={() => setFilter(item.value as HubFilter)}
-                  className={cn(
-                    'h-7 rounded text-xs font-medium transition-colors',
-                    filter === item.value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              共 {filteredSkills.length} 个，已安装 {skills.filter((skill) => skill.installed).length} 个
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto">
-            {loading ? (
-              <div className="py-8 text-center text-sm text-muted-foreground">加载中...</div>
-            ) : filteredSkills.length === 0 ? (
-              <div className="py-8 text-center text-sm text-muted-foreground">没有匹配的 Skill</div>
-            ) : (
-              filteredSkills.map((skill) => (
-                <button
-                  key={skill.name}
-                  type="button"
-                  onClick={() => setSelectedName(skill.name)}
-                  className={cn(
-                    'w-full px-3 py-3 text-left border-b border-border/60 hover:bg-muted/40 transition-colors',
-                    selectedName === skill.name && 'bg-accent text-accent-foreground',
-                  )}
-                >
-                  <div className="flex items-center gap-2">
-                    <Sparkles size={14} className="text-amber-500 shrink-0" />
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium">{skill.name}</span>
-                    <span className={cn(
-                      'shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium',
-                      skill.installed ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-muted text-muted-foreground',
-                    )}>
-                      {skill.installed ? '已安装' : '未安装'}
-                    </span>
-                  </div>
-                  <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                    {skill.description || '暂无描述'}
-                  </div>
-                  <div className="mt-1 text-[11px] text-muted-foreground">{skill.files.length} 个文件</div>
-                </button>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div className="flex-1 min-w-0 flex flex-col">
-          {selectedSkill ? (
-            <div className="flex flex-col min-h-0">
-              <div className="shrink-0 border-b border-border p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-base font-semibold truncate">{selectedSkill.name}</h3>
-                      {selectedSkill.installed && (
-                        <span className="rounded px-1.5 py-0.5 text-[11px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                          {selectedSkill.enabled === false ? '已安装，已禁用' : '已安装'}
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-1 text-sm text-muted-foreground line-clamp-3">{selectedSkill.description || '暂无描述'}</p>
-                  </div>
-                  <div className="shrink-0 flex items-center gap-2">
-                    {selectedSkill.installed && (
-                      <Button size="sm" variant="outline" onClick={() => openInstalledFolder(selectedSkill.name)}>
-                        <FolderOpen size={14} />
-                        <span>打开目录</span>
-                      </Button>
-                    )}
-                    <Button
-                      size="sm"
-                      onClick={() => void handleInstall(selectedSkill)}
-                      disabled={installing !== null}
-                    >
-                      {installing === selectedSkill.name
-                        ? <RefreshCw size={14} className="animate-spin" />
-                        : selectedSkill.installed
-                          ? <RotateCw size={14} />
-                          : <Download size={14} />}
-                      <span>{selectedSkill.installed ? '覆盖安装' : '安装'}</span>
-                    </Button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-4 space-y-4">
-                <SettingsCard divided={false}>
-                  <div className="p-4">
-                    <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">SKILL.md</div>
-                    {detailLoading ? (
-                      <div className="py-8 text-center text-sm text-muted-foreground">加载中...</div>
-                    ) : (
-                      <div className="prose prose-sm dark:prose-invert max-w-none">
-                        <Markdown remarkPlugins={[remarkGfm]}>{detailContent ? extractSkillBody(detailContent) : '暂无说明内容'}</Markdown>
-                      </div>
-                    )}
-                  </div>
-                </SettingsCard>
-
-                <SettingsCard divided={false}>
-                  <div className="p-4">
-                    <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">文件清单</div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-1">
-                      {selectedSkill.files.map((file) => (
-                        <div key={file} className="rounded bg-muted/50 px-2 py-1 text-xs font-mono text-muted-foreground truncate">
-                          {file}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </SettingsCard>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
-              选择一个 Skill 查看详情
-            </div>
-          )}
-        </div>
-      </div>
-    </SettingsSection>
   )
 }
 

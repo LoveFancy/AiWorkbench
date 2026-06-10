@@ -3,6 +3,7 @@ import { AUTH_IPC_CHANNELS } from './ipc-handlers'
 
 export interface AuthElectronAPI {
   getAuthState: () => Promise<{ isLoggedIn: boolean; jobId?: string }>
+  checkSession: () => Promise<{ isLoggedIn: boolean; jobId?: string; needsReauth?: boolean }>
   login: (username: string, password: string, days?: number) => Promise<{
     success: boolean; message: string; jobId?: string; tokenExpiresAt?: number
   }>
@@ -20,6 +21,7 @@ export function createAuthPreloadApi(): { auth: AuthElectronAPI } {
   return {
     auth: {
       getAuthState: () => ipcRenderer.invoke(AUTH_IPC_CHANNELS.GET_AUTH_STATE),
+      checkSession: () => ipcRenderer.invoke(AUTH_IPC_CHANNELS.CHECK_SESSION),
       login: (username: string, password: string, days?: number) =>
         ipcRenderer.invoke(AUTH_IPC_CHANNELS.LOGIN, username, password, days),
       logout: () => ipcRenderer.invoke(AUTH_IPC_CHANNELS.LOGOUT),
