@@ -14,6 +14,8 @@ import { getValidSkillHubToken, getSkillHubApiBase } from './skillhub-auth-servi
 export interface HtSkillHubSkill {
   name: string
   description: string
+  version?: string
+  installed?: boolean
   files: string[]
 }
 
