@@ -30,7 +30,7 @@ interface PluginMarketplacePaths {
   cacheDir?: string
   userPluginsDir?: string
   pluginsConfigPath?: string
-  cloneRepo?: (source: string, targetDir: string) => Promise<void>
+  cloneRepo?: (source: string, targetDir: string, branch?: string) => Promise<void>
   /** 测试专用：cloneRepo stub 完成后用该目录内容作为克隆结果 */
   copyClonedFixture?: string
 }
@@ -109,6 +109,13 @@ interface MarketplaceRepositorySource {
   subPath: string
 }
 
+interface PluginInstallSource {
+  cloneSource?: string
+  localSource?: string
+  subPath: string
+  branch?: string
+}
+
 function joinUrlSegments(...segments: string[]): string {
   return segments
     .map((segment) => segment.replace(/^\/+|\/+$/g, ''))
@@ -126,6 +133,15 @@ function removeBranchSegments(segments: string[], branch: string): string[] {
     && branchSegments.every((segment, index) => segments[index] === segment)
   if (matchesConfiguredBranch) return segments.slice(branchSegments.length)
   return segments.slice(1)
+}
+
+function normalizeRelativePluginPath(source: string): string {
+  const normalized = source.replace(/^\.?\//, '').replace(/^\/+/, '')
+  const segments = normalized.split('/').filter(Boolean)
+  if (segments.length === 0 || segments.some((segment) => segment === '.' || segment === '..')) {
+    throw new Error(`不支持的插件相对路径: ${source}`)
+  }
+  return joinUrlSegments(...segments)
 }
 
 function normalizeMarketplaceRepositorySource(marketplace: AgentPluginMarketplace, branch: string): MarketplaceRepositorySource {
@@ -455,6 +471,36 @@ function resolvePluginSource(marketplace: AgentPluginMarketplace, source: string
   return resolve(base, source)
 }
 
+function resolvePluginInstallSource(marketplace: AgentPluginMarketplace, source: string): PluginInstallSource {
+  if (isAbsolute(source) && existsSync(source)) {
+    return { localSource: source, subPath: '' }
+  }
+
+  if (/^https?:\/\//.test(source) || /^git@/.test(source)) {
+    return { cloneSource: source, subPath: '' }
+  }
+
+  if (marketplace.type === 'github' || marketplace.type === 'gitee' || marketplace.type === 'gitlab') {
+    const branch = normalizeMarketplaceBranch(marketplace.branch)
+    const repository = normalizeMarketplaceRepositorySource(marketplace, branch ?? marketplaceBranch(marketplace))
+    const subPath = joinUrlSegments(repository.subPath, normalizeRelativePluginPath(source))
+    return {
+      cloneSource: repository.root,
+      subPath,
+      ...(branch && { branch }),
+    }
+  }
+
+  if (marketplace.type !== 'local') {
+    return { cloneSource: new URL(source, marketplace.source).toString(), subPath: '' }
+  }
+
+  const base = existsSync(marketplace.source) && marketplace.source.endsWith('.json')
+    ? dirname(resolve(marketplace.source))
+    : resolve(marketplace.source)
+  return { localSource: resolve(base, source), subPath: '' }
+}
+
 function copyOrMoveAtomically(sourceDir: string, targetDir: string, overwrite: boolean): 'installed' | 'overwritten' {
   const existed = existsSync(targetDir)
   if (existed && !overwrite) throw new Error(`插件已安装: ${targetDir}`)
@@ -519,9 +565,17 @@ function createLoosePluginFromMarketplaceEntry(sourceDir: string, targetDir: str
   copySelectedSkillsToPlugin(sourceDir, targetDir, plugin.skills ?? [])
 }
 
-async function cloneGitRepo(source: string, targetDir: string): Promise<void> {
+async function cloneGitRepo(source: string, targetDir: string, branch?: string): Promise<void> {
   await new Promise<void>((resolvePromise, reject) => {
-    const child = spawn('git', ['clone', '--depth', '1', source, targetDir], {
+    const args = [
+      'clone',
+      '--depth',
+      '1',
+      ...(branch ? ['--branch', branch] : []),
+      source,
+      targetDir,
+    ]
+    const child = spawn('git', args, {
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     })
@@ -540,25 +594,28 @@ async function cloneGitRepo(source: string, targetDir: string): Promise<void> {
   })
 }
 
-async function preparePluginSource(source: string, pluginName: string, input: Required<PluginMarketplacePaths>): Promise<{ sourceDir: string; cleanup: () => void }> {
-  if (isAbsolute(source) && existsSync(source)) {
-    return { sourceDir: source, cleanup: () => undefined }
+async function preparePluginSource(source: PluginInstallSource, pluginName: string, input: Required<PluginMarketplacePaths>): Promise<{ sourceDir: string; cleanup: () => void }> {
+  if (source.localSource) {
+    return { sourceDir: source.localSource, cleanup: () => undefined }
   }
 
-  if (!/^https?:\/\//.test(source) && !/^git@/.test(source)) {
-    throw new Error(`不支持的插件来源: ${source}`)
+  if (!source.cloneSource || (!/^https?:\/\//.test(source.cloneSource) && !/^git@/.test(source.cloneSource))) {
+    throw new Error(`不支持的插件来源: ${source.cloneSource ?? ''}`)
   }
 
   const tmpRoot = join(input.cacheDir, '.installing', `${pluginName}-${Date.now()}`)
   rmSync(tmpRoot, { recursive: true, force: true })
   mkdirSync(dirname(tmpRoot), { recursive: true })
-  await input.cloneRepo(source, tmpRoot)
+  await input.cloneRepo(source.cloneSource, tmpRoot, source.branch)
   if (input.copyClonedFixture) {
     rmSync(tmpRoot, { recursive: true, force: true })
     cpSync(input.copyClonedFixture, tmpRoot, { recursive: true })
   }
+  const sourceDir = source.subPath
+    ? join(tmpRoot, ...source.subPath.split('/').filter(Boolean))
+    : tmpRoot
   return {
-    sourceDir: tmpRoot,
+    sourceDir,
     cleanup: () => rmSync(tmpRoot, { recursive: true, force: true }),
   }
 }
@@ -608,7 +665,7 @@ export async function installMarketplacePlugin(input: AgentPluginInstallInput, p
   const marketplaceId = slugSafe(input.marketplaceId, '插件市场 ID')
   const pluginName = slugSafe(input.pluginName, '插件名称')
   const { marketplace, plugin } = findMarketplacePlugin(marketplaceId, pluginName, resolved)
-  const source = resolvePluginSource(marketplace, plugin.source)
+  const source = resolvePluginInstallSource(marketplace, plugin.source)
   const prepared = await preparePluginSource(source, pluginName, resolved)
 
   const targetDir = join(resolved.userPluginsDir, marketplaceId, pluginName)

@@ -13,11 +13,19 @@ interface ModelCapabilitySource {
 }
 
 export function isPngAttachment(candidate: PngAttachmentCandidate): boolean {
+  return isImageAttachment(candidate)
+}
+
+/** 图片扩展名 / MIME 类型集合 */
+const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|bmp|svg)(?:$|[?#])/i
+const IMAGE_MIME_PREFIX = 'image/'
+
+export function isImageAttachment(candidate: PngAttachmentCandidate): boolean {
   const mediaType = candidate.mediaType?.trim().toLowerCase()
-  if (mediaType === 'image/png') return true
+  if (mediaType?.startsWith(IMAGE_MIME_PREFIX)) return true
 
   const filename = (candidate.filename ?? candidate.name)?.trim().toLowerCase()
-  return Boolean(filename && /\.png(?:$|[?#])/.test(filename))
+  return Boolean(filename && IMAGE_EXTENSIONS.test(filename))
 }
 
 export function agentModelSupportsMultimodal(
@@ -40,18 +48,20 @@ export function findBlockedPngFiles<T extends PngAttachmentCandidate>(
 ): string[] {
   if (supportsMultimodal) return []
   return files
-    .filter(isPngAttachment)
-    .map((file) => file.filename ?? file.name ?? 'PNG 图片')
+    .filter(isImageAttachment)
+    .map((file) => file.filename ?? file.name ?? '图片')
 }
 
 export function removeBlockedPngEntries(entries: string[], supportsMultimodal: boolean): string[] {
   if (supportsMultimodal) return entries
-  return entries.filter((entry) => !isPngAttachment({ filename: entry }))
+  return entries.filter((entry) => !isImageAttachment({ filename: entry }))
 }
 
+const IMAGE_FILE_MENTION_RE = /@file:([^\n\r]+?\.(png|jpe?g|gif|webp|bmp|svg))(?=\s|$)/gi
+
 export function extractPngFileMentions(text: string): string[] {
-  const matches = [...text.matchAll(/@file:([^\n\r]+?\.png)(?=\s|$)/gi)]
+  const matches = [...text.matchAll(IMAGE_FILE_MENTION_RE)]
   return matches
     .map((match) => match[1])
-    .filter((path): path is string => Boolean(path && isPngAttachment({ filename: path })))
+    .filter((path): path is string => Boolean(path))
 }

@@ -573,10 +573,10 @@ interface AnthropicModelItem {
   supports_multimodal?: boolean
 }
 
-function readSupportsMultimodal(item: { supportsMultimodal?: boolean; supports_multimodal?: boolean }): boolean | undefined {
+function readSupportsMultimodal(item: { supportsMultimodal?: boolean; supports_multimodal?: boolean }): boolean {
   if (typeof item.supportsMultimodal === 'boolean') return item.supportsMultimodal
   if (typeof item.supports_multimodal === 'boolean') return item.supports_multimodal
-  return undefined
+  return false
 }
 
 /**
@@ -627,6 +627,7 @@ async function fetchAnthropicCompatibleModels(
   }
 
   const data = await response.json() as { data?: AnthropicModelItem[] }
+  console.log('[fetchAnthropicCompatibleModels] response:', JSON.stringify(data, null, 2))
   const items = data.data ?? []
 
   const models: ChannelModel[] = items.map((item) => ({
@@ -679,6 +680,7 @@ async function fetchOpenAICompatibleModels(baseUrl: string, apiKey: string, prox
   }
 
   const data = await response.json() as { data?: OpenAIModelItem[] }
+  console.log('[fetchOpenAICompatibleModels] response:', JSON.stringify(data, null, 2))
   const items = data.data ?? []
 
   const models: ChannelModel[] = items.map((item) => ({

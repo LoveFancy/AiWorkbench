@@ -4,6 +4,7 @@ import { RefreshCw, LogIn, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { SettingsSection, SettingsCard, SettingsRow } from '@/components/settings/primitives'
+import { cn } from '@/lib/utils'
 import { authStateAtom, loginDialogOpenAtom } from '@/auth/renderer'
 import { settingsOpenAtom } from '@/atoms/settings-tab'
 import {
@@ -119,8 +120,18 @@ export function PlatformModelsSection(): React.ReactElement {
             </Button>
           </div>
         </SettingsCard>
+      ) : models.length > 5 ? (
+        <div className="max-h-[220px] overflow-y-auto rounded-xl border border-border/50 bg-card">
+          {models.map((model) => (
+            <PlatformModelRow
+              key={model.id}
+              model={model}
+              onToggle={(enabled) => handleToggleModel(model.id, enabled)}
+            />
+          ))}
+        </div>
       ) : (
-        <SettingsCard>
+        <SettingsCard divided={false}>
           {models.map((model) => (
             <PlatformModelRow
               key={model.id}
@@ -167,6 +178,16 @@ function PlatformModelRow({
       label={model.name}
       description={description || undefined}
     >
+      {model.supportsMultimodal !== undefined && (
+        <span className={cn(
+          'inline-flex h-6 shrink-0 items-center rounded-md px-2 text-xs font-medium mr-2',
+          model.supportsMultimodal
+            ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+            : 'bg-muted text-muted-foreground'
+        )}>
+          {model.supportsMultimodal ? '多模态' : '纯文本'}
+        </span>
+      )}
       <Switch
         checked={model.enabled}
         onCheckedChange={onToggle}

@@ -3,6 +3,7 @@ export default {
   darkMode: 'class',
   content: [
     './src/renderer/**/*.{js,ts,jsx,tsx}',
+    './src/platform-models/**/*.{js,ts,jsx,tsx}',
   ],
   theme: {
     extend: {
