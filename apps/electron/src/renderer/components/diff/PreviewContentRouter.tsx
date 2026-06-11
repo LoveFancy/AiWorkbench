@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { useAtomValue } from 'jotai'
 import type { PreviewFile } from '@/atoms/preview-atoms'
-import { previewRefreshVersionAtom } from '@/atoms/preview-atoms'
+import { previewRefreshVersionAtom, PREVIEW_KIND } from '@/atoms/preview-atoms'
 import { HtmlPreviewFrame } from './HtmlPreviewFrame'
 import { DiffTabContent } from './DiffTabContent'
 import { getPreviewFileAccess } from './preview-open-path'
@@ -26,7 +26,7 @@ export function PreviewContentRouter({
   const refreshVersionMap = useAtomValue(previewRefreshVersionAtom)
   const refreshVersion = refreshVersionMap.get(sessionId) ?? 0
 
-  if (previewFile.previewKind === 'html') {
+  if (previewFile.previewKind === PREVIEW_KIND.HTML) {
     return (
       <HtmlPreviewFrame
         filePath={previewFile.filePath}

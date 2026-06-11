@@ -53,7 +53,7 @@ import { appModeAtom } from '@/atoms/app-mode'
 import { tabsAtom, activeTabIdAtom, openTab, updateTabTitle } from '@/atoms/tab-atoms'
 import type { AgentStreamState } from '@/atoms/agent-atoms'
 import { agentDiffUnseenChangesAtom, agentDiffUnseenFilesAtom, agentDiffPanelTabAtom, agentSidePanelOpenAtom } from '@/atoms/agent-atoms'
-import { autoPreviewEnabledAtom, previewPanelOpenMapAtom, previewFileMapAtom, previewRefreshVersionAtom, type PreviewFile } from '@/atoms/preview-atoms'
+import { autoPreviewEnabledAtom, previewPanelOpenMapAtom, previewFileMapAtom, previewRefreshVersionAtom, PREVIEW_KIND, type PreviewFile } from '@/atoms/preview-atoms'
 import type { NotificationSoundType } from '@/types/settings'
 import { toast } from 'sonner'
 import type { AgentStreamEvent, AgentStreamCompletePayload, AgentEvent, AgentStreamPayload, SDKAssistantMessage, SDKUserMessage, SDKSystemMessage, SDKContentBlock, SDKUserContentBlock, PromaEvent, AgentSessionMeta } from '@proma/shared'
@@ -533,7 +533,7 @@ export function useGlobalAgentListeners(): void {
 
       return {
         filePath: targetPath,
-        previewKind: isHtml ? 'html' : 'file',
+        previewKind: isHtml ? PREVIEW_KIND.HTML : PREVIEW_KIND.FILE,
         dirPath: dirPath || undefined,
         previewOnly: previewOnly || isHtml,
         inDiffScope,

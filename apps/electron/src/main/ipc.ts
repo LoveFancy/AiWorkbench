@@ -3199,25 +3199,13 @@ export function registerIpcHandlers(): void {
         return null
       }
 
-      const ext = extname(resolved).toLowerCase()
-      if (ext !== '.html' && ext !== '.htm') {
-        console.warn('[IPC] file:prepare-html-preview 拒绝非 HTML 文件:', resolved)
+      const { isValidHtmlFile, buildHtmlPreviewUrl } = await import('./lib/html-preview-service')
+      if (!isValidHtmlFile(resolved)) {
+        console.warn('[IPC] file:prepare-html-preview 拒绝非 HTML 文件或非普通文件:', resolved)
         return null
       }
 
-      const stat = statSync(resolved)
-      if (!stat.isFile()) {
-        console.warn('[IPC] file:prepare-html-preview 拒绝非普通文件:', resolved)
-        return null
-      }
-
-      const rootDir = dirname(resolved)
-      const rootUrl = registerPromaDirectoryPath(rootDir)
-      const entryPath = encodeURI(relative(rootDir, resolved).replace(/\\/g, '/'))
-      return {
-        url: `${rootUrl}/${entryPath}`,
-        resolvedPath: resolved,
-      }
+      return buildHtmlPreviewUrl(resolved, registerPromaDirectoryPath)
     }
   )
 

@@ -10,7 +10,11 @@ import { currentAgentSessionIdAtom } from './agent-atoms'
 
 // ===== 类型定义 =====
 
-export type PreviewKind = 'file' | 'html'
+export const PREVIEW_KIND = {
+  FILE: 'file',
+  HTML: 'html',
+} as const
+export type PreviewKind = (typeof PREVIEW_KIND)[keyof typeof PREVIEW_KIND]
 
 /** 当前预览的文件信息 */
 export interface PreviewFile {

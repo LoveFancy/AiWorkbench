@@ -11,6 +11,7 @@ interface HtmlPreviewFrameProps {
 }
 
 const HTML_RELOAD_DEBOUNCE_MS = 150
+const IFRAME_LOAD_TIMEOUT_MS = 15000
 
 export function HtmlPreviewFrame({ filePath, fileAccess, refreshVersion }: HtmlPreviewFrameProps): React.ReactElement {
   const [src, setSrc] = React.useState('')
@@ -26,15 +27,29 @@ export function HtmlPreviewFrame({ filePath, fileAccess, refreshVersion }: HtmlP
       if (!result) {
         setSrc('')
         setError('无法准备 HTML 预览，请确认文件存在且位于授权范围内。')
+        setLoading(false)
         return
       }
+
+      // 预检：通过 fetch 验证 proma-file:// URL 可访问，补足 iframe onError 不触发的情况
+      try {
+        const response = await fetch(result.url, { method: 'HEAD' })
+        if (!response.ok) {
+          setSrc('')
+          setError('HTML 页面加载失败：资源不可用。')
+          setLoading(false)
+          return
+        }
+      } catch {
+        // fetch 失败不阻塞 iframe 加载，交给 onLoad / loadTimeout 处理
+      }
+
       const separator = result.url.includes('?') ? '&' : '?'
       setSrc(`${result.url}${separator}v=${Date.now()}`)
     } catch (err) {
       console.error('[HtmlPreviewFrame] 准备 HTML 预览失败:', err)
       setSrc('')
       setError('HTML 预览加载失败。')
-    } finally {
       setLoading(false)
     }
   }, [fileAccess, filePath])
@@ -45,6 +60,16 @@ export function HtmlPreviewFrame({ filePath, fileAccess, refreshVersion }: HtmlP
     }, HTML_RELOAD_DEBOUNCE_MS)
     return () => window.clearTimeout(timer)
   }, [loadPreview, refreshVersion, reloadNonce])
+
+  // iframe 加载超时兜底
+  React.useEffect(() => {
+    if (!src || !loading) return
+    const timeout = window.setTimeout(() => {
+      setLoading(false)
+      setError('HTML 页面加载超时，请检查文件内容或重试。')
+    }, IFRAME_LOAD_TIMEOUT_MS)
+    return () => window.clearTimeout(timeout)
+  }, [src, loading])
 
   const handleReload = React.useCallback(() => {
     setReloadNonce((value) => value + 1)
