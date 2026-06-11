@@ -251,12 +251,12 @@ export function AppearanceSettings(): React.ReactElement {
         </SettingsCard>
       </SettingsSection>
 
-      <AppIconPicker />
+      {!detectIsWindows() && <AppIconPicker />}
     </div>
   )
 }
 
-/** 应用图标选择器 */
+/** 应用图标选择器（仅 macOS，Windows 下不可用） */
 function AppIconPicker(): React.ReactElement {
   const [activeIcon, setActiveIcon] = React.useState<string>('default')
   const [isLoading, setIsLoading] = React.useState(false)
