@@ -6,6 +6,18 @@ import { getJobId } from '../auth'
 import { httpGet } from '../shared/hteip-client'
 import type { ModelInfo, ModelListResponse, ModelsCache } from './types'
 
+/** 后端原始模型结构 — 用于字段名映射（supportVision → supportsMultimodal） */
+interface RawModelInfo {
+  id: string
+  name: string
+  description?: string
+  provider?: string
+  baseUrl?: string
+  maxTokens?: number
+  enabled: boolean
+  supportVision: boolean
+}
+
 const CACHE_FILE = 'models-cache.json'
 const DEFAULT_TTL_MS = 3_600_000  // 1 小时
 
@@ -46,7 +58,18 @@ export async function fetchUserModels(
     return fallbackToOldCache(currentJobId)
   }
 
-  const { apiKey, models, total } = data.data
+  const { apiKey, total } = data.data
+  const rawModels = data.data.models as unknown as RawModelInfo[]
+  const models: ModelInfo[] = rawModels.map((m) => ({
+    id: m.id,
+    name: m.name,
+    description: m.description,
+    provider: m.provider,
+    baseUrl: m.baseUrl,
+    maxTokens: m.maxTokens,
+    enabled: m.enabled,
+    supportsMultimodal: m.supportVision,
+  }))
 
   l1ApiKey = apiKey
   l1Models = models
