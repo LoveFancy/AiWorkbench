@@ -120,8 +120,18 @@ export function PlatformModelsSection(): React.ReactElement {
             </Button>
           </div>
         </SettingsCard>
+      ) : models.length > 5 ? (
+        <div className="max-h-[220px] overflow-y-auto rounded-xl border border-border/50 bg-card">
+          {models.map((model) => (
+            <PlatformModelRow
+              key={model.id}
+              model={model}
+              onToggle={(enabled) => handleToggleModel(model.id, enabled)}
+            />
+          ))}
+        </div>
       ) : (
-        <SettingsCard>
+        <SettingsCard divided={false}>
           {models.map((model) => (
             <PlatformModelRow
               key={model.id}

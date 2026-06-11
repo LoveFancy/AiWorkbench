@@ -23,6 +23,7 @@ import {
   Download,
   Search,
   FlaskConical,
+  Pencil,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSetAtom } from 'jotai'
@@ -343,6 +344,7 @@ export function ChannelForm({ channel, onSaved, onAutoSaved, onAgentEligibilityC
       id: newModelId.trim(),
       name: newModelName.trim() || newModelId.trim(),
       enabled: true,
+      supportsMultimodal: false,
     }
 
     setModels((prev) => [...prev, model])
@@ -670,7 +672,7 @@ export function ChannelForm({ channel, onSaved, onAutoSaved, onAgentEligibilityC
               还没有启用任何模型，从下方可用模型中选择
             </div>
           ) : (
-            <div className="divide-y divide-border/50">
+            <div className={cn('divide-y divide-border/50', enabledModels.length > 5 && 'max-h-[275px] overflow-y-auto')}>
               {enabledModels.map((model) => (
                 <div
                   key={model.id}
@@ -741,21 +743,82 @@ export function ChannelForm({ channel, onSaved, onAutoSaved, onAgentEligibilityC
           </Button>
         }
       >
-        {/* 拉取结果提示 */}
-        {fetchResult && (
-          <div className={cn(
-            'flex items-center gap-1.5 text-xs px-1',
-            fetchResult.success ? 'text-emerald-600' : 'text-destructive'
-          )}>
-            {fetchResult.success ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
-            <span>{fetchResult.message}</span>
-          </div>
-        )}
-
         <SettingsCard divided={false}>
+          {/* 手动添加模型 — 前置 */}
+          <div className="px-4 pt-3 pb-2">
+            <div className="flex items-center gap-1.5 mb-2">
+              <Pencil size={12} className="text-muted-foreground" />
+              <span className="text-xs font-medium text-foreground">手动输入</span>
+              <span className="text-xs text-muted-foreground">— 支持用户手动输入模型 ID 和模型名</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Input
+                value={newModelId}
+                onChange={(e) => setNewModelId(e.target.value)}
+                placeholder="模型 ID（如 claude-opus-4-6）"
+                className="flex-1 h-8 text-sm"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleAddModel()
+                  }
+                }}
+              />
+              <Input
+                value={newModelName}
+                onChange={(e) => setNewModelName(e.target.value)}
+                placeholder="显示名称（可选）"
+                className="flex-1 h-8 text-sm"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleAddModel()
+                  }
+                }}
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                type="button"
+                onClick={handleAddModel}
+                disabled={!newModelId.trim()}
+                className="h-8 w-8 flex-shrink-0"
+              >
+                <Plus size={18} />
+              </Button>
+            </div>
+          </div>
+
+          {/* 分隔线 + 标签 */}
+          <div className="flex items-center gap-2 px-4 py-2">
+            <div className="flex-1 border-t border-border/50" />
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-medium">或</span>
+            <div className="flex-1 border-t border-border/50" />
+          </div>
+
+          {/* 供应商获取的模型区 */}
+          <div className="px-4 pt-1 pb-1">
+            <div className="flex items-center gap-1.5">
+              <Download size={12} className="text-muted-foreground" />
+              <span className="text-xs font-medium text-foreground">从供应商获取</span>
+              <span className="text-xs text-muted-foreground">— 点击即可启用</span>
+            </div>
+          </div>
+
+          {/* 拉取结果提示 */}
+          {fetchResult && (
+            <div className={cn(
+              'flex items-center gap-1.5 text-xs px-4 py-1',
+              fetchResult.success ? 'text-emerald-600' : 'text-destructive'
+            )}>
+              {fetchResult.success ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
+              <span>{fetchResult.message}</span>
+            </div>
+          )}
+
           {/* 模型搜索过滤 */}
           {models.filter((m) => !m.enabled).length > 5 && (
-            <div className="px-4 pt-3 pb-1">
+            <div className="px-4 pt-1 pb-1">
               <div className="relative">
                 <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -770,14 +833,14 @@ export function ChannelForm({ channel, onSaved, onAutoSaved, onAgentEligibilityC
 
           {/* 可用模型计数 */}
           {models.filter((m) => !m.enabled).length > 0 && (
-            <div className="px-4 pt-2 pb-1 text-xs text-muted-foreground">
+            <div className="px-4 pt-1 pb-1 text-xs text-muted-foreground">
               {modelFilter.trim()
                 ? `${availableModels.length} / ${models.filter((m) => !m.enabled).length} 个可用模型`
                 : `${models.filter((m) => !m.enabled).length} 个可用模型`}
             </div>
           )}
 
-          <ScrollArea className={availableModels.length > 8 ? 'h-[280px]' : undefined}>
+          <ScrollArea className={availableModels.length > 5 ? 'h-[200px]' : undefined}>
             <div className="divide-y divide-border/50">
               {availableModels.map((model) => (
                 <div
@@ -818,44 +881,6 @@ export function ChannelForm({ channel, onSaved, onAutoSaved, onAgentEligibilityC
               )}
             </div>
           </ScrollArea>
-
-          {/* 手动添加模型 */}
-          <div className="flex items-center gap-2 px-4 py-2.5 border-t border-border/50">
-            <Input
-              value={newModelId}
-              onChange={(e) => setNewModelId(e.target.value)}
-              placeholder="模型 ID（如 claude-opus-4-6）"
-              className="flex-1 h-8 text-sm"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  handleAddModel()
-                }
-              }}
-            />
-            <Input
-              value={newModelName}
-              onChange={(e) => setNewModelName(e.target.value)}
-              placeholder="显示名称（可选）"
-              className="flex-1 h-8 text-sm"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  handleAddModel()
-                }
-              }}
-            />
-            <Button
-              variant="ghost"
-              size="icon"
-              type="button"
-              onClick={handleAddModel}
-              disabled={!newModelId.trim()}
-              className="h-8 w-8 flex-shrink-0"
-            >
-              <Plus size={18} />
-            </Button>
-          </div>
         </SettingsCard>
       </SettingsSection>
 

@@ -108,7 +108,7 @@ import {
   agentModelSupportsMultimodal,
   extractPngFileMentions,
   findBlockedPngFiles,
-  isPngAttachment,
+  isImageAttachment,
 } from '@/lib/agent-multimodal-guard'
 
 /** 稳定的空 SDKMessage 数组引用，避免 ?? [] 每次创建新引用 */
@@ -629,8 +629,8 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
 
   const showBlockedPngToast = React.useCallback((filenames: string[]): void => {
     if (filenames.length === 0) return
-    toast.warning('当前 Agent 模型不支持多模态，不能添加 PNG 图片。', {
-      description: `如需处理图片，请申请或切换到 saas-kimi-k25、saas-qwen35-397b、local-qwen36-27b、saas-glm-51、saas-kimi-k26。已跳过：${formatFileNames(filenames)}`,
+    toast.warning('当前 Agent 模型不支持多模态，不能添加图片附件。', {
+      description: `如需处理图片，请切换至支持多模态的模型。已跳过：${formatFileNames(filenames)}`,
     })
   }, [])
 
@@ -640,7 +640,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
     const blocked = findBlockedPngFiles(files, currentAgentModelSupportsMultimodal)
     showBlockedPngToast(blocked)
     if (blocked.length === 0) return files
-    return files.filter((file) => !isPngAttachment(file))
+    return files.filter((file) => !isImageAttachment(file))
   }, [currentAgentModelSupportsMultimodal, showBlockedPngToast])
 
   // 监听消息刷新版本号
@@ -2194,7 +2194,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
               sessionId={sessionId}
               attachedDirs={workspaceMentionPaths}
               sessionAttachedDirs={sessionMentionPaths}
-              allowFileMention={(entry) => currentAgentModelSupportsMultimodal || !isPngAttachment({ filename: entry.path })}
+              allowFileMention={(entry) => currentAgentModelSupportsMultimodal || !isImageAttachment({ filename: entry.path })}
               htmlValue={inputHtmlContent}
               onHtmlChange={setInputHtmlContent}
               sendWithCmdEnter={sendWithCmdEnter}
