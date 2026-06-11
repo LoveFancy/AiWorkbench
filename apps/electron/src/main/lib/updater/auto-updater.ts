@@ -73,11 +73,15 @@ export async function checkForUpdates(manual = false, silent = false): Promise<v
     return
   }
 
-  // 本地有安装包待验证（downloaded 状态 或 启动时 manifest 恢复的待验证包）
-  const hasLocalInstaller = currentStatus.status === 'downloaded' || pendingManifestInfo !== null
+  // 本地有安装包待验证（downloaded/error 状态、启动时 manifest 恢复的待验证包、或文件仍存在）
+  const hasLocalInstaller =
+    currentStatus.status === 'downloaded' ||
+    pendingManifestInfo !== null ||
+    (!!upgradeInfo.fileName && installerFileExists())
   if (hasLocalInstaller) {
-    console.log('[更新] 本地有安装包，向服务端验证版本是否仍有效 (mode=%s)',
-      pendingManifestInfo ? 'startup-pending' : 'downloaded')
+    console.log('[更新] 本地有安装包，向服务端验证版本是否仍有效 (status=%s mode=%s)',
+      currentStatus.status,
+      pendingManifestInfo ? 'startup-pending' : (currentStatus.status === 'downloaded' ? 'downloaded' : 'file-exists'))
   }
 
   checking = true
@@ -271,8 +275,6 @@ export function cleanupUpdater(): void {
   }
 }
 
-// ===== 初始化 =====
-
 /**
  * 初始化自动更新
  */
@@ -321,6 +323,17 @@ export function onLoginSuccess(): void {
 
 function randomInRange(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min
+}
+
+/** 检查 upgradeInfo.fileName 对应的安装包文件是否存在于磁盘 */
+function installerFileExists(): boolean {
+  try {
+    if (!upgradeInfo.fileName) return false
+    const { existsSync } = require('node:fs')
+    return existsSync(getInstallerPath(upgradeInfo.fileName))
+  } catch {
+    return false
+  }
 }
 
 /** 递归调度下次周期检查（每次 6~8 小时重新随机） */
@@ -410,6 +423,16 @@ async function doDownload(): Promise<void> {
     setStatus({ status: 'error', error: '下载信息不完整' })
     return
   }
+
+  // 防御性检查：安装包已存在则跳过下载
+  try {
+    const { existsSync } = require('node:fs')
+    const existingPath = getInstallerPath(upgradeInfo.fileName)
+    if (existsSync(existingPath)) {
+      console.log('[更新] 安装包已存在, 跳过下载 %s', existingPath)
+      return
+    }
+  } catch { /* 检查失败不影响主流程 */ }
 
   const current = currentStatus as { version?: string; releaseNotes?: string; forceUpdate?: boolean; releaseType?: 'UPGRADE' | 'ROLLBACK' }
 
