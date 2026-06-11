@@ -35,14 +35,14 @@ export class TabErrorBoundary extends React.Component<
         name: error.name,
         message: error.message,
         stack: error.stack,
-        componentStack: info.componentStack,
+        componentStack: info.componentStack ?? undefined,
       })
     } else {
       void reportRendererErrorViaIpc({
         name: 'UnknownError',
         message: String(error),
         stack: undefined,
-        componentStack: info.componentStack,
+        componentStack: info.componentStack ?? undefined,
       })
     }
   }

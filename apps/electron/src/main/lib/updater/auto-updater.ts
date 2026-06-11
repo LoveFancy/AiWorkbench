@@ -9,7 +9,7 @@ import { BrowserWindow, app } from 'electron'
 import type { UpdateStatus } from './updater-types'
 import { UPDATER_IPC_CHANNELS } from './updater-types'
 import { checkForWorkmateUpgrade } from './workmate-api'
-import { downloadInstaller } from './workmate-downloader'
+import { downloadInstaller, validateInstallerDownloadSecurity } from './workmate-downloader'
 import { verifyInstaller, launchInstaller } from './workmate-installer'
 import {
   loadManifest, saveManifest, deleteManifest, deleteInstaller, getInstallerPath,
@@ -413,18 +413,11 @@ async function doDownload(): Promise<void> {
 
   const current = currentStatus as { version?: string; releaseNotes?: string; forceUpdate?: boolean; releaseType?: 'UPGRADE' | 'ROLLBACK' }
 
-  // 下载前校验 URL 安全边界
+  // 下载前校验 URL 和校验值安全边界
   try {
-    const url = new URL(upgradeInfo.downloadUrl)
-    if (url.protocol !== 'https:' && url.protocol !== 'http:') {
-      throw new Error('不支持的下载协议')
-    }
-    // 开发环境允许 http://localhost
-    if (url.protocol === 'http:' && !url.hostname.startsWith('127.') && url.hostname !== 'localhost') {
-      console.warn('[更新] 生产环境应使用 HTTPS 下载')
-    }
+    validateInstallerDownloadSecurity(upgradeInfo.downloadUrl, upgradeInfo.sha256)
   } catch (err) {
-    setStatus({ status: 'error', error: `下载地址无效: ${(err as Error).message}` })
+    setStatus({ status: 'error', error: `下载信息无效: ${(err as Error).message}` })
     return
   }
 

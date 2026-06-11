@@ -6,10 +6,11 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { execSync } from 'node:child_process'
-import { join } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import { getInactiveSkillsDir, getWorkspaceSkillsDir } from './config-paths'
 import { getAllWorkspaceSkills } from './agent-workspace-manager'
 import { getValidSkillHubToken, getSkillHubApiBase } from './skillhub-auth-service'
+import { getToken } from '../../auth/auth-service'
 
 export interface HtSkillHubSkill {
   name: string
@@ -39,13 +40,46 @@ export interface InstallHtSkillHubSkillResult {
 }
 
 function isValidSkillName(name: string): boolean {
-  return /^@?[a-zA-Z0-9._-]+(\/[a-zA-Z0-9._-]+)?$/.test(name) && !name.startsWith('.') && name.length <= 200
+  if (!/^@?[a-zA-Z0-9._-]+(\/[a-zA-Z0-9._-]+)?$/.test(name) || name.length > 200) {
+    return false
+  }
+
+  return name.split('/').every((segment) => {
+    const normalized = segment.startsWith('@') ? segment.slice(1) : segment
+    return normalized.length > 0 && normalized !== '.' && normalized !== '..' && !normalized.startsWith('.')
+  })
 }
 
 /** 从 scope 名称中提取短名称作为目录名，例如 @ht-skills/code-review → code-review */
 function shortSkillName(skillName: string): string {
   const slash = skillName.lastIndexOf('/')
   return slash >= 0 ? skillName.substring(slash + 1) : skillName
+}
+
+function assertValidSkillName(name: string): void {
+  if (!isValidSkillName(name)) {
+    throw new Error(`非法 Skill 名称: ${name}`)
+  }
+}
+
+function resolveSkillPath(baseDir: string, dirName: string): string {
+  const basePath = resolve(baseDir)
+  const targetPath = resolve(baseDir, dirName)
+  if (!targetPath.startsWith(`${basePath}${sep}`)) {
+    throw new Error(`非法 Skill 名称: ${dirName}`)
+  }
+  return targetPath
+}
+
+export function redactSkillHubHeaders(headers: Record<string, string>): Record<string, string> {
+  const redacted: Record<string, string> = {}
+  for (const [key, value] of Object.entries(headers)) {
+    const normalizedKey = key.toLowerCase()
+    redacted[key] = normalizedKey === 'authorization' || normalizedKey === 'cookie' || normalizedKey === 'set-cookie'
+      ? '[REDACTED]'
+      : value
+  }
+  return redacted
 }
 
 // ===== SkillHub API 统一请求入口 =====
@@ -65,6 +99,7 @@ function formatErrorResponse(text: string): string {
 
 async function skillHubFetch(path: string, init?: RequestInit): Promise<Response> {
   const token = await getValidSkillHubToken()
+  const eipgwToken = getToken()
   const base = getSkillHubApiBase()
   const url = `${base}${path}`
   const method = init?.method ?? 'GET'
@@ -77,12 +112,13 @@ async function skillHubFetch(path: string, init?: RequestInit): Promise<Response
   const buildHeaders = (t: string): Record<string, string> => ({
     ...(init?.headers as Record<string, string> | undefined),
     Authorization: `Bearer ${t}`,
+    ...(eipgwToken ? { Cookie: `EIPGW-TOKEN=${eipgwToken}` } : {}),
   })
 
   const makeRequest = (t: string) => fetch(url, { ...init, headers: buildHeaders(t) })
 
   const requestHeaders = buildHeaders(token)
-  console.log('[SkillHub]    headers: %s', JSON.stringify(requestHeaders))
+  console.log('[SkillHub]    headers: %s', JSON.stringify(redactSkillHubHeaders(requestHeaders)))
 
   let response = await makeRequest(token)
   console.log('[SkillHub] <= %s %s HTTP %d', method, url, response.status)
@@ -100,7 +136,7 @@ async function skillHubFetch(path: string, init?: RequestInit): Promise<Response
     throw new Error(
       `SkillHub 请求失败 (${response.status})\n` +
       `请求: ${method} ${url}\n` +
-      `Headers: ${JSON.stringify(requestHeaders)}\n` +
+      `Headers: ${JSON.stringify(redactSkillHubHeaders(requestHeaders))}\n` +
       (bodyPreview ? `Body: ${bodyPreview}\n` : '') +
       `响应: ${errorDetail}`
     )
@@ -158,7 +194,7 @@ export async function fetchSkillHubSkills(query: SkillListQuery = {}): Promise<S
   if (query.category) reqBody.category = query.category
   if (query.env) reqBody.env = query.env
 
-  const response = await skillHubFetch('/ai_skillhub_service/api/v1/market/skills', {
+  const response = await skillHubFetch('/workmate/skillhub/ai_skillhub_service/api/v1/market/skills', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(reqBody),
@@ -170,7 +206,7 @@ export async function fetchSkillHubSkills(query: SkillListQuery = {}): Promise<S
 
 export async function fetchSkillHubDetail(skillName: string): Promise<SkillMetadataRaw> {
   const response = await skillHubFetch(
-    `/ai_skillhub_service/api/v1/market/skills/${encodeURIComponent(skillName)}`
+    `/workmate/skillhub/ai_skillhub_service/api/v1/market/skills/${encodeURIComponent(skillName)}`
   )
 
   const body = await response.json() as { code: string; data: SkillMetadataRaw }
@@ -178,7 +214,7 @@ export async function fetchSkillHubDetail(skillName: string): Promise<SkillMetad
 }
 
 export async function downloadSkillHubZip(skillName: string, version: string): Promise<Response> {
-  const url = `/ai_skillhub_service/api/v1/skills/download/${encodeURIComponent(skillName)}/${encodeURIComponent(version)}`
+  const url = `/workmate/skillhub/ai_skillhub_service/api/v1/skills/download/${encodeURIComponent(skillName)}/${encodeURIComponent(version)}`
   console.log('[SkillHub] 下载 Skill name=%s version=%s', skillName, version)
   const response = await skillHubFetch(url, { method: 'POST' })
 
@@ -254,7 +290,7 @@ export async function installHtSkillHubSkill(input: InstallHtSkillHubSkillInput)
   const activeDir = input.activeDir ?? getWorkspaceSkillsDir(workspaceSlug)
   const inactiveDir = input.inactiveDir ?? getInactiveSkillsDir(workspaceSlug)
 
-  if (!isValidSkillName(skill.name)) throw new Error(`非法 Skill 名称: ${skill.name}`)
+  assertValidSkillName(skill.name)
 
   const dirName = shortSkillName(skill.name)
   const tmpDir = join(activeDir, `.${dirName}.install-${Date.now()}`)
@@ -332,8 +368,9 @@ export async function uninstallHtSkillHubSkill(
   const dirName = shortSkillName(skillName)
   const activeDir = getWorkspaceSkillsDir(workspaceSlug)
   const inactiveDir = getInactiveSkillsDir(workspaceSlug)
-  const activePath = join(activeDir, dirName)
-  const inactivePath = join(inactiveDir, dirName)
+  assertValidSkillName(skillName)
+  const activePath = resolveSkillPath(activeDir, dirName)
+  const inactivePath = resolveSkillPath(inactiveDir, dirName)
 
   if (existsSync(activePath)) {
     rmSync(activePath, { recursive: true, force: true })

@@ -63,5 +63,5 @@ export function isValidVersionDirection(
  */
 export function extractVersionFromFileName(fileName: string): string | null {
   const match = fileName.match(/WorkMate-([\d.]+)-/)
-  return match ? match[1] : null
+  return match?.[1] ?? null
 }

@@ -16,7 +16,7 @@ import { resolveApiBase } from '../../shared/hteip-client'
 
 // ===== 常量 =====
 
-const DEFAULT_SKILLHUB_API_BASE = 'http://talentshub-uat.sit.saas.htsc'
+const DEFAULT_SKILLHUB_API_BASE = 'http://eiplite.htsc.com.cn'
 
 /** 从 settings.json 读取 skillHubBase（认证域名），未配置时回退到 resolveApiBase() */
 export function getSkillHubBase(): string {
@@ -210,7 +210,7 @@ export async function getValidSkillHubToken(): Promise<string> {
   // 已有有效 token 直接返回（不走锁）
   const cached = getCachedValidToken()
   if (cached) {
-    console.log('[SkillHub 认证] 使用缓存 Token:', cached.substring(0, 20) + '…')
+    console.log('[SkillHub 认证] 使用缓存 Token')
     return cached
   }
 
