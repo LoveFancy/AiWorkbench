@@ -6,12 +6,14 @@
  */
 
 import * as React from 'react'
-import { useAtomValue, useSetAtom } from 'jotai'
-import { Maximize2, X } from 'lucide-react'
+import { useAtomValue, useSetAtom, useStore } from 'jotai'
+import { Maximize2, RefreshCw, X } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   previewPanelOpenMapAtom,
   previewFileMapAtom,
+  previewRefreshVersionAtom,
+  PREVIEW_KIND,
 } from '@/atoms/preview-atoms'
 import {
   agentSessionPathMapAtom,
@@ -43,8 +45,17 @@ export function PreviewPanel({ sessionId }: PreviewPanelProps): React.ReactEleme
   const setTabs = useSetAtom(tabsAtom)
   const setActiveTabId = useSetAtom(activeTabIdAtom)
   const isSidePanelOpen = useAtomValue(currentSessionSidePanelOpenAtom)
+  const store = useStore()
 
   const currentFile = fileMap.get(sessionId) ?? null
+
+  const handleRefresh = React.useCallback(() => {
+    store.set(previewRefreshVersionAtom, (prev) => {
+      const m = new Map(prev)
+      m.set(sessionId, (prev.get(sessionId) ?? 0) + 1)
+      return m
+    })
+  }, [sessionId, store])
 
   const sessionPathMap = useAtomValue(agentSessionPathMapAtom)
   const sessionPath = sessionPathMap.get(sessionId) ?? ''
@@ -82,6 +93,23 @@ export function PreviewPanel({ sessionId }: PreviewPanelProps): React.ReactEleme
           filePath={defaultAppTargetPath}
           access={defaultAppAccess}
         />
+      )}
+      {currentFile?.previewKind === PREVIEW_KIND.HTML && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={handleRefresh}
+              className="flex items-center justify-center size-6 shrink-0 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded transition-colors"
+              aria-label="刷新预览"
+            >
+              <RefreshCw className="size-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            <p>刷新预览</p>
+          </TooltipContent>
+        </Tooltip>
       )}
       {currentFile && (
         <Tooltip>

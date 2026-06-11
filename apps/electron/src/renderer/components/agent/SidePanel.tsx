@@ -44,10 +44,11 @@ import {
   fileBrowserAutoRevealAtom,
   agentSelectedWorktreeAtom,
 } from '@/atoms/agent-atoms'
-import { previewPanelOpenMapAtom, previewFileMapAtom, type PreviewFile } from '@/atoms/preview-atoms'
+import { previewPanelOpenMapAtom, previewFileMapAtom, PREVIEW_KIND, type PreviewFile } from '@/atoms/preview-atoms'
 import { activeTabIdAtom, getPreviewTabTitle, openTab, tabsAtom } from '@/atoms/tab-atoms'
 import { detectIsWindows } from '@/lib/platform'
 import { formatManagedPath } from '@/lib/managed-path-display'
+import { isHtmlPreviewPath } from '@/components/diff/html-preview-utils'
 import type { CreateFileEntryInput, FileEntry, AgentPendingFile } from '@proma/shared'
 
 type CreateEntryTarget = {
@@ -152,12 +153,31 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
 
   const handleFilePreview = React.useCallback((filePath: string) => {
     const bp = basePathsRef.current
-    openPreviewTabForFile({
+    const isHtml = isHtmlPreviewPath(filePath)
+    const previewFile: PreviewFile = {
       filePath,
+      previewKind: isHtml ? PREVIEW_KIND.HTML : PREVIEW_KIND.FILE,
       previewOnly: true,
       basePaths: bp.length > 0 ? bp : undefined,
-    })
-  }, [openPreviewTabForFile])
+    }
+
+    if (isHtml) {
+      // HTML 文件：在右侧侧边栏打开实时预览
+      setPreviewFileMap((prev) => {
+        const m = new Map(prev)
+        m.set(sessionId, previewFile)
+        return m
+      })
+      store.set(previewPanelOpenMapAtom, (prev) => {
+        const m = new Map(prev)
+        m.set(sessionId, true)
+        return m
+      })
+    } else {
+      // 非 HTML 文件：打开预览 Tab
+      openPreviewTabForFile(previewFile)
+    }
+  }, [sessionId, setPreviewFileMap, store, openPreviewTabForFile])
 
   // Worktree 选择状态
   const [selectedWorktreeMap, setSelectedWorktreeMap] = useAtom(agentSelectedWorktreeAtom)

@@ -23,6 +23,7 @@ import {
   MessageSquarePlus,
   FilePlus,
   FolderPlus,
+  MonitorPlay,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -48,6 +49,7 @@ import { workspaceFilesVersionAtom, fileBrowserAutoRevealAtom, recentlyModifiedP
 import type { FileEntry } from '@proma/shared'
 import { FileTypeIcon } from './FileTypeIcon'
 import { DefaultAppMenuItem } from './DefaultAppMenuItem'
+import { isHtmlPreviewPath } from '@/components/diff/html-preview-utils'
 import {
   computeTreeRowLayout,
   AncestorGuides,
@@ -727,6 +729,15 @@ function FileTreeItem({
         >
           <MessageSquarePlus />
           添加到聊天
+        </ContextMenuItem>
+      )}
+      {onFilePreview && !entry.isDirectory && menuSelectedCount === 1 && isHtmlPreviewPath(entry.path) && (
+        <ContextMenuItem
+          className="text-xs py-1 [&>svg]:size-3.5"
+          onSelect={() => onFilePreview?.(entry.path)}
+        >
+          <MonitorPlay />
+          实时预览
         </ContextMenuItem>
       )}
       {menuSelectedCount === 1 && (

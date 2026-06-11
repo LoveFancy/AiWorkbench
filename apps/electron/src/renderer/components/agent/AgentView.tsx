@@ -51,7 +51,7 @@ import { cn } from '@/lib/utils'
 import { hasConfiguredApiKey } from '@/lib/model-selection'
 import { getActiveAccelerator, getAcceleratorDisplay } from '@/lib/shortcut-registry'
 import { registerShortcut } from '@/lib/shortcut-registry'
-import { previewPanelOpenMapAtom, previewFileMapAtom, autoPreviewEnabledAtom, quotedSelectionMapAtom, currentQuotedSelectionAtom } from '@/atoms/preview-atoms'
+import { previewPanelOpenMapAtom, previewFileMapAtom, autoPreviewEnabledAtom, PREVIEW_KIND, quotedSelectionMapAtom, currentQuotedSelectionAtom } from '@/atoms/preview-atoms'
 import {
   agentStreamingStatesAtom,
   agentSessionStreamingStateAtomFamily,
@@ -103,6 +103,7 @@ import { activeTabIdAtom, getPreviewTabTitle, openTab, tabsAtom } from '@/atoms/
 import type { AgentSendInput, AgentPendingFile, FileDialogLargeFile, ModelOption, SDKMessage } from '@proma/shared'
 import { MAX_ATTACHMENT_SIZE } from '@proma/shared'
 import { fileToBase64, formatFileNames, getFileParentPath } from '@/lib/file-utils'
+import { isHtmlPreviewPath } from '@/components/diff/html-preview-utils'
 import { createClipboardPendingFile, createClipboardTextDraft, makeUniqueAttachmentName } from '@/lib/clipboard-text-attachment'
 import {
   agentModelSupportsMultimodal,
@@ -1065,10 +1066,12 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
 
   const openClipboardPreviewFile = React.useCallback((filePath: string): void => {
     const parentPath = getFileParentPath(filePath)
+    const isHtml = isHtmlPreviewPath(filePath)
     setPreviewFileMap((prev) => {
       const m = new Map(prev)
       m.set(sessionId, {
         filePath,
+        previewKind: isHtml ? PREVIEW_KIND.HTML : PREVIEW_KIND.FILE,
         previewOnly: true,
         readOnly: false,
         basePaths: parentPath ? [parentPath] : undefined,
