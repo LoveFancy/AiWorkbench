@@ -319,6 +319,8 @@ export interface ModelOption {
   modelName: string
   /** AI 供应商类型 */
   provider: ProviderType
+  /** 是否支持多模态图片理解 */
+  supportsMultimodal?: boolean
 }
 
 // ===== 分页加载相关 =====

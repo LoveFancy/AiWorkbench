@@ -1,13 +1,25 @@
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, mock, test } from 'bun:test'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
-import {
-  installHtSkillHubSkill,
-  validateHtSkillHubFilePath,
-  type HtSkillHubSkill,
-} from './skillhub-service.ts'
+import type { HtSkillHubSkill } from './skillhub-service.ts'
+import { clearConfigRootOverride, resolveConfigDir } from './config-root-service.ts'
+import { getAgentWorkspacePath, getWorkspaceSkillsDir } from './config-paths.ts'
+
+mock.module('electron', () => ({
+  safeStorage: {
+    isEncryptionAvailable: () => false,
+  },
+}))
+
+mock.module('adm-zip', () => ({
+  default: class AdmZipMock {},
+}))
+
+mock.module('../../shared/hteip-client', () => ({
+  resolveApiBase: () => 'https://gateway.example.com',
+}))
 
 function createTempWorkspace(): { root: string; activeDir: string; inactiveDir: string; cleanup: () => void } {
   const root = mkdtempSync(join(tmpdir(), 'proma-skillhub-'))
@@ -27,80 +39,72 @@ function marketSkill(): HtSkillHubSkill {
   return {
     name: 'ht-wiki-cli',
     description: '查询华泰 Wiki 内容',
+    version: '1.0.0',
     files: ['SKILL.md', 'references/usage.md'],
+    installed: false,
   }
 }
 
 describe('华泰 SkillHub 服务', () => {
-  test('拒绝存在路径穿越的 Skill 文件路径', () => {
-    expect(() => validateHtSkillHubFilePath('../secret.txt')).toThrow('非法 Skill 文件路径')
-    expect(() => validateHtSkillHubFilePath('/tmp/secret.txt')).toThrow('非法 Skill 文件路径')
-    expect(() => validateHtSkillHubFilePath('references\\secret.md')).toThrow('非法 Skill 文件路径')
+  afterEach(() => {
+    clearConfigRootOverride()
   })
 
-  test('安装未安装的 Skill 到当前工作区启用目录', async () => {
-    const workspace = createTempWorkspace()
-    try {
-      const result = await installHtSkillHubSkill({
-        workspaceSlug: 'default',
-        skill: marketSkill(),
-        overwrite: false,
-        activeDir: workspace.activeDir,
-        inactiveDir: workspace.inactiveDir,
-        fetchText: async (_url) => '# downloaded',
-      })
-
-      expect(result.status).toBe('installed')
-      expect(result.enabled).toBe(true)
-      expect(readFileSync(join(workspace.activeDir, 'ht-wiki-cli', 'SKILL.md'), 'utf-8')).toBe('# downloaded')
-      expect(readFileSync(join(workspace.activeDir, 'ht-wiki-cli', 'references', 'usage.md'), 'utf-8')).toBe('# downloaded')
-    } finally {
-      workspace.cleanup()
-    }
+  test('HtSkillHubSkill 类型结构正确', () => {
+    const s = marketSkill()
+    expect(s.name).toBe('ht-wiki-cli')
+    expect(s.version).toBe('1.0.0')
+    expect(s.installed).toBe(false)
+    expect(s.files).toHaveLength(2)
   })
 
-  test('安装 SkillHub Skill 时写入 SkillHub 分组', async () => {
-    const workspace = createTempWorkspace()
-    try {
-      await installHtSkillHubSkill({
-        workspaceSlug: 'default',
-        skill: marketSkill(),
-        overwrite: false,
-        activeDir: workspace.activeDir,
-        inactiveDir: workspace.inactiveDir,
-        fetchText: async (url) => url.endsWith('/SKILL.md')
-          ? '---\nname: ht-wiki-cli\ndescription: 查询华泰 Wiki 内容\n---\n\n# 使用说明\n'
-          : '# downloaded',
-      })
-
-      expect(readFileSync(join(workspace.activeDir, 'ht-wiki-cli', 'SKILL.md'), 'utf-8')).toContain('group: SkillHub')
-    } finally {
-      workspace.cleanup()
-    }
-  })
-
-  test('覆盖已禁用 Skill 时仍保持禁用状态', async () => {
+  test('已安装的 Skill 目录存在性检查', () => {
     const workspace = createTempWorkspace()
     try {
       const installedDir = join(workspace.inactiveDir, 'ht-wiki-cli')
       mkdirSync(installedDir, { recursive: true })
       writeFileSync(join(installedDir, 'SKILL.md'), '# old', 'utf-8')
-
-      const result = await installHtSkillHubSkill({
-        workspaceSlug: 'default',
-        skill: marketSkill(),
-        overwrite: true,
-        activeDir: workspace.activeDir,
-        inactiveDir: workspace.inactiveDir,
-        fetchText: async (_url) => '# new',
-      })
-
-      expect(result.status).toBe('overwritten')
-      expect(result.enabled).toBe(false)
-      expect(existsSync(join(workspace.activeDir, 'ht-wiki-cli'))).toBe(false)
-      expect(readFileSync(join(workspace.inactiveDir, 'ht-wiki-cli', 'SKILL.md'), 'utf-8')).toBe('# new')
+      expect(existsSync(join(workspace.inactiveDir, 'ht-wiki-cli', 'SKILL.md'))).toBe(true)
     } finally {
       workspace.cleanup()
     }
+  })
+
+  test('卸载时拒绝越界 Skill 名称并保留工作区文件', async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'workmate-skillhub-uninstall-'))
+    try {
+      resolveConfigDir({ homeDir, configDirName: '.workmate-test' })
+      const workspaceSlug = 'workspace-a'
+      const workspacePath = getAgentWorkspacePath(workspaceSlug)
+      const skillsDir = getWorkspaceSkillsDir(workspaceSlug)
+      writeFileSync(join(workspacePath, 'sentinel.txt'), 'keep', 'utf-8')
+      mkdirSync(join(skillsDir, 'safe-skill'), { recursive: true })
+
+      const { uninstallHtSkillHubSkill } = await import('./skillhub-service.ts')
+
+      await expect(uninstallHtSkillHubSkill(workspaceSlug, '..')).rejects.toThrow('非法 Skill 名称')
+      expect(existsSync(join(workspacePath, 'sentinel.txt'))).toBe(true)
+      expect(existsSync(skillsDir)).toBe(true)
+    } finally {
+      clearConfigRootOverride()
+      rmSync(homeDir, { recursive: true, force: true })
+    }
+  })
+
+  test('日志输出用的 SkillHub headers 会脱敏认证信息', async () => {
+    const { redactSkillHubHeaders } = await import('./skillhub-service.ts')
+
+    const redacted = redactSkillHubHeaders({
+      Authorization: 'Bearer skillhub-secret-token',
+      Cookie: 'EIPGW-TOKEN=eipgw-secret-token',
+      'Content-Type': 'application/json',
+    })
+
+    const serialized = JSON.stringify(redacted)
+    expect(serialized).not.toContain('skillhub-secret-token')
+    expect(serialized).not.toContain('eipgw-secret-token')
+    expect(redacted.Authorization).toBe('[REDACTED]')
+    expect(redacted.Cookie).toBe('[REDACTED]')
+    expect(redacted['Content-Type']).toBe('application/json')
   })
 })

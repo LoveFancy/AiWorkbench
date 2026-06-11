@@ -4,6 +4,7 @@ import { RefreshCw, LogIn, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { SettingsSection, SettingsCard, SettingsRow } from '@/components/settings/primitives'
+import { cn } from '@/lib/utils'
 import { authStateAtom, loginDialogOpenAtom } from '@/auth/renderer'
 import { settingsOpenAtom } from '@/atoms/settings-tab'
 import {
@@ -78,7 +79,7 @@ export function PlatformModelsSection(): React.ReactElement {
   return (
     <SettingsSection
       title="泰为平台模型"
-      description="登录 OA 后自动获取您在泰为大模型平台申请的模型和 API Key"
+      description={<>登录 OA 后自动获取您在泰为大模型平台申请的模型和 API Key，可在下方 <strong>Agent 供应商</strong> 中进行配置</>}
       action={
         isLoggedIn ? (
           <Button size="sm" variant="outline" onClick={handleFetch} disabled={loading}>
@@ -119,8 +120,18 @@ export function PlatformModelsSection(): React.ReactElement {
             </Button>
           </div>
         </SettingsCard>
+      ) : models.length > 5 ? (
+        <div className="max-h-[220px] overflow-y-auto rounded-xl border border-border/50 bg-card">
+          {models.map((model) => (
+            <PlatformModelRow
+              key={model.id}
+              model={model}
+              onToggle={(enabled) => handleToggleModel(model.id, enabled)}
+            />
+          ))}
+        </div>
       ) : (
-        <SettingsCard>
+        <SettingsCard divided={false}>
           {models.map((model) => (
             <PlatformModelRow
               key={model.id}
@@ -167,6 +178,16 @@ function PlatformModelRow({
       label={model.name}
       description={description || undefined}
     >
+      {model.supportsMultimodal !== undefined && (
+        <span className={cn(
+          'inline-flex h-6 shrink-0 items-center rounded-md px-2 text-xs font-medium mr-2',
+          model.supportsMultimodal
+            ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+            : 'bg-muted text-muted-foreground'
+        )}>
+          {model.supportsMultimodal ? '多模态' : '纯文本'}
+        </span>
+      )}
       <Switch
         checked={model.enabled}
         onCheckedChange={onToggle}

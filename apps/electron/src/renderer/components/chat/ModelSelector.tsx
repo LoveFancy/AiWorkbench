@@ -49,6 +49,7 @@ function buildModelOptions(channels: Channel[], filterChannelId?: string, filter
         modelId: model.id,
         modelName: model.name,
         provider: channel.provider,
+        supportsMultimodal: model.supportsMultimodal,
       })
     }
   }
@@ -340,6 +341,15 @@ export function ModelSelector({
                           )}>
                             {option.modelName}
                           </span>
+                          {option.supportsMultimodal ? (
+                            <span className="inline-flex h-5 shrink-0 items-center rounded px-1.5 text-[10px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                              多模态
+                            </span>
+                          ) : (
+                            <span className="inline-flex h-5 shrink-0 items-center rounded px-1.5 text-[10px] font-medium bg-muted text-muted-foreground">
+                              文本
+                            </span>
+                          )}
                         </button>
                       )
                     })}

@@ -32,6 +32,8 @@ import { AgentEventBus } from './agent-event-bus'
 import { AgentOrchestrator } from './agent-orchestrator'
 import { getAgentSessionWorkspacePath, getWorkspaceFilesDir } from './config-paths'
 import { getAgentSessionMeta, updateAgentSessionMeta } from './agent-session-manager'
+import { reportAgentEvent } from './observability-service'
+import { getJobId } from '../../auth'
 
 // ===== 实例创建 =====
 
@@ -133,6 +135,19 @@ export async function runAgent(
             error,
           })
         }
+        // 上报 Agent 失败事件
+        try {
+          reportAgentEvent({
+            userId: getJobId() ?? 'unknown',
+            question: input.userMessage,
+            modelId: input.modelId ?? 'unknown',
+            sessionId: input.sessionId,
+            workspaceId: input.workspaceId,
+            result: 'failure',
+            responseDurationMs: (input.startedAt != null) ? Date.now() - input.startedAt : 0,
+            error: new Error(error),
+          })
+        } catch { /* 上报失败不影响主流程 */ }
       },
       onComplete: (messages, opts) => {
         if (!webContents.isDestroyed()) {
@@ -144,6 +159,21 @@ export async function runAgent(
             resultSubtype: opts?.resultSubtype,
             backgroundTasksPending: opts?.backgroundTasksPending,
           })
+        }
+        // 上报 Agent 成功事件（用户中止除外）
+        if (!opts?.stoppedByUser) {
+          try {
+            const effectiveStartedAt = opts?.startedAt ?? input.startedAt
+            reportAgentEvent({
+              userId: getJobId() ?? 'unknown',
+              question: input.userMessage,
+              modelId: input.modelId ?? 'unknown',
+              sessionId: input.sessionId,
+              workspaceId: input.workspaceId,
+              result: 'success',
+              responseDurationMs: (effectiveStartedAt != null) ? Date.now() - effectiveStartedAt : 0,
+            })
+          } catch { /* 上报失败不影响主流程 */ }
         }
       },
       onTitleUpdated: (title) => {
@@ -173,6 +203,19 @@ export async function runAgent(
         stoppedByUser: false,
       })
     }
+    // 上报 Agent 未处理异常
+    try {
+      reportAgentEvent({
+        userId: getJobId() ?? 'unknown',
+        question: input.userMessage,
+        modelId: input.modelId ?? 'unknown',
+        sessionId: input.sessionId,
+        workspaceId: input.workspaceId,
+        result: 'failure',
+        responseDurationMs: (input.startedAt != null) ? Date.now() - input.startedAt : 0,
+        error: err instanceof Error ? err : new Error(errorMessage),
+      })
+    } catch { /* 上报失败不影响主流程 */ }
   } finally {
     // 仅在 orchestrator 已完成此会话时清理映射
     // 避免被拒绝的请求误删仍在运行的会话映射
@@ -216,6 +259,19 @@ export async function runAgentHeadless(
             error,
           })
         }
+        // 上报 Agent 失败事件（Headless）
+        try {
+          reportAgentEvent({
+            userId: getJobId() ?? 'unknown',
+            question: runInput.userMessage,
+            modelId: runInput.modelId ?? 'unknown',
+            sessionId: runInput.sessionId,
+            workspaceId: runInput.workspaceId,
+            result: 'failure',
+            responseDurationMs: Date.now() - startedAt,
+            error: new Error(error),
+          })
+        } catch { /* 上报失败不影响主流程 */ }
       },
       onComplete: (messages, opts) => {
         callbacks.onComplete()
@@ -229,6 +285,21 @@ export async function runAgentHeadless(
             resultSubtype: opts?.resultSubtype,
             backgroundTasksPending: opts?.backgroundTasksPending,
           })
+        }
+        // 上报 Agent 成功事件（Headless，用户中止除外）
+        if (!opts?.stoppedByUser) {
+          try {
+            const effectiveStartedAt = opts?.startedAt ?? startedAt
+            reportAgentEvent({
+              userId: getJobId() ?? 'unknown',
+              question: runInput.userMessage,
+              modelId: runInput.modelId ?? 'unknown',
+              sessionId: runInput.sessionId,
+              workspaceId: runInput.workspaceId,
+              result: 'success',
+              responseDurationMs: Date.now() - effectiveStartedAt,
+            })
+          } catch { /* 上报失败不影响主流程 */ }
         }
       },
       onTitleUpdated: (title) => {
@@ -255,7 +326,7 @@ export async function runAgentHeadless(
             sessionId: runInput.sessionId,
             title: session?.title,
             workspaceId: runInput.workspaceId ?? session?.workspaceId,
-            modelId: runInput.modelId,
+            modelId: runInput.modelId ?? 'unknown',
             startedAt: persistedStartedAt,
           },
         })
@@ -270,6 +341,19 @@ export async function runAgentHeadless(
       wc.send(AGENT_IPC_CHANNELS.STREAM_ERROR, { sessionId: runInput.sessionId, error: errorMessage })
       wc.send(AGENT_IPC_CHANNELS.STREAM_COMPLETE, { sessionId: runInput.sessionId, messages: [], stoppedByUser: false, startedAt })
     }
+    // 上报 Agent 未处理异常（Headless）
+    try {
+      reportAgentEvent({
+        userId: getJobId() ?? 'unknown',
+        question: runInput.userMessage,
+        modelId: runInput.modelId ?? 'unknown',
+        sessionId: runInput.sessionId,
+        workspaceId: runInput.workspaceId,
+        result: 'failure',
+        responseDurationMs: Date.now() - startedAt,
+        error: err instanceof Error ? err : new Error(errorMessage),
+      })
+    } catch { /* 上报失败不影响主流程 */ }
   } finally {
     if (!orchestrator.isActive(runInput.sessionId)) {
       sessionWebContents.delete(runInput.sessionId)

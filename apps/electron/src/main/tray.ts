@@ -152,16 +152,17 @@ export function createTray(actionsInput?: Partial<TrayActions>): Tray | null {
 
     updateTrayMenu(actions)
 
-    // 点击行为：始终弹出菜单（与右键一致）
+    // 左键单击：打开主窗口
     tray.on('click', () => {
+      actions.showMainWindow()
+    })
+
+    // 右键单击：弹出上下文菜单
+    tray.on('right-click', () => {
       const contextMenu = updateTrayMenu(actions)
       if (contextMenu) {
         tray?.popUpContextMenu(contextMenu)
       }
-    })
-
-    tray.on('right-click', () => {
-      updateTrayMenu(actions)
     })
 
     console.log('System tray created')

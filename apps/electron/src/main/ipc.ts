@@ -2201,9 +2201,9 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(
     AGENT_IPC_CHANNELS.GET_HT_SKILLHUB_SKILLS,
-    async (_, workspaceSlug: string): Promise<HtSkillHubSkill[]> => {
+    async (_, workspaceSlug: string, page?: number, keyword?: string, category?: string): Promise<HtSkillHubSkill[]> => {
       const { fetchHtSkillHubIndex } = await import('./lib/skillhub-service')
-      return fetchHtSkillHubIndex(workspaceSlug)
+      return fetchHtSkillHubIndex(workspaceSlug, page, keyword, category)
     }
   )
 
@@ -2220,9 +2220,62 @@ export function registerIpcHandlers(): void {
     async (_, workspaceSlug: string, skillName: string, overwrite: boolean): Promise<HtSkillHubInstallResult> => {
       const { fetchHtSkillHubIndex, installHtSkillHubSkill } = await import('./lib/skillhub-service')
       const skills = await fetchHtSkillHubIndex(workspaceSlug)
-      const skill = skills.find((item) => item.name === skillName)
+      const key = skillName.toLowerCase()
+      const skill = skills.find((item) => item.name.toLowerCase() === key)
       if (!skill) throw new Error(`华泰 SkillHub 未找到 Skill: ${skillName}`)
       return installHtSkillHubSkill({ workspaceSlug, skill, overwrite })
+    }
+  )
+
+  // ===== SkillHub 认证 =====
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.SKILLHUB_AUTH_STATUS,
+    async (_) => {
+      const { getSkillHubAuthStatus } = await import('./lib/skillhub-auth-service')
+      return getSkillHubAuthStatus()
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.SKILLHUB_AUTHENTICATE,
+    async (_) => {
+      const { exchangeToken } = await import('./lib/skillhub-auth-service')
+      return exchangeToken()
+    }
+  )
+
+  // ===== SkillHub 卸载 & 更新 & 批量 =====
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.UNINSTALL_HT_SKILLHUB_SKILL,
+    async (_, workspaceSlug: string, skillName: string) => {
+      const { uninstallHtSkillHubSkill } = await import('./lib/skillhub-service')
+      return uninstallHtSkillHubSkill(workspaceSlug, skillName)
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.CHECK_SKILL_UPDATES,
+    async (_, workspaceSlug: string) => {
+      const { checkSkillUpdates } = await import('./lib/skillhub-service')
+      return checkSkillUpdates(workspaceSlug)
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.BATCH_INSTALL_HT_SKILLHUB,
+    async (_, workspaceSlug: string, skillNames: string[], overwrite?: boolean) => {
+      const { batchInstallHtSkillHubSkills } = await import('./lib/skillhub-service')
+      return batchInstallHtSkillHubSkills(workspaceSlug, skillNames, overwrite)
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.BATCH_UNINSTALL_HT_SKILLHUB,
+    async (_, workspaceSlug: string, skillNames: string[]) => {
+      const { batchUninstallHtSkillHubSkills } = await import('./lib/skillhub-service')
+      return batchUninstallHtSkillHubSkills(workspaceSlug, skillNames)
     }
   )
 
@@ -4478,6 +4531,35 @@ export function registerIpcHandlers(): void {
     async (event) => {
       const win = BrowserWindow.fromWebContents(event.sender)
       return win && !win.isDestroyed() ? win.isMaximized() : false
+    }
+  )
+
+  // ===== WorkMate 观测上报 =====
+  ipcMain.handle(
+    'workmate:report-renderer-error',
+    async (_event, payload: {
+      name: string
+      message: string
+      stack?: string
+      componentStack?: string
+    }) => {
+      // 延迟导入避免循环依赖
+      const { normalizeRendererErrorPayload } = await import('./lib/observability-ipc-handler')
+      const normalized = normalizeRendererErrorPayload(payload)
+      if (!normalized) return
+
+      const { reportErrorEvent } = await import('./lib/observability-service')
+      const error = new Error(normalized.message)
+      error.name = normalized.name
+      if (normalized.stack) {
+        error.stack = normalized.stack
+      }
+      reportErrorEvent(error, {
+        tags: {
+          source: 'renderer-error-boundary',
+          componentStack: normalized.componentStack ?? '',
+        },
+      })
     }
   )
 

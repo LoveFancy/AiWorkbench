@@ -66,3 +66,10 @@ vendor
 
 # ===== Git Worktrees =====
 .worktrees
+
+# ===== Mock data (build-time generated) =====
+workmate-server-java/mock-skills/
+
+# ===== Runtime artifacts =====
+hs_err_pid*.log
+workmate-server-java/data/

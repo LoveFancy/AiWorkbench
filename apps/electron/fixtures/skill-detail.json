@@ -1,0 +1,34 @@
+{
+  "code": "200",
+  "message": "操作成功",
+  "success": true,
+  "data": {
+    "skillName": "@ht-skills/code-review",
+    "displayName": "代码审查助手",
+    "description": "自动审查代码质量，提供最佳实践建议和安全扫描",
+    "category": "开发工具",
+    "tags": ["代码", "审查", "质量"],
+    "owner": "022480",
+    "ownerName": "张三",
+    "version": "1.3.0",
+    "author": "dev@htsc.com",
+    "license": "MIT",
+    "readme": "# 代码审查助手\n\n自动对代码变更进行审查，检查代码规范、潜在 bug 和安全问题。\n\n## 功能\n\n- 代码风格检查\n- 潜在 bug 检测\n- 安全漏洞扫描\n- 最佳实践建议\n\n## 使用方式\n\n在 PR 或代码变更时，调用此 Skill 自动生成审查报告。\n\n## 配置\n\n在 SKILL.md frontmatter 中配置检查规则：\n\n```yaml\n---\nname: 代码审查助手\ndescription: 自动审查代码质量\nversion: 1.3.0\nrules:\n  - eslint\n  - security-scan\n  - best-practices\n---\n```",
+    "dependencies": "{\"node\": \">=16\"}",
+    "envVars": "[\"GITHUB_TOKEN\"]",
+    "downloadCount": 1234,
+    "lastUpdated": "2026-05-20T10:30:00Z",
+    "versions": [
+      { "version": "1.3.0", "description": "新增安全扫描功能", "publishedAt": "2026-05-20T10:30:00Z" },
+      { "version": "1.2.0", "description": "优化代码风格检查规则", "publishedAt": "2026-04-15T08:00:00Z" },
+      { "version": "1.1.0", "description": "初始版本", "publishedAt": "2026-03-01T12:00:00Z" }
+    ],
+    "status": "published",
+    "permission": { "role": "1", "grantedAt": "2026-03-01T12:00:00Z", "grantedBy": "022480", "grantedByName": "张三" },
+    "permissionApplicationStatus": 0,
+    "createdAt": "2026-03-01T12:00:00Z",
+    "updatedAt": "2026-05-20T10:30:00Z",
+    "businessOwnerId": "022480",
+    "businessOwnerName": "张三"
+  }
+}

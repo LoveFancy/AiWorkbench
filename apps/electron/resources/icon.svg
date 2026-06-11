@@ -1,40 +1,23 @@
-<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
-  <!--
-    macOS Big Sur+ 图标规范:
-    - 画布: 1024x1024
-    - 圆角矩形: 824x824 居中 (边距 100px)
-    - 圆角: 185px (~22.5%)
-  -->
-
-  <!-- 变换：将原 800x800 内容缩放到 824x824 并居中 -->
-  <g transform="translate(100, 100) scale(1.03)">
-    <!-- macOS 风格圆角背景 -->
-    <rect width="800" height="800" rx="180" ry="180" fill="#000000"/>
-
-    <!-- 从近到远逐渐缩小、透明的条纹 - 营造纵深感 -->
-    <g>
-      <!-- 第一层 - 最近，最实 -->
-      <rect x="150" y="350" width="90" height="400" rx="15" fill="#FFFFFF" opacity="1"/>
-
-      <!-- 第二层 - 渐远 -->
-      <rect x="270" y="320" width="80" height="360" rx="13" fill="#F0F0F0" opacity="0.85"
-            transform="rotate(-3 310 500)"/>
-
-      <!-- 第三层 - 更远 -->
-      <rect x="380" y="290" width="70" height="320" rx="11" fill="#E0E0E0" opacity="0.7"
-            transform="rotate(-6 415 450)"/>
-
-      <!-- 第四层 - 渐隐 -->
-      <rect x="480" y="260" width="60" height="280" rx="9" fill="#D0D0D0" opacity="0.55"
-            transform="rotate(-9 510 400)"/>
-
-      <!-- 第五层 - 远端 -->
-      <rect x="570" y="230" width="50" height="240" rx="7" fill="#C0C0C0" opacity="0.4"
-            transform="rotate(-12 595 350)"/>
-
-      <!-- 第六层 - 几乎消失 -->
-      <rect x="650" y="200" width="40" height="200" rx="5" fill="#B0B0B0" opacity="0.25"
-            transform="rotate(-15 670 300)"/>
-    </g>
-  </g>
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generator: Adobe Illustrator 26.3.1, SVG Export Plug-In . SVG Version: 6.00 Build 0)  -->
+<svg version="1.1" id="图层_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
+	 viewBox="0 0 1024 1024" style="enable-background:new 0 0 1024 1024;" xml:space="preserve">
+<style type="text/css">
+	.st0{fill:#D3AB78;}
+	.st1{fill:#CC7C5E;}
+	.st2{fill:#52524F;}
+</style>
+<g>
+	<g>
+		<path class="st0" d="M419.94,501.95L149.43,333.53c-22.4-13.95-51.25,1.9-51.34,28.2l-1.13,321.95
+			c-0.14,41.14,21.14,79.53,56.17,101.35l270.51,168.42c22.4,13.95,51.25-1.9,51.34-28.2l1.13-321.95
+			C476.26,562.16,454.97,523.76,419.94,501.95z"/>
+		<path class="st1" d="M820.47,194.24L532.28,44.36c-17.54-9.12-38.44-9.02-55.89,0.28L194.92,194.59
+			c-42.62,22.71-42.31,83.89,0.53,106.17l291.62,177.31c17.54,9.12,38.44,9.02,55.89-0.28L821,300.41
+			C863.62,277.71,863.31,216.52,820.47,194.24z"/>
+		<path class="st2" d="M927.05,362.7c0.1-26.68-28.22-43.17-50.4-29.35L608.79,500.32c-34.69,21.62-55.95,60.27-56.11,102.01
+			l-1.24,326.63c-0.1,26.68,28.22,43.17,50.4,29.35l86.81-54.11l71.41,82.22l5.17-129.95l104.48-65.12
+			c34.69-21.63,55.95-60.27,56.11-102.01L927.05,362.7z"/>
+	</g>
+</g>
 </svg>
