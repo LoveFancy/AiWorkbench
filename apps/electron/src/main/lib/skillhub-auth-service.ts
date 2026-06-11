@@ -53,7 +53,7 @@ export function getSkillHubApiBase(): string {
   return DEFAULT_SKILLHUB_API_BASE
 }
 
-const DEFAULT_AUTH_URL_PATH = '/ai_skillhub_bff/api/v1/auth/token?clientId=WORKMATE&env=test'
+const DEFAULT_AUTH_URL_PATH = '/ai_skillhub_bff/api/v1/auth/token?clientId=WEBIDE&env=test'
 
 /**
  * 从 settings.json 读取 skillHubAuthPath，未配置时回退到代码默认值。
