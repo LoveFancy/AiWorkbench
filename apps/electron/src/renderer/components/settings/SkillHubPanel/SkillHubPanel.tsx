@@ -1,5 +1,8 @@
 import React from 'react'
-import { Search, RefreshCw, ShieldCheck, Sparkles, FolderOpen, Download, RotateCw, ArrowUp, Power, PowerOff, Trash2 } from 'lucide-react'
+import { useAtomValue, useSetAtom } from 'jotai'
+import { Search, RefreshCw, ShieldCheck, Sparkles, FolderOpen, Download, RotateCw, ArrowUp, Power, PowerOff, Trash2, LogIn } from 'lucide-react'
+import { authStateAtom, loginDialogOpenAtom } from '@/auth/renderer'
+import { settingsOpenAtom } from '@/atoms/settings-tab'
 import { toast } from 'sonner'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -63,6 +66,36 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
   const [authStatus, setAuthStatus] = React.useState<{ authenticated: boolean; expiresAt?: number; remainingSeconds?: number } | null>(null)
   const [authLoading, setAuthLoading] = React.useState(false)
   const [authError, setAuthError] = React.useState(false)
+
+  // ===== OA 登录引导 =====
+  const authState = useAtomValue(authStateAtom)
+  const isLoggedIn = authState.isLoggedIn
+  const setLoginDialogOpen = useSetAtom(loginDialogOpenAtom)
+  const setSettingsOpen = useSetAtom(settingsOpenAtom)
+  const loginRequestedRef = React.useRef(false)
+
+  // 跳转到 OA 登录
+  const handleLoginClick = React.useCallback(() => {
+    loginRequestedRef.current = true
+    setSettingsOpen(false)
+    setTimeout(() => setLoginDialogOpen(true), 200)
+  }, [setSettingsOpen, setLoginDialogOpen])
+
+  // 登录完成后自动重开设置面板
+  React.useEffect(() => {
+    if (isLoggedIn && loginRequestedRef.current) {
+      loginRequestedRef.current = false
+      setSettingsOpen(true)
+    }
+  }, [isLoggedIn, setSettingsOpen])
+
+  // 登录后自动尝试 SkillHub 认证
+  React.useEffect(() => {
+    if (isLoggedIn && authStatus?.authenticated === false) {
+      void handleAuthenticate()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoggedIn])
 
   const checkAuth = React.useCallback(async (): Promise<boolean> => {
     try {
@@ -344,28 +377,30 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
         </div>
       }
     >
-      {/* 认证状态栏 */}
-      <div className="mb-3">
-        {authError ? (
-          <AuthErrorBar onRetry={handleRetry} />
-        ) : (
-          <AuthStatusBar
-            status={authStatus}
-            loading={authLoading}
-            onAuthenticate={handleAuthenticate}
-            onRetry={handleRetry}
-          />
-        )}
-      </div>
-
-      {/* 未认证 */}
-      {!authStatus?.authenticated && !authLoading && (
-        <div className="text-center py-12 text-muted-foreground">
-          <p className="text-sm mb-2">请先登录 EIP 网关后连接 SkillHub</p>
-          <Button size="sm" variant="outline" onClick={handleAuthenticate}>
-            <ShieldCheck size={14} className="mr-1" />
-            前往登录
+      {/* OA 未登录：引导登录 */}
+      {!isLoggedIn && (
+        <div className="flex flex-col items-center gap-3 py-12 text-muted-foreground">
+          <p className="text-sm">请登录 OA 后访问华泰 SkillHub</p>
+          <Button size="sm" onClick={handleLoginClick}>
+            <LogIn size={14} />
+            <span className="ml-1">登录 OA</span>
           </Button>
+        </div>
+      )}
+
+      {/* OA 已登录：显示认证状态栏 */}
+      {isLoggedIn && (
+        <div className="mb-3">
+          {authError ? (
+            <AuthErrorBar onRetry={handleAuthenticate} />
+          ) : (
+            <AuthStatusBar
+              status={authStatus}
+              loading={authLoading}
+              onAuthenticate={handleAuthenticate}
+              onRetry={handleRetry}
+            />
+          )}
         </div>
       )}
 

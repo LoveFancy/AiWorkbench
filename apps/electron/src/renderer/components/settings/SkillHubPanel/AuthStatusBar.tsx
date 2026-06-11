@@ -30,12 +30,12 @@ export function AuthStatusBar({ status, loading, onAuthenticate, onRetry }: Auth
     return (
       <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm">
         <ShieldOff size={14} className="text-amber-600" />
-        <span className="text-amber-700 flex-1">未登录 SkillHub</span>
+        <span className="text-amber-700 flex-1">SkillHub 未认证，无法获取技能</span>
         <button
           onClick={onAuthenticate}
           className="px-2 py-1 rounded bg-amber-600 text-white text-xs hover:bg-amber-700 transition-colors"
         >
-          前往登录
+          重试认证
         </button>
       </div>
     )
