@@ -22,6 +22,7 @@ function makeSignature(input: DetachedPreviewWindowInput): string {
   return JSON.stringify({
     sessionId: input.sessionId,
     filePath: input.filePath,
+    previewKind: input.previewKind,
     dirPath: input.dirPath,
     gitRoot: input.gitRoot,
     previewOnly: input.previewOnly === true,

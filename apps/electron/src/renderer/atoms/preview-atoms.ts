@@ -10,9 +10,13 @@ import { currentAgentSessionIdAtom } from './agent-atoms'
 
 // ===== 类型定义 =====
 
+export type PreviewKind = 'file' | 'html'
+
 /** 当前预览的文件信息 */
 export interface PreviewFile {
   filePath: string
+  /** 内容渲染器类型。默认 file；html 表示静态 HTML 页面预览。 */
+  previewKind?: PreviewKind
   dirPath?: string
   gitRoot?: string
   /** true = 纯文件预览（不显示 diff 控件），false/undefined = diff 模式 */
@@ -40,6 +44,9 @@ export const previewSplitRatioAtom = atomWithStorage<number>('proma-preview-spli
 
 /** 自动预览开关，持久化（默认关闭以减轻设备性能负担，老用户保留已设置的偏好） */
 export const autoPreviewEnabledAtom = atomWithStorage<boolean>('proma-auto-preview-enabled', false)
+
+/** 非 diff 预览刷新版本，例如 HTML iframe 自动刷新 */
+export const previewRefreshVersionAtom = atom<Map<string, number>>(new Map())
 
 /** 当前会话的预览面板是否打开（derived） */
 export const currentSessionPreviewOpenAtom = atom<boolean>((get) => {

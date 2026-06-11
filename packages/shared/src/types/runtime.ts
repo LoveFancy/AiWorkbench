@@ -170,6 +170,8 @@ export interface DetachedPreviewWindowInput {
   sessionId: string
   /** 要预览的文件路径 */
   filePath: string
+  /** 内容渲染器类型。默认 file；html 表示静态 HTML 页面预览 */
+  previewKind?: 'file' | 'html'
   /** Diff 模式下的工作目录；纯预览模式下作为路径解析候选 */
   dirPath: string
   /** 文件所属 Git 仓库根，多仓库场景下必须传入 */
@@ -212,6 +214,14 @@ export interface FileAccessOptions {
 /** 已授权本地文件的 proma-file URL */
 export interface ResolvedFileUrl {
   url: string
+}
+
+/** HTML 预览 URL 准备结果 */
+export interface HtmlPreviewResult {
+  /** iframe 可直接加载的 token 化入口 URL */
+  url: string
+  /** 主进程解析后的真实文件路径，仅在已授权后返回 */
+  resolvedPath: string
 }
 
 /** Office 文件内联预览类型 */
@@ -366,6 +376,8 @@ export const IPC_CHANNELS = {
   OPEN_DETACHED_PREVIEW: 'preview:open-detached',
   /** 获取独立预览窗口数据 */
   GET_DETACHED_PREVIEW_DATA: 'preview:get-detached-data',
+  /** 准备静态 HTML 内联预览 URL */
+  PREPARE_HTML_PREVIEW: 'file:prepare-html-preview',
   /** 最小化窗口 */
   WINDOW_MINIMIZE: 'window:minimize',
   /** 最大化/还原窗口 */

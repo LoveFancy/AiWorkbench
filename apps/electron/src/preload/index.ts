@@ -101,6 +101,7 @@ import type {
   AgentSessionReferenceSearchResult,
   DetachedPreviewWindowData,
   DetachedPreviewWindowInput,
+  HtmlPreviewResult,
   FeishuConfig,
   FeishuConfigInput,
   FeishuBridgeState,
@@ -820,6 +821,9 @@ export interface ElectronAPI {
 
   /** 为内联 PDF 预览生成临时 HTML 文件，返回文件路径 */
   preparePdfPreview: (filePath: string, access?: import('@proma/shared').FileAccessOptions) => Promise<{ tmpHtmlUrl: string } | null>
+
+  /** 准备静态 HTML 内联预览 URL */
+  prepareHtmlPreview: (filePath: string, access?: import('@proma/shared').FileAccessOptions) => Promise<HtmlPreviewResult | null>
 
   /** 读取文件为 base64（带路径校验，供内联图片预览等） */
   readBinaryBase64: (filePath: string, access?: import('@proma/shared').FileAccessOptions, maxSize?: number) => Promise<string | null>
@@ -2067,6 +2071,10 @@ const electronAPI: ElectronAPI = {
 
   preparePdfPreview: (filePath: string, access?: import('@proma/shared').FileAccessOptions) => {
     return ipcRenderer.invoke('file:prepare-pdf-preview', filePath, access) as Promise<{ tmpHtmlUrl: string } | null>
+  },
+
+  prepareHtmlPreview: (filePath: string, access?: import('@proma/shared').FileAccessOptions) => {
+    return ipcRenderer.invoke(IPC_CHANNELS.PREPARE_HTML_PREVIEW, filePath, access) as Promise<HtmlPreviewResult | null>
   },
 
   readBinaryBase64: (filePath: string, access?: import('@proma/shared').FileAccessOptions, maxSize?: number) => {

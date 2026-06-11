@@ -26,8 +26,8 @@ import {
 import { getActiveAccelerator, getAcceleratorDisplay } from '@/lib/shortcut-registry'
 import { detectIsWindows } from '@/lib/platform'
 import { cn } from '@/lib/utils'
-import { DiffTabContent } from './DiffTabContent'
 import { DefaultAppOpenButton } from './DefaultAppOpenButton'
+import { PreviewContentRouter } from './PreviewContentRouter'
 import { getDefaultAppTargetPath, getPreviewFileAccess } from './preview-open-path'
 
 interface PreviewPanelProps {
@@ -149,16 +149,11 @@ export function PreviewPanel({ sessionId }: PreviewPanelProps): React.ReactEleme
       {/* 内容区 */}
       <div className="flex-1 min-h-0 overflow-hidden">
         {currentFile ? (
-          <DiffTabContent
-            key={`${sessionId}:${currentFile.filePath}`}
-            filePath={currentFile.filePath}
+          <PreviewContentRouter
+            previewFile={currentFile}
             dirPath={currentFile.dirPath || sessionPath}
             sessionId={sessionId}
-            gitRoot={currentFile.gitRoot}
-            previewOnly={currentFile.previewOnly}
-            readOnly={currentFile.readOnly}
-            basePaths={currentFile.basePaths}
-            baseRef={currentFile.baseRef}
+            sessionPath={sessionPath}
             onEmptyDiff={handleClosePanel}
           />
         ) : (

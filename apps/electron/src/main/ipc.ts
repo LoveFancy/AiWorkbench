@@ -5,8 +5,8 @@
  */
 
 import { ipcMain, nativeTheme, shell, dialog, BrowserWindow, app } from 'electron'
-import { join, resolve, sep, dirname } from 'node:path'
-import { existsSync, realpathSync, rmSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import { join, resolve, sep, dirname, extname, relative } from 'node:path'
+import { existsSync, realpathSync, rmSync, readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { IPC_CHANNELS, CHANNEL_IPC_CHANNELS, CHAT_IPC_CHANNELS, AGENT_IPC_CHANNELS, ENVIRONMENT_IPC_CHANNELS, INSTALLER_IPC_CHANNELS, PROXY_IPC_CHANNELS, GITHUB_RELEASE_IPC_CHANNELS, SYSTEM_PROMPT_IPC_CHANNELS, MEMORY_IPC_CHANNELS, CHAT_TOOL_IPC_CHANNELS, FEISHU_IPC_CHANNELS, DINGTALK_IPC_CHANNELS, WECHAT_IPC_CHANNELS, AUTOMATION_IPC_CHANNELS, SYSTEM_LOG_IPC_CHANNELS, isPromaPermissionMode } from '@proma/shared'
@@ -113,6 +113,7 @@ import type {
   RevertFileInput,
   FileAccessOptions,
   ResolvedFileUrl,
+  HtmlPreviewResult,
   AgentPluginInfo,
   AgentPluginMarketplace,
   AgentPluginMarketplaceType,
@@ -131,7 +132,7 @@ import type {
 import type { UserProfile, AppSettings, ConfigRootInfo } from '../types'
 import { getRuntimeStatus, getGitRepoStatus, reinitializeRuntime } from './lib/runtime-init'
 import { getUnstagedChanges, getFileDiff, getUntrackedContent, revertFile, getDiffContents, listWorktrees, getWorktreeChanges } from './lib/git-diff-service'
-import { registerPromaFilePath } from './lib/local-file-protocol'
+import { registerPromaDirectoryPath, registerPromaFilePath } from './lib/local-file-protocol'
 import { createAgentFileEntry, findManagedFileEntryRoot } from './lib/agent-file-entry-service'
 import { registerUpdaterIpc } from './lib/updater/updater-ipc'
 import {
@@ -3129,6 +3130,41 @@ export function registerIpcHandlers(): void {
         return null
       }
       return result ? { url: registerPromaFilePath(result) } : null
+    }
+  )
+
+  // 准备静态 HTML 预览 URL：注册 HTML 所在目录，确保相对 CSS/JS/图片可加载。
+  ipcMain.handle(
+    IPC_CHANNELS.PREPARE_HTML_PREVIEW,
+    async (_, filePath: string, access?: FileAccessOptions | string[]): Promise<HtmlPreviewResult | null> => {
+      const { resolveFilePath } = await import('./lib/file-preview-service')
+      const options = normalizeFileAccessOptions(access)
+      const allowedBasePaths = getAllowedCandidateBasePaths(options)
+      const resolved = resolveFilePath(filePath, allowedBasePaths)
+      if (!resolved || !isPathAllowed(resolved, options)) {
+        console.warn('[IPC] file:prepare-html-preview 拒绝越界路径:', resolved ?? filePath)
+        return null
+      }
+
+      const ext = extname(resolved).toLowerCase()
+      if (ext !== '.html' && ext !== '.htm') {
+        console.warn('[IPC] file:prepare-html-preview 拒绝非 HTML 文件:', resolved)
+        return null
+      }
+
+      const stat = statSync(resolved)
+      if (!stat.isFile()) {
+        console.warn('[IPC] file:prepare-html-preview 拒绝非普通文件:', resolved)
+        return null
+      }
+
+      const rootDir = dirname(resolved)
+      const rootUrl = registerPromaDirectoryPath(rootDir)
+      const entryPath = encodeURI(relative(rootDir, resolved).replace(/\\/g, '/'))
+      return {
+        url: `${rootUrl}/${entryPath}`,
+        resolvedPath: resolved,
+      }
     }
   )
 

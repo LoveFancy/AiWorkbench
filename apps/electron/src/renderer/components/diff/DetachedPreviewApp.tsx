@@ -11,8 +11,8 @@ import type { DetachedPreviewWindowData } from '@proma/shared'
 import { agentDiffRefreshVersionAtom } from '@/atoms/agent-atoms'
 import { cn } from '@/lib/utils'
 import { formatManagedPath } from '@/lib/managed-path-display'
-import { DiffTabContent } from './DiffTabContent'
 import { DefaultAppOpenButton } from './DefaultAppOpenButton'
+import { PreviewContentRouter } from './PreviewContentRouter'
 import { getDefaultAppTargetPath, getPreviewFileAccess } from './preview-open-path'
 
 function getPreviewId(): string | null {
@@ -116,14 +116,11 @@ export function DetachedPreviewApp(): React.ReactElement {
       </div>
 
       <div className="flex-1 min-h-0 overflow-hidden">
-        <DiffTabContent
-          filePath={data.filePath}
+        <PreviewContentRouter
+          previewFile={data}
           dirPath={data.dirPath}
           sessionId={data.sessionId}
-          gitRoot={data.gitRoot}
-          previewOnly={data.previewOnly}
-          readOnly={data.readOnly}
-          basePaths={data.basePaths}
+          sessionPath={data.dirPath}
         />
       </div>
     </div>

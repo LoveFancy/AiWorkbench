@@ -53,13 +53,14 @@ import { appModeAtom } from '@/atoms/app-mode'
 import { tabsAtom, activeTabIdAtom, openTab, updateTabTitle } from '@/atoms/tab-atoms'
 import type { AgentStreamState } from '@/atoms/agent-atoms'
 import { agentDiffUnseenChangesAtom, agentDiffUnseenFilesAtom, agentDiffPanelTabAtom, agentSidePanelOpenAtom } from '@/atoms/agent-atoms'
-import { autoPreviewEnabledAtom, previewPanelOpenMapAtom, previewFileMapAtom } from '@/atoms/preview-atoms'
+import { autoPreviewEnabledAtom, previewPanelOpenMapAtom, previewFileMapAtom, previewRefreshVersionAtom, type PreviewFile } from '@/atoms/preview-atoms'
 import type { NotificationSoundType } from '@/types/settings'
 import { toast } from 'sonner'
 import type { AgentStreamEvent, AgentStreamCompletePayload, AgentEvent, AgentStreamPayload, SDKAssistantMessage, SDKUserMessage, SDKSystemMessage, SDKContentBlock, SDKUserContentBlock, PromaEvent, AgentSessionMeta } from '@proma/shared'
 import { buildExternalAgentRunActivation } from '@/lib/external-agent-run'
 import { getAgentCompletionMarkers } from '@/lib/agent-completion-presence'
 import { getPlanModeChangeFromToolName, updatePlanModeSessionSet } from '@/lib/agent-plan-mode'
+import { isHtmlPreviewPath } from '@/components/diff/html-preview-utils'
 
 /** 触发右侧文件浏览器自动定位的写入类工具集合 */
 const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Update'])
@@ -475,7 +476,8 @@ export function useGlobalAgentListeners(): void {
       }
     }
 
-    const buildAutoPreviewFile = async (sid: string, targetPath: string) => {
+    const buildAutoPreviewFile = async (sid: string, targetPath: string): Promise<PreviewFile> => {
+      const isHtml = isHtmlPreviewPath(targetPath)
       const sessionPath = store.get(agentSessionPathMapAtom).get(sid) ?? ''
       const parentDir = getParentDir(targetPath)
       const dirPath = isAbsolutePath(targetPath) ? parentDir : (sessionPath || parentDir)
@@ -531,8 +533,9 @@ export function useGlobalAgentListeners(): void {
 
       return {
         filePath: targetPath,
+        previewKind: isHtml ? 'html' : 'file',
         dirPath: dirPath || undefined,
-        previewOnly,
+        previewOnly: previewOnly || isHtml,
         inDiffScope,
         basePaths: basePaths.length > 0 ? basePaths : undefined,
       }
@@ -732,6 +735,9 @@ export function useGlobalAgentListeners(): void {
               const writtenPath = entry.path
               pendingWriteTools.delete(event.toolUseId)
               store.set(agentDiffRefreshVersionAtom, (prev) => {
+                const m = new Map(prev); m.set(sessionId, (prev.get(sessionId) ?? 0) + 1); return m
+              })
+              store.set(previewRefreshVersionAtom, (prev) => {
                 const m = new Map(prev); m.set(sessionId, (prev.get(sessionId) ?? 0) + 1); return m
               })
               if (writtenPath) {

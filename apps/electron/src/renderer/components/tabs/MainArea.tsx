@@ -21,6 +21,11 @@ import { AutomationsListView } from '@/components/automation/AutomationsListView
 import { automationFormAtom } from '@/atoms/automation-atoms'
 import { activeViewAtom } from '@/atoms/active-view'
 
+const MIN_CONVERSATION_WIDTH = 360
+const MIN_PREVIEW_WIDTH = 320
+const MIN_SPLIT_RATIO = 0.15
+const MAX_SPLIT_RATIO = 0.9
+
 export function MainArea(): React.ReactElement {
   // 记录每个会话上次停留的视图（对话 / 预览），供切回时重建预览 Tab
   useTrackSessionView()
@@ -88,7 +93,10 @@ export function MainArea(): React.ReactElement {
       rafId = requestAnimationFrame(() => {
         rafId = 0
         const delta = ev.clientX - startX
-        const newRatio = Math.max(0.3, Math.min(0.8, startRatio + delta / containerWidth))
+        const minRatio = Math.max(MIN_SPLIT_RATIO, MIN_CONVERSATION_WIDTH / containerWidth)
+        const maxRatio = Math.min(MAX_SPLIT_RATIO, 1 - MIN_PREVIEW_WIDTH / containerWidth)
+        const nextRatio = startRatio + delta / containerWidth
+        const newRatio = Math.max(minRatio, Math.min(maxRatio, nextRatio))
         setSplitRatio(newRatio)
       })
     }
