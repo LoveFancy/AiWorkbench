@@ -32,6 +32,7 @@ export default function App(): React.ReactElement {
   const store = useStore()
   const [isLoading, setIsLoading] = React.useState(true)
   const [showOnboarding, setShowOnboarding] = React.useState(false)
+  const [authState, setAuthState] = useAtom(authStateAtom)
 
   // 初始化：恢复登录状态 + 检查是否需要显示 Onboarding
   // macOS/Linux 上 SDK 自带 claude native binary 不依赖宿主 Node/Git；
@@ -41,11 +42,14 @@ export default function App(): React.ReactElement {
       try {
         // 1. 恢复登录状态（从磁盘 auth.json 检查 Token 是否有效）
         const session = await window.electronAPI.auth.checkSession()
-        if (session.isLoggedIn) {
+        if (session.isLoggedIn && !session.needsReauth) {
           store.set(authStateAtom, {
             isLoggedIn: true,
             jobId: session.jobId,
           })
+        } else if (session.needsReauth) {
+          // Token 有效但超过 30 天，需强制重新登录
+          console.log('[App] Token 已超过 30 天，需要重新登录')
         }
 
         // 2. 检查是否需要显示 Onboarding
@@ -97,6 +101,23 @@ export default function App(): React.ReactElement {
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
           <p className="text-sm text-muted-foreground">正在初始化...</p>
         </div>
+      </div>
+    )
+  }
+
+  // 强制登录：未登录时显示全屏登录页，不可跳过
+  if (!authState.isLoggedIn) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <LoginView
+          onLoginSuccess={() => {
+            // 登录成功后刷新 authState
+            window.electronAPI.auth.getAuthState().then((state: any) => {
+              setAuthState(state)
+            })
+          }}
+          allowSkip={false}
+        />
       </div>
     )
   }

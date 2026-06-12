@@ -11,7 +11,7 @@
 import * as React from 'react'
 import { useAtom, useSetAtom, useAtomValue, useStore } from 'jotai'
 import { toast } from 'sonner'
-import { Pin, PinOff, Settings, Plus, Trash2, Pencil, ChevronDown, ChevronRight, Plug, Zap, PanelLeftClose, PanelLeftOpen, ArrowRightLeft, Search, Archive, ArchiveRestore, ArrowLeft, Hammer, Bot, MessageSquare, MoreHorizontal, LogOut, LogIn, User, Check, FolderOpen, GripVertical, Clock, AlarmClock } from 'lucide-react'
+import { Pin, PinOff, Settings, Plus, Trash2, Pencil, ChevronDown, ChevronRight, Plug, Zap, PanelLeftClose, PanelLeftOpen, ArrowRightLeft, Search, Archive, ArchiveRestore, ArrowLeft, Hammer, Bot, MessageSquare, MoreHorizontal, LogOut, LogIn, User, Check, FolderOpen, GripVertical, Clock, AlarmClock, ShieldCheck, CalendarDays } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { ModeSwitcher } from './ModeSwitcher'
@@ -342,6 +342,19 @@ function SidebarWindowDragStrip({ height }: { height: number }): React.ReactElem
   )
 }
 
+/** 格式化时间戳为简短日期 */
+function formatDate(ts: number): string {
+  const d = new Date(ts)
+  const month = d.getMonth() + 1
+  const day = d.getDate()
+  return `${month}月${day}日`
+}
+
+/** 计算剩余天数 */
+function daysRemaining(expiresAt: number): number {
+  return Math.max(0, Math.ceil((expiresAt - Date.now()) / (24 * 60 * 60 * 1000)))
+}
+
 export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
   const [activeView, setActiveView] = useAtom(activeViewAtom)
   const setAutomationForm = useSetAtom(automationFormAtom)
@@ -376,6 +389,10 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
   const [userProfile, setUserProfile] = useAtom(userProfileAtom)
   const [authState, setAuthState] = useAtom(authStateAtom)
   const setLoginDialogOpen = useSetAtom(loginDialogOpenAtom)
+  const [authInfo, setAuthInfo] = React.useState<{
+    jobId: string; displayName?: string; lastLoginAt: number
+    expiresAt: number; createdAt: number; needsReauth: boolean
+  } | null>(null)
 
   const handleLogin = React.useCallback(() => {
     setLoginDialogOpen(true)
@@ -385,11 +402,21 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
     try {
       await (window.electronAPI as any).auth.logout()
       setAuthState({ isLoggedIn: false, jobId: undefined })
+      setAuthInfo(null)
       toast.success('已退出登录')
     } catch {
       toast.error('退出登录失败')
     }
   }, [setAuthState])
+
+  /** 打开用户菜单时拉取完整认证信息 */
+  const handleUserMenuOpen = React.useCallback((open: boolean) => {
+    if (open && authState.isLoggedIn) {
+      ;(window.electronAPI as any).auth.getAuthInfo().then((info: any) => {
+        if (info) setAuthInfo(info)
+      }).catch(() => {})
+    }
+  }, [authState.isLoggedIn])
   const selectedModel = useAtomValue(selectedModelAtom)
   const streamingIds = useAtomValue(streamingConversationIdsAtom)
   const mode = useAtomValue(appModeAtom)
@@ -1615,48 +1642,78 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
 
         {/* 用户菜单（收起状态） */}
         <div className="pt-3 pb-3">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                aria-label="用户菜单"
-                className="relative size-10 flex items-center justify-center rounded-[12px] transition-colors titlebar-no-drag hover:bg-foreground/5"
-              >
-                <UserAvatar avatar={userProfile.avatar} size={28} />
-                {(hasUpdate || hasEnvironmentIssues) && (
-                  <span className="absolute top-0 right-0 w-2 h-2 rounded-full bg-red-500" />
-                )}
-                {authState.isLoggedIn && (
+          {authState.isLoggedIn ? (
+            <DropdownMenu onOpenChange={handleUserMenuOpen}>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="用户菜单"
+                  className="relative size-10 flex items-center justify-center rounded-[12px] transition-colors titlebar-no-drag hover:bg-foreground/5"
+                >
+                  <UserAvatar avatar={userProfile.avatar} size={28} />
+                  {(hasUpdate || hasEnvironmentIssues) && (
+                    <span className="absolute top-0 right-0 w-2 h-2 rounded-full bg-red-500" />
+                  )}
                   <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-green-500 border-2 border-background" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="top" align="end" className="w-56 z-[9999]">
+                {/* 用户信息头部 */}
+                <div className="px-4 pt-3 pb-2">
+                  <div className="flex items-center gap-3">
+                    <UserAvatar avatar={userProfile.avatar} size={36} />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold truncate">{userProfile.userName}</p>
+                      <p className="text-xs text-muted-foreground">工号 {authState.jobId}</p>
+                    </div>
+                  </div>
+                </div>
+                {/* 登录信息 */}
+                {authInfo && (
+                  <div className="px-4 pb-1 space-y-1.5">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <CalendarDays size={12} className="flex-shrink-0" />
+                      <span>登录于 {formatDate(authInfo.lastLoginAt)}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Clock size={12} className="flex-shrink-0" />
+                      <span>有效期至 {formatDate(authInfo.expiresAt)}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <ShieldCheck size={12} className="flex-shrink-0 text-green-500" />
+                      <span className="text-green-600">
+                        已认证 · {daysRemaining(authInfo.expiresAt)} 天后过期
+                      </span>
+                    </div>
+                  </div>
                 )}
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent side="right" align="end" className="w-48 z-[9999]">
-              <div className="px-3 py-2">
-                <p className="text-sm font-medium">{userProfile.userName}</p>
-                {authState.isLoggedIn && (
-                  <p className="text-xs text-muted-foreground">工号: {authState.jobId}</p>
-                )}
-              </div>
-              <DropdownMenuSeparator />
-              {authState.isLoggedIn ? (
+                <DropdownMenuSeparator />
                 <DropdownMenuItem onSelect={handleLogout} className="text-red-500">
                   <LogOut className="mr-2 size-4" />
                   退出登录
                 </DropdownMenuItem>
-              ) : (
-                <DropdownMenuItem onSelect={handleLogin}>
-                  <LogIn className="mr-2 size-4" />
-                  登录
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => setSettingsOpen(true)}>
+                  <Settings className="mr-2 size-4" />
+                  设置
                 </DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => setSettingsOpen(true)}>
-                <Settings className="mr-2 size-4" />
-                设置
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="登录"
+                  onClick={handleLogin}
+                  className="relative size-10 flex items-center justify-center rounded-[12px] transition-all titlebar-no-drag bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 hover:border-primary/40"
+                >
+                  <LogIn size={18} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">登录 OA 账号</TooltipContent>
+            </Tooltip>
+          )}
         </div>
 
         {deleteDialog}
@@ -2050,46 +2107,69 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
 
       {/* 底部：用户菜单 + 设置入口 */}
       <div className="px-3 pb-3 flex items-center gap-1">
-        {/* 用户头像 → 弹出登录/登出菜单 */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              className="flex-1 flex items-center gap-3 min-w-0 px-3 py-2 rounded-[10px] transition-colors titlebar-no-drag text-foreground/70 hover:bg-foreground/[0.04] hover:text-foreground"
-            >
-              <div className="relative flex-shrink-0">
-                <UserAvatar avatar={userProfile.avatar} size={28} />
-                {authState.isLoggedIn && (
+        {authState.isLoggedIn ? (
+          /* 已登录：用户头像 → 弹出登出菜单 */
+          <DropdownMenu onOpenChange={handleUserMenuOpen}>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="flex-1 flex items-center gap-3 min-w-0 px-3 py-2 rounded-[10px] transition-colors titlebar-no-drag text-foreground/70 hover:bg-foreground/[0.04] hover:text-foreground"
+              >
+                <div className="relative flex-shrink-0">
+                  <UserAvatar avatar={userProfile.avatar} size={28} />
                   <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-green-500 border-2 border-background" />
-                )}
+                </div>
+                <span className="flex-1 text-sm truncate text-left">
+                  {authState.jobId ?? userProfile.userName}
+                </span>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="top" align="start" className="w-56 z-[9999]">
+              {/* 用户信息头部 */}
+              <div className="px-4 pt-3 pb-2">
+                <div className="flex items-center gap-3">
+                  <UserAvatar avatar={userProfile.avatar} size={36} />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold truncate">{userProfile.userName}</p>
+                    <p className="text-xs text-muted-foreground">工号 {authState.jobId}</p>
+                  </div>
+                </div>
               </div>
-              <span className="flex-1 text-sm truncate text-left">
-                {authState.isLoggedIn ? (authState.jobId ?? userProfile.userName) : userProfile.userName}
-              </span>
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent side="right" align="start" className="w-48 z-[9999]">
-            <div className="px-3 py-2">
-              <p className="text-sm font-medium">{userProfile.userName}</p>
-              {authState.isLoggedIn ? (
-                <p className="text-xs text-muted-foreground">工号: {authState.jobId}</p>
-              ) : (
-                <p className="text-xs text-muted-foreground">未登录</p>
+              {/* 登录信息 */}
+              {authInfo && (
+                <div className="px-4 pb-1 space-y-1.5">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <CalendarDays size={12} className="flex-shrink-0" />
+                    <span>登录于 {formatDate(authInfo.lastLoginAt)}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Clock size={12} className="flex-shrink-0" />
+                    <span>有效期至 {formatDate(authInfo.expiresAt)}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs">
+                    <ShieldCheck size={12} className="flex-shrink-0 text-green-500" />
+                    <span className="text-green-600">
+                      已认证 · {daysRemaining(authInfo.expiresAt)} 天后过期
+                    </span>
+                  </div>
+                </div>
               )}
-            </div>
-            <DropdownMenuSeparator />
-            {authState.isLoggedIn ? (
+              <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={handleLogout} className="text-red-500">
                 <LogOut className="mr-2 size-4" />
                 退出登录
               </DropdownMenuItem>
-            ) : (
-              <DropdownMenuItem onSelect={handleLogin}>
-                <LogIn className="mr-2 size-4" />
-                登录
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          /* 未登录：醒目的登录按钮 */
+          <button
+            onClick={handleLogin}
+            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-[10px] transition-all titlebar-no-drag bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium"
+          >
+            <LogIn size={16} />
+            <span>登录 OA 账号</span>
+          </button>
+        )}
 
         {/* 设置按钮 */}
         <Tooltip>

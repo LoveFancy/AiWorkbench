@@ -85,9 +85,13 @@ function FileCreateButton({
 }: {
   label: string
   icon: 'directory' | 'file'
-  onClick: () => void
+  onClick: (e: React.MouseEvent) => void
 }): React.ReactElement {
   const Icon = icon === 'directory' ? FolderPlus : FilePlus
+  const handleClick = React.useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    onClick(e)
+  }, [onClick])
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -96,7 +100,7 @@ function FileCreateButton({
           variant="ghost"
           size="icon"
           className="h-5 w-5 flex-shrink-0"
-          onClick={onClick}
+          onClick={handleClick}
         >
           <Icon className="size-2.5" />
         </Button>
@@ -663,12 +667,12 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                     <FileCreateButton
                       label="新建文件"
                       icon="file"
-                      onClick={(e) => { e.stopPropagation(); openCreateDialog({ parentDir: sessionCreateDir ?? sessionPath, type: 'file', scope: 'session' }) }}
+                      onClick={() => openCreateDialog({ parentDir: sessionCreateDir ?? sessionPath, type: 'file', scope: 'session' })}
                     />
                     <FileCreateButton
                       label="新建文件夹"
                       icon="directory"
-                      onClick={(e) => { e.stopPropagation(); openCreateDialog({ parentDir: sessionCreateDir ?? sessionPath, type: 'directory', scope: 'session' }) }}
+                      onClick={() => openCreateDialog({ parentDir: sessionCreateDir ?? sessionPath, type: 'directory', scope: 'session' })}
                     />
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -803,12 +807,12 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                       <FileCreateButton
                         label="新建文件"
                         icon="file"
-                        onClick={(e) => { e.stopPropagation(); openCreateDialog({ parentDir: workspaceCreateDir ?? workspaceFilesPath, type: 'file', scope: 'workspace' }) }}
+                        onClick={() => openCreateDialog({ parentDir: workspaceCreateDir ?? workspaceFilesPath, type: 'file', scope: 'workspace' })}
                       />
                       <FileCreateButton
                         label="新建文件夹"
                         icon="directory"
-                        onClick={(e) => { e.stopPropagation(); openCreateDialog({ parentDir: workspaceCreateDir ?? workspaceFilesPath, type: 'directory', scope: 'workspace' }) }}
+                        onClick={() => openCreateDialog({ parentDir: workspaceCreateDir ?? workspaceFilesPath, type: 'directory', scope: 'workspace' })}
                       />
                       <Tooltip>
                         <TooltipTrigger asChild>
