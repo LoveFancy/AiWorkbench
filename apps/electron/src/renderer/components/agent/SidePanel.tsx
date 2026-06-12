@@ -111,8 +111,8 @@ function FileCreateButton({
 interface SidePanelProps {
   sessionId: string
   sessionPath: string | null
-  activeTab: 'session' | 'workspace' | 'changes'
-  onTabChange: (tab: 'session' | 'workspace' | 'changes') => void
+  activeTab: 'workspace' | 'changes'
+  onTabChange: (tab: 'workspace' | 'changes') => void
   width?: number
 }
 
@@ -593,181 +593,52 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
             ) : (
               <div className="flex-1 flex items-center justify-center text-muted-foreground text-xs">等待会话初始化...</div>
             )
-          ) : activeTab === 'session' ? (
-            <div className="flex-1 min-h-0 flex flex-col pt-0.5 mx-2 mb-2">
-              {sessionPath ? (
-                <>
-                  <div className="flex items-center gap-1 px-2 h-[32px] flex-shrink-0">
-                    <FolderOpen className="size-3 text-muted-foreground" />
-                    <span className="text-[11px] font-medium text-muted-foreground">会话文件</span>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Info className="size-3 text-muted-foreground/50 cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom" className="max-w-[200px]">
-                        <p>当前会话的专属文件，仅本次对话的 Agent 可以访问</p>
-                      </TooltipContent>
-                    </Tooltip>
-                    <span className="text-[10px] text-muted-foreground/70 truncate flex-1 min-w-0" title={sessionPath}>
-                      {sessionDisplayPath}
-                    </span>
-                    <FileCreateButton
-                      label="新建文件"
-                      icon="file"
-                      onClick={() => openCreateDialog({ parentDir: sessionCreateDir ?? sessionPath, type: 'file', scope: 'session' })}
-                    />
-                    <FileCreateButton
-                      label="新建文件夹"
-                      icon="directory"
-                      onClick={() => openCreateDialog({ parentDir: sessionCreateDir ?? sessionPath, type: 'directory', scope: 'session' })}
-                    />
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className={filePanelActionButtonClass}
-                          onClick={() => window.electronAPI.openFile(sessionPath).catch(console.error)}
-                        >
-                          <ExternalLink />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        <p>在 Finder 中打开</p>
-                      </TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className={filePanelActionButtonClass}
-                          onClick={handleRefresh}
-                        >
-                          <RefreshCw />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        <p>刷新文件列表</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                  <FileSearchBar
-                    workspaceFilesPath={null}
-                    sessionPath={sessionPath}
-                    sessionAttachedDirs={attachedDirs}
-                    workspaceAttachedDirs={[]}
-                    placeholder="搜索会话文件..."
-                    sessionId={sessionId}
-                    onFilePreview={handleFilePreview}
-                  />
-                  {/* 会话文件内容区（独立滚动） */}
-                  <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin" onClick={handleSessionFilesBlankClick}>
-                    {attachedFiles.length > 0 && (
-                      <AttachedFilesSection
-                        attachedFiles={attachedFiles}
-                        onDetach={handleDetachFile}
-                        onAddToChat={handleAddToChat}
-                        onFilePreview={handleFilePreview}
-                        allowedPaths={basePathsRef.current}
-                        sessionId={sessionId}
-                      />
-                    )}
-                    {attachedDirs.length > 0 && (
-                      <AttachedDirsSection
-                        attachedDirs={attachedDirs}
-                        onDetach={handleDetachDirectory}
-                        refreshVersion={filesVersion}
-                        onAddToChat={handleAddToChat}
-                        onFilePreview={handleFilePreview}
-                        allowedPaths={basePathsRef.current}
-                        sessionId={sessionId}
-                      />
-                    )}
-                    <>
-                      {hasSessionAttachedItems && (
-                        <div className="text-[11px] font-medium text-muted-foreground mb-1 px-3 pt-2">工作文件（存储于该工作区目录）</div>
-                      )}
-                      <FileBrowser
-                        rootPath={sessionPath}
-                        hideToolbar
-                        embedded
-                        hideEmpty={hasSessionAttachedItems}
-                        displayRoots={{ sessionPath, workspaceFilesPath }}
-                        clearSelectionSignal={sessionSelectionClearSignal}
-                        onAddToChat={handleAddToChat}
-                        onFilePreview={handleFilePreview}
-                        onSelectedDirectoryChange={setSessionCreateDir}
-                        onCreateEntry={(parentDir, type) => openCreateDialog({ parentDir, type, scope: 'session' })}
-                      />
-                    </>
-                    {/* 会话文件拖拽上传区域 */}
-                    <FileDropZone
-                      workspaceSlug={workspaceSlug ?? ''}
-                      sessionId={sessionId}
-                      target="session"
-                      onFilesUploaded={handleFilesUploaded}
-                      onFilesAttached={handleSessionFilesAttached}
-                      onAttachFolder={handleAttachFolder}
-                      onFoldersDropped={handleSessionFoldersDropped}
-                    />
-                  </div>
-                </>
-              ) : (
-                <div className="flex-1 flex items-center justify-center text-muted-foreground text-xs">等待会话初始化...</div>
-              )}
-            </div>
           ) : (
             <div className="flex-1 min-h-0 flex flex-col pt-0.5">
               <div className="flex-1 min-h-0 flex flex-col mx-2 mb-2">
-                <div className="flex items-center gap-1 px-2 h-[32px] flex-shrink-0">
-                  <FolderHeart className="size-3 text-muted-foreground" />
-                  <span className="text-[11px] font-medium text-muted-foreground">工作区文件</span>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Info className="size-3 text-muted-foreground/50 cursor-help" />
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" className="max-w-[220px]">
-                      <p>工作区内所有会话可访问的文件和文件夹，每个新对话都可以自动读取</p>
-                    </TooltipContent>
-                  </Tooltip>
-                  {workspaceFilesPath ? (
-                    <span className="text-[10px] text-muted-foreground/70 truncate flex-1 min-w-0" title={workspaceFilesPath}>
-                      {workspaceDisplayPath}
-                    </span>
-                  ) : (
-                    <div className="flex-1" />
-                  )}
-                  {workspaceFilesPath && (
-                    <>
+                {/* === 会话文件区域 === */}
+                {sessionPath && (
+                  <div className="mb-3">
+                    <div className="flex items-center gap-1 px-2 h-[32px] flex-shrink-0">
+                      <FolderOpen className="size-3 text-muted-foreground" />
+                      <span className="text-[11px] font-medium text-muted-foreground">会话文件</span>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="size-3 text-muted-foreground/50 cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom" className="max-w-[200px]">
+                          <p>当前会话的专属文件，仅本次对话的 Agent 可以访问</p>
+                        </TooltipContent>
+                      </Tooltip>
+                      <span className="text-[10px] text-muted-foreground/70 truncate flex-1 min-w-0" title={sessionPath}>
+                        {sessionDisplayPath}
+                      </span>
                       <FileCreateButton
                         label="新建文件"
                         icon="file"
-                        onClick={() => openCreateDialog({ parentDir: workspaceCreateDir ?? workspaceFilesPath, type: 'file', scope: 'workspace' })}
+                        onClick={() => openCreateDialog({ parentDir: sessionCreateDir ?? sessionPath, type: 'file', scope: 'session' })}
                       />
                       <FileCreateButton
                         label="新建文件夹"
                         icon="directory"
-                        onClick={() => openCreateDialog({ parentDir: workspaceCreateDir ?? workspaceFilesPath, type: 'directory', scope: 'workspace' })}
+                        onClick={() => openCreateDialog({ parentDir: sessionCreateDir ?? sessionPath, type: 'directory', scope: 'session' })}
                       />
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className={filePanelActionButtonClass}
-                          onClick={() => window.electronAPI.openFile(workspaceFilesPath).catch(console.error)}
-                        >
-                          <ExternalLink />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        <p>在 Finder 中打开工作区文件目录</p>
-                      </TooltipContent>
-                    </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className={filePanelActionButtonClass}
+                            onClick={() => window.electronAPI.openFile(sessionPath).catch(console.error)}
+                          >
+                            <ExternalLink />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          <p>在 Finder 中打开</p>
+                        </TooltipContent>
+                      </Tooltip>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button
@@ -784,69 +655,194 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                           <p>刷新文件列表</p>
                         </TooltipContent>
                       </Tooltip>
-                    </>
-                  )}
-                </div>
-                <FileSearchBar
-                  workspaceFilesPath={workspaceFilesPath}
-                  sessionPath={null}
-                  sessionAttachedDirs={[]}
-                  workspaceAttachedDirs={wsAttachedDirs}
-                  placeholder="搜索工作区文件..."
-                  sessionId={sessionId}
-                  onFilePreview={handleFilePreview}
-                />
-                {/* 工作区文件内容区（独立滚动） */}
-                <div className="flex-1 min-h-0 overflow-y-auto pb-1 scrollbar-thin" onClick={handleWorkspaceFilesBlankClick}>
-                  {wsAttachedFiles.length > 0 && (
-                    <AttachedFilesSection
-                      attachedFiles={wsAttachedFiles}
-                      onDetach={handleDetachWorkspaceFile}
-                      onAddToChat={handleAddToChat}
-                      onFilePreview={handleFilePreview}
-                      allowedPaths={basePathsRef.current}
+                    </div>
+                    <FileSearchBar
+                      workspaceFilesPath={null}
+                      sessionPath={sessionPath}
+                      sessionAttachedDirs={attachedDirs}
+                      workspaceAttachedDirs={[]}
+                      placeholder="搜索会话文件..."
                       sessionId={sessionId}
-                    />
-                  )}
-                  {wsAttachedDirs.length > 0 && (
-                    <AttachedDirsSection
-                      attachedDirs={wsAttachedDirs}
-                      onDetach={handleDetachWorkspaceDirectory}
-                      refreshVersion={filesVersion}
-                      onAddToChat={handleAddToChat}
                       onFilePreview={handleFilePreview}
-                      allowedPaths={basePathsRef.current}
-                      sessionId={sessionId}
                     />
-                  )}
-                  {workspaceFilesPath && (
-                    <>
-                      {hasWorkspaceAttachedItems && (
-                        <div className="text-[11px] font-medium text-muted-foreground mb-1 px-3 pt-2">工作文件（存储于该工作区目录）</div>
+                    <div className="max-h-[200px] overflow-y-auto scrollbar-thin" onClick={handleSessionFilesBlankClick}>
+                      {attachedFiles.length > 0 && (
+                        <AttachedFilesSection
+                          attachedFiles={attachedFiles}
+                          onDetach={handleDetachFile}
+                          onAddToChat={handleAddToChat}
+                          onFilePreview={handleFilePreview}
+                          allowedPaths={basePathsRef.current}
+                          sessionId={sessionId}
+                        />
                       )}
-                      <FileBrowser
-                        rootPath={workspaceFilesPath}
-                        hideToolbar
-                        embedded
-                        hideEmpty={hasWorkspaceAttachedItems}
-                        displayRoots={{ sessionPath, workspaceFilesPath }}
-                        clearSelectionSignal={workspaceSelectionClearSignal}
+                      {attachedDirs.length > 0 && (
+                        <AttachedDirsSection
+                          attachedDirs={attachedDirs}
+                          onDetach={handleDetachDirectory}
+                          refreshVersion={filesVersion}
+                          onAddToChat={handleAddToChat}
+                          onFilePreview={handleFilePreview}
+                          allowedPaths={basePathsRef.current}
+                          sessionId={sessionId}
+                        />
+                      )}
+                      <>
+                        {hasSessionAttachedItems && (
+                          <div className="text-[11px] font-medium text-muted-foreground mb-1 px-3 pt-2">工作文件（存储于该工作区目录）</div>
+                        )}
+                        <FileBrowser
+                          rootPath={sessionPath}
+                          hideToolbar
+                          embedded
+                          hideEmpty={hasSessionAttachedItems}
+                          displayRoots={{ sessionPath, workspaceFilesPath }}
+                          clearSelectionSignal={sessionSelectionClearSignal}
+                          onAddToChat={handleAddToChat}
+                          onFilePreview={handleFilePreview}
+                          onSelectedDirectoryChange={setSessionCreateDir}
+                          onCreateEntry={(parentDir, type) => openCreateDialog({ parentDir, type, scope: 'session' })}
+                        />
+                      </>
+                      <FileDropZone
+                        workspaceSlug={workspaceSlug ?? ''}
+                        sessionId={sessionId}
+                        target="session"
+                        onFilesUploaded={handleFilesUploaded}
+                        onFilesAttached={handleSessionFilesAttached}
+                        onAttachFolder={handleAttachFolder}
+                        onFoldersDropped={handleSessionFoldersDropped}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* === 工作区文件区域 === */}
+                <div className="flex-1 min-h-0 flex flex-col">
+                  <div className="flex items-center gap-1 px-2 h-[32px] flex-shrink-0">
+                    <FolderHeart className="size-3 text-muted-foreground" />
+                    <span className="text-[11px] font-medium text-muted-foreground">工作区文件</span>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="size-3 text-muted-foreground/50 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="max-w-[220px]">
+                        <p>工作区内所有会话可访问的文件和文件夹，每个新对话都可以自动读取</p>
+                      </TooltipContent>
+                    </Tooltip>
+                    {workspaceFilesPath ? (
+                      <span className="text-[10px] text-muted-foreground/70 truncate flex-1 min-w-0" title={workspaceFilesPath}>
+                        {workspaceDisplayPath}
+                      </span>
+                    ) : (
+                      <div className="flex-1" />
+                    )}
+                    {workspaceFilesPath && (
+                      <>
+                        <FileCreateButton
+                          label="新建文件"
+                          icon="file"
+                          onClick={() => openCreateDialog({ parentDir: workspaceCreateDir ?? workspaceFilesPath, type: 'file', scope: 'workspace' })}
+                        />
+                        <FileCreateButton
+                          label="新建文件夹"
+                          icon="directory"
+                          onClick={() => openCreateDialog({ parentDir: workspaceCreateDir ?? workspaceFilesPath, type: 'directory', scope: 'workspace' })}
+                        />
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className={filePanelActionButtonClass}
+                              onClick={() => window.electronAPI.openFile(workspaceFilesPath).catch(console.error)}
+                            >
+                              <ExternalLink />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">
+                            <p>在 Finder 中打开工作区文件目录</p>
+                          </TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className={filePanelActionButtonClass}
+                              onClick={handleRefresh}
+                            >
+                              <RefreshCw />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">
+                            <p>刷新文件列表</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </>
+                    )}
+                  </div>
+                  <FileSearchBar
+                    workspaceFilesPath={workspaceFilesPath}
+                    sessionPath={null}
+                    sessionAttachedDirs={[]}
+                    workspaceAttachedDirs={wsAttachedDirs}
+                    placeholder="搜索工作区文件..."
+                    sessionId={sessionId}
+                    onFilePreview={handleFilePreview}
+                  />
+                  <div className="flex-1 min-h-0 overflow-y-auto pb-1 scrollbar-thin" onClick={handleWorkspaceFilesBlankClick}>
+                    {wsAttachedFiles.length > 0 && (
+                      <AttachedFilesSection
+                        attachedFiles={wsAttachedFiles}
+                        onDetach={handleDetachWorkspaceFile}
                         onAddToChat={handleAddToChat}
                         onFilePreview={handleFilePreview}
-                        onSelectedDirectoryChange={setWorkspaceCreateDir}
-                        onCreateEntry={(parentDir, type) => openCreateDialog({ parentDir, type, scope: 'workspace' })}
+                        allowedPaths={basePathsRef.current}
+                        sessionId={sessionId}
                       />
-                    </>
-                  )}
-                  {/* 工作区文件拖拽上传区域 */}
-                  <FileDropZone
-                    workspaceSlug={workspaceSlug ?? ''}
-                    target="workspace"
-                    onFilesUploaded={handleFilesUploaded}
-                    onFilesAttached={handleWorkspaceFilesAttached}
-                    onAttachFolder={handleAttachWorkspaceFolder}
-                    onFoldersDropped={handleWorkspaceFoldersDropped}
-                  />
+                    )}
+                    {wsAttachedDirs.length > 0 && (
+                      <AttachedDirsSection
+                        attachedDirs={wsAttachedDirs}
+                        onDetach={handleDetachWorkspaceDirectory}
+                        refreshVersion={filesVersion}
+                        onAddToChat={handleAddToChat}
+                        onFilePreview={handleFilePreview}
+                        allowedPaths={basePathsRef.current}
+                        sessionId={sessionId}
+                      />
+                    )}
+                    {workspaceFilesPath && (
+                      <>
+                        {hasWorkspaceAttachedItems && (
+                          <div className="text-[11px] font-medium text-muted-foreground mb-1 px-3 pt-2">工作文件（存储于该工作区目录）</div>
+                        )}
+                        <FileBrowser
+                          rootPath={workspaceFilesPath}
+                          hideToolbar
+                          embedded
+                          hideEmpty={hasWorkspaceAttachedItems}
+                          displayRoots={{ sessionPath, workspaceFilesPath }}
+                          clearSelectionSignal={workspaceSelectionClearSignal}
+                          onAddToChat={handleAddToChat}
+                          onFilePreview={handleFilePreview}
+                          onSelectedDirectoryChange={setWorkspaceCreateDir}
+                          onCreateEntry={(parentDir, type) => openCreateDialog({ parentDir, type, scope: 'workspace' })}
+                        />
+                      </>
+                    )}
+                    <FileDropZone
+                      workspaceSlug={workspaceSlug ?? ''}
+                      target="workspace"
+                      onFilesUploaded={handleFilesUploaded}
+                      onFilesAttached={handleWorkspaceFilesAttached}
+                      onAttachFolder={handleAttachWorkspaceFolder}
+                      onFoldersDropped={handleWorkspaceFoldersDropped}
+                    />
+                  </div>
                 </div>
               </div>
             </div>

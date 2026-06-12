@@ -1,7 +1,7 @@
 /**
  * DiffPanelTabBar — 右侧面板顶部 Tab 栏
  *
- * 切换「会话文件」「工作区文件」和「代码改动」三个视图。最右侧有关闭按钮。
+ * 切换「工作区文件」和「代码改动」两个视图。最右侧有关闭按钮。
  */
 
 import * as React from 'react'
@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { agentDiffUnseenChangesAtom, currentAgentSessionIdAtom } from '@/atoms/agent-atoms'
 
-type DiffPanelTab = 'session' | 'workspace' | 'changes'
+type DiffPanelTab = 'workspace' | 'changes'
 
 interface DiffPanelTabBarProps {
   activeTab: DiffPanelTab
@@ -61,19 +61,6 @@ export function DiffPanelTabBar({ activeTab, onTabChange, onClose }: DiffPanelTa
     <div className="flex items-end h-[34px] tabbar-bg relative flex-shrink-0">
       <div className="absolute inset-0 titlebar-drag-region" />
       <div className="relative flex items-end flex-1 titlebar-no-drag">
-        <button
-          type="button"
-          onClick={() => onTabChange('session')}
-          className={cn(
-            'flex-1 px-3 h-[34px] rounded-t-lg text-xs transition-colors select-none cursor-pointer',
-            'border-t border-l border-r',
-            activeTab === 'session'
-              ? 'bg-content-area text-foreground border-border/50'
-              : 'text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/50',
-          )}
-        >
-          会话文件
-        </button>
         <button
           type="button"
           onClick={() => onTabChange('workspace')}
