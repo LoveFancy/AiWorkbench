@@ -4664,4 +4664,24 @@ export function registerIpcHandlers(): void {
       await runAutomationNow(id)
     }
   )
+
+  // ===== 使用手册 =====
+
+  const { MANUAL_IPC_CHANNELS } = await import('@proma/shared')
+
+  ipcMain.handle(
+    MANUAL_IPC_CHANNELS.CHECK_AND_GET,
+    async () => {
+      const { checkAndGetManual } = await import('./lib/manual-service')
+      return checkAndGetManual()
+    }
+  )
+
+  ipcMain.handle(
+    MANUAL_IPC_CHANNELS.GET_BUILT_IN,
+    async () => {
+      const { getBuiltInManual } = await import('./lib/manual-service')
+      return getBuiltInManual()
+    }
+  )
 }

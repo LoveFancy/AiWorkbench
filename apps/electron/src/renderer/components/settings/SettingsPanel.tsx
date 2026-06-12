@@ -39,7 +39,7 @@ import { UsageLogSettings } from "./UsageLogSettings";
 import { SystemLogSettings } from "./SystemLogSettings";
 import { PluginSettings } from "./PluginSettings";
 import { ExpertGroupSettings } from "./ExpertGroupSettings";
-import { TutorialViewer } from "../tutorial/TutorialViewer";
+import { ManualView } from "../manual/ManualView";
 import { ShortcutSettings } from "./ShortcutSettings";
 import type { TabItem } from "./settings-tabs";
 import { getSettingsTabs } from "./settings-tabs";
@@ -72,7 +72,7 @@ function renderTabContent(tab: SettingsTab): React.ReactElement {
     case "about":
       return <AboutSettings />;
     case "tutorial":
-      return <TutorialViewer />;
+      return <ManualView />;
     case "shortcuts":
       return <ShortcutSettings />;
     case "storage":

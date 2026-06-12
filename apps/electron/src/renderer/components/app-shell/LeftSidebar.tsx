@@ -11,7 +11,7 @@
 import * as React from 'react'
 import { useAtom, useSetAtom, useAtomValue, useStore } from 'jotai'
 import { toast } from 'sonner'
-import { Pin, PinOff, Settings, Plus, Trash2, Pencil, ChevronDown, ChevronRight, Plug, Zap, PanelLeftClose, PanelLeftOpen, ArrowRightLeft, Search, Archive, ArchiveRestore, ArrowLeft, Hammer, Bot, MessageSquare, MoreHorizontal, LogOut, LogIn, User, Check, FolderOpen, GripVertical, Clock, AlarmClock } from 'lucide-react'
+import { Pin, PinOff, Settings, Plus, Trash2, Pencil, ChevronDown, ChevronRight, Plug, Zap, PanelLeftClose, PanelLeftOpen, ArrowRightLeft, Search, Archive, ArchiveRestore, ArrowLeft, Hammer, Bot, MessageSquare, MoreHorizontal, LogOut, LogIn, User, Check, FolderOpen, GripVertical, Clock, AlarmClock, BookOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { ModeSwitcher } from './ModeSwitcher'
@@ -21,6 +21,7 @@ import { activeViewAtom } from '@/atoms/active-view'
 import { automationFormAtom, automationsAtom } from '@/atoms/automation-atoms'
 import { appModeAtom, type AppMode } from '@/atoms/app-mode'
 import { settingsTabAtom, settingsOpenAtom } from '@/atoms/settings-tab'
+import { manualPanelOpenAtom } from '@/atoms/manual-atoms'
 import {
   conversationsAtom,
   currentConversationIdAtom,
@@ -350,6 +351,7 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
   const automationCount = automations.length
   const setSettingsTab = useSetAtom(settingsTabAtom)
   const setSettingsOpen = useSetAtom(settingsOpenAtom)
+  const setManualPanelOpen = useSetAtom(manualPanelOpenAtom)
   const [conversations, setConversations] = useAtom(conversationsAtom)
   const [currentConversationId, setCurrentConversationId] = useAtom(currentConversationIdAtom)
   const draftSessionIds = useAtomValue(draftSessionIdsAtom)
@@ -1697,6 +1699,7 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
           <TooltipContent side="right">收起侧边栏 ({navigator.platform.includes('Mac') ? '⌘B' : 'Ctrl+B'})</TooltipContent>
         </Tooltip>
       </div>
+      </div>
 
       {/* 新对话/新会话按钮 + 搜索按钮 */}
       <div className="px-3 pt-2 flex items-center gap-1.5">
@@ -2048,8 +2051,24 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
         </div>
       )}
 
-      {/* 底部：用户菜单 + 设置入口 */}
-      <div className="px-3 pb-3 flex items-center gap-1">
+      {/* 底部：使用手册 + 用户菜单 + 设置入口 */}
+      <div className="px-3 pb-3 flex flex-col gap-1">
+        {/* 使用手册按钮 */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={() => setManualPanelOpen(true)}
+              className="flex items-center gap-3 min-w-0 px-3 py-2 rounded-[10px] transition-colors titlebar-no-drag text-foreground/70 hover:bg-foreground/[0.04] hover:text-foreground"
+            >
+              <BookOpen className="size-5 flex-shrink-0" />
+              <span className="flex-1 text-sm truncate text-left">使用手册</span>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top">查看使用手册</TooltipContent>
+        </Tooltip>
+
+        {/* 用户头像 + 设置 */}
+        <div className="flex items-center gap-1">
         {/* 用户头像 → 弹出登录/登出菜单 */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -2106,6 +2125,7 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
           </TooltipTrigger>
           <TooltipContent side="top">设置</TooltipContent>
         </Tooltip>
+      </div>
       </div>
 
       {deleteDialog}

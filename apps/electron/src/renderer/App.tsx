@@ -2,7 +2,7 @@ import * as React from 'react'
 import { useAtom, useAtomValue, useSetAtom, useStore } from 'jotai'
 import { AppShell } from './components/app-shell/AppShell'
 import { OnboardingView } from './components/onboarding/OnboardingView'
-import { TutorialBanner } from './components/tutorial/TutorialBanner'
+import { ManualPanel } from './components/manual/ManualPanel'
 import { EnvironmentCheckDialog } from './components/environment/EnvironmentCheckDialog'
 import { MigrationImportDialog } from './components/migration/MigrationImportDialog'
 import { TooltipProvider } from './components/ui/tooltip'
@@ -119,7 +119,7 @@ export default function App(): React.ReactElement {
     <TooltipProvider delayDuration={200}>
       <AppShell contextValue={contextValue} />
       <SettingsDialog />
-      <TutorialBanner />
+      <ManualPanel />
       <GlobalEnvironmentCheckDialog />
       <MigrationImportDialog />
       <LoginDialog />

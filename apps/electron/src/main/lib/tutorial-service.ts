@@ -2,49 +2,27 @@
  * 教程服务
  *
  * 负责读取教程内容和创建欢迎对话。
+ * getTutorialContent() 委托给手册服务的内置 fallback。
  */
 
-import { readFileSync, existsSync, writeFileSync } from 'node:fs'
+import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { app } from 'electron'
+import { getBuiltInManual } from './manual-service'
 import { createConversation, appendMessage } from './conversation-manager'
 import { getConversationAttachmentsDir } from './config-paths'
 import type { ConversationMeta, FileAttachment, ChatMessage } from '@proma/shared'
 
 /**
- * 获取教程文件路径
- *
- * 开发模式：从 monorepo 根目录读取
- * 生产模式：从 extraResources 读取
- */
-function getTutorialFilePath(): string {
-  if (app.isPackaged) {
-    return join(process.resourcesPath, 'tutorial.md')
-  }
-  // 开发模式：app.getAppPath() → apps/electron/
-  return join(app.getAppPath(), '../../tutorial/tutorial.md')
-}
-
-/**
  * 读取教程内容
+ *
+ * 委托给手册服务的内置 fallback，与手册使用同一数据源。
  *
  * @returns 教程 markdown 文本，读取失败返回 null
  */
 export function getTutorialContent(): string | null {
-  const filePath = getTutorialFilePath()
-
-  if (!existsSync(filePath)) {
-    console.warn('[教程服务] 教程文件不存在:', filePath)
-    return null
-  }
-
-  try {
-    return readFileSync(filePath, 'utf-8')
-  } catch (error) {
-    console.error('[教程服务] 读取教程文件失败:', error)
-    return null
-  }
+  const manual = getBuiltInManual()
+  return manual?.content ?? null
 }
 
 /**

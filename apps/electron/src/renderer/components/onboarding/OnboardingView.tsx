@@ -19,7 +19,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { TutorialViewer } from '@/components/tutorial/TutorialViewer'
+import { ManualView } from '@/components/manual/ManualView'
 import { EnvironmentCheckPanel } from '@/components/environment/EnvironmentCheckPanel'
 import { isShellEnvironmentOkAtom } from '@/atoms/environment'
 import { detectIsWindows } from '@/lib/platform'
@@ -144,7 +144,7 @@ export function OnboardingView({ onComplete }: OnboardingViewProps) {
           </SheetHeader>
           <ScrollArea className="h-[calc(100vh-80px)]">
             <div className="px-6 py-4">
-              <TutorialViewer />
+              <ManualView />
             </div>
           </ScrollArea>
         </SheetContent>

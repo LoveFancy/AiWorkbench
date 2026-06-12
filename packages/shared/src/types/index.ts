@@ -56,3 +56,6 @@ export * from './automation'
 
 // 系统日志相关类型
 export * from './system-log'
+
+// 使用手册相关类型
+export * from './manual'
