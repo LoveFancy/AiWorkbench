@@ -28,12 +28,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ChannelSettings } from "./ChannelSettings";
 import { GeneralSettings } from "./GeneralSettings";
-import { ProxySettings } from "./ProxySettings";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { AboutSettings } from "./AboutSettings";
 import { AgentSettings } from "./AgentSettings";
 import { PromptSettings } from "./PromptSettings";
-import { StorageSettings } from "./StorageSettings";
 import { ToolSettings } from "./ToolSettings";
 import { UsageLogSettings } from "./UsageLogSettings";
 import { SystemLogSettings } from "./SystemLogSettings";
@@ -53,8 +51,6 @@ function renderTabContent(tab: SettingsTab): React.ReactElement {
       return <ChannelSettings />;
     case "prompts":
       return <PromptSettings />;
-    case "proxy":
-      return <ProxySettings />;
     case "agent":
       return <AgentSettings />;
     case "tools":
@@ -75,8 +71,6 @@ function renderTabContent(tab: SettingsTab): React.ReactElement {
       return <ManualView />;
     case "shortcuts":
       return <ShortcutSettings />;
-    case "storage":
-      return <StorageSettings />;
     default:
       return <GeneralSettings />;
   }

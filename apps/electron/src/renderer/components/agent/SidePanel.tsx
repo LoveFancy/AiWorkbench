@@ -7,7 +7,7 @@
 
 import * as React from 'react'
 import { useAtom, useAtomValue, useSetAtom, useStore } from 'jotai'
-import { X, FolderOpen, ExternalLink, RefreshCw, ChevronRight, MoreHorizontal, FolderSearch, Pencil, FolderInput, Info, FolderHeart, MessageSquarePlus, FilePlus, FolderPlus } from 'lucide-react'
+import { X, FolderOpen, ExternalLink, RefreshCw, ChevronRight, ChevronDown, GripHorizontal, MoreHorizontal, FolderSearch, Pencil, FolderInput, Info, FolderHeart, MessageSquarePlus, FilePlus, FolderPlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -85,9 +85,13 @@ function FileCreateButton({
 }: {
   label: string
   icon: 'directory' | 'file'
-  onClick: () => void
+  onClick: (e: React.MouseEvent) => void
 }): React.ReactElement {
   const Icon = icon === 'directory' ? FolderPlus : FilePlus
+  const handleClick = React.useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    onClick(e)
+  }, [onClick])
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -96,7 +100,7 @@ function FileCreateButton({
           variant="ghost"
           size="icon"
           className="h-5 w-5 flex-shrink-0"
-          onClick={onClick}
+          onClick={handleClick}
         >
           <Icon className="size-2.5" />
         </Button>
@@ -111,8 +115,8 @@ function FileCreateButton({
 interface SidePanelProps {
   sessionId: string
   sessionPath: string | null
-  activeTab: 'session' | 'workspace' | 'changes'
-  onTabChange: (tab: 'session' | 'workspace' | 'changes') => void
+  activeTab: 'workspace' | 'changes'
+  onTabChange: (tab: 'workspace' | 'changes') => void
   width?: number
 }
 
@@ -453,6 +457,13 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
   const [workspaceCreateDir, setWorkspaceCreateDir] = React.useState<string | null>(null)
   const [sessionSelectionClearSignal, setSessionSelectionClearSignal] = React.useState(0)
   const [workspaceSelectionClearSignal, setWorkspaceSelectionClearSignal] = React.useState(0)
+  // 折叠状态
+  const [sessionCollapsed, setSessionCollapsed] = React.useState(false)
+  const [workspaceCollapsed, setWorkspaceCollapsed] = React.useState(false)
+  // 分屏比例（会话文件占比，默认 0.4 = 40% 给会话文件，60% 给工作区文件）
+  const [splitRatio, setSplitRatio] = React.useState(0.4)
+  const splitDragging = React.useRef(false)
+  const splitContainerRef = React.useRef<HTMLDivElement>(null)
   const [createTarget, setCreateTarget] = React.useState<CreateEntryTarget | null>(null)
   const [createName, setCreateName] = React.useState('')
   const [createError, setCreateError] = React.useState<string | null>(null)
@@ -548,6 +559,44 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
     ? formatManagedPath(workspaceFilesPath, { sessionPath, workspaceFilesPath })
     : ''
 
+  // 分屏拖拽处理
+  const handleSplitDragStart = React.useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    splitDragging.current = true
+    const container = splitContainerRef.current
+    if (!container) return
+    const startY = e.clientY
+    const startRatio = splitRatio
+    const containerHeight = container.clientHeight
+    let rafId = 0
+
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'row-resize'
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!splitDragging.current) return
+      if (rafId) return
+      rafId = requestAnimationFrame(() => {
+        rafId = 0
+        const delta = ev.clientY - startY
+        const newRatio = startRatio + delta / containerHeight
+        setSplitRatio(Math.max(0.15, Math.min(0.85, newRatio)))
+      })
+    }
+
+    const onMouseUp = () => {
+      splitDragging.current = false
+      if (rafId) cancelAnimationFrame(rafId)
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+    }
+
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+  }, [splitRatio])
+
   return (
     <div
       className={cn(
@@ -593,11 +642,13 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
             ) : (
               <div className="flex-1 flex items-center justify-center text-muted-foreground text-xs">等待会话初始化...</div>
             )
-          ) : activeTab === 'session' ? (
-            <div className="flex-1 min-h-0 flex flex-col pt-0.5 mx-2 mb-2">
-              {sessionPath ? (
+          ) : (
+            <div className="flex-1 min-h-0 flex flex-col pt-0.5" ref={splitContainerRef}>
+              {/* === 会话文件区域 === */}
+              {sessionPath && (
                 <>
-                  <div className="flex items-center gap-1 px-2 h-[32px] flex-shrink-0">
+                  <div className="flex items-center gap-1 px-2 h-[32px] flex-shrink-0 mx-2 cursor-pointer" onClick={() => setSessionCollapsed(!sessionCollapsed)}>
+                    {sessionCollapsed ? <ChevronRight className="size-3 text-muted-foreground" /> : <ChevronDown className="size-3 text-muted-foreground" />}
                     <FolderOpen className="size-3 text-muted-foreground" />
                     <span className="text-[11px] font-medium text-muted-foreground">会话文件</span>
                     <Tooltip>
@@ -611,6 +662,8 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                     <span className="text-[10px] text-muted-foreground/70 truncate flex-1 min-w-0" title={sessionPath}>
                       {sessionDisplayPath}
                     </span>
+                    {!sessionCollapsed && (
+                      <>
                     <FileCreateButton
                       label="新建文件"
                       icon="file"
@@ -628,7 +681,7 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                           variant="ghost"
                           size="icon"
                           className={filePanelActionButtonClass}
-                          onClick={() => window.electronAPI.openFile(sessionPath).catch(console.error)}
+                          onClick={(e) => { e.stopPropagation(); window.electronAPI.openFile(sessionPath).catch(console.error) }}
                         >
                           <ExternalLink />
                         </Button>
@@ -644,7 +697,7 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                           variant="ghost"
                           size="icon"
                           className={filePanelActionButtonClass}
-                          onClick={handleRefresh}
+                          onClick={(e) => { e.stopPropagation(); handleRefresh() }}
                         >
                           <RefreshCw />
                         </Button>
@@ -653,76 +706,85 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                         <p>刷新文件列表</p>
                       </TooltipContent>
                     </Tooltip>
-                  </div>
-                  <FileSearchBar
-                    workspaceFilesPath={null}
-                    sessionPath={sessionPath}
-                    sessionAttachedDirs={attachedDirs}
-                    workspaceAttachedDirs={[]}
-                    placeholder="搜索会话文件..."
-                    sessionId={sessionId}
-                    onFilePreview={handleFilePreview}
-                  />
-                  {/* 会话文件内容区（独立滚动） */}
-                  <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin" onClick={handleSessionFilesBlankClick}>
-                    {attachedFiles.length > 0 && (
-                      <AttachedFilesSection
-                        attachedFiles={attachedFiles}
-                        onDetach={handleDetachFile}
-                        onAddToChat={handleAddToChat}
-                        onFilePreview={handleFilePreview}
-                        allowedPaths={basePathsRef.current}
-                        sessionId={sessionId}
-                      />
+                      </>
                     )}
-                    {attachedDirs.length > 0 && (
-                      <AttachedDirsSection
-                        attachedDirs={attachedDirs}
-                        onDetach={handleDetachDirectory}
-                        refreshVersion={filesVersion}
-                        onAddToChat={handleAddToChat}
-                        onFilePreview={handleFilePreview}
-                        allowedPaths={basePathsRef.current}
-                        sessionId={sessionId}
-                      />
-                    )}
-                    <>
-                      {hasSessionAttachedItems && (
-                        <div className="text-[11px] font-medium text-muted-foreground mb-1 px-3 pt-2">工作文件（存储于该工作区目录）</div>
-                      )}
-                      <FileBrowser
-                        rootPath={sessionPath}
-                        hideToolbar
-                        embedded
-                        hideEmpty={hasSessionAttachedItems}
-                        displayRoots={{ sessionPath, workspaceFilesPath }}
-                        clearSelectionSignal={sessionSelectionClearSignal}
-                        onAddToChat={handleAddToChat}
-                        onFilePreview={handleFilePreview}
-                        onSelectedDirectoryChange={setSessionCreateDir}
-                        onCreateEntry={(parentDir, type) => openCreateDialog({ parentDir, type, scope: 'session' })}
-                      />
-                    </>
-                    {/* 会话文件拖拽上传区域 */}
-                    <FileDropZone
-                      workspaceSlug={workspaceSlug ?? ''}
+                    </div>
+                  {!sessionCollapsed && (
+                    <div className="mx-2 mb-1 flex flex-col" style={{ flex: workspaceCollapsed ? '1 1 auto' : `0 0 ${splitRatio * 100}%` }}>
+                    <FileSearchBar
+                      workspaceFilesPath={null}
+                      sessionPath={sessionPath}
+                      sessionAttachedDirs={attachedDirs}
+                      workspaceAttachedDirs={[]}
+                      placeholder="搜索会话文件..."
                       sessionId={sessionId}
-                      target="session"
-                      onFilesUploaded={handleFilesUploaded}
-                      onFilesAttached={handleSessionFilesAttached}
-                      onAttachFolder={handleAttachFolder}
-                      onFoldersDropped={handleSessionFoldersDropped}
+                      onFilePreview={handleFilePreview}
                     />
+                    <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin" onClick={handleSessionFilesBlankClick}>
+                      {attachedFiles.length > 0 && (
+                        <AttachedFilesSection
+                          attachedFiles={attachedFiles}
+                          onDetach={handleDetachFile}
+                          onAddToChat={handleAddToChat}
+                          onFilePreview={handleFilePreview}
+                          allowedPaths={basePathsRef.current}
+                          sessionId={sessionId}
+                        />
+                      )}
+                      {attachedDirs.length > 0 && (
+                        <AttachedDirsSection
+                          attachedDirs={attachedDirs}
+                          onDetach={handleDetachDirectory}
+                          refreshVersion={filesVersion}
+                          onAddToChat={handleAddToChat}
+                          onFilePreview={handleFilePreview}
+                          allowedPaths={basePathsRef.current}
+                          sessionId={sessionId}
+                        />
+                      )}
+                      <>
+                        {hasSessionAttachedItems && (
+                          <div className="text-[11px] font-medium text-muted-foreground mb-1 px-3 pt-2">工作文件（存储于该工作区目录）</div>
+                        )}
+                        <FileBrowser
+                          rootPath={sessionPath}
+                          hideToolbar
+                          embedded
+                          hideEmpty={hasSessionAttachedItems}
+                          displayRoots={{ sessionPath, workspaceFilesPath }}
+                          clearSelectionSignal={sessionSelectionClearSignal}
+                          onAddToChat={handleAddToChat}
+                          onFilePreview={handleFilePreview}
+                          onSelectedDirectoryChange={setSessionCreateDir}
+                          onCreateEntry={(parentDir, type) => openCreateDialog({ parentDir, type, scope: 'session' })}
+                        />
+                      </>
+                      <FileDropZone
+                        workspaceSlug={workspaceSlug ?? ''}
+                        sessionId={sessionId}
+                        target="session"
+                        onFilesUploaded={handleFilesUploaded}
+                        onFilesAttached={handleSessionFilesAttached}
+                        onAttachFolder={handleAttachFolder}
+                        onFoldersDropped={handleSessionFoldersDropped}
+                      />
+                    </div>
                   </div>
+                  )}
                 </>
-              ) : (
-                <div className="flex-1 flex items-center justify-center text-muted-foreground text-xs">等待会话初始化...</div>
               )}
-            </div>
-          ) : (
-            <div className="flex-1 min-h-0 flex flex-col pt-0.5">
-              <div className="flex-1 min-h-0 flex flex-col mx-2 mb-2">
-                <div className="flex items-center gap-1 px-2 h-[32px] flex-shrink-0">
+
+              {/* 分屏拖拽手柄 — 仅两者都展开时显示 */}
+              {sessionPath && !sessionCollapsed && !workspaceCollapsed && (
+                <div className="flex items-center justify-center h-[10px] flex-shrink-0 cursor-row-resize hover:bg-primary/10 transition-colors group mx-2" onMouseDown={handleSplitDragStart}>
+                  <GripHorizontal className="size-3 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
+                </div>
+              )}
+
+              {/* === 工作区文件区域 === */}
+              <div className="flex flex-col mx-2 mb-2" style={{ flex: sessionCollapsed ? '1 1 auto' : workspaceCollapsed ? '0 0 auto' : `1 1 ${(1 - splitRatio) * 100}%` }}>
+                <div className="flex items-center gap-1 px-2 h-[32px] flex-shrink-0 cursor-pointer" onClick={() => setWorkspaceCollapsed(!workspaceCollapsed)}>
+                  {workspaceCollapsed ? <ChevronRight className="size-3 text-muted-foreground" /> : <ChevronDown className="size-3 text-muted-foreground" />}
                   <FolderHeart className="size-3 text-muted-foreground" />
                   <span className="text-[11px] font-medium text-muted-foreground">工作区文件</span>
                   <Tooltip>
@@ -740,7 +802,7 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                   ) : (
                     <div className="flex-1" />
                   )}
-                  {workspaceFilesPath && (
+                  {workspaceFilesPath && !workspaceCollapsed && (
                     <>
                       <FileCreateButton
                         label="新建文件"
@@ -752,22 +814,6 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                         icon="directory"
                         onClick={() => openCreateDialog({ parentDir: workspaceCreateDir ?? workspaceFilesPath, type: 'directory', scope: 'workspace' })}
                       />
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className={filePanelActionButtonClass}
-                          onClick={() => window.electronAPI.openFile(workspaceFilesPath).catch(console.error)}
-                        >
-                          <ExternalLink />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        <p>在 Finder 中打开工作区文件目录</p>
-                      </TooltipContent>
-                    </Tooltip>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button
@@ -775,7 +821,23 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                             variant="ghost"
                             size="icon"
                             className={filePanelActionButtonClass}
-                            onClick={handleRefresh}
+                            onClick={(e) => { e.stopPropagation(); window.electronAPI.openFile(workspaceFilesPath).catch(console.error) }}
+                          >
+                            <ExternalLink />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          <p>在 Finder 中打开工作区文件目录</p>
+                        </TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className={filePanelActionButtonClass}
+                            onClick={(e) => { e.stopPropagation(); handleRefresh() }}
                           >
                             <RefreshCw />
                           </Button>
@@ -787,67 +849,69 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                     </>
                   )}
                 </div>
-                <FileSearchBar
-                  workspaceFilesPath={workspaceFilesPath}
-                  sessionPath={null}
-                  sessionAttachedDirs={[]}
-                  workspaceAttachedDirs={wsAttachedDirs}
-                  placeholder="搜索工作区文件..."
-                  sessionId={sessionId}
-                  onFilePreview={handleFilePreview}
-                />
-                {/* 工作区文件内容区（独立滚动） */}
-                <div className="flex-1 min-h-0 overflow-y-auto pb-1 scrollbar-thin" onClick={handleWorkspaceFilesBlankClick}>
-                  {wsAttachedFiles.length > 0 && (
-                    <AttachedFilesSection
-                      attachedFiles={wsAttachedFiles}
-                      onDetach={handleDetachWorkspaceFile}
-                      onAddToChat={handleAddToChat}
-                      onFilePreview={handleFilePreview}
-                      allowedPaths={basePathsRef.current}
-                      sessionId={sessionId}
-                    />
-                  )}
-                  {wsAttachedDirs.length > 0 && (
-                    <AttachedDirsSection
-                      attachedDirs={wsAttachedDirs}
-                      onDetach={handleDetachWorkspaceDirectory}
-                      refreshVersion={filesVersion}
-                      onAddToChat={handleAddToChat}
-                      onFilePreview={handleFilePreview}
-                      allowedPaths={basePathsRef.current}
-                      sessionId={sessionId}
-                    />
-                  )}
-                  {workspaceFilesPath && (
-                    <>
-                      {hasWorkspaceAttachedItems && (
-                        <div className="text-[11px] font-medium text-muted-foreground mb-1 px-3 pt-2">工作文件（存储于该工作区目录）</div>
-                      )}
-                      <FileBrowser
-                        rootPath={workspaceFilesPath}
-                        hideToolbar
-                        embedded
-                        hideEmpty={hasWorkspaceAttachedItems}
-                        displayRoots={{ sessionPath, workspaceFilesPath }}
-                        clearSelectionSignal={workspaceSelectionClearSignal}
+                {!workspaceCollapsed && (
+                  <>
+                  <FileSearchBar
+                    workspaceFilesPath={workspaceFilesPath}
+                    sessionPath={null}
+                    sessionAttachedDirs={[]}
+                    workspaceAttachedDirs={wsAttachedDirs}
+                    placeholder="搜索工作区文件..."
+                    sessionId={sessionId}
+                    onFilePreview={handleFilePreview}
+                  />
+                  <div className="flex-1 min-h-0 overflow-y-auto pb-1 scrollbar-thin" onClick={handleWorkspaceFilesBlankClick}>
+                    {wsAttachedFiles.length > 0 && (
+                      <AttachedFilesSection
+                        attachedFiles={wsAttachedFiles}
+                        onDetach={handleDetachWorkspaceFile}
                         onAddToChat={handleAddToChat}
                         onFilePreview={handleFilePreview}
-                        onSelectedDirectoryChange={setWorkspaceCreateDir}
-                        onCreateEntry={(parentDir, type) => openCreateDialog({ parentDir, type, scope: 'workspace' })}
+                        allowedPaths={basePathsRef.current}
+                        sessionId={sessionId}
                       />
-                    </>
-                  )}
-                  {/* 工作区文件拖拽上传区域 */}
-                  <FileDropZone
-                    workspaceSlug={workspaceSlug ?? ''}
-                    target="workspace"
-                    onFilesUploaded={handleFilesUploaded}
-                    onFilesAttached={handleWorkspaceFilesAttached}
-                    onAttachFolder={handleAttachWorkspaceFolder}
-                    onFoldersDropped={handleWorkspaceFoldersDropped}
-                  />
-                </div>
+                    )}
+                    {wsAttachedDirs.length > 0 && (
+                      <AttachedDirsSection
+                        attachedDirs={wsAttachedDirs}
+                        onDetach={handleDetachWorkspaceDirectory}
+                        refreshVersion={filesVersion}
+                        onAddToChat={handleAddToChat}
+                        onFilePreview={handleFilePreview}
+                        allowedPaths={basePathsRef.current}
+                        sessionId={sessionId}
+                      />
+                    )}
+                    {workspaceFilesPath && (
+                      <>
+                        {hasWorkspaceAttachedItems && (
+                          <div className="text-[11px] font-medium text-muted-foreground mb-1 px-3 pt-2">工作文件（存储于该工作区目录）</div>
+                        )}
+                        <FileBrowser
+                          rootPath={workspaceFilesPath}
+                          hideToolbar
+                          embedded
+                          hideEmpty={hasWorkspaceAttachedItems}
+                          displayRoots={{ sessionPath, workspaceFilesPath }}
+                          clearSelectionSignal={workspaceSelectionClearSignal}
+                          onAddToChat={handleAddToChat}
+                          onFilePreview={handleFilePreview}
+                          onSelectedDirectoryChange={setWorkspaceCreateDir}
+                          onCreateEntry={(parentDir, type) => openCreateDialog({ parentDir, type, scope: 'workspace' })}
+                        />
+                      </>
+                    )}
+                    <FileDropZone
+                      workspaceSlug={workspaceSlug ?? ''}
+                      target="workspace"
+                      onFilesUploaded={handleFilesUploaded}
+                      onFilesAttached={handleWorkspaceFilesAttached}
+                      onAttachFolder={handleAttachWorkspaceFolder}
+                      onFoldersDropped={handleWorkspaceFoldersDropped}
+                    />
+                  </div>
+                  </>
+                )}
               </div>
             </div>
           )}

@@ -4,14 +4,13 @@
  * 管理设置面板中当前激活的标签页：
  * - general: 通用设置
  * - channels: 渠道配置
- * - proxy: 代理配置
  * - appearance: 外观设置
  * - about: 关于
  */
 
 import { atom } from 'jotai'
 
-export type SettingsTab = 'general' | 'channels' | 'proxy' | 'appearance' | 'about' | 'agent' | 'experts' | 'plugins' | 'prompts' | 'tools' | 'usage-log' | 'system-log' | 'bots' | 'tutorial' | 'shortcuts' | 'voice-input' | 'migration' | 'storage'
+export type SettingsTab = 'general' | 'channels' | 'appearance' | 'about' | 'agent' | 'experts' | 'plugins' | 'prompts' | 'tools' | 'usage-log' | 'system-log' | 'bots' | 'tutorial' | 'shortcuts' | 'voice-input' | 'migration'
 
 /** 当前设置标签页（不持久化，每次打开设置默认显示渠道） */
 export const settingsTabAtom = atom<SettingsTab>('channels')

@@ -4,6 +4,7 @@ import { onLoginSuccess } from '../main/lib/updater/auto-updater'
 
 export const AUTH_IPC_CHANNELS = {
   GET_AUTH_STATE: 'auth:get-state',
+  GET_AUTH_INFO: 'auth:get-info',
   CHECK_SESSION: 'auth:check-session',
   LOGIN: 'auth:login',
   LOGOUT: 'auth:logout',
@@ -12,6 +13,19 @@ export const AUTH_IPC_CHANNELS = {
 export function registerAuthIpcHandlers(): void {
   ipcMain.handle(AUTH_IPC_CHANNELS.GET_AUTH_STATE, () => {
     return { isLoggedIn: isLoggedIn(), jobId: getJobId() }
+  })
+
+  ipcMain.handle(AUTH_IPC_CHANNELS.GET_AUTH_INFO, () => {
+    const info = getAuthInfo()
+    if (!info) return null
+    return {
+      jobId: info.jobId,
+      displayName: info.displayName,
+      lastLoginAt: info.lastLoginAt,
+      expiresAt: info.expiresAt,
+      createdAt: info.createdAt,
+      needsReauth: info.needsReauth,
+    }
   })
 
   ipcMain.handle(AUTH_IPC_CHANNELS.CHECK_SESSION, async () => {

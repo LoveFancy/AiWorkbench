@@ -43,6 +43,8 @@ import {
 } from '@/atoms/ui-preferences'
 import { cn } from '@/lib/utils'
 import { Button } from '../ui/button'
+import { ProxySettings } from './ProxySettings'
+import { StorageSettings } from './StorageSettings'
 import type { ConfigRootInfo, NotificationSoundId, NotificationSoundType, NotificationSoundSettings } from '@/types/settings'
 
 /** emoji-mart 选择回调的 emoji 对象类型 */
@@ -69,6 +71,18 @@ export function GeneralSettings(): React.ReactElement {
   const [configRootError, setConfigRootError] = React.useState<string | null>(null)
   const [isConfigRootBusy, setIsConfigRootBusy] = React.useState(false)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+
+  // 快捷导航
+  const sectionRefs = React.useRef<Record<string, HTMLDivElement | null>>({})
+  const navItems = [
+    { id: 'profile', label: '用户档案' },
+    { id: 'basic', label: '基本配置' },
+    { id: 'proxy', label: '代理配置' },
+    { id: 'storage', label: '磁盘管理' },
+  ]
+  const scrollToSection = (id: string) => {
+    sectionRefs.current[id]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   // 加载归档天数设置
   React.useEffect(() => {
@@ -170,7 +184,23 @@ export function GeneralSettings(): React.ReactElement {
 
   return (
     <div className="space-y-6">
+      {/* 快捷导航 */}
+      <div className="sticky top-0 z-10 -mx-2 px-2 pt-2 pb-1 bg-content-area/95 backdrop-blur-sm border-b border-border/50">
+        <div className="flex items-center gap-1 overflow-x-auto">
+          {navItems.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => scrollToSection(item.id)}
+              className="shrink-0 px-3 py-1.5 text-xs rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* 用户档案区域 */}
+      <div ref={(el) => { sectionRefs.current['profile'] = el }}>
       <SettingsSection
         title="用户档案"
         description="设置你的头像和显示名称"
@@ -265,10 +295,12 @@ export function GeneralSettings(): React.ReactElement {
           </div>
         </SettingsCard>
       </SettingsSection>
+      </div>
 
-      {/* 通用设置 */}
+      {/* 基本配置 */}
+      <div ref={(el) => { sectionRefs.current['basic'] = el }}>
       <SettingsSection
-        title="通用设置"
+        title="基本配置"
         description="应用的基本配置"
       >
         <SettingsCard>
@@ -406,6 +438,17 @@ export function GeneralSettings(): React.ReactElement {
           />
         </SettingsCard>
       </SettingsSection>
+      </div>
+
+      {/* 代理配置 */}
+      <div ref={(el) => { sectionRefs.current['proxy'] = el }}>
+      <ProxySettings />
+      </div>
+
+      {/* 磁盘管理 */}
+      <div ref={(el) => { sectionRefs.current['storage'] = el }}>
+      <StorageSettings />
+      </div>
     </div>
   )
 }

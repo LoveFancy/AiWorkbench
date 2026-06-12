@@ -20,21 +20,21 @@ function expectDropZoneAfterFileTree(scrollMarker: string, dropZoneMarker: strin
 
 test('会话文件的添加入口紧跟在文件树后面', () => {
   expectDropZoneAfterFileTree(
-    '{/* 会话文件内容区（独立滚动） */}',
-    '{/* 会话文件拖拽上传区域 */}',
+    '{/* === 会话文件区域 === */}',
+    'target="session"',
   )
 })
 
 test('工作区文件的添加入口紧跟在文件树后面', () => {
   expectDropZoneAfterFileTree(
-    '{/* 工作区文件内容区（独立滚动） */}',
-    '{/* 工作区文件拖拽上传区域 */}',
+    '{/* === 工作区文件区域 === */}',
+    'target="workspace"',
   )
 })
 
 test('会话和工作区文件空白区点击会清空文件树选中状态', () => {
-  const sessionMarker = '{/* 会话文件内容区（独立滚动） */}'
-  const workspaceMarker = '{/* 工作区文件内容区（独立滚动） */}'
+  const sessionMarker = '{/* === 会话文件区域 === */}'
+  const workspaceMarker = '{/* === 工作区文件区域 === */}'
   const sessionStart = sidePanelSource.indexOf(sessionMarker)
   const workspaceStart = sidePanelSource.indexOf(workspaceMarker)
 
