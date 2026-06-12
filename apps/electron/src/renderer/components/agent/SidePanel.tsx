@@ -45,7 +45,7 @@ import {
   agentSelectedWorktreeAtom,
 } from '@/atoms/agent-atoms'
 import { previewPanelOpenMapAtom, previewFileMapAtom, PREVIEW_KIND, type PreviewFile } from '@/atoms/preview-atoms'
-import { activeTabIdAtom, getPreviewTabTitle, openTab, tabsAtom } from '@/atoms/tab-atoms'
+
 import { detectIsWindows } from '@/lib/platform'
 import { formatManagedPath } from '@/lib/managed-path-display'
 import { isHtmlPreviewPath } from '@/components/diff/html-preview-utils'
@@ -141,15 +141,9 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
       m.set(sessionId, file)
       return m
     })
-    setPreviewOpenMap((prev) => { const m = new Map(prev); m.set(sessionId, false); return m })
-    const result = openTab(store.get(tabsAtom), {
-      type: 'preview',
-      sessionId,
-      title: getPreviewTabTitle(file.filePath),
-    })
-    store.set(tabsAtom, result.tabs)
-    store.set(activeTabIdAtom, result.activeTabId)
-  }, [sessionId, setPreviewFileMap, setPreviewOpenMap, store])
+    // 在中间区域分屏展示文件预览，而非创建独立 Tab
+    setPreviewOpenMap((prev) => { const m = new Map(prev); m.set(sessionId, true); return m })
+  }, [sessionId, setPreviewFileMap, setPreviewOpenMap])
 
   const handleFilePreview = React.useCallback((filePath: string) => {
     const bp = basePathsRef.current
@@ -174,7 +168,7 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
         return m
       })
     } else {
-      // 非 HTML 文件：打开预览 Tab
+      // 非 HTML 文件：在中间区域分屏预览
       openPreviewTabForFile(previewFile)
     }
   }, [sessionId, setPreviewFileMap, store, openPreviewTabForFile])

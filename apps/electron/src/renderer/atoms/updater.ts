@@ -25,6 +25,7 @@ export interface UpdateStatus {
   hint?: string
   forceUpdate?: boolean
   releaseType?: 'UPGRADE' | 'ROLLBACK'
+  downloadUrl?: string
 }
 
 /** 更新状态 atom */

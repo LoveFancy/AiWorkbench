@@ -54,7 +54,11 @@ let pendingManifestInfo: {
 
 function setStatus(status: UpdateStatus): void {
   currentStatus = status
-  console.log('[更新] setStatus: %s (win=%s)', status.status, win ? '有' : '无')
+  if (status.status === 'error') {
+    console.error('[更新] setStatus: error (win=%s) msg=%s', win ? '有' : '无', status.error)
+  } else {
+    console.log('[更新] setStatus: %s (win=%s)', status.status, win ? '有' : '无')
+  }
   win?.webContents?.send(UPDATER_IPC_CHANNELS.ON_STATUS_CHANGED, status)
 }
 
@@ -260,6 +264,7 @@ export async function quitAndInstall(): Promise<void> {
     }
     app.quit()
   } catch (err) {
+    console.error('[更新] quitAndInstall 异常:', err)
     setStatus({
       status: 'error',
       error: err instanceof Error ? err.message : String(err),
@@ -440,7 +445,8 @@ async function doDownload(): Promise<void> {
   try {
     validateInstallerDownloadSecurity(upgradeInfo.downloadUrl, upgradeInfo.sha256)
   } catch (err) {
-    setStatus({ status: 'error', error: `下载信息无效: ${(err as Error).message}` })
+    console.error('[更新] 下载安全校验失败:', err)
+    setStatus({ status: 'error', error: `下载信息无效: ${(err as Error).message}`, downloadUrl: upgradeInfo.downloadUrl })
     return
   }
 
@@ -455,7 +461,7 @@ async function doDownload(): Promise<void> {
       await downloadAndSave(current)
     } catch (err2) {
       console.error('[更新] 第 2 次下载也失败:', err2)
-      setStatus({ status: 'error', error: String(err2) })
+      setStatus({ status: 'error', error: String(err2), downloadUrl: upgradeInfo.downloadUrl })
     }
   }
 }

@@ -929,6 +929,7 @@ export interface ElectronAPI {
       hint?: string
       forceUpdate?: boolean
       releaseType?: 'UPGRADE' | 'ROLLBACK'
+      downloadUrl?: string
     }>
     onStatusChanged: (callback: (status: {
       status: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error'
@@ -939,6 +940,7 @@ export interface ElectronAPI {
       hint?: string
       forceUpdate?: boolean
       releaseType?: 'UPGRADE' | 'ROLLBACK'
+      downloadUrl?: string
     }) => void) => () => void
     quitAndInstall: () => Promise<void>
   }
