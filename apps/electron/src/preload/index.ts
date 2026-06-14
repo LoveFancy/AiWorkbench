@@ -306,6 +306,8 @@ export interface ElectronAPI {
   manual: {
     /** 检查更新并获取手册内容（三级降级） */
     checkAndGet: () => Promise<import('@proma/shared').ManualContent | null>
+    /** 获取图文版手册并在浏览器中打开 */
+    openHtmlManual: () => Promise<void>
   }
 
   // ===== 消息发送 =====
@@ -1371,6 +1373,9 @@ const electronAPI: ElectronAPI = {
   manual: {
     checkAndGet: () => {
       return ipcRenderer.invoke('manual:check-and-get')
+    },
+    openHtmlManual: () => {
+      return ipcRenderer.invoke('manual:open-html')
     },
   },
 

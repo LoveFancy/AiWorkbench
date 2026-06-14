@@ -168,6 +168,7 @@ import {
 } from './lib/attachment-service'
 import { extractTextFromAttachment } from './lib/document-parser'
 import { getTutorialContent, createWelcomeConversation } from './lib/tutorial-service'
+import { checkAndGetManual, getBuiltInManual, openManualHtml } from './lib/manual-service'
 import { getUserProfile, updateUserProfile } from './lib/user-profile-service'
 import { getSettings, updateSettings } from './lib/settings-service'
 import { setDockBadgeCount } from './lib/dock-badge-service'
@@ -4670,7 +4671,6 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     'manual:check-and-get',
     async () => {
-      const { checkAndGetManual } = await import('./lib/manual-service')
       return checkAndGetManual()
     }
   )
@@ -4678,8 +4678,14 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     'manual:get-built-in',
     async () => {
-      const { getBuiltInManual } = await import('./lib/manual-service')
       return getBuiltInManual()
+    }
+  )
+
+  ipcMain.handle(
+    'manual:open-html',
+    async () => {
+      await openManualHtml()
     }
   )
 }

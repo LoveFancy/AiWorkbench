@@ -1,18 +1,18 @@
 /**
  * 使用手册相关类型定义
  *
- * 客户端通过 GET /workmate/manual?version=N 查询手册，
- * 服务端返回 Markdown 格式（来自 content_markdown 字段），
- * 图片以 base64 data URI 内嵌。
+ * 客户端两种查阅方式：
+ *   - GET /workmate/manual?version=N  → Markdown 纯文本（不含图片），客户端内渲染
+ *   - GET /workmate/manual/html         → HTML 图文版，浏览器中打开
  */
 
-/** 服务端 GET /workmate/manual 返回的 data 字段 */
+/** 服务端 GET /workmate/manual 返回的 data 字段（Markdown 与 HTML 接口共用） */
 export interface ManualApiResponse {
   /** 是否需要更新 */
   needUpdate: boolean
   /** 手册标题 */
   title?: string
-  /** 手册 Markdown 内容（needUpdate=true 时返回） */
+  /** 手册内容（manual 接口为 Markdown 纯文本，html 接口为 HTML 图文） */
   content?: string
   /** 版本号（整数，从 1 开始递增） */
   version?: number
@@ -38,7 +38,7 @@ export interface ManualContent {
   version: number
   /** 手册标题 */
   title: string
-  /** Markdown 内容（base64 内嵌图片） */
+  /** Markdown 内容（纯文本，不含图片） */
   content: string
   /** 缓存时间（内置版本为 0） */
   cachedAt: number
@@ -48,8 +48,10 @@ export interface ManualContent {
 
 /** 手册 IPC 通道常量 */
 export const MANUAL_IPC_CHANNELS = {
-  /** 检查更新并获取内容（三级降级） */
+  /** 检查更新并获取 Markdown 内容（三级降级） */
   CHECK_AND_GET: 'manual:check-and-get',
   /** 获取内置 fallback 内容 */
   GET_BUILT_IN: 'manual:get-built-in',
+  /** 获取图文版并在浏览器中打开 */
+  OPEN_HTML: 'manual:open-html',
 } as const

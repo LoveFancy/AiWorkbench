@@ -21,7 +21,6 @@ import { activeViewAtom } from '@/atoms/active-view'
 import { automationFormAtom, automationsAtom } from '@/atoms/automation-atoms'
 import { appModeAtom, type AppMode } from '@/atoms/app-mode'
 import { settingsTabAtom, settingsOpenAtom } from '@/atoms/settings-tab'
-import { manualPanelOpenAtom } from '@/atoms/manual-atoms'
 import {
   conversationsAtom,
   currentConversationIdAtom,
@@ -72,6 +71,9 @@ import {
   closeTab,
   updateTabTitle,
   sessionViewStateMapAtom,
+  openTab,
+  MANUAL_TAB_ID,
+  MANUAL_TAB_TITLE,
 } from '@/atoms/tab-atoms'
 import { userProfileAtom } from '@/atoms/user-profile'
 import { authStateAtom, loginDialogOpenAtom } from '@/auth/renderer'
@@ -364,7 +366,6 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
   const automationCount = automations.length
   const setSettingsTab = useSetAtom(settingsTabAtom)
   const setSettingsOpen = useSetAtom(settingsOpenAtom)
-  const setManualPanelOpen = useSetAtom(manualPanelOpenAtom)
   const [conversations, setConversations] = useAtom(conversationsAtom)
   const [currentConversationId, setCurrentConversationId] = useAtom(currentConversationIdAtom)
   const draftSessionIds = useAtomValue(draftSessionIdsAtom)
@@ -449,6 +450,13 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
   // Tab 状态
   const [tabs, setTabs] = useAtom(tabsAtom)
   const [activeTabId, setActiveTabId] = useAtom(activeTabIdAtom)
+
+  const handleOpenManual = React.useCallback(() => {
+    const result = openTab(tabs, { type: 'manual', sessionId: MANUAL_TAB_ID, title: MANUAL_TAB_TITLE })
+    setTabs(result.tabs)
+    setActiveTabId(result.activeTabId)
+  }, [tabs, setTabs, setActiveTabId])
+
   // 会话高亮按"激活 Tab 所属会话"判定：预览 Tab 激活时其 owner 会话仍保持高亮
   const activeSessionId = useAtomValue(activeSessionIdAtom)
   const [sidebarCollapsed, setSidebarCollapsed] = useAtom(sidebarCollapsedAtom)
@@ -2113,7 +2121,7 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
         <Tooltip>
           <TooltipTrigger asChild>
             <button
-              onClick={() => setManualPanelOpen(true)}
+              onClick={() => handleOpenManual()}
               className="flex items-center gap-3 min-w-0 px-3 py-2 rounded-[10px] transition-colors titlebar-no-drag text-foreground/70 hover:bg-foreground/[0.04] hover:text-foreground"
             >
               <BookOpen className="size-5 flex-shrink-0" />
