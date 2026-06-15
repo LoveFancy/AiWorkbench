@@ -22,16 +22,22 @@ import type { PreviewFile } from './preview-atoms'
 // ===== 类型定义 =====
 
 /** 标签页类型（Settings 不作为 Tab，保留独立视图） */
-export type TabType = 'chat' | 'agent' | 'scratch' | 'preview'
+export type TabType = 'chat' | 'agent' | 'scratch' | 'preview' | 'manual'
 
 /** Scratch Pad 专用的固定 sessionId */
 export const SCRATCH_PAD_ID = '__scratch-pad__'
+
+/** 使用手册专用的固定 sessionId */
+export const MANUAL_TAB_ID = '__manual__'
 
 /** 会话预览 Tab 的 ID 前缀：运行时临时入口，不参与持久化 */
 const PREVIEW_TAB_PREFIX = '__preview__:'
 
 /** Scratch Pad 标签默认标题 */
 export const SCRATCH_PAD_TITLE = 'Scratch Pad'
+
+/** 使用手册标签默认标题 */
+export const MANUAL_TAB_TITLE = '使用手册'
 
 /** 标签页数据 */
 export interface TabItem {
@@ -181,6 +187,15 @@ function createScratchPadTab(): TabItem {
   }
 }
 
+function createManualTab(): TabItem {
+  return {
+    id: MANUAL_TAB_ID,
+    type: 'manual',
+    sessionId: MANUAL_TAB_ID,
+    title: MANUAL_TAB_TITLE,
+  }
+}
+
 export function createPreviewTabId(sessionId: string): string {
   return `${PREVIEW_TAB_PREFIX}${sessionId}`
 }
@@ -202,7 +217,7 @@ function isSessionTab(tab: TabItem): boolean {
 }
 
 function getPersistentTabs(tabs: TabItem[]): TabItem[] {
-  return tabs.filter((tab) => tab.id !== SCRATCH_PAD_ID && !isPreviewTab(tab))
+  return tabs.filter((tab) => tab.id !== SCRATCH_PAD_ID && tab.id !== MANUAL_TAB_ID && !isPreviewTab(tab))
 }
 
 export function getPersistableTabState(
@@ -239,6 +254,17 @@ export function openTab(
     }
   }
 
+  if (item.type === 'manual') {
+    const manualTab = tabs.find((t) => t.id === MANUAL_TAB_ID) ?? createManualTab()
+    // 保留当前会话 Tab，手册 Tab 不替换会话
+    const sessionTabs = tabs.filter((t) =>
+      t.id !== SCRATCH_PAD_ID && t.id !== MANUAL_TAB_ID && !isPreviewTab(t))
+    return {
+      tabs: [scratchTab, ...sessionTabs, manualTab],
+      activeTabId: MANUAL_TAB_ID,
+    }
+  }
+
   if (item.type === 'preview') {
     const ownerAgentTab = tabs.find((t) => t.type === 'agent' && t.sessionId === item.sessionId) ?? {
       id: item.sessionId,
@@ -266,6 +292,8 @@ export function openTab(
     sessionId: item.sessionId,
     title: item.title,
   }
+  // 切换会话时保留已打开的手册 Tab
+  const manualTab = tabs.find((t) => t.id === MANUAL_TAB_ID)
 
   // 切回带预览的会话：重建该会话的预览 Tab，并按 lastView 决定激活哪个。
   if (restore?.previewTabOpen) {
@@ -275,14 +303,18 @@ export function openTab(
       sessionId: item.sessionId,
       title: restore.previewTitle,
     }
+    const result: TabItem[] = [scratchTab, sessionTab, previewTab]
+    if (manualTab) result.push(manualTab)
     return {
-      tabs: [scratchTab, sessionTab, previewTab],
+      tabs: result,
       activeTabId: restore.lastView === 'preview' ? previewTab.id : sessionTab.id,
     }
   }
 
+  const result: TabItem[] = [scratchTab, sessionTab]
+  if (manualTab) result.push(manualTab)
   return {
-    tabs: [scratchTab, sessionTab],
+    tabs: result,
     activeTabId: sessionTab.id,
   }
 }
@@ -363,13 +395,20 @@ export function updateTabTitle(
   )
 }
 
-/** 确保 Scratch Pad 标签存在并位于首位，同时只保留一个会话入口 */
+/** 确保 Scratch Pad 标签存在并位于首位，同时只保留一个会话入口 + 保留手册 Tab */
 export function ensureScratchPadTab(tabs: TabItem[]): TabItem[] {
   const scratchTab = tabs.find((t) => t.id === SCRATCH_PAD_ID)
-  const sessionTab = tabs.filter((t) => t.id !== SCRATCH_PAD_ID && !isPreviewTab(t)).at(-1)
+  const manualTab = tabs.find((t) => t.id === MANUAL_TAB_ID)
+  const sessionTab = tabs.filter((t) =>
+    t.id !== SCRATCH_PAD_ID && t.id !== MANUAL_TAB_ID && !isPreviewTab(t)).at(-1)
+
+  const result: TabItem[] = []
   if (scratchTab) {
-    return sessionTab ? [scratchTab, sessionTab] : [scratchTab]
+    result.push(scratchTab)
+  } else {
+    result.push(createScratchPadTab())
   }
-  const newTab = createScratchPadTab()
-  return sessionTab ? [newTab, sessionTab] : [newTab]
+  if (sessionTab) result.push(sessionTab)
+  if (manualTab) result.push(manualTab)
+  return result
 }

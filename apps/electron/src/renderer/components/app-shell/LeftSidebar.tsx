@@ -11,7 +11,7 @@
 import * as React from 'react'
 import { useAtom, useSetAtom, useAtomValue, useStore } from 'jotai'
 import { toast } from 'sonner'
-import { Pin, PinOff, Settings, Plus, Trash2, Pencil, ChevronDown, ChevronRight, Plug, Zap, PanelLeftClose, PanelLeftOpen, ArrowRightLeft, Search, Archive, ArchiveRestore, ArrowLeft, Hammer, Bot, MessageSquare, MoreHorizontal, LogOut, LogIn, User, Check, FolderOpen, GripVertical, Clock, AlarmClock, ShieldCheck, CalendarDays } from 'lucide-react'
+import { Pin, PinOff, Settings, Plus, Trash2, Pencil, ChevronDown, ChevronRight, Plug, Zap, PanelLeftClose, PanelLeftOpen, ArrowRightLeft, Search, Archive, ArchiveRestore, ArrowLeft, Hammer, Bot, MessageSquare, MoreHorizontal, LogOut, LogIn, User, Check, FolderOpen, GripVertical, Clock, AlarmClock, BookOpen, ShieldCheck, CalendarDays } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { ModeSwitcher } from './ModeSwitcher'
@@ -71,6 +71,9 @@ import {
   closeTab,
   updateTabTitle,
   sessionViewStateMapAtom,
+  openTab,
+  MANUAL_TAB_ID,
+  MANUAL_TAB_TITLE,
 } from '@/atoms/tab-atoms'
 import { userProfileAtom } from '@/atoms/user-profile'
 import { authStateAtom, loginDialogOpenAtom } from '@/auth/renderer'
@@ -447,6 +450,13 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
   // Tab 状态
   const [tabs, setTabs] = useAtom(tabsAtom)
   const [activeTabId, setActiveTabId] = useAtom(activeTabIdAtom)
+
+  const handleOpenManual = React.useCallback(() => {
+    const result = openTab(tabs, { type: 'manual', sessionId: MANUAL_TAB_ID, title: MANUAL_TAB_TITLE })
+    setTabs(result.tabs)
+    setActiveTabId(result.activeTabId)
+  }, [tabs, setTabs, setActiveTabId])
+
   // 会话高亮按"激活 Tab 所属会话"判定：预览 Tab 激活时其 owner 会话仍保持高亮
   const activeSessionId = useAtomValue(activeSessionIdAtom)
   const [sidebarCollapsed, setSidebarCollapsed] = useAtom(sidebarCollapsedAtom)
@@ -2105,8 +2115,24 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
         </div>
       )}
 
-      {/* 底部：用户菜单 + 设置入口 */}
-      <div className="px-3 pb-3 flex items-center gap-1">
+      {/* 底部：使用手册 + 用户菜单 + 设置入口 */}
+      <div className="px-3 pb-3 flex flex-col gap-1">
+        {/* 使用手册按钮 */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={() => handleOpenManual()}
+              className="flex items-center gap-3 min-w-0 px-3 py-2 rounded-[10px] transition-colors titlebar-no-drag text-foreground/70 hover:bg-foreground/[0.04] hover:text-foreground"
+            >
+              <BookOpen className="size-5 flex-shrink-0" />
+              <span className="flex-1 text-sm truncate text-left">使用手册</span>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top">查看使用手册</TooltipContent>
+        </Tooltip>
+
+        {/* 用户头像 + 设置 */}
+        <div className="flex items-center gap-1">
         {authState.isLoggedIn ? (
           /* 已登录：用户头像 → 弹出登出菜单 */
           <DropdownMenu onOpenChange={handleUserMenuOpen}>
@@ -2186,6 +2212,7 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
           </TooltipTrigger>
           <TooltipContent side="top">设置</TooltipContent>
         </Tooltip>
+      </div>
       </div>
 
       {deleteDialog}
