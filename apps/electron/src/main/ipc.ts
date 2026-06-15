@@ -3136,6 +3136,24 @@ export function registerIpcHandlers(): void {
     }
   )
 
+  // 在系统文件管理器中打开插件目录
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.SHOW_PLUGIN_IN_FOLDER,
+    async (_, pluginPath: string): Promise<void> => {
+      const { resolve } = await import('node:path')
+      const { getUserPluginsDir } = await import('./lib/config-paths')
+
+      const safePath = resolve(pluginPath)
+      const pluginsRoot = resolve(getUserPluginsDir())
+      // 仅允许在插件目录范围内
+      if (!safePath.startsWith(pluginsRoot)) {
+        throw new Error('访问路径超出插件目录范围')
+      }
+
+      shell.openPath(safePath)
+    }
+  )
+
   // 解析文件路径并读取内容（供内联预览使用）
   ipcMain.handle(
     'file:resolve-and-read',

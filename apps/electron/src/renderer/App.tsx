@@ -110,11 +110,11 @@ export default function App(): React.ReactElement {
       <div className="flex h-screen items-center justify-center bg-background">
         <LoginView
           onLoginSuccess={() => {
-            // 登录成功后刷新 authState
             window.electronAPI.auth.getAuthState().then((state: any) => {
               setAuthState(state)
             })
           }}
+          onQuit={() => { window.electronAPI.auth.quit() }}
           allowSkip={false}
         />
       </div>

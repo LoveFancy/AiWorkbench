@@ -1757,6 +1757,8 @@ export const AGENT_IPC_CHANNELS = {
   OPEN_FILE: 'agent:open-file',
   /** 在系统文件管理器中显示文件 */
   SHOW_IN_FOLDER: 'agent:show-in-folder',
+  /** 在系统文件管理器中打开插件目录 */
+  SHOW_PLUGIN_IN_FOLDER: 'agent:show-plugin-in-folder',
   /** 重命名文件/目录 */
   RENAME_FILE: 'agent:rename-file',
   /** 移动文件/目录到目标目录 */

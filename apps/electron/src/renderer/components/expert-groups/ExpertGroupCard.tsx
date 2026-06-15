@@ -1,6 +1,6 @@
 import * as React from 'react'
 import type { AgentExpertGroupInfo } from '@proma/shared'
-import { Bot, Hash, Network, Users, Wrench } from 'lucide-react'
+import { Bot, FolderOpen, Hash, Network, Users, Wrench } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -21,6 +21,17 @@ export function ExpertGroupCard({ group, onOpen, onSummon, compact = false }: Ex
     { icon: Network, label: `${group.mcpServers?.length ?? 0} 个 MCP` },
   ]
   const identifierLabel = getExpertGroupIdentifierLabel(group)
+
+  const handleOpenPluginDir = React.useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    const pluginPath = group.sourcePluginPath
+    if (pluginPath) {
+      window.electronAPI.showPluginInFolder(pluginPath).catch((err) => {
+        console.error('打开插件目录失败:', err)
+      })
+    }
+  }, [group.sourcePluginPath])
+
   return (
     <div className={cn('rounded-lg bg-card p-4 shadow-sm', compact && 'p-2.5')}>
       <div className={cn('flex items-start justify-between gap-3', compact && 'gap-2')}>
@@ -80,6 +91,22 @@ export function ExpertGroupCard({ group, onOpen, onSummon, compact = false }: Ex
           </Button>
         )}
       </div>
+      {!compact && (
+        <div className="mt-3 flex items-center gap-2 border-t pt-3 text-xs text-muted-foreground">
+          <FolderOpen size={13} className="shrink-0 text-muted-foreground/60" />
+          <span className="min-w-0 flex-1 truncate font-mono text-[11px]" title={group.sourcePluginPath}>
+            {group.sourcePluginPath}
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 shrink-0 px-2 text-[11px]"
+            onClick={handleOpenPluginDir}
+          >
+            打开目录
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
