@@ -12,6 +12,7 @@ import { ChatView } from '@/components/chat'
 import { AgentView } from '@/components/agent'
 import { PreviewTabContent } from '@/components/diff/PreviewTabContent'
 import { ScratchPadView } from '@/components/scratch-pad/ScratchPadView'
+import { ManualView } from '@/components/manual/ManualView'
 import { TabErrorBoundary } from './TabErrorBoundary'
 
 export interface TabContentProps {
@@ -39,6 +40,10 @@ export function TabContent({ tabId }: TabContentProps): React.ReactElement {
 
   if (tab.type === 'scratch') {
     return <ScratchPadView />
+  }
+
+  if (tab.type === 'manual') {
+    return <ManualView />
   }
 
   if (tab.type === 'chat') {

@@ -6,7 +6,7 @@
 
 import * as React from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
-import { RefreshCw, Loader2, CheckCircle2, AlertCircle, Info, Terminal, ChevronDown, ChevronUp, RotateCw } from 'lucide-react'
+import { RefreshCw, Loader2, CheckCircle2, AlertCircle, Info, Terminal, ChevronDown, ChevronUp, RotateCw, Copy, ExternalLink } from 'lucide-react'
 import type { EnvironmentCheckResult, RuntimeStatus } from '@proma/shared'
 import {
   SettingsSection,
@@ -72,6 +72,7 @@ function UpdateCard(): React.ReactElement | null {
             error={status.error}
             hint={status.hint}
             progress={status.progress}
+            downloadUrl={status.downloadUrl}
           />
 
           {status.status === 'downloaded' ? (
@@ -150,13 +151,22 @@ function UpdateCard(): React.ReactElement | null {
 }
 
 /** 状态文字组件 */
-function StatusText({ status, version, error, hint, progress }: {
+function StatusText({ status, version, error, hint, progress, downloadUrl }: {
   status: string
   version?: string
   error?: string
   hint?: string
   progress?: { percent: number; transferred: number; total: number; bytesPerSecond: number }
+  downloadUrl?: string
 }): React.ReactElement {
+  const [copied, setCopied] = React.useState(false)
+
+  const handleCopy = (url: string) => {
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }).catch(() => {})
+  }
   switch (status) {
     case 'checking':
       return <span className="text-xs text-muted-foreground">正在检查...</span>
@@ -190,10 +200,43 @@ function StatusText({ status, version, error, hint, progress }: {
       )
     case 'error':
       return (
-        <span className="text-xs text-destructive flex items-center gap-1" title={error}>
-          <AlertCircle className="h-3 w-3" />
-          检查失败
-        </span>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs text-destructive flex items-center gap-1" title={error}>
+            <AlertCircle className="h-3 w-3" />
+            下载失败
+          </span>
+          {downloadUrl ? (
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground truncate max-w-[200px]" title={downloadUrl}>
+                {downloadUrl}
+              </span>
+              <button
+                onClick={() => handleCopy(downloadUrl)}
+                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                title="复制下载链接"
+              >
+                {copied ? (
+                  <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                ) : (
+                  <Copy className="h-3 w-3" />
+                )}
+                {copied ? '已复制' : '复制'}
+              </button>
+              <a
+                href={downloadUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-xs text-primary hover:underline"
+                title="在浏览器中打开"
+              >
+                <ExternalLink className="h-3 w-3" />
+                打开
+              </a>
+            </div>
+          ) : (
+            <span className="text-xs text-muted-foreground">{error || '检测失败'}</span>
+          )}
+        </div>
       )
     default:
       return <span className="text-xs text-muted-foreground">未检查</span>
@@ -459,8 +502,8 @@ export function AboutSettings(): React.ReactElement {
       {/* 自动更新卡片（updater 不可用时不渲染） */}
       <UpdateCard />
 
-      {/* 版本历史 */}
-      <VersionHistory />
+      {/* 版本历史 — 暂时屏蔽，后续对接管理台重新实现 */}
+      {/* <VersionHistory /> */}
 
       {/* 环境检测卡片 */}
       <EnvironmentCard />

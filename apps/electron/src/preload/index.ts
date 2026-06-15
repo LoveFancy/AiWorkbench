@@ -301,6 +301,15 @@ export interface ElectronAPI {
   /** 创建欢迎对话（含教程附件） */
   createWelcomeConversation: () => Promise<ConversationMeta | null>
 
+  // ===== 使用手册 =====
+
+  manual: {
+    /** 检查更新并获取手册内容（三级降级） */
+    checkAndGet: () => Promise<import('@proma/shared').ManualContent | null>
+    /** 获取图文版手册并在浏览器中打开 */
+    openHtmlManual: () => Promise<void>
+  }
+
   // ===== 消息发送 =====
 
   /** 发送消息（触发 AI 流式响应） */
@@ -929,6 +938,7 @@ export interface ElectronAPI {
       hint?: string
       forceUpdate?: boolean
       releaseType?: 'UPGRADE' | 'ROLLBACK'
+      downloadUrl?: string
     }>
     onStatusChanged: (callback: (status: {
       status: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error'
@@ -939,6 +949,7 @@ export interface ElectronAPI {
       hint?: string
       forceUpdate?: boolean
       releaseType?: 'UPGRADE' | 'ROLLBACK'
+      downloadUrl?: string
     }) => void) => () => void
     quitAndInstall: () => Promise<void>
   }
@@ -1356,6 +1367,16 @@ const electronAPI: ElectronAPI = {
 
   createWelcomeConversation: () => {
     return ipcRenderer.invoke(CHAT_IPC_CHANNELS.CREATE_WELCOME_CONVERSATION)
+  },
+
+  // 使用手册
+  manual: {
+    checkAndGet: () => {
+      return ipcRenderer.invoke('manual:check-and-get')
+    },
+    openHtmlManual: () => {
+      return ipcRenderer.invoke('manual:open-html')
+    },
   },
 
   // 消息发送

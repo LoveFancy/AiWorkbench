@@ -168,6 +168,7 @@ import {
 } from './lib/attachment-service'
 import { extractTextFromAttachment } from './lib/document-parser'
 import { getTutorialContent, createWelcomeConversation } from './lib/tutorial-service'
+import { checkAndGetManual, getBuiltInManual, openManualHtml } from './lib/manual-service'
 import { getUserProfile, updateUserProfile } from './lib/user-profile-service'
 import { getSettings, updateSettings } from './lib/settings-service'
 import { setDockBadgeCount } from './lib/dock-badge-service'
@@ -4662,6 +4663,29 @@ export function registerIpcHandlers(): void {
     async (_, id: string): Promise<void> => {
       if (!isNonEmptyString(id)) throw new Error('id 必填')
       await runAutomationNow(id)
+    }
+  )
+
+  // ===== 使用手册 =====
+
+  ipcMain.handle(
+    'manual:check-and-get',
+    async () => {
+      return checkAndGetManual()
+    }
+  )
+
+  ipcMain.handle(
+    'manual:get-built-in',
+    async () => {
+      return getBuiltInManual()
+    }
+  )
+
+  ipcMain.handle(
+    'manual:open-html',
+    async () => {
+      await openManualHtml()
     }
   )
 }

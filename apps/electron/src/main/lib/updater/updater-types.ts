@@ -33,7 +33,7 @@ export type UpdateStatus =
       releaseType?: 'UPGRADE' | 'ROLLBACK'
       hint?: string
     }
-  | { status: 'error'; error: string }
+  | { status: 'error'; error: string; downloadUrl?: string }
 
 /** 下载进度 */
 export interface DownloadProgress {
