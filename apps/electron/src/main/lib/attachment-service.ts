@@ -169,7 +169,8 @@ export function readAttachmentAsBase64(localPath: string): string {
   }
 
   if (!existsSync(fullPath)) {
-    throw new Error(`附件文件不存在: ${localPath}`)
+    console.warn(`[附件服务] 附件文件不存在，可能已被用户删除: ${localPath}`)
+    return ''
   }
 
   const buffer = readFileSync(fullPath)

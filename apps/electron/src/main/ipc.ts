@@ -1329,6 +1329,10 @@ export function registerIpcHandlers(): void {
       if (result.canceled || !result.filePath) return false
 
       const base64 = readAttachmentAsBase64(localPath)
+      if (!base64) {
+        console.warn(`[文件另存] 附件文件不存在: ${localPath}`)
+        return false
+      }
       writeFileSync(result.filePath, Buffer.from(base64, 'base64'))
       return true
     }

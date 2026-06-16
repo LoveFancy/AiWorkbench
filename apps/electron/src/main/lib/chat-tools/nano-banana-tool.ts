@@ -184,16 +184,14 @@ function collectReferenceImages(context: NanoBananaContext): GeminiPart[] {
   for (const attachment of allAttachments) {
     if (!isImageAttachment(attachment.mediaType)) continue
 
-    try {
-      const base64 = readAttachmentAsBase64(attachment.localPath)
+    const base64 = readAttachmentAsBase64(attachment.localPath)
+    if (base64) {
       parts.push({
         inlineData: {
           mimeType: attachment.mediaType,
           data: base64,
         },
       })
-    } catch (error) {
-      console.warn(`[Nano Banana] 读取参考图失败: ${attachment.localPath}`, error)
     }
   }
 

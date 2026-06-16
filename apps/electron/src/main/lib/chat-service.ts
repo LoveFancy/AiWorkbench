@@ -56,6 +56,7 @@ function getImageAttachmentData(attachments?: FileAttachment[]): ImageAttachment
       mediaType: att.mediaType,
       data: readAttachmentAsBase64(att.localPath),
     }))
+    .filter((item) => item.data !== '')
 }
 
 // ===== 文档附件文本提取 =====
