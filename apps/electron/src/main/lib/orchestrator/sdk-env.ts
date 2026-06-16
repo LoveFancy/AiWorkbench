@@ -83,11 +83,8 @@ export async function buildSdkEnv(
       if (shellStatus.gitBash?.available && shellStatus.gitBash.path) {
         sdkEnv.CLAUDE_CODE_SHELL = shellStatus.gitBash.path
         console.log(`[Agent 编排] 配置 Shell 环境: Git Bash (${shellStatus.gitBash.path})`)
-      } else if (shellStatus.wsl?.available) {
-        sdkEnv.CLAUDE_CODE_SHELL = 'wsl'
-        console.log(`[Agent 编排] 配置 Shell 环境: WSL ${shellStatus.wsl.version} (${shellStatus.wsl.defaultDistro})`)
       } else {
-        console.warn('[Agent 编排] Windows 平台未检测到可用的 Shell 环境（Git Bash / WSL）')
+        console.warn('[Agent 编排] Windows 平台未检测到可用的 Git Bash')
       }
       sdkEnv.CLAUDE_BASH_NO_LOGIN = '1'
     }
