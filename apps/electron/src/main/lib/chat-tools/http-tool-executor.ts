@@ -8,6 +8,7 @@
 import type { ToolCall, ToolResult } from '@proma/core'
 import type { ChatToolMeta, ChatToolHttpConfig } from '@proma/shared'
 import { getChatToolsConfig } from '../chat-tool-config'
+import { getToken } from '../../../auth/auth-service'
 
 /** HTTP 请求超时（30 秒） */
 const HTTP_TIMEOUT_MS = 30_000
@@ -109,6 +110,14 @@ async function executeHttpRequest(
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...config.headers,
+  }
+
+  // EIP 网关认证：自动注入 Cookie（如果用户没自己设置 Cookie 的话）
+  if (config.useEipAuth && !headers.Cookie) {
+    const token = getToken()
+    if (token) {
+      headers.Cookie = `EIPGW-TOKEN=${token}`
+    }
   }
 
   // 请求配置

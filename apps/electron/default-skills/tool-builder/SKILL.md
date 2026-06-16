@@ -1,9 +1,9 @@
 ---
 name: tool-builder
 description: 交互式创建和管理 Chat 模式的自定义 HTTP 工具。当用户想要创建新的 API 工具、配置 Chat 工具、添加自定义工具、管理自定义工具、或说"帮我创建一个 XX 工具"时使用此 Skill。也适用于调试、修复或删除已有的自定义工具。
-version: "1.0.0"
+version: "1.1.0"
 ---
-version: "1.0.0"
+version: "1.1.0"
 ---
 # Tool Builder
 
@@ -79,6 +79,7 @@ version: "1.0.0"
 | `headers` | 否 | 请求头，常用于 API Key 认证：`{ "Authorization": "Bearer xxx" }` |
 | `bodyTemplate` | 否 | POST 请求体 JSON 模板，`{{paramName}}` 占位符会被替换（不编码） |
 | `resultPath` | 否 | 点号路径提取响应中的特定字段（如 `"data.results"`） |
+| `useEipAuth` | 否 | 是否注入 EIP 网关认证 Cookie（EIPGW-TOKEN）。当 URL 域名包含 `eip` 时自动设为 `true` |
 
 #### 参数类型
 
@@ -164,3 +165,29 @@ version: "1.0.0"
   }
 }
 ```
+
+## 完整示例：EIP 网关内部接口工具
+
+当接口域名包含 `eip` 时，自动启用 `useEipAuth: true`，会注入当前登录的 EIPGW-TOKEN Cookie。
+
+```json
+{
+  "id": "custom-eip-staff-query",
+  "name": "员工查询",
+  "description": "通过工号查询员工信息，使用 EIP 网关认证。",
+  "params": [
+    { "name": "jobId", "type": "string", "description": "员工工号", "required": true }
+  ],
+  "category": "custom",
+  "executorType": "http",
+  "httpConfig": {
+    "urlTemplate": "http://eip.htsc.com.cn/api/staff/{{jobId}}",
+    "method": "GET",
+    "useEipAuth": true
+  }
+}
+```
+
+## 关于 EIP 认证
+
+当创建的工具 URL 域名包含 `eip` 时，请自动添加 `"useEipAuth": true`。这样工具执行时会自动获取当前登录用户的 EIPGW-TOKEN 并注入到请求头中，无需用户手动配置认证信息。
