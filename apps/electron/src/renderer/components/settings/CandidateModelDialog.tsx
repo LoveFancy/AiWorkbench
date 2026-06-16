@@ -101,6 +101,20 @@ export function CandidateModelDialog({
   const [search, setSearch] = React.useState('')
   const [showSaaSConfirm, setShowSaaSConfirm] = React.useState<string | null>(null)
 
+  // 本地暂存：解决快速勾选竞态 + 提供"确定/取消"语义
+  const [pendingCandidates, setPendingCandidates] = React.useState<string[]>(candidateModelIds)
+  const [pendingAutoMode, setPendingAutoMode] = React.useState(autoModeEnabled)
+
+  // dialog 打开时从 props 同步到本地暂存
+  React.useEffect(() => {
+    if (open) {
+      setPendingCandidates(candidateModelIds)
+      setPendingAutoMode(autoModeEnabled)
+      setSearch('')
+      setShowSaaSConfirm(null)
+    }
+  }, [open, candidateModelIds, autoModeEnabled])
+
   const allModels = React.useMemo(() => buildModelList(channels, extraModels), [channels, extraModels])
   const localModelIds = React.useMemo(() => allModels.filter(m => m.isLocal).map(m => m.id), [allModels])
 
@@ -110,7 +124,7 @@ export function CandidateModelDialog({
     return allModels.filter(m => m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q))
   }, [allModels, search])
 
-  const candidateSet = React.useMemo(() => new Set(candidateModelIds), [candidateModelIds])
+  const candidateSet = React.useMemo(() => new Set(pendingCandidates), [pendingCandidates])
 
   const handleToggle = (modelId: string, checked: boolean) => {
     if (checked) {
@@ -119,29 +133,41 @@ export function CandidateModelDialog({
         setShowSaaSConfirm(modelId)
         return
       }
-      onCandidatesChange([...candidateModelIds, modelId])
+      setPendingCandidates(prev => [...prev, modelId])
     } else {
-      onCandidatesChange(candidateModelIds.filter(id => id !== modelId))
+      setPendingCandidates(prev => prev.filter(id => id !== modelId))
     }
   }
 
   const confirmSaaS = () => {
     if (showSaaSConfirm) {
-      onCandidatesChange([...candidateModelIds, showSaaSConfirm])
+      setPendingCandidates(prev => [...prev, showSaaSConfirm])
       setShowSaaSConfirm(null)
     }
   }
 
   const handleClearAll = () => {
-    onCandidatesChange([])
-    if (autoModeEnabled) {
-      onAutoModeEnabledChange(false)
-    }
+    setPendingCandidates([])
+    setPendingAutoMode(false)
   }
 
   const handleSelectAllLocal = () => {
-    const merged = new Set([...candidateModelIds, ...localModelIds])
-    onCandidatesChange(Array.from(merged))
+    setPendingCandidates(prev => {
+      const merged = new Set([...prev, ...localModelIds])
+      return Array.from(merged)
+    })
+  }
+
+  // "确定" 时一次性持久化
+  const handleConfirm = () => {
+    onCandidatesChange(pendingCandidates)
+    onAutoModeEnabledChange(pendingAutoMode)
+    onOpenChange(false)
+  }
+
+  // "取消" 时直接关闭
+  const handleCancel = () => {
+    onOpenChange(false)
   }
 
   React.useEffect(() => {
@@ -222,13 +248,23 @@ export function CandidateModelDialog({
           </div>
 
           {/* 底部操作栏 */}
-          <div className="flex items-center gap-2 px-4 py-2.5 border-t border-border/60">
-            <Button variant="outline" size="sm" className="text-xs" onClick={handleSelectAllLocal}>
-              全选私有化
-            </Button>
-            <Button variant="outline" size="sm" className="text-xs" onClick={handleClearAll}>
-              清空
-            </Button>
+          <div className="flex items-center justify-between px-4 py-2.5 border-t border-border/60">
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" className="text-xs" onClick={handleSelectAllLocal}>
+                全选私有化
+              </Button>
+              <Button variant="outline" size="sm" className="text-xs" onClick={handleClearAll}>
+                清空
+              </Button>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" className="text-xs" onClick={handleCancel}>
+                取消
+              </Button>
+              <Button size="sm" className="text-xs" onClick={handleConfirm}>
+                确定
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

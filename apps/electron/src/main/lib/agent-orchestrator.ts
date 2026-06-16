@@ -25,7 +25,6 @@ import {
 } from '@proma/shared'
 import type { PermissionRequest, PromaPermissionMode, AskUserRequest, ExitPlanModeRequest } from '@proma/shared'
 import type { ClaudeAgentQueryOptions } from './adapters/claude-agent-adapter'
-import { isThinkingSignatureError } from './adapters/claude-agent-adapter'
 import { AgentEventBus } from './agent-event-bus'
 import { decryptApiKey, getChannelById } from './channel-manager'
 import { injectAutomationMcpServer } from './automation-agent-tools'
@@ -46,10 +45,7 @@ import {
 import {
   MAX_AUTO_RETRIES,
   MAX_AUTO_RETRY_WAIT_MS,
-  isAutoRetryableCatchError,
-  isSessionNotFoundError,
   getRetryDelayMs,
-  extractApiError,
   sdkRunSingleAttempt,
   type SdkRunContext,
   type SdkRunCallbacks,
@@ -65,7 +61,6 @@ import { buildContextPrompt, buildRecoveryPrompt, buildReferencedSessionsPrompt,
 import { collectAttachedDirectories } from './orchestrator/workspace-context'
 import { resolveSDKCliPath, getAgentPluginPaths } from './orchestrator/sdk-path'
 import {
-  classifyCatchError,
   buildErrorSDKMessage,
   shouldClearSDKSessionId,
   logStderr,
@@ -877,7 +872,6 @@ export class AgentOrchestrator {
         agents: buildAgentsForSession({ claudeAvailable, expertRuntime }),
         onStderr: (data: string) => {
           stderrChunks.push(data)
-          console.error(`[Gateway Diag] SDK stderr: ${data.trimEnd()}`)
         },
         onSessionId: (sdkSessionId: string) => {
           // 仅在新 session ID 变更时保存（onSessionId 可能被多次回调但 ID 不变）
@@ -1032,7 +1026,6 @@ export class AgentOrchestrator {
 
         let shouldRetryFromError = false
 
-        try {
           // 委托给 sdkRunSingleAttempt（模式特定行为通过 callbacks 注入）
           const queryStartedAt = Date.now()
 
@@ -1153,97 +1146,12 @@ export class AgentOrchestrator {
             continue
           }
 
-          // 不可重试：用 result.fatalError 中的真实错误信息
-          console.error(`[Gateway Diag] orchestrator: error_break with fatalError`)
-          console.error(`[Gateway Diag]   fatalError.apiError: ${result.fatalError?.apiError ? `status=${result.fatalError.apiError.statusCode} msg=${result.fatalError.apiError.message}` : 'null'}`)
-          console.error(`[Gateway Diag]   fatalError.rawErrorMessage: ${result.fatalError?.rawErrorMessage}`)
-          const fatalErrorMessage = result.fatalError?.rawErrorMessage || 'Non-retryable SDK error'
-          throw new Error(fatalErrorMessage)
-
-
-        } catch (error) {
-          // 打印 stderr（结构化日志由 error-presenter 处理）
-          logStderr(stderrChunks)
-
-          // 用户主动中止
-          if (!this.activeSessions.has(sessionId)) {
-            const wasStoppedByUser = this.consumeStoppedByUser(sessionId)
-            console.log(`[Agent 编排] 会话 ${sessionId} 已被用户中止`)
-            persistSDKMessages(sessionId, accumulatedMessages, Date.now() - queryStartedAt)
-            // 持久化中断状态到会话 meta
-            try { updateAgentSessionMeta(sessionId, { stoppedByUser: wasStoppedByUser }) } catch { /* 会话可能已删除 */ }
-            completeRun(getAgentSessionMessages(sessionId), { stoppedByUser: wasStoppedByUser, startedAt: streamStartedAt })
-            return
-          }
-
-          // 从 stderr 提取 API 错误
-          const stderrOutput = stderrChunks.join('').trim()
-          const apiError = extractApiError(stderrOutput)
-          const rawErrorMessage = error instanceof Error ? error.message : ''
-          const rawStack = error instanceof Error ? (error.stack ?? error.message) : String(error)
-
-          // ======== 网关排查诊断日志 ========
-          console.error(`[Gateway Diag] ====== 错误诊断 (session=${sessionId}) ======`)
-          console.error(`[Gateway Diag] rawErrorMessage: ${rawErrorMessage}`)
-          console.error(`[Gateway Diag] apiError from stderr: ${apiError ? `status=${apiError.statusCode} message=${apiError.message}` : 'null'}`)
-          console.error(`[Gateway Diag] stderrOutput length: ${stderrOutput.length}`)
-          if (stderrOutput) {
-            console.error(`[Gateway Diag] stderrOutput (first 2000 chars):\n${stderrOutput.slice(0, 2000)}`)
-            if (stderrOutput.length > 2000) {
-              console.error(`[Gateway Diag] ... (truncated, ${stderrOutput.length - 2000} more chars in app log)`)
-            }
-          }
-          console.error(`[Gateway Diag] error.stack (first 500 chars):\n${rawStack.slice(0, 500)}`)
-          // ======== 网关排查诊断日志 END ========
-
-          // Session 不存在错误：清除 sdkSessionId，切换到上下文回填模式重试
-          if (isSessionNotFoundError(rawErrorMessage, stderrOutput) && existingSdkSessionId && canAutoRetry(attempt)) {
-            existingSdkSessionId = undefined
-            capturedSdkSessionId = undefined
-            lastRetryableError = prepareSessionNotFoundRecovery(sessionId, queryOptions, contextualMessage, agentCwd, accumulatedMessages, queryStartedAt)
-            stderrChunks.length = 0
-            continue  // 进入下一次 retry 循环
-          }
-
-          // Thinking signature 不兼容：先自动清除 SDK resume 关系并用上下文回填重跑一次。
-          if (
-            isThinkingSignatureError(apiError?.message ?? '', rawErrorMessage, stderrOutput) &&
-            canTryThinkingSignatureRecovery(attempt)
-          ) {
-            thinkingSignatureRecoveryAttempted = true
-            invisibleRecoveryAttempts += 1
-            existingSdkSessionId = undefined
-            capturedSdkSessionId = undefined
-            skipNextRetryDelay = true
-            lastRetryableError = prepareResumeFallbackRecovery(
-              sessionId,
-              queryOptions,
-              contextualMessage,
-              agentCwd,
-              accumulatedMessages,
-              queryStartedAt,
-              '检测到 thinking signature 不兼容，清除 sdkSessionId 并切换到上下文回填模式',
-              '思考签名不兼容，切换到上下文回填模式',
-            )
-            stderrChunks.length = 0
-            continue  // 进入下一次 retry 循环
-          }
-
-          // 判断是否可重试
-          if (isAutoRetryableCatchError(apiError, rawErrorMessage, stderrOutput) && canAutoRetry(attempt)) {
-            lastRetryableError = apiError
-              ? `API Error ${apiError.statusCode}: ${apiError.message}`
-              : (error instanceof Error ? error.message : '未知错误')
-            console.log(`[Agent 编排] 可重试错误 (catch, attempt ${attempt}/${MAX_AUTO_RETRIES}): ${lastRetryableError}`)
-            // 保存部分内容
-            persistSDKMessages(sessionId, accumulatedMessages, Date.now() - queryStartedAt)
-            accumulatedMessages.length = 0
-            stderrChunks.length = 0
-            continue  // 进入下一次 retry 循环
-          }
-
-          // 不可重试 — 分类错误并构建用户可见消息
-          console.error(`[Agent 编排] 执行失败:`, error)
+          // 不可重试 — 使用 fatalError.display 直接展示
+          const fatalDisplay = result.fatalError!.display
+          const fatalIsMalformed = result.fatalError!.isMalformedResponse
+          const fatalRawMsg = result.fatalError!.rawErrorMessage
+          console.error(`[Agent 编排] 不可重试错误 (session=${sessionId}): code=${fatalDisplay.errorCode} title=${fatalDisplay.errorTitle} raw=${fatalRawMsg.slice(0, 200)}`)
+          // stderr 全文由下方 logStderr 输出
 
           // 保存已累积的部分内容
           if (accumulatedMessages.length > 0) {
@@ -1254,50 +1162,46 @@ export class AgentOrchestrator {
             }
           }
 
-          // 错误分类 + 用户可见消息
-          const classified = classifyCatchError(error, stderrOutput, apiError)
+          // 打印 stderr
+          logStderr(stderrChunks)
 
-          // 当 SDK 报 "empty or malformed" 但无法从 stderr 解析出 HTTP 状态码时，
-          // 说明中间网关/代理返回了非标准响应。把原始 stderr 写到会话目录，
-          // 方便排查网关的真实报错（认证页、拦截页等 HTML 内容）
-          if (!apiError && rawErrorMessage.includes('empty or malformed') && stderrOutput.length > 0 && agentCwd) {
+          // malformed 响应：写入文件方便排查
+          const stderrText = stderrChunks.join('').trim()
+          if (fatalIsMalformed && stderrText.length > 0 && agentCwd) {
             try {
               const stderrLogPath = join(agentCwd, 'stderr-output.txt')
-              writeFileSync(stderrLogPath, `// 网关返回的原始响应 (${new Date().toISOString()})\n${stderrOutput}\n`, 'utf-8')
-              console.log(`[Agent 编排] 已将网关原始响应写入: ${stderrLogPath} (${stderrOutput.length} 字符)`)
+              writeFileSync(stderrLogPath, `// 网关返回的原始响应 (${new Date().toISOString()})\n${stderrText}\n`, 'utf-8')
+              console.log(`[Agent 编排] 已将网关原始响应写入: ${stderrLogPath} (${stderrText.length} 字符)`)
             } catch { /* 忽略 */ }
           }
 
-          const userFacingError = classified.errorContent
-
-          // 保存错误消息到 JSONL
+          // 保存错误消息
           try {
-            const errMsg = buildErrorSDKMessage(classified)
+            const errMsg = buildErrorSDKMessage(fatalDisplay)
             appendSDKMessages(sessionId, [errMsg])
           } catch (saveError) {
             console.error('[Agent 编排] 保存错误消息失败:', saveError)
           }
 
-          // 如果之前有重试记录，发送 retry_failed
+          // 重试记录
           if (retryAttemptsScheduled > 0 && lastRetryableError) {
             this.eventBus.emit(sessionId, {
               kind: 'proma_event',
-              event: { type: 'retry', status: 'failed', attemptData: { attempt: retryAttemptsScheduled, timestamp: Date.now(), reason: lastRetryableError, errorMessage: userFacingError, delaySeconds: 0 } },
+              event: { type: 'retry', status: 'failed', attemptData: { attempt: retryAttemptsScheduled, timestamp: Date.now(), reason: lastRetryableError, errorMessage: fatalDisplay.errorContent, delaySeconds: 0 } },
             })
           }
 
-          failRun(userFacingError, getAgentSessionMessages(sessionId), { startedAt: streamStartedAt })
+          failRun(fatalDisplay.errorContent, getAgentSessionMessages(sessionId), { startedAt: streamStartedAt })
 
-          // 根据错误类型决定是否保留 sdkSessionId
-          const shouldClearSession = shouldClearSDKSessionId(apiError)
-          if (existingSdkSessionId && shouldClearSession) {
+          // 根据错误类型决定 sdkSessionId
+          const apiError = result.fatalError!.apiError
+          if (existingSdkSessionId && shouldClearSDKSessionId(apiError)) {
             try {
               updateAgentSessionMeta(sessionId, { sdkSessionId: undefined })
             } catch { /* 忽略 */ }
           }
 
           return
-        }
       }
 
       // 重试循环结束（达到最大次数仍失败）

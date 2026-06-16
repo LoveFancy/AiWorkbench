@@ -14,13 +14,11 @@
 import type { ClaudeAgentQueryOptions } from '../adapters/claude-agent-adapter'
 import {
   isPromptTooLongError,
-  isThinkingSignatureError,
   friendlyErrorMessage,
   mapSDKErrorToTypedError,
   extractErrorDetails,
   shouldKeepChannelOpen,
 } from '../adapters/claude-agent-adapter'
-import { isTransientNetworkError } from '../error-patterns'
 import {
   THINKING_SIGNATURE_ERROR_CODE,
 } from '@proma/shared'
@@ -30,8 +28,11 @@ import type {
   SDKSystemMessage,
   TypedError,
 } from '@proma/shared'
-import { appendSDKMessages } from '../agent-session-manager'
-import { buildErrorSDKMessage } from './error-presenter'
+import {
+  classifySdkError,
+  classifyFromTypedError,
+  type ClassifyResult,
+} from './error-classifier'
 
 // ===== 常量 =====
 
@@ -52,24 +53,8 @@ const AUTO_RETRYABLE_ERROR_CODES: ReadonlySet<string> = new Set([
 ])
 
 export function isAutoRetryableTypedError(error: TypedError): boolean {
+  if (!error.canRetry) return false
   return AUTO_RETRYABLE_ERROR_CODES.has(error.code)
-}
-
-export function isAutoRetryableCatchError(
-  apiError: { statusCode: number; message: string } | null,
-  rawErrorMessage?: string,
-  stderr?: string,
-): boolean {
-  if (apiError) {
-    if (apiError.statusCode === 429 || apiError.statusCode >= 500) return true
-  }
-  if (rawErrorMessage) {
-    if (rawErrorMessage.includes('context_management')) return true
-  }
-  const text = `${rawErrorMessage ?? ''}\n${stderr ?? ''}`
-  if (/\b502\b|\b529\b|overloaded/i.test(text)) return true
-  if (isTransientNetworkError(rawErrorMessage, stderr)) return true
-  return false
 }
 
 export function isSessionNotFoundError(errorMessage: string, stderr?: string): boolean {
@@ -176,12 +161,8 @@ export interface SingleRunResult {
   shouldRetryFromError?: boolean
   /** 恢复类型（仅 shouldRetryFromError 为 true 时有意义） */
   recoveryType?: 'session_not_found' | 'thinking_signature' | 'api_failure'
-  /** 不可重试错误时，附加的 API 错误信息（供 orchestrator 展示用户友好错误） */
-  fatalError?: {
-    apiError: { statusCode: number; message: string } | null
-    rawErrorMessage: string
-    stderrOutput: string
-  }
+  /** 不可重试错误时，附带统一的分类结果（display + category + raw 信息） */
+  fatalError?: ClassifyResult
 }
 
 const RESULT_DRAIN_TIMEOUT_MS = 2_000
@@ -246,8 +227,6 @@ export async function sdkRunSingleAttempt(
       // ============ api_retry 检测 ============
       if (msg.type === 'system' && (msg as { subtype?: string }).subtype === 'api_retry') {
         const retryError = (msg as { error?: string }).error || '未知'
-        const retryDetail = (msg as { message?: string }).message || ''
-        console.error(`[Gateway Diag] SDK api_retry system message: error="${retryError}" detail="${retryDetail.slice(0, 500)}"`)
         deps.abort(ctx.sessionId)
         if (pendingNext) { (pendingNext as Promise<unknown>).catch(() => {}); pendingNext = null }
         const action = await callbacks.onApiRetry(retryError, ctx)
@@ -324,20 +303,11 @@ export async function sdkRunSingleAttempt(
             }
           }
 
-          // 不可重试 → 持久化错误消息，返回 error_break with shouldRetryFromError=false
+          // 不可重试 → 只返回 fatalError，编排器统一处理展示
           deps.persistMessages(ctx.sessionId, ctx.accumulatedMessages, Date.now() - queryStartedAt)
 
-          const errorSDKMsg = buildErrorSDKMessage({
-            errorCode: typedError.code,
-            errorTitle: typedError.title ?? '执行错误',
-            errorContent: typedError.title
-              ? `${typedError.title}: ${typedError.message}`
-              : typedError.message,
-            errorActions: typedError.actions as Array<{ key: string; label: string; action: string }> | undefined,
-          })
-          appendSDKMessages(ctx.sessionId, [errorSDKMsg])
-          deps.emit(ctx.sessionId, { kind: 'sdk_message', message: errorSDKMsg })
-          return { kind: 'error_break', shouldRetryFromError: false }
+          const fatalError = classifyFromTypedError(typedError, detailedMessage, extractApiError(ctx.stderrChunks.join('')))
+          return { kind: 'error_break', shouldRetryFromError: false, fatalError }
         }
       }
 
@@ -408,28 +378,19 @@ export async function sdkRunSingleAttempt(
     const stderrOutput = ctx.stderrChunks.join('').trim()
     const apiError = extractApiError(stderrOutput)
     const rawErrorMessage = error instanceof Error ? error.message : ''
+    const rawStack = error instanceof Error ? (error.stack ?? error.message) : String(error)
 
-    // Session 不存在
-    if (isSessionNotFoundError(rawErrorMessage, stderrOutput) && ctx.existingSdkSessionId) {
-      return {
-        kind: 'error_break',
-        shouldRetryFromError: true,
-        recoveryType: 'session_not_found',
-      }
-    }
+    // 统一分类
+    const classified = classifySdkError({
+      rawErrorMessage,
+      rawStack,
+      stderrOutput,
+      apiError,
+      existingSdkSessionId: ctx.existingSdkSessionId,
+    })
 
-    // Thinking signature
-    if (isThinkingSignatureError(apiError?.message ?? '', rawErrorMessage, stderrOutput)) {
-      return {
-        kind: 'error_break',
-        shouldRetryFromError: true,
-        recoveryType: 'thinking_signature',
-      }
-    }
-
-    // catch 可重试判断：由调用方通过 canRetryViaAutoMode 注入
-    // 这里只做基础判断，Auto Mode 扩展在 orchestrator 的 retry loop 里
-    if (isAutoRetryableCatchError(apiError, rawErrorMessage, stderrOutput)) {
+    // 根据分类做恢复决策
+    if (classified.category === 'api_retryable') {
       deps.persistMessages(ctx.sessionId, ctx.accumulatedMessages, Date.now() - queryStartedAt)
       ctx.accumulatedMessages.length = 0
       ctx.stderrChunks.length = 0
@@ -440,15 +401,28 @@ export async function sdkRunSingleAttempt(
       }
     }
 
-    // 不可重试
-    console.error(`[Gateway Diag] sdkRunSingleAttempt catch → fatalError`)
-    console.error(`[Gateway Diag]   apiError: ${apiError ? `status=${apiError.statusCode} msg=${apiError.message}` : 'null'}`)
-    console.error(`[Gateway Diag]   rawErrorMessage: ${rawErrorMessage}`)
-    console.error(`[Gateway Diag]   stderrOutput (${stderrOutput.length} chars):\n${stderrOutput.slice(0, 2000)}`)
+    if (classified.category === 'session_not_found') {
+      return {
+        kind: 'error_break',
+        shouldRetryFromError: true,
+        recoveryType: 'session_not_found',
+      }
+    }
+
+    if (classified.category === 'thinking_signature') {
+      return {
+        kind: 'error_break',
+        shouldRetryFromError: true,
+        recoveryType: 'thinking_signature',
+      }
+    }
+
+    // api_fatal — 不可重试
+    console.error(`[Agent 编排] catch → fatal: apiError=${apiError ? `status=${apiError.statusCode} msg=${apiError.message}` : 'null'} raw=${rawErrorMessage.slice(0, 200)} stderrLen=${stderrOutput.length}`)
     return {
       kind: 'error_break',
       shouldRetryFromError: false,
-      fatalError: { apiError, rawErrorMessage, stderrOutput },
+      fatalError: classified,
     }
 
   } finally {
