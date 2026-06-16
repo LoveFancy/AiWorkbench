@@ -199,6 +199,10 @@ const FRIENDLY_ERROR_MESSAGES: Array<{ pattern: RegExp; message: string }> = [
     pattern: /validation error/i,
     message: 'API 请求格式校验失败，请重试或开启新会话',
   },
+  {
+    pattern: /empty or malformed response/i,
+    message: '请求未到达模型服务，可能被代理或网关拦截。请检查网络代理设置，然后点击重试',
+  },
 ]
 
 /** 错误消息最大保留长度（超出部分截断，防止存储膨胀） */

@@ -242,10 +242,6 @@ export async function sdkRunSingleAttempt(
 
       pendingNext = null
       const msg = iterResult.value
-      const elapsedSec = Math.round((Date.now() - queryStartedAt) / 1000)
-      if (msg.type !== 'system' || (msg as { subtype?: string }).subtype !== 'init') {
-        console.log(`[Agent 编排] └ t+${elapsedSec}s msg: type=${msg.type}${(msg as { subtype?: string }).subtype ? ', subtype=' + (msg as { subtype?: string }).subtype : ''}${(msg as { error?: unknown }).error ? ', error=' + JSON.stringify((msg as { error?: unknown }).error).slice(0, 80) : ''}`)
-      }
 
       // ============ api_retry 检测 ============
       if (msg.type === 'system' && (msg as { subtype?: string }).subtype === 'api_retry') {
@@ -295,7 +291,6 @@ export async function sdkRunSingleAttempt(
             errorCode = 'prompt_too_long'
           }
           const typedError = mapSDKErrorToTypedError(errorCode, friendlyErrorMessage(detailedMessage), originalError)
-          console.log(`[Agent 编排] 检测到 SDK 错误: code=${errorCode}, typedCode=${typedError.code}, retryable=${typedError.canRetry}`)
 
           // Session 不存在
           if (isSessionNotFoundError(detailedMessage, originalError) && ctx.existingSdkSessionId) {
@@ -403,14 +398,6 @@ export async function sdkRunSingleAttempt(
 
   } catch (error) {
     // ============ catch 路径 ============
-    const fullStderr = ctx.stderrChunks.join('').trim()
-    if (fullStderr) {
-      console.error(`[Agent 编排] 完整 stderr 输出 (${fullStderr.length} 字符):`)
-      console.error(fullStderr)
-    } else {
-      console.error(`[Agent 编排] stderr 为空`)
-    }
-
     if (!deps.isActive(ctx.sessionId)) {
       return { kind: 'stopped_by_user' }
     }
@@ -419,7 +406,6 @@ export async function sdkRunSingleAttempt(
     const stderrOutput = ctx.stderrChunks.join('').trim()
     const apiError = extractApiError(stderrOutput)
     const rawErrorMessage = error instanceof Error ? error.message : ''
-    console.log(`[Agent 编排] catch 错误: apiStatus=${apiError?.statusCode ?? '无'}, message=${(apiError?.message ?? rawErrorMessage).slice(0, 120)}`)
 
     // Session 不存在
     if (isSessionNotFoundError(rawErrorMessage, stderrOutput) && ctx.existingSdkSessionId) {
