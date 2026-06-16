@@ -91,7 +91,7 @@ export async function initializeRuntime(options: RuntimeInitOptions = {}): Promi
       const gitBashStatus = await detectGitBash()
 
       // WSL 功能已屏蔽，不再检测
-      const wslNotReady: typeof import('@proma/shared').WslStatus = {
+      const wslNotReady = {
         available: false,
         version: null,
         defaultDistro: null,

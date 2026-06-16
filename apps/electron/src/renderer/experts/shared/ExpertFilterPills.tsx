@@ -2,6 +2,7 @@ import * as React from 'react'
 import { Star, Clock, CheckCircle, AlertTriangle, Bot, Users, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
+/** 筛选标签类型：PILLS 数组仅控制展示哪些按钮 */
 export type FilterTag = 'all' | 'followed' | 'recent' | 'available' | 'unavailable' | 'expert' | 'team' | 'not_downloaded'
 
 interface ExpertFilterPillsProps {
@@ -10,8 +11,8 @@ interface ExpertFilterPillsProps {
   counts: Partial<Record<FilterTag, number>>
 }
 
-const PILLS: Array<{ tag: FilterTag; label: string; icon: typeof Star }> = [
-  { tag: 'followed', label: '收藏', icon: Star },
+const PILLS: Array<{ tag: FilterTag; label: string; icon: typeof Bot }> = [
+  { tag: 'followed', label: '已关注', icon: Star },
   { tag: 'recent', label: '最近使用', icon: Clock },
   { tag: 'expert', label: '专家', icon: Bot },
   { tag: 'team', label: '专家团', icon: Users },

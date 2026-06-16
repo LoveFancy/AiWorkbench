@@ -21,14 +21,7 @@ import { ExpertImportButton } from '@/experts/shared/ExpertImportDropdown'
 import { ExpertFeaturedScenes } from '@/experts/shared/ExpertFeaturedScenes'
 import { filterByTag, searchByName } from '@/experts/utils/filter'
 
-interface ExpertPageViewProps {
-  /** 是否显示精选场景区（仅"专家/专家团"页面） */
-  showFeaturedScenes?: boolean
-  /** 初始筛选状态 */
-  initialFilter: 'all' | 'followed' | 'recent'
-}
-
-export function ExpertPageView({ showFeaturedScenes = false, initialFilter }: ExpertPageViewProps): React.ReactElement {
+export function ExpertPageView(): React.ReactElement {
   const allGroups = useAtomValue(agentExpertGroupsAtom)
   const loadGroups = useSetAtom(loadAgentExpertGroupsAtom)
   const loadRemote = useSetAtom(loadRemoteExpertDataAtom)
@@ -39,7 +32,7 @@ export function ExpertPageView({ showFeaturedScenes = false, initialFilter }: Ex
   const recordRecent = useSetAtom(recordRecentExpertGroupAtom)
 
   const [query, setQuery] = React.useState('')
-  const [filterTag, setFilterTag] = React.useState<FilterTag>(initialFilter)
+  const [filterTag, setFilterTag] = React.useState<FilterTag>('all')
   const [sceneFilter, setSceneFilter] = React.useState<Set<string> | null>(null)
   const [activeSceneId, setActiveSceneId] = React.useState<string | null>(null)
   const [refreshing, setRefreshing] = React.useState(false)
@@ -51,14 +44,6 @@ export function ExpertPageView({ showFeaturedScenes = false, initialFilter }: Ex
     }
     void loadRemote()
   }, [allGroups.length, loadGroups, loadRemote])
-
-  // 初始筛选变化时重置
-  React.useEffect(() => {
-    setFilterTag(initialFilter)
-    setQuery('')
-    setSceneFilter(null)
-    setActiveSceneId(null)
-  }, [initialFilter])
 
   const handleRefresh = React.useCallback(async () => {
     setRefreshing(true)
@@ -135,19 +120,13 @@ export function ExpertPageView({ showFeaturedScenes = false, initialFilter }: Ex
       {/* 顶部控制栏 */}
       <div className="flex-shrink-0 border-b px-6 pt-10 pb-4 titlebar-no-drag">
         <div className="flex items-center justify-between gap-4">
-          <h2 className="text-lg font-semibold">
-            {initialFilter === 'all' ? '专家/专家团' : initialFilter === 'followed' ? '已关注' : '最近使用'}
-          </h2>
+          <h2 className="text-lg font-semibold">专家/专家团</h2>
           <div className="flex items-center gap-2">
             <ExpertSearchBar value={query} onChange={setQuery} />
-            {initialFilter === 'all' && (
-              <>
-                <Button variant="outline" size="icon" className="h-9 w-9" onClick={handleRefresh} disabled={refreshing} title="刷新专家团列表">
-                  <RefreshCw className={`size-4 ${refreshing ? 'animate-spin' : ''}`} />
-                </Button>
-                <ExpertImportButton />
-              </>
-            )}
+            <Button variant="outline" size="icon" className="h-9 w-9" onClick={handleRefresh} disabled={refreshing} title="刷新专家团列表">
+              <RefreshCw className={`size-4 ${refreshing ? 'animate-spin' : ''}`} />
+            </Button>
+            <ExpertImportButton />
           </div>
         </div>
 
@@ -175,7 +154,7 @@ export function ExpertPageView({ showFeaturedScenes = false, initialFilter }: Ex
       <ScrollArea className="flex-1">
         <div className="p-6">
           {/* 精选场景 */}
-          {showFeaturedScenes && filterTag === 'all' && !query.trim() && displayGroups.length > 0 && (
+          {filterTag === 'all' && !query.trim() && displayGroups.length > 0 && (
             <div className="mb-8">
               <ExpertFeaturedScenes
                 allGroups={allGroups}

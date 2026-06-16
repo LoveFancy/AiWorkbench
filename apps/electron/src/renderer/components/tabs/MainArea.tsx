@@ -169,14 +169,8 @@ export function MainArea(): React.ReactElement {
                 // Automations 列表视图：全屏取代 TabBar + TabContent
                 <AutomationsListView />
               )
-            ) : activeView.startsWith('expert-') ? (
-              <ExpertPageView
-                showFeaturedScenes={activeView === 'expert-all'}
-                initialFilter={
-                  activeView === 'expert-followed' ? 'followed' :
-                  activeView === 'expert-recent' ? 'recent' : 'all'
-                }
-              />
+            ) : activeView === 'expert-all' ? (
+              <ExpertPageView />
             ) : (
               <>
                 <TabBar />
