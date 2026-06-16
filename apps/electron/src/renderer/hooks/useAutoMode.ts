@@ -46,10 +46,15 @@ export function useAutoMode(): AutoModeState {
   const [enabled, setEnabledAtom] = useAtom(autoModeEnabledAtom)
   const [candidates, setCandidatesAtom] = useAtom(autoSwitchCandidateModelsAtom)
   const [candidateDialogOpen, setCandidateDialogOpen] = React.useState(false)
+  const commitGenRef = React.useRef(0)
 
-  // 初始化加载
+  // 初始化加载 — 从磁盘读取一次。用 commitGenRef 防止异步 resolve 时
+  // 用户已经通过 commitCandidates 更新了原子，导致旧值覆盖新值。
   React.useEffect(() => {
+    const genAtStart = commitGenRef.current
     window.electronAPI.getSettings().then((settings) => {
+      // 如果这期间已经有 commit 调用，说明原子已被用户操作更新，不再覆盖
+      if (commitGenRef.current !== genAtStart) return
       setEnabledAtom(settings.autoModeEnabled ?? false)
       setCandidatesAtom(settings.autoSwitchCandidateModels ?? [])
     }).catch(console.error)
@@ -68,6 +73,7 @@ export function useAutoMode(): AutoModeState {
 
   // 一次性提交 candidates + autoModeEnabled，避免两次 updateSettings 调用竞态覆盖
   const commitCandidates = React.useCallback((modelIds: string[], enabled: boolean) => {
+    commitGenRef.current += 1
     setCandidatesAtom(modelIds)
     setEnabledAtom(enabled)
     window.electronAPI.updateSettings({
