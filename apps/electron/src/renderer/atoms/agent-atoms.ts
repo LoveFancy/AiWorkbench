@@ -211,6 +211,11 @@ export const agentModelIdAtom = atom<string | null>(null)
 /** Agent 启用的渠道 ID 列表（多选，设置页 Switch 开关控制） */
 export const agentChannelIdsAtom = atom<string[]>([])
 
+/** Auto Mode 开关状态（全局，持久化到 settings.json） */
+export const autoModeEnabledAtom = atom<boolean>(false)
+/** Auto Mode 候选模型 ID 列表（全局，持久化到 settings.json） */
+export const autoSwitchCandidateModelsAtom = atom<string[]>([])
+
 /** Per-session 渠道 ID Map — sessionId → channelId */
 export const agentSessionChannelMapAtom = atom<Map<string, string>>(new Map())
 /** Per-session 模型 ID Map — sessionId → modelId */

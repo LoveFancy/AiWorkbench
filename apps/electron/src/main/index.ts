@@ -1,6 +1,17 @@
+/**
+ * 启动耗时追踪：记录从进程启动（双击 EXE）到各阶段的耗时。
+ * 使用 Date.now() 而非 performance.now()，因为前者在模块顶层立即可用。
+ */
+const STARTUP_TIME = Date.now()
+function elapsed(label: string): void {
+  console.log(`[启动耗时] +${((Date.now() - STARTUP_TIME) / 1000).toFixed(2)}s | ${label}`)
+}
+
 import { app, BrowserWindow, dialog, Menu, nativeTheme, protocol, screen, shell } from 'electron'
 import { join } from 'path'
 import { existsSync } from 'fs'
+
+elapsed('main 模块顶层开始执行')
 
 // userData 目录必须在任何 safeStorage 调用前固定。
 // safeStorage 的密钥材料依赖 userData/Local State；应用展示名改为 WorkMate 后，
@@ -16,6 +27,7 @@ if (!app.isPackaged) {
 
 app.setName('WorkMate')
 
+elapsed('userData 路径设置完成，安装文件日志')
 installFileLogger(app.getPath('logs'))
 
 // 单实例锁：防止重复启动同一个版本（dev/prod 因 userData 已隔离，互不影响）
@@ -25,6 +37,7 @@ installFileLogger(app.getPath('logs'))
 // 卡在启动期，second-instance 也唤不起窗口，用户表现就是"双击应用没反应"。
 // 改为：留下 stderr 排查线索后正常退出，让 Electron 触发已存在实例的
 // second-instance 事件，由主实例负责显示窗口。
+elapsed('单实例锁检查开始')
 if (!app.requestSingleInstanceLock()) {
   console.warn(
     '[启动] 已有 Proma 进程持有单实例锁，本次启动将退出。\n' +
@@ -33,7 +46,9 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   // 主流程：正常启动（单实例锁已获取）
+  elapsed('单实例锁已获取，注册协议和事件监听')
   registerProtocolsAndHandlers()
+  elapsed('协议和事件监听注册完成')
 }
 
 function registerProtocolsAndHandlers(): void {
@@ -375,6 +390,7 @@ function createWindow(): void {
     },
     ...titleBarOptions,
   })
+  elapsed('createWindow: BrowserWindow 实例创建完成')
   installWindowsZoomInFallback(mainWindow)
   attachRendererLogCapture(mainWindow, app.getPath('logs'))
 
@@ -386,9 +402,11 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(join(__dirname, 'renderer', 'index.html'))
   }
+  elapsed('createWindow: 页面加载指令已发出（loadURL/loadFile）')
 
   // 窗口就绪后，按保存的状态决定是否最大化
   mainWindow.once('ready-to-show', () => {
+    elapsed('createWindow: ready-to-show 事件触发，窗口即将显示')
     if (savedState?.isMaximized ?? true) {
       mainWindow?.maximize()
     }
@@ -396,6 +414,7 @@ function createWindow(): void {
       app.dock.show()
     }
     mainWindow?.show()
+    elapsed('createWindow: 窗口已显示（首屏可见）')
   })
 
   // 持久化窗口大小和位置（防抖 500ms，避免频繁写入）
@@ -409,6 +428,14 @@ function createWindow(): void {
   }
   mainWindow.on('resize', scheduleWindowStateSave)
   mainWindow.on('move', scheduleWindowStateSave)
+
+  // 渲染进程加载里程碑
+  mainWindow.webContents.on('dom-ready', () => {
+    elapsed('renderer: dom-ready 事件（DOM 解析完成）')
+  })
+  mainWindow.webContents.on('did-finish-load', () => {
+    elapsed('renderer: did-finish-load 事件（页面资源加载完成）')
+  })
 
   // 拦截页面内导航，外部链接用系统浏览器打开，防止 Electron 窗口被覆盖
   mainWindow.webContents.on('will-navigate', (event, url) => {
@@ -486,7 +513,11 @@ function sendToMainWindow(channel: string, data?: unknown): void {
   }
 }
 
-app.whenReady().then(bootstrap).catch(handleBootstrapFailure)
+elapsed('模块加载完成，等待 app.whenReady()')
+app.whenReady().then(() => {
+  elapsed('app.whenReady() 回调触发，开始 bootstrap')
+  return bootstrap()
+}).catch(handleBootstrapFailure)
 
 /**
  * 启动主流程。所有非关键步骤用 safeRun / safeAwait 隔离，
@@ -499,10 +530,12 @@ async function bootstrap(): Promise<void> {
   // 注册自定义协议 proma-file:// 用于内联预览本地文件。
   // 协议只接受主进程签发的 opaque token，不解析 renderer 提供的绝对路径。
   protocol.handle('proma-file', handlePromaFileRequest)
+  elapsed('bootstrap: 版本号 & 协议注册完成，开始 initializeRuntime')
 
   // 初始化运行时环境（Shell 环境 + Bun + Git 检测）
   // 必须在其他初始化之前执行，确保环境变量正确加载
   await safeAwait('initializeRuntime', () => initializeRuntime())
+  elapsed('bootstrap: initializeRuntime 完成')
 
   // 同步默认 Skills 模板到 ~/.workmate/default-skills/
   safeRun('seedDefaultSkills', seedDefaultSkills)
@@ -512,24 +545,29 @@ async function bootstrap(): Promise<void> {
 
   // 升级所有工作区中版本过旧的默认 Skills
   safeRun('upgradeDefaultSkillsInWorkspaces', upgradeDefaultSkillsInWorkspaces)
+  elapsed('bootstrap: Skills/Plugins 初始化完成')
 
   // Create application menu
   const menu = createApplicationMenu()
   Menu.setApplicationMenu(menu)
+  elapsed('bootstrap: 菜单创建完成')
 
   // Register IPC handlers
   registerIpcHandlers()
   registerLogUploadIpc()
   registerAuthIpcHandlers()
   registerPlatformModelsIpcHandlers()
+  elapsed('bootstrap: IPC handlers 注册完成')
 
   // WorkMate 观测上报服务初始化
   safeRun('initWorkmateServices', initWorkmateServices)
+  elapsed('bootstrap: WorkMate 服务初始化完成')
 
   // 从磁盘加载模型缓存
   loadCacheFromDisk()
   // 启动定期模型刷新
   initModelRefresh()
+  elapsed('bootstrap: 模型缓存加载完成')
 
   // Set dock icon on macOS
   // 确保 Dock 图标可见（dev 模式下通过 spawn 启动时可能不会自动显示）
@@ -546,7 +584,9 @@ async function bootstrap(): Promise<void> {
   }
 
   // Create main window (will be shown when ready)
+  elapsed('bootstrap: 准备创建主窗口')
   createWindow()
+  elapsed('bootstrap: 主窗口创建完成（页面加载中...）')
 
   // Create system tray icon
   createTray({
@@ -561,6 +601,7 @@ async function bootstrap(): Promise<void> {
       sendToMainWindow(TRAY_IPC_CHANNELS.CREATE_SESSION, { mode: 'agent' })
     },
   })
+  elapsed('bootstrap: 系统托盘创建完成')
 
   // 启动工作区文件监听（Agent MCP/Skills + 文件浏览器自动刷新）
   if (mainWindow) {
@@ -580,6 +621,7 @@ async function bootstrap(): Promise<void> {
   if (getSettings().voiceDictation?.enabled === true) {
     safeRun('createVoiceDictationWindow', createVoiceDictationWindow)
   }
+  elapsed('bootstrap: 快捷窗口 & 更新器初始化完成')
 
   // 飞书实时同步开启时，默认阻止系统自动休眠，保证远程群内继续可用。
   safeRun('syncFeishuSyncSleepBlocker', () => syncFeishuSyncSleepBlocker(getSettings()))
@@ -598,11 +640,15 @@ async function bootstrap(): Promise<void> {
   )
 
   // 启动所有已注册的 Bridge（飞书/钉钉/微信等）
+  elapsed('bootstrap: 准备启动 Bridges')
   await safeAwait('startAllBridges', () => startAllBridges())
   safeRun('startBridgeSelfHealing', startBridgeSelfHealing)
+  elapsed('bootstrap: Bridges 启动完成')
 
   // 启动定时任务调度器（恢复持久化的 active 任务）
   safeRun('startScheduler', startScheduler)
+
+  elapsed('bootstrap: 全部初始化完成')
 
   app.on('activate', () => {
     if (shouldSuppressVoiceDictationActivate()) {

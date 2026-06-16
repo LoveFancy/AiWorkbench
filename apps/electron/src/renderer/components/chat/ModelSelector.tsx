@@ -1,22 +1,17 @@
 /**
- * ModelSelector - 模型选择器（Dialog + Command 搜索）
+ * ModelSelector - 模型选择器（Popover 内联展开）
  *
- * 现代化设计：
- * - 大尺寸 Dialog，宽敞易读
- * - 按渠道分组，灰色背景供应商标题行
- * - 选中项左侧绿色竖条高亮
- * - 触发按钮：模型 logo + 模型名 + Chevron
+ * 设计：点击触发按钮后在原地弹出下拉面板，选择模型后自动关闭。
+ * 参考 WorkBuddy / Trae 的内联模型切换体验。
  */
 
 import * as React from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
-import { ChevronDown, Cpu, Search } from 'lucide-react'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { ChevronDown, Cpu, Search, Settings2 } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { Button } from '@/components/ui/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   conversationsAtom,
   selectedModelAtom,
@@ -83,6 +78,14 @@ interface ModelSelectorProps {
   onModelSelect?: (option: ModelOption) => void
   /** 触发按钮是否显示「渠道 · 模型」（默认只显示模型名） */
   showChannelInTrigger?: boolean
+  /** Auto Mode 配置（不传则不显示 Auto Mode 区域） */
+  autoModeConfig?: {
+    enabled: boolean
+    setEnabled: (v: boolean) => void
+    candidateModelIds: string[]
+    onManageCandidates: () => void
+    onCandidatesChange: (modelIds: string[]) => void
+  }
 }
 
 export function ModelSelector({
@@ -91,6 +94,7 @@ export function ModelSelector({
   externalSelectedModel,
   onModelSelect,
   showChannelInTrigger = false,
+  autoModeConfig,
 }: ModelSelectorProps = {}): React.ReactElement {
   const [conversationModel, setConversationModel] = useConversationModelOptional()
   const conversationId = useConversationIdOptional()
@@ -101,11 +105,44 @@ export function ModelSelector({
   const setChannels = useSetAtom(channelsAtom)
   const [open, setOpen] = React.useState(false)
   const [search, setSearch] = React.useState('')
+  const [editingCandidates, setEditingCandidates] = React.useState(false)
+  const [editingVersion, setEditingVersion] = React.useState(0)
+  const localCandidatesRef = React.useRef<Set<string>>(new Set())
+
+  // 进入候选编辑模式
+  const enterEditCandidates = React.useCallback(() => {
+    localCandidatesRef.current = new Set(autoModeConfig?.candidateModelIds ?? [])
+    setEditingVersion(0)
+    setEditingCandidates(true)
+  }, [autoModeConfig?.candidateModelIds])
+
+  // 退出候选编辑模式
+  const cancelEditCandidates = React.useCallback(() => {
+    setEditingCandidates(false)
+  }, [])
+
+  // 确认候选变更
+  const confirmEditCandidates = React.useCallback(() => {
+    autoModeConfig?.onCandidatesChange(Array.from(localCandidatesRef.current))
+    setEditingCandidates(false)
+  }, [autoModeConfig])
+
+  // 切换单个模型的候选状态
+  const toggleCandidate = React.useCallback((modelId: string) => {
+    const next = new Set(localCandidatesRef.current)
+    if (next.has(modelId)) {
+      next.delete(modelId)
+    } else {
+      next.add(modelId)
+    }
+    localCandidatesRef.current = next
+    setEditingVersion((v) => v + 1)
+  }, [])
 
   // 外部模型优先 → per-conversation 模型
   const selectedModel = externalSelectedModel !== undefined ? externalSelectedModel : conversationModel
 
-  // 每次打开 Dialog 时刷新渠道列表，确保最新
+  // 每次打开时刷新渠道列表
   React.useEffect(() => {
     if (open) {
       window.electronAPI.listChannels().then(setChannels).catch(console.error)
@@ -146,23 +183,19 @@ export function ModelSelector({
     return result
   }, [filteredGrouped])
 
-  // 键盘高亮索引
   const [highlightIndex, setHighlightIndex] = React.useState(-1)
   const itemRefs = React.useRef<Map<number, HTMLButtonElement>>(new Map())
 
-  // 搜索变化时重置高亮
   React.useEffect(() => {
     setHighlightIndex(-1)
   }, [search])
 
-  // 高亮项变化时滚动到可见区域
   React.useEffect(() => {
     if (highlightIndex < 0) return
     const el = itemRefs.current.get(highlightIndex)
     el?.scrollIntoView({ block: 'nearest' })
   }, [highlightIndex])
 
-  // 查找当前选中的模型信息
   const currentModelInfo = React.useMemo(() => {
     if (!selectedModel) return null
     return modelOptions.find(
@@ -170,12 +203,11 @@ export function ModelSelector({
     ) ?? null
   }, [selectedModel, modelOptions])
 
-  // 保持上次有效的模型信息，避免渠道未加载时闪烁"选择模型"
   const stableModelInfoRef = React.useRef(currentModelInfo)
   if (currentModelInfo) stableModelInfoRef.current = currentModelInfo
   const displayModelInfo = currentModelInfo ?? stableModelInfoRef.current
 
-  /** 选择模型并持久化到当前对话 */
+  /** 选择模型并持久化 */
   const handleSelect = (option: ModelOption): void => {
     if (onModelSelect) {
       onModelSelect(option)
@@ -183,14 +215,12 @@ export function ModelSelector({
       return
     }
 
-    // Chat 模式：写入 per-conversation Map + 同步全局默认值
     if (setConversationModel) {
       setConversationModel({ channelId: option.channelId, modelId: option.modelId })
     }
     setGlobalModel({ channelId: option.channelId, modelId: option.modelId })
     setOpen(false)
 
-    // 将模型/渠道选择保存到当前对话元数据
     if (conversationId) {
       window.electronAPI
         .updateConversationModel(conversationId, option.modelId, option.channelId)
@@ -230,82 +260,134 @@ export function ModelSelector({
   }
 
   return (
-    <>
-      {/* 触发按钮 */}
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-      >
-        {displayModelInfo ? (
-          <img
-            src={getModelLogo(displayModelInfo.modelId, displayModelInfo.provider)}
-            alt={displayModelInfo.modelName}
-            className="size-4 rounded object-cover"
-          />
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
+        {autoModeConfig?.enabled ? (
+          <>
+            <Cpu className="size-3.5" />
+            <span className="max-w-[200px] truncate">Auto</span>
+          </>
         ) : (
-          <Cpu className="size-3.5" />
-        )}
-        <span className="max-w-[200px] truncate">
-          {displayModelInfo
-            ? (showChannelInTrigger ? `${displayModelInfo.channelName} · ${displayModelInfo.modelName}` : displayModelInfo.modelName)
-            : '选择模型'}
-        </span>
-        <ChevronDown className="size-3" />
-      </button>
-
-      {/* 模型选择 Dialog */}
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="p-0 gap-0 max-w-lg" aria-describedby={undefined}>
-          <DialogHeader className="sr-only">
-            <DialogTitle>选择模型</DialogTitle>
-          </DialogHeader>
-
-          {/* 搜索栏 */}
-          <div className="flex items-center gap-2.5 px-4 py-3 border-b border-border/60">
-            <Search className="size-5 text-muted-foreground/60 flex-shrink-0" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={handleSearchKeyDown}
-              placeholder="搜索模型..."
-              className="flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground/50"
-              autoFocus
-            />
-          </div>
-
-          {/* 模型列表 */}
-          <div className="max-h-[420px] overflow-y-auto scrollbar-thin">
-            {filteredGrouped.size === 0 ? (
-              <div className="py-10 text-center text-sm text-muted-foreground">
-                未找到模型
-              </div>
+          <>
+            {displayModelInfo ? (
+              <img
+                src={getModelLogo(displayModelInfo.modelId, displayModelInfo.provider)}
+                alt={displayModelInfo.modelName}
+                className="size-4 rounded object-cover"
+              />
             ) : (
-              (() => {
-                let flatIndex = 0
-                return Array.from(filteredGrouped.entries()).map(([channelId, options]) => {
+              <Cpu className="size-3.5" />
+            )}
+            <span className="max-w-[200px] truncate">
+              {displayModelInfo
+                ? (showChannelInTrigger ? `${displayModelInfo.channelName} · ${displayModelInfo.modelName}` : displayModelInfo.modelName)
+                : '选择模型'}
+            </span>
+          </>
+        )}
+        <ChevronDown className="size-3" />
+      </PopoverTrigger>
+
+      {/* 内联下拉面板 */}
+      <PopoverContent
+        align="start"
+        side="bottom"
+        sideOffset={6}
+        className="p-0 gap-0 max-h-[480px] max-w-[340px] overflow-hidden"
+      >
+        {/* Auto Mode 开关区 */}
+        {autoModeConfig && (
+          <div className="px-3 py-2 border-b border-border/60">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-xs font-medium whitespace-nowrap">Auto Mode</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-5 px-1.5 text-[10px] text-muted-foreground hover:text-foreground gap-0.5"
+                  onClick={editingCandidates ? cancelEditCandidates : enterEditCandidates}
+                >
+                  <Settings2 className="size-3" />
+                  {editingCandidates ? '取消' : '候选'}
+                </Button>
+              </div>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <Switch
+                        checked={autoModeConfig.enabled}
+                        onCheckedChange={autoModeConfig.setEnabled}
+                        disabled={autoModeConfig.candidateModelIds.length === 0}
+                      />
+                    </span>
+                  </TooltipTrigger>
+                  {autoModeConfig.candidateModelIds.length === 0 && (
+                    <TooltipContent side="left">
+                      <p className="text-xs">请先配置候选模型</p>
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+            {!editingCandidates && (
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                模型异常时自动切换候选模型
+              </p>
+            )}
+            {editingCandidates && (
+              <p className="text-[10px] text-blue-600 dark:text-blue-400 mt-1">
+                勾选作为自动切换候补的模型，完成后点击下方「确定」
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* 搜索栏 */}
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-border/40">
+          <Search className="size-3.5 text-muted-foreground/50 flex-shrink-0" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
+            placeholder="搜索模型..."
+            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/50"
+            autoFocus
+          />
+        </div>
+
+        {/* 模型列表 */}
+        <div className="max-h-[320px] overflow-y-auto scrollbar-thin">
+          {filteredGrouped.size === 0 ? (
+            <div className="py-8 text-center text-xs text-muted-foreground">
+              未找到模型
+            </div>
+          ) : (
+            (() => {
+              let flatIndex = 0
+              return Array.from(filteredGrouped.entries()).map(([channelId, options]) => {
                 const first = options[0]
                 if (!first) return null
 
                 return (
                   <div key={channelId}>
-                    {/* 供应商标题行 - 灰色背景 */}
-                    <div className="flex items-center gap-2 px-4 py-2 bg-muted/50 border-b border-border/30">
+                    {/* 供应商标题行 */}
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/50 border-b border-border/30">
                       <img
                         src={(() => {
                           const ch = channels.find((c) => c.id === channelId)
                           return ch ? getChannelLogo(ch) : DefaultLogo
                         })()}
                         alt={first.channelName}
-                        className="size-5 rounded object-cover"
+                        className="size-4 rounded object-cover"
                       />
-                      <span className="text-sm font-medium text-muted-foreground">
+                      <span className="text-xs font-medium text-muted-foreground">
                         {first.channelName}
                       </span>
                     </div>
 
-                    {/* 该渠道下的模型列表 */}
+                    {/* 该渠道下的模型 */}
                     {options.map((option) => {
                       const isSelected =
                         selectedModel?.channelId === option.channelId &&
@@ -321,33 +403,59 @@ export function ModelSelector({
                             else itemRefs.current.delete(currentFlatIndex)
                           }}
                           type="button"
-                          onClick={() => handleSelect(option)}
+                          onClick={() => {
+                            if (editingCandidates) {
+                              toggleCandidate(option.modelId)
+                            } else {
+                              handleSelect(option)
+                            }
+                          }}
                           onMouseEnter={() => setHighlightIndex(currentFlatIndex)}
                           className={cn(
-                            'flex items-center gap-3 w-[calc(100%-1rem)] px-4 py-1.5 mx-2 rounded-lg text-left transition-colors',
+                            'flex items-center gap-2.5 w-full px-3 py-1.5 text-left transition-colors',
                             'hover:bg-accent',
                             isHighlighted && 'bg-accent',
-                            isSelected && 'bg-foreground/10 border-l-3 border-l-primary'
+                            !editingCandidates && isSelected && 'bg-foreground/5 border-l-2 border-l-primary'
                           )}
                         >
+                          {/* 编辑模式下显示 checkbox */}
+                          {editingCandidates && (
+                            <span className={cn(
+                              'flex-shrink-0 size-4 rounded border-2 flex items-center justify-center transition-colors',
+                              localCandidatesRef.current.has(option.modelId)
+                                ? 'bg-primary border-primary'
+                                : 'border-muted-foreground/30'
+                            )}>
+                              {localCandidatesRef.current.has(option.modelId) && (
+                                <svg className="size-3 text-primary-foreground" viewBox="0 0 16 16" fill="none">
+                                  <path d="M3 8l3.5 3.5L13 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              )}
+                            </span>
+                          )}
                           <img
                             src={getModelLogo(option.modelId, option.provider)}
                             alt={option.modelName}
-                            className="size-5 rounded object-cover flex-shrink-0"
+                            className="size-4 rounded object-cover flex-shrink-0"
                           />
                           <span className={cn(
-                            'flex-1 text-sm truncate',
-                            isSelected ? 'font-medium text-foreground' : 'text-foreground/80'
+                            'flex-1 text-xs truncate',
+                            !editingCandidates && isSelected ? 'font-medium text-foreground' : 'text-foreground/80'
                           )}>
                             {option.modelName}
                           </span>
                           {option.supportsMultimodal ? (
-                            <span className="inline-flex h-5 shrink-0 items-center rounded px-1.5 text-[10px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                            <span className="inline-flex h-4 shrink-0 items-center rounded px-1 text-[9px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
                               多模态
                             </span>
                           ) : (
-                            <span className="inline-flex h-5 shrink-0 items-center rounded px-1.5 text-[10px] font-medium bg-muted text-muted-foreground">
+                            <span className="inline-flex h-4 shrink-0 items-center rounded px-1 text-[9px] font-medium bg-muted text-muted-foreground">
                               文本
+                            </span>
+                          )}
+                          {!editingCandidates && autoModeConfig?.candidateModelIds?.includes(option.modelId) && (
+                            <span className="inline-flex h-4 shrink-0 items-center rounded px-1 text-[9px] font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                              Auto
                             </span>
                           )}
                         </button>
@@ -356,11 +464,31 @@ export function ModelSelector({
                   </div>
                 )
               })
-              })()
-            )}
+            })()
+          )}
+        </div>
+
+        {/* 编辑模式底部操作栏 */}
+        {editingCandidates && (
+          <div className="px-3 py-2 border-t border-border/60 flex items-center justify-end gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs h-7"
+              onClick={cancelEditCandidates}
+            >
+              取消
+            </Button>
+            <Button
+              size="sm"
+              className="text-xs h-7"
+              onClick={confirmEditCandidates}
+            >
+              确定
+            </Button>
           </div>
-        </DialogContent>
-      </Dialog>
-    </>
+        )}
+      </PopoverContent>
+    </Popover>
   )
 }
