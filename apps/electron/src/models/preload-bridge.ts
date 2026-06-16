@@ -1,3 +1,9 @@
+/**
+ * 泰为平台模型 — preload 桥接
+ *
+ * 通过 contextBridge 暴露 models.fetchModels / getApiKey / getModels / clearCache 到 renderer。
+ */
+
 import { ipcRenderer } from 'electron'
 import { MODELS_IPC_CHANNELS } from './ipc-handlers'
 import type { ModelListResponse, ModelInfo } from './types'
