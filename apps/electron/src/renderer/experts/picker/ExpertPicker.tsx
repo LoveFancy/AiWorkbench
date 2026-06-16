@@ -11,11 +11,11 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { ExpertGroupCard } from '@/components/expert-groups/ExpertGroupCard'
-import { ExpertGroupDetailDialog } from '@/components/expert-groups/ExpertGroupDetailDialog'
-import { getExpertGroupSearchTerms } from '@/components/expert-groups/expert-group-subagents'
+import { ExpertCard } from '@/experts/card/ExpertCard'
+import { ExpertDetailDialog } from '@/experts/detail/ExpertDetailDialog'
+import { getExpertGroupSearchTerms } from '@/experts/card/subagents'
 
-interface ExpertGroupPickerProps {
+interface ExpertPickerProps {
   open: boolean
   groups: AgentExpertGroupInfo[]
   loading: boolean
@@ -27,18 +27,17 @@ interface ExpertGroupPickerProps {
 function matchesGroup(group: AgentExpertGroupInfo, query: string): boolean {
   const normalized = query.trim().toLowerCase()
   if (!normalized) return true
-
   return getExpertGroupSearchTerms(group).some((item) => item.toLowerCase().includes(normalized))
 }
 
-export function ExpertGroupPicker({
+export function ExpertPicker({
   open,
   groups,
   loading,
   onOpenChange,
   onRefresh,
   onSummon,
-}: ExpertGroupPickerProps): React.ReactElement {
+}: ExpertPickerProps): React.ReactElement {
   const [query, setQuery] = React.useState('')
   const [selected, setSelected] = React.useState<AgentExpertGroupInfo | null>(null)
 
@@ -118,7 +117,7 @@ export function ExpertGroupPicker({
                     </div>
                     <div className="grid gap-2 md:grid-cols-2">
                       {availableGroups.map((group) => (
-                        <ExpertGroupCard
+                        <ExpertCard
                           key={`${group.sourcePluginId}:${group.id}`}
                           group={group}
                           compact
@@ -138,7 +137,7 @@ export function ExpertGroupPicker({
                     </div>
                     <div className="grid gap-2 md:grid-cols-2">
                       {issueGroups.map((group) => (
-                        <ExpertGroupCard
+                        <ExpertCard
                           key={`${group.sourcePluginId}:${group.id}`}
                           group={group}
                           compact
@@ -155,7 +154,7 @@ export function ExpertGroupPicker({
         </DialogContent>
       </Dialog>
 
-      <ExpertGroupDetailDialog
+      <ExpertDetailDialog
         group={selected}
         open={selected !== null}
         onOpenChange={(nextOpen) => { if (!nextOpen) setSelected(null) }}

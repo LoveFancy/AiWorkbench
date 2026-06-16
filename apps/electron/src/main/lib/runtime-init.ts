@@ -6,7 +6,7 @@
  * 2. Node.js 运行时检测
  * 3. Bun 运行时检测
  * 4. Git 运行时检测
- * 5. Shell 环境检测（Windows - Git Bash / WSL）
+ * 5. Shell 环境检测（Windows - Git Bash）
  */
 
 import type { RuntimeStatus, RuntimeInitOptions, ShellEnvironmentStatus } from '@proma/shared'
@@ -15,7 +15,6 @@ import { detectNodeRuntime } from './node-detector'
 import { detectBunRuntime } from './bun-finder'
 import { detectGitRuntime, getGitRepoStatus } from './git-detector'
 import { detectGitBash } from './git-bash-detector'
-import { detectWsl } from './wsl-detector'
 
 /** 运行时状态缓存 */
 let runtimeStatusCache: RuntimeStatus | null = null
@@ -90,27 +89,28 @@ export async function initializeRuntime(options: RuntimeInitOptions = {}): Promi
   if (process.platform === 'win32' && !options.skipShellDetection) {
     try {
       const gitBashStatus = await detectGitBash()
-      const wslStatus = await detectWsl()
 
-      // 推荐策略：优先 Git Bash > WSL 2 > WSL 1
-      let recommended: 'git-bash' | 'wsl' | null = null
-      if (gitBashStatus.available) {
-        recommended = 'git-bash'
-      } else if (wslStatus.available) {
-        recommended = 'wsl'
+      // WSL 功能已屏蔽，不再检测
+      const wslNotReady: typeof import('@proma/shared').WslStatus = {
+        available: false,
+        version: null,
+        defaultDistro: null,
+        distros: [],
+        error: 'WSL 功能已屏蔽',
       }
+
+      // 推荐策略：仅 Git Bash
+      const recommended: 'git-bash' | null = gitBashStatus.available ? 'git-bash' : null
 
       shellEnvironmentStatus = {
         gitBash: gitBashStatus,
-        wsl: wslStatus,
+        wsl: wslNotReady,
         recommended,
       }
 
       console.log('[运行时初始化] Shell 环境检测完成:', {
         gitBash: gitBashStatus.available ? `✅ ${gitBashStatus.version}` : `❌ ${gitBashStatus.error}`,
-        wsl: wslStatus.available
-          ? `✅ WSL ${wslStatus.version} (${wslStatus.defaultDistro})`
-          : `❌ ${wslStatus.error}`,
+        wsl: '⏭️ 已屏蔽',
         recommended: recommended || '⚠️ 无可用环境',
       })
     } catch (error) {

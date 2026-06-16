@@ -886,6 +886,10 @@ export interface AgentPluginManifest {
   expertGroup?: string
   /** @deprecated 兼容旧插件；运行时只读取第一个专家团 ID。 */
   expertGroups?: string[]
+  /** 专家团类型，扫描阶段即可确定，无需加载 expert-groups/*.json。
+   *  'agent' = 单专家（无 SubAgent），'team' = 多专家团队（有 SubAgent）。
+   *  仅 expertGroup 存在时有意义。 */
+  expertType?: 'agent' | 'team'
 }
 
 export type AgentExpertGroupStatus =
@@ -925,6 +929,8 @@ export interface AgentExpertGroupManifest {
   tags?: string[]
   samplePrompts?: string[]
   toolsPolicy?: AgentExpertGroupToolsPolicy
+  /** 从 plugin.json 传递的专家类型，'agent' = 单专家，'team' = 多专家团队 */
+  expertType?: 'agent' | 'team'
 }
 
 export interface AgentExpertGroupInfo extends AgentExpertGroupManifest {
@@ -964,6 +970,8 @@ export interface AgentPluginCapability {
     level: AgentPluginIssueLevel
     message: string
   }
+  /** 从 plugin.json 传递的专家类型 */
+  expertType?: 'agent' | 'team'
 }
 
 export interface AgentPluginInfo {
@@ -1761,6 +1769,8 @@ export const AGENT_IPC_CHANNELS = {
   OPEN_FILE: 'agent:open-file',
   /** 在系统文件管理器中显示文件 */
   SHOW_IN_FOLDER: 'agent:show-in-folder',
+  /** 在系统文件管理器中打开插件目录 */
+  SHOW_PLUGIN_IN_FOLDER: 'agent:show-plugin-in-folder',
   /** 重命名文件/目录 */
   RENAME_FILE: 'agent:rename-file',
   /** 移动文件/目录到目标目录 */

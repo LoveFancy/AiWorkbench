@@ -12,6 +12,7 @@ export interface AuthElectronAPI {
     success: boolean; message: string; jobId?: string; tokenExpiresAt?: number
   }>
   logout: () => Promise<{ success: boolean }>
+  quit: () => Promise<void>
 }
 
 /**
@@ -30,6 +31,7 @@ export function createAuthPreloadApi(): { auth: AuthElectronAPI } {
       login: (username: string, password: string, days?: number) =>
         ipcRenderer.invoke(AUTH_IPC_CHANNELS.LOGIN, username, password, days),
       logout: () => ipcRenderer.invoke(AUTH_IPC_CHANNELS.LOGOUT),
+      quit: () => ipcRenderer.invoke(AUTH_IPC_CHANNELS.QUIT),
     },
   }
 }

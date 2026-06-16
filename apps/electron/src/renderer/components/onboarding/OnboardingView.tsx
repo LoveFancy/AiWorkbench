@@ -104,7 +104,7 @@ export function OnboardingView({ onComplete }: OnboardingViewProps) {
           <div className="mb-6 text-center">
             <h2 className="text-2xl font-semibold mb-2">先检查一下环境</h2>
             <p className="text-sm text-muted-foreground">
-              WorkMate 在 Windows 上需要 Git Bash 或 WSL 才能执行命令
+              WorkMate 在 Windows 上需要 Git Bash 才能执行命令
             </p>
           </div>
 

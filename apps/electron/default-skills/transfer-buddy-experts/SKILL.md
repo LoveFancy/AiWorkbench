@@ -1,0 +1,323 @@
+---
+name: transfer-buddy-experts
+description: 将 WorkBuddy 专家团转换为 WorkMate 专家团。当用户想要导入、转换、迁移 WorkBuddy 的专家团到 WorkMate 时使用。也适用于用户说"把 WorkBuddy 专家转过来"、"导入 WorkBuddy 专家团"、"转换专家团格式"、"迁移专家"等场景。支持单 Agent 和团队模式，自动处理 SubAgent 拆分、Rules 融入、Skills 映射等。
+version: "1.0.0"
+---
+
+# Transfer Buddy Experts
+
+将 WorkBuddy 格式的专家团转换为 WorkMate 格式。支持单 Agent 和团队两种模式，自动处理字段映射、SubAgent 拆分、Rules 融入、Skills 复制。
+
+## 使用方式
+
+用户需要提供 WorkBuddy 专家团的源目录路径（或 Zip 包解压后的路径），本 Skill 会读取源文件并输出 WorkMate 格式的专家团。
+
+## 输入
+
+接收一个 WorkBuddy 专家团目录，包含：
+- `.codebuddy-plugin/plugin.json`：插件清单
+- `agents/`：Agent 定义目录（1 个或多个 .md 文件）
+- `rules/*.md`：规则文件（可能没有）
+- `skills/`：技能目录（可能没有）
+
+## 两种源格式
+
+先判断再转换：
+
+### 类型 A：单 Agent 模式（`expertType: "agent"`）
+
+最常见的模式。`agents/` 下只有 1 个 .md 文件，`plugin.json` 包含 `displayName`、`profession`、`tags`、`quickPrompts` 等字段。
+
+**示例**：`ai-engineer`、`backend-architect`、`data-analysis`、`equity-research` 等
+
+### 类型 B：团队模式（`expertType: "team"`）
+
+多 Agent 协作模式。`agents/` 下有多个 .md 文件，`plugin.json` 包含 `teamInfo`（leadAgent + memberAgents）和 `members` 数组，每个 member 有独立的 `id`、`name`、`profession`、`role`。
+
+**示例**：`software-company`（1 个 team-lead + 4 个 member）
+
+**团队模式的转换策略**：
+- `teamInfo.leadAgent` 对应的 agent → 转为 WorkMate 的 `mainRole`
+- `teamInfo.memberAgents` 对应的 agents → 转为 WorkMate 的 `subagents`
+- `members[].name.zh` → `subagentLabels` 的中文标签
+- `members[].id` → subagents 数组中的英文 ID
+
+## Agent .md 文件格式差异
+
+不同专家的 agent .md 文件的 frontmatter 字段不一致，需要灵活处理：
+
+| 字段 | 出现情况 | 说明 |
+|------|---------|------|
+| `name` | 几乎都有 | Agent 英文标识 |
+| `description` | 几乎都有 | 英文描述 |
+| `color` | 部分有 | 主题色（忽略，WorkMate 不使用） |
+| `emoji` | 部分有 | 图标（忽略） |
+| `vibe` | 部分有 | 一句话风格描述（忽略） |
+| `maxTurns` | 部分有 | 最大轮次（忽略） |
+| `displayName` | 少数有（如 chuangye-manor） | 双语显示名 |
+| `profession` | 少数有（如 chuangye-manor） | 双语职业名 |
+| `alwaysApply` | SKILL.md 可能有 | 是否始终应用（忽略） |
+
+> **处理原则**：只提取 frontmatter 中的 `name` 和 `description`，其他字段忽略。正文（frontmatter 之后的部分）作为 prompt 内容。
+
+## 输出要求
+
+### 1. `.claude-plugin/plugin.json`
+
+```json
+{
+  "name": "{中文显示名}",
+  "version": "{沿用源版本号，默认 1.0.0}",
+  "description": "{中文描述}",
+  "author": { "name": "WorkBuddy Import" },
+  "license": "MIT",
+  "keywords": ["expert-group", ...{中文标签}],
+  "expertGroup": "{英文name}",
+  "expertType": "{'agent' | 'team'}"
+}
+```
+
+### 2. `expert-groups/{id}.json`
+
+```json
+{
+  "id": "{英文name}",
+  "name": "{中文显示名}",
+  "description": "{中文描述}",
+  "introduction": "{默认入口提示}",
+  "mainRole": {
+    "name": "{主角色中文名}",
+    "prompt": "{主角色 prompt}"
+  },
+  "subagents": ["{subagent-id-1}", "{subagent-id-2}"],
+  "subagentLabels": {
+    "{subagent-id-1}": "{中文标签1}",
+    "{subagent-id-2}": "{中文标签2}"
+  },
+  "builtinTools": [],
+  "skills": ["{skills 目录名列表}"],
+  "mcpServers": [],
+  "tags": ["{中文标签列表}"],
+  "samplePrompts": ["{中文快捷提示列表}"],
+  "toolsPolicy": {
+    "mode": "inherit",
+    "allowedTools": [],
+    "disallowedTools": []
+  }
+}
+```
+
+### 3. `agents/{subagent-name}.md`（仅 SubAgent 时输出）
+
+每个 SubAgent 生成一个独立的 .md 文件，格式：
+
+```markdown
+---
+name: {subagent-id}
+description: {角色描述}
+---
+
+{角色 prompt 正文}
+```
+
+## 字段映射规则
+
+### 类型 A（单 Agent）字段映射
+
+| 源字段 | 目标字段 | 规则 |
+|--------|---------|------|
+| `name` | `expertGroup` + `id` | 直接使用 |
+| `displayName.zh` | `name` | 优先取，回退 profession.zh、name |
+| `displayDescription.zh` | `description` | 优先取中文 |
+| `defaultInitPrompt.zh` | `introduction` | 中文版，如无则留空 |
+| `profession.zh` | `mainRole.name` | 职业名 |
+| `tags[].zh` | `tags` | 转为 string[] |
+| `quickPrompts[].zh` | `samplePrompts` | 转为 string[] |
+| `skills[]` 路径 | `skills` | 提取最外层目录名（如 `./skills/ima-skills` → `ima-skills`） |
+| `version` | `version` | 直接使用，默认 1.0.0 |
+| `expertType` | `expertType` | 固定为 `"agent"`（单 Agent 模式） |
+| agent .md 正文 | `mainRole.prompt` | 见 prompt 构建规则 |
+| `rules/*.md` | 融入 `mainRole.prompt` | 见 prompt 构建规则 |
+
+### 类型 B（团队）字段映射
+
+| 源字段 | 目标字段 | 规则 |
+|--------|---------|------|
+| `name` | `expertGroup` + `id` | 直接使用 |
+| `teamInfo.leadAgent` 对应 agent | `mainRole` | lead 的 .md 正文 → mainRole.prompt |
+| `teamInfo.memberAgents` 对应 agents | `subagents` | 每个 member 生成 agents/{id}.md |
+| `members[].name.zh` | `subagentLabels[id]` | 中文标签 |
+| `members[].id` | subagents 数组元素 | 英文 ID |
+| `members[].profession.zh` | agents/{id}.md 的 frontmatter description | 职业 |
+| `tags[]` | `tags` | 如无 tags，从 members 的 profession 中提取 |
+| `quickPrompts[]` | `samplePrompts` | 如无，从 lead agent 的典型场景中提取 |
+| `expertType` | `expertType` | 固定为 `"team"`（团队模式） |
+
+## mainRole.prompt 构建规则
+
+### 步骤一：提取 Agent 正文
+
+取 agent .md 的正文部分（frontmatter `---` 分隔符之后的所有内容）。
+
+### 步骤二：融入 Rules
+
+如果源目录存在 `rules/*.md` 文件：
+- **理解**每条规则的语义
+- **自然融入**到 prompt 中最合适的位置（不是简单追加到末尾）
+- 例如：如果规则是"交付物格式标准"，融入 prompt 中"输出规范"部分；如果是"PM 判断框架"，融入"分析原则"部分
+- 如果规则内容与 prompt 已有内容重复，**合并去重**
+
+### 步骤三：附加 Skills 说明
+
+在 prompt 末尾添加可用 Skills 列表：
+
+```
+## 可用 Skills
+
+本专家已集成以下专业技能，将在对应场景下自动调用：
+
+{遍历 skills 目录，每个生成：}
+- **{skillName}**：{从 SKILL.md 第一段提取的一句摘要}
+```
+
+### 步骤四：清理 WorkBuddy 特有内容
+
+删除以下 WorkBuddy 特有、WorkMate 不需要的内容：
+- `avatars/` 引用（如 `![](...)` 形式的头像链接）
+- `.downloaded_at` 相关内容
+- `categoryId` 分类引用
+- agent .md 中引用其他 agent 文件的相对路径（如 `software-product-manager.md`），替换为 SubAgent 调用说明
+
+### 步骤五：保留核心内容
+
+以下内容**必须保留**，不得删减：
+- 角色定义和人格设定
+- 工作流程和协作机制
+- 专业能力清单
+- 边界与原则
+- 交付物规范
+- 典型场景
+- Skill 调用触发规则
+- 沟通风格
+
+## SubAgent 拆分规则
+
+### 类型 A 的拆分判断
+
+分析单 Agent 的 prompt，判断是否隐含**多个可独立调度的子角色**：
+
+**拆分信号**：
+- prompt 中出现了明确的不同角色定义（如"你同时是A和B"）
+- 存在独立的工作流程阶段，每个阶段有独立的人格和工具集
+- prompt 中有"当你需要X时，调用/切换到Y角色"这样的调度逻辑
+- 不同专业领域混合在一个 prompt 中（如"数据分析 + 微信搜索"两个完全独立的职能）
+
+**不拆分信号**：
+- 角色只是同一专业的不同方面（如"后端架构师的微服务和数据库能力"）
+- 没有独立的触发条件或调度逻辑
+- prompt 作为一个连贯的整体运作
+
+### 类型 B 直接映射
+
+团队模式的 SubAgent 结构已由源格式定义，直接映射即可：
+- lead → mainRole
+- members → subagents
+
+### SubAgent .md 文件规范
+
+每个拆分出的 SubAgent 生成 `agents/{id}.md`：
+
+```markdown
+---
+name: {subagent-id}
+description: {一句话角色描述，英文}
+---
+
+{角色 prompt 正文，包含：}
+- 角色定义
+- 专业能力
+- 工作方式
+- 输出规范
+```
+
+## builtinTools 推断
+
+分析 prompt 和 skills 内容，如果出现以下语义，添加对应内置工具：
+
+| 语义特征 | 内置工具 | 典型触发词 |
+|---------|---------|-----------|
+| 需要搜索互联网获取实时信息 | `web-search` | 搜索、调研、查一下、行业数据、最新信息、检索、实时查询、资讯速递 |
+
+## 中文优先原则
+
+- 所有面向用户的字段（name、description、tags、samplePrompts、subagentLabels）优先取中文版本
+- 中文字段缺失时的回退链：`zh` → `en` → 源 `name` 字段 → 合理推断
+- prompt 正文保持原文语言（大多数中文专家团用中文写 prompt，英文专家团保留英文）
+
+## 特殊场景处理
+
+### 无 agents/ 目录的专家
+
+少数专家（如 `embedded-firmware-engineer`）可能没有 `agents/` 目录。此时：
+- 从 `plugin.json` 的 `agentName` 推断应有的 agent 名称
+- 用 `profession.zh` + `displayDescription.zh` 构建最小化 mainRole.prompt
+- 标记 summary 中说明"源缺 agents 目录，已生成最小化 prompt"
+
+### Skills 目录嵌套
+
+部分专家的 skills 有嵌套结构（如 `ima-skills/knowledge-base/`、`ima-skills/notes/`）。
+- `skills` 字段只取**最外层目录名**（如 `ima-skills`）
+- 子目录结构由 SKILL.md 内部管理，无需在 expert-group.json 中体现
+
+### SKILL.md 特殊 frontmatter
+
+部分 SKILL.md 有 `alwaysApply`、`provider`、`enabled`、`updatedAt` 等字段。这些是 WorkBuddy 特有的，**忽略**，只提取 SKILL.md 的正文摘要。
+
+### 大型 Rules 文件
+
+如 `equity-research` 有 4 个 rules 文件共 300+ 行。处理方式：
+- 不全文复制到 prompt 中
+- **提取核心规则要点**，精简融入 prompt 对应章节
+- 保留规则的约束力和可操作性，去掉冗余格式说明
+
+## 输出格式
+
+转换完成后，将结果文件写入目标目录。输出结构：
+
+```
+{output-dir}/{expert-name}/
+├── .claude-plugin/
+│   └── plugin.json
+├── expert-groups/
+│   └── {id}.json
+├── agents/                # 仅 SubAgent 时有
+│   └── {subagent-name}.md
+└── skills/                # 从源目录复制
+    └── {skill-name}/
+        └── SKILL.md
+```
+
+同时在对话中输出转换摘要：
+
+```
+转换完成：
+- 类型：单Agent / 团队
+- SubAgent 拆分：是/否（原因）
+- builtinTools：无 / web-search
+- Rules 处理：无 / 已融入（方式）
+- 特殊情况：（如有）
+```
+
+## 质量检查清单
+
+输出前请自检：
+
+- [ ] `expertGroup` 字段与 `id` 一致，均为英文
+- [ ] `name` 字段为中文，不是英文
+- [ ] `subagents` 与 `subagentLabels` 键名一致
+- [ ] 每个 subagent 在 `agents/` 下有对应的 .md 文件
+- [ ] mainRole.prompt 中不含 WorkBuddy 特有内容（avatars、.downloaded_at 等）
+- [ ] Skills 目录名提取正确（最外层目录名）
+- [ ] 如有 rules，已融入 prompt 且不重复
+- [ ] `builtinTools` 值合法（目前仅支持 `web-search`）
+- [ ] `toolsPolicy.mode` 为 `"inherit"`

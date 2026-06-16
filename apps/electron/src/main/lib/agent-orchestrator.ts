@@ -212,15 +212,14 @@ export class AgentOrchestrator {
       const runtimeStatus = getRuntimeStatus()
       const shellStatus = runtimeStatus?.shell
 
-      if (shellStatus && !shellStatus.gitBash?.available && !shellStatus.wsl?.available) {
+      if (shellStatus && !shellStatus.gitBash?.available) {
         reportPreflightError({
           code: 'windows_shell_missing',
           title: 'Windows 环境未就绪',
           message:
-            '需要 Git Bash 或 WSL 才能运行 Agent。建议安装 Git for Windows（自带 Git Bash），安装完成后点「打开环境检测」刷新状态。',
+            '需要 Git Bash 才能运行 Agent。建议安装 Git for Windows（自带 Git Bash），安装完成后点「打开环境检测」刷新状态。',
           details: [
             `Git Bash: ${shellStatus.gitBash?.error || '未检测到'}`,
-            `WSL: ${shellStatus.wsl?.error || '未检测到'}`,
           ],
           actions: [
             { key: 'e', label: '打开环境检测', action: 'open_environment_check' },

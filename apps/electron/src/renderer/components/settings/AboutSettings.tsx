@@ -393,7 +393,7 @@ function ShellEnvironmentCard(): React.ReactElement | null {
   }
 
   const { shell } = runtimeStatus
-  const hasShell = shell.gitBash?.available || shell.wsl?.available
+  const hasShell = shell.gitBash?.available
 
   return (
     <SettingsCard>
@@ -418,7 +418,7 @@ function ShellEnvironmentCard(): React.ReactElement | null {
           </button>
         </div>
         <p className="text-xs text-muted-foreground mt-1">
-          Agent 模式需要 Git Bash 或 WSL 支持
+          Agent 模式需要 Git Bash 支持
         </p>
       </div>
 
@@ -437,30 +437,13 @@ function ShellEnvironmentCard(): React.ReactElement | null {
           }
         />
 
-        {/* WSL 检测卡片 */}
-        <EnvironmentCheckCard
-          name="WSL"
-          status={shell.wsl?.available ? 'success' : 'error'}
-          version={shell.wsl?.version ? `WSL ${shell.wsl.version}` : undefined}
-          requirement="WSL 1 或 WSL 2"
-          action={{
-            type: 'openExternal',
-            url: 'https://learn.microsoft.com/zh-cn/windows/wsl/install',
-          }}
-          statusText={
-            shell.wsl?.available
-              ? `默认发行版: ${shell.wsl.defaultDistro || '未设置'} (${shell.wsl.distros.join(', ')})`
-              : shell.wsl?.error || '未安装'
-          }
-        />
-
         {/* 推荐环境提示 */}
         {shell.recommended && (
           <Alert>
             <Info className="h-4 w-4" />
             <AlertDescription className="text-xs">
               <strong>当前使用：</strong>
-              {shell.recommended === 'git-bash' ? 'Git Bash（推荐）' : 'WSL'}
+              Git Bash（推荐）
             </AlertDescription>
           </Alert>
         )}
@@ -472,7 +455,7 @@ function ShellEnvironmentCard(): React.ReactElement | null {
             <AlertDescription className="text-xs">
               <strong>未检测到可用的 Shell 环境！</strong>
               <br />
-              Agent 模式需要 Git Bash 或 WSL 才能运行。请安装其中之一后重启应用。
+              Agent 模式需要 Git Bash 才能运行。请安装后重启应用。
             </AlertDescription>
           </Alert>
         )}

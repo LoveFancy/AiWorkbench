@@ -8,10 +8,12 @@ type LoginState = 'idle' | 'ready' | 'loading' | 'error' | 'success'
 export function LoginView({
   onLoginSuccess,
   onClose,
+  onQuit,
   allowSkip = true,
 }: {
   onLoginSuccess: () => void
   onClose?: () => void
+  onQuit?: () => void
   allowSkip?: boolean
 }) {
   const [jobId, setJobId] = useState('')
@@ -76,10 +78,10 @@ export function LoginView({
   return (
     <div className="flex items-center justify-center h-full">
       <div className="bg-background rounded-xl shadow-2xl border p-6 w-[300px] relative">
-        {/* 关闭按钮 */}
-        {onClose && (
+        {/* 关闭按钮：弹窗模式有 onClose，强制登录模式有 onQuit */}
+        {(onClose || onQuit) && (
           <button
-            onClick={handleClose}
+            onClick={() => { onClose?.(); onQuit?.() }}
             className="absolute top-2 right-2 size-7 flex items-center justify-center rounded-full transition-colors text-foreground/40 hover:bg-foreground/10 hover:text-foreground"
             aria-label="关闭"
           >
@@ -145,6 +147,16 @@ export function LoginView({
               onClick={handleSkip}
             >
               跳过登录，直接使用
+            </p>
+          )}
+
+          {/* 强制登录模式：退出应用 */}
+          {!onClose && !allowSkip && onQuit && (
+            <p
+              className="text-xs text-muted-foreground/60 text-center cursor-pointer hover:text-muted-foreground hover:underline transition-colors"
+              onClick={onQuit}
+            >
+              退出应用
             </p>
           )}
         </div>
