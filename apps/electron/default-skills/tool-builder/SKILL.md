@@ -62,7 +62,7 @@ version: "1.1.0"
 |------|------|------|
 | `id` | 是 | 唯一标识，必须以 `custom-` 前缀 + slug 格式（如 `custom-weather`） |
 | `name` | 是 | 显示名称 |
-| `description` | 是 | 工具描述，AI 据此决定何时调用 |
+| `description` | 是 | 工具描述，AI 据此决定何时调用。**不超过两句话**（40-80 字），聚焦"做什么、什么时候用"。不要写 API 文档式长描述 |
 | `params` | 是 | 参数列表，每个含 `name`/`type`/`description`/`required` |
 | `category` | 是 | 固定为 `"custom"` |
 | `executorType` | 是 | 固定为 `"http"` |
@@ -84,6 +84,9 @@ version: "1.1.0"
 #### 参数类型
 
 `params[].type` 支持：`"string"` / `"number"` / `"boolean"`
+
+- 参数描述不超过 **一句话**（15 字以内），简洁说明参数含义
+- `enum` 仅用于 `string` 类型参数，限制可选值
 
 可选添加 `enum` 字段限制可选值：
 ```json

@@ -1279,6 +1279,10 @@ export class AgentOrchestrator {
         triggeredBy: input.triggeredBy,
       })
 
+      // 注入自定义 HTTP 工具（Tool Builder 创建的 customTools）
+      const { injectHttpCustomMcpServer } = await import('./chat-tools/http-custom-mcp')
+      await injectHttpCustomMcpServer(sdk, mcpServers)
+
       const expertRuntime = resolveExpertGroupRuntime({
         expertGroupId: sessionMeta?.expertGroupId,
         expertPluginId: sessionMeta?.expertPluginId,
