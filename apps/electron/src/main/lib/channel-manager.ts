@@ -69,7 +69,7 @@ function writeConfig(config: ChannelsConfig): void {
     writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8')
   } catch (error) {
     console.error('[渠道管理] 写入配置文件失败:', error)
-    throw new Error('写入渠道配置失败')
+    throw new Error(`写入渠道配置失败: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
 
@@ -124,7 +124,7 @@ function decryptKeyInternal(encryptedKey: string, options: { logError: boolean }
     if (options.logError) {
       console.warn('[渠道管理] API Key 解密失败，请重新填写该渠道的 API Key。', error)
     }
-    throw new Error('解密 API Key 失败')
+    throw new Error(`解密 API Key 失败: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
 
