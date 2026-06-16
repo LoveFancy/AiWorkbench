@@ -1,26 +1,45 @@
 import * as React from 'react'
 import type { AgentExpertGroupInfo } from '@proma/shared'
-import { Bot, FolderOpen, Hash, Network, Users, Wrench } from 'lucide-react'
+import { Bot, FolderOpen, Hash, Network, Star, Users, Wrench } from 'lucide-react'
+import { useAtomValue, useSetAtom } from 'jotai'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { ExpertGroupStatusBadge } from './ExpertGroupStatusBadge'
-import { getExpertGroupIdentifierLabel } from './expert-group-card-labels'
+import { ExpertStatusBadge } from './ExpertStatusBadge'
+import {
+  followedExpertGroupsAtom,
+  toggleFollowExpertGroupAtom,
+} from '@/experts/atoms/expert-follow'
 
-interface ExpertGroupCardProps {
+interface ExpertCardProps {
   group: AgentExpertGroupInfo
   onOpen: (group: AgentExpertGroupInfo) => void
   onSummon?: (group: AgentExpertGroupInfo) => void
   compact?: boolean
 }
 
-export function ExpertGroupCard({ group, onOpen, onSummon, compact = false }: ExpertGroupCardProps): React.ReactElement {
-  const capabilityItems = [
-    { icon: Bot, label: `${group.subagents?.length ?? 0} 个子智能体` },
-    { icon: Wrench, label: `${group.skills?.length ?? 0} 个技能` },
-    { icon: Network, label: `${group.mcpServers?.length ?? 0} 个 MCP` },
-  ]
-  const identifierLabel = getExpertGroupIdentifierLabel(group)
+export function ExpertCard({ group, onOpen, onSummon, compact = false }: ExpertCardProps): React.ReactElement {
+  const followed = useAtomValue(followedExpertGroupsAtom)
+  const toggleFollow = useSetAtom(toggleFollowExpertGroupAtom)
+  const isFollowed = !!followed[group.id]
+  const isTeam = group.expertType === 'team' || (group.subagents && group.subagents.length > 0)
+
+  const capabilityItems = React.useMemo(() => {
+    const items: Array<{ icon: typeof Bot; label: string }> = []
+    if (isTeam) {
+      items.push({ icon: Users, label: `${group.subagents?.length ?? 0} 个子智能体` })
+    }
+    items.push(
+      { icon: Wrench, label: `${group.skills?.length ?? 0} 个技能` },
+      { icon: Network, label: `${group.mcpServers?.length ?? 0} 个 MCP` },
+    )
+    return items
+  }, [group.subagents, group.skills, group.mcpServers, isTeam])
+
+  const handleToggleFollow = React.useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    toggleFollow(group.id)
+  }, [group.id, toggleFollow])
 
   const handleOpenPluginDir = React.useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
@@ -43,7 +62,7 @@ export function ExpertGroupCard({ group, onOpen, onSummon, compact = false }: Ex
             <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-1.5">
                 <h3 className="truncate text-sm font-semibold">{group.name}</h3>
-                <ExpertGroupStatusBadge status={group.status} />
+                <ExpertStatusBadge status={group.status} />
                 {group.sourcePluginKind === 'builtin' && (
                   <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[11px]">
                     内置
@@ -77,19 +96,34 @@ export function ExpertGroupCard({ group, onOpen, onSummon, compact = false }: Ex
             {!compact && (
               <span
                 className="inline-flex max-w-[48%] shrink-0 items-center gap-1 rounded-md bg-muted/70 px-2 py-1 font-mono text-[11px]"
-                title={`专家团 ID: ${identifierLabel}`}
+                title={`专家团 ID: ${group.id}`}
               >
                 <Hash size={12} className="shrink-0" />
-                <span className="truncate">{identifierLabel}</span>
+                <span className="truncate">{group.id}</span>
               </span>
             )}
           </div>
         </button>
-        {onSummon && (
-          <Button size="sm" className={cn(compact && 'h-8 px-3')} disabled={group.status !== 'available'} onClick={() => onSummon(group)}>
-            召唤
-          </Button>
-        )}
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <button
+            className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground/40 transition-all duration-200 hover:bg-yellow-50 hover:text-yellow-500 active:scale-90 dark:hover:bg-yellow-500/10"
+            onClick={handleToggleFollow}
+            title={isFollowed ? '取消关注' : '关注'}
+          >
+            <Star
+              size={18}
+              className={cn(
+                'transition-transform duration-200',
+                isFollowed && 'fill-yellow-500 text-yellow-500',
+              )}
+            />
+          </button>
+          {onSummon && (
+            <Button size="sm" className={cn(compact && 'h-8 px-3')} disabled={group.status !== 'available'} onClick={() => onSummon(group)}>
+              召唤
+            </Button>
+          )}
+        </div>
       </div>
       {!compact && (
         <div className="mt-3 flex items-center gap-2 border-t pt-3 text-xs text-muted-foreground">

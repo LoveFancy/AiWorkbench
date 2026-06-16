@@ -72,7 +72,8 @@ version: "1.0.0"
   "author": { "name": "WorkBuddy Import" },
   "license": "MIT",
   "keywords": ["expert-group", ...{中文标签}],
-  "expertGroup": "{英文name}"
+  "expertGroup": "{英文name}",
+  "expertType": "{'agent' | 'team'}"
 }
 ```
 
@@ -134,6 +135,7 @@ description: {角色描述}
 | `quickPrompts[].zh` | `samplePrompts` | 转为 string[] |
 | `skills[]` 路径 | `skills` | 提取最外层目录名（如 `./skills/ima-skills` → `ima-skills`） |
 | `version` | `version` | 直接使用，默认 1.0.0 |
+| `expertType` | `expertType` | 固定为 `"agent"`（单 Agent 模式） |
 | agent .md 正文 | `mainRole.prompt` | 见 prompt 构建规则 |
 | `rules/*.md` | 融入 `mainRole.prompt` | 见 prompt 构建规则 |
 
@@ -149,6 +151,7 @@ description: {角色描述}
 | `members[].profession.zh` | agents/{id}.md 的 frontmatter description | 职业 |
 | `tags[]` | `tags` | 如无 tags，从 members 的 profession 中提取 |
 | `quickPrompts[]` | `samplePrompts` | 如无，从 lead agent 的典型场景中提取 |
+| `expertType` | `expertType` | 固定为 `"team"`（团队模式） |
 
 ## mainRole.prompt 构建规则
 

@@ -11,11 +11,12 @@ import {
   createExpertSessionAtom,
   loadAgentExpertGroupsAtom,
 } from '@/atoms/agent-atoms'
+import { recordRecentExpertGroupAtom } from '@/experts/atoms/expert-follow'
 import { useOpenSession } from '@/hooks/useOpenSession'
-import { ExpertGroupPicker } from './ExpertGroupPicker'
-import { ExpertSummoningOverlay } from './ExpertSummoningOverlay'
+import { ExpertPicker } from './ExpertPicker'
+import { ExpertSummoningOverlay } from '@/components/agent/ExpertSummoningOverlay'
 import { cn } from '@/lib/utils'
-import { getExpertSummonDisplayName } from './expert-summon-label'
+import { getExpertSummonDisplayName } from './summon-label'
 
 interface ExpertSummonButtonProps {
   variant?: 'header' | 'composer'
@@ -27,6 +28,7 @@ export function ExpertSummonButton({ variant = 'header', sessionId }: ExpertSumm
   const sessions = useAtomValue(agentSessionsAtom)
   const loadGroups = useSetAtom(loadAgentExpertGroupsAtom)
   const createExpertSession = useSetAtom(createExpertSessionAtom)
+  const recordRecent = useSetAtom(recordRecentExpertGroupAtom)
   const openSession = useOpenSession()
   const [open, setOpen] = React.useState(false)
   const [loading, setLoading] = React.useState(false)
@@ -67,6 +69,7 @@ export function ExpertSummonButton({ variant = 'header', sessionId }: ExpertSumm
     setSummoningGroup(group)
     try {
       const session = await createExpertSession(group)
+      recordRecent(group.id)
       openSession('agent', session.id, session.title)
       setOpen(false)
       toast.success(`已召唤${group.name}`)
@@ -76,7 +79,7 @@ export function ExpertSummonButton({ variant = 'header', sessionId }: ExpertSumm
     } finally {
       setSummoningGroup(null)
     }
-  }, [createExpertSession, openSession])
+  }, [createExpertSession, openSession, recordRecent])
 
   return (
     <>
@@ -115,7 +118,7 @@ export function ExpertSummonButton({ variant = 'header', sessionId }: ExpertSumm
         </TooltipContent>
       </Tooltip>
 
-      <ExpertGroupPicker
+      <ExpertPicker
         open={open}
         groups={groups}
         loading={loading}
