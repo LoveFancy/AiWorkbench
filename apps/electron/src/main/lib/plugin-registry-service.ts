@@ -40,6 +40,8 @@ interface PluginRuntimePath {
 interface InstallUserPluginZipOptions extends PluginRegistryPaths {
   overwrite?: boolean
   tempRoot?: string
+  /** 插件市场 ID，默认 'local'；远程下载的专家团传入 'remote' */
+  marketplaceId?: string
 }
 
 interface PluginMcpServerDefinition {
@@ -740,7 +742,7 @@ export function installUserPluginZip(zipPath: string, options: InstallUserPlugin
     const pluginRoot = resolveExtractedPluginRoot(extractDir)
     const manifest = normalizeManifest(readJsonFile(join(pluginRoot, '.claude-plugin', 'plugin.json')), basename(pluginRoot))
     const installSlug = resolvePluginInstallSlug(pluginRoot, extractDir, manifest)
-    const marketplaceId = 'local'
+    const marketplaceId = options.marketplaceId ?? 'local'
     const pluginId = `user:${marketplaceId}/${installSlug}`
     const targetDir = join(resolved.userDir, marketplaceId, installSlug)
     const targetRel = relative(resolved.userDir, targetDir)

@@ -53,8 +53,13 @@ export function ExpertPicker({
     [groups, query],
   )
 
-  const availableGroups = visibleGroups.filter((group) => group.status === 'available')
-  const issueGroups = visibleGroups.filter((group) => group.status !== 'available')
+  // 可召唤：状态正常，或远程条目（支持下载后召唤）
+  const availableGroups = visibleGroups.filter(
+    (group) => group.status === 'available' || group.sourcePluginKind === 'remote'
+  )
+  const issueGroups = visibleGroups.filter(
+    (group) => group.status !== 'available' && group.sourcePluginKind !== 'remote'
+  )
 
   const handleSummon = React.useCallback((group: AgentExpertGroupInfo): void => {
     setSelected(null)

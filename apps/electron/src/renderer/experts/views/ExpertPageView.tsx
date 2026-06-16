@@ -2,7 +2,9 @@ import * as React from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import type { AgentExpertGroupInfo } from '@proma/shared'
 import { toast } from 'sonner'
+import { RefreshCw } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Button } from '@/components/ui/button'
 import { agentExpertGroupsAtom, createExpertSessionAtom, loadAgentExpertGroupsAtom } from '@/atoms/agent-atoms'
 import { useOpenSession } from '@/hooks/useOpenSession'
 import {
@@ -10,13 +12,14 @@ import {
   recentExpertGroupsAtom,
   recordRecentExpertGroupAtom,
 } from '@/experts/atoms/expert-follow'
+import { loadRemoteExpertDataAtom } from '@/experts/atoms/expert-remote'
 import { ExpertSearchBar } from '@/experts/shared/ExpertSearchBar'
 import { ExpertFilterPills, type FilterTag } from '@/experts/shared/ExpertFilterPills'
 import { ExpertCardGrid } from '@/experts/shared/ExpertCardGrid'
 import { ExpertEmptyState } from '@/experts/shared/ExpertEmptyState'
 import { ExpertImportButton } from '@/experts/shared/ExpertImportDropdown'
 import { ExpertFeaturedScenes } from '@/experts/shared/ExpertFeaturedScenes'
-import { filterByTag, searchByName, filterByScene } from '@/experts/utils/filter'
+import { filterByTag, searchByName } from '@/experts/utils/filter'
 
 interface ExpertPageViewProps {
   /** 是否显示精选场景区（仅"专家/专家团"页面） */
@@ -28,6 +31,7 @@ interface ExpertPageViewProps {
 export function ExpertPageView({ showFeaturedScenes = false, initialFilter }: ExpertPageViewProps): React.ReactElement {
   const allGroups = useAtomValue(agentExpertGroupsAtom)
   const loadGroups = useSetAtom(loadAgentExpertGroupsAtom)
+  const loadRemote = useSetAtom(loadRemoteExpertDataAtom)
   const createExpertSession = useSetAtom(createExpertSessionAtom)
   const openSession = useOpenSession()
   const followed = useAtomValue(followedExpertGroupsAtom)
@@ -36,32 +40,77 @@ export function ExpertPageView({ showFeaturedScenes = false, initialFilter }: Ex
 
   const [query, setQuery] = React.useState('')
   const [filterTag, setFilterTag] = React.useState<FilterTag>(initialFilter)
-  const [sceneFilter, setSceneFilter] = React.useState<string[] | null>(null)
+  const [sceneFilter, setSceneFilter] = React.useState<Set<string> | null>(null)
   const [activeSceneId, setActiveSceneId] = React.useState<string | null>(null)
+  const [refreshing, setRefreshing] = React.useState(false)
 
   // 首次加载
   React.useEffect(() => {
     if (allGroups.length === 0) {
       void loadGroups()
     }
-  }, [allGroups.length, loadGroups])
+    void loadRemote()
+  }, [allGroups.length, loadGroups, loadRemote])
 
   // 初始筛选变化时重置
   React.useEffect(() => {
     setFilterTag(initialFilter)
     setQuery('')
+    setSceneFilter(null)
+    setActiveSceneId(null)
   }, [initialFilter])
+
+  const handleRefresh = React.useCallback(async () => {
+    setRefreshing(true)
+    try {
+      await Promise.all([loadGroups(), loadRemote()])
+      toast.success('专家团列表已刷新')
+    } catch (err) {
+      console.error('[专家团] 刷新失败:', err)
+      toast.error('刷新失败')
+    } finally {
+      setRefreshing(false)
+    }
+  }, [loadGroups, loadRemote])
 
   // 数据管道：筛选 → 场景 → 搜索
   const displayGroups = React.useMemo(() => {
     let result = allGroups
     result = filterByTag(result, filterTag, followed, recent)
-    result = filterByScene(result, sceneFilter ?? [])
+    if (sceneFilter) {
+      result = result.filter(g => sceneFilter.has(g.id))
+    }
     result = searchByName(result, query)
     return result
   }, [allGroups, filterTag, query, followed, recent, sceneFilter])
 
   const handleSummon = React.useCallback(async (group: AgentExpertGroupInfo) => {
+    // 远程专家团需先下载
+    if (group.sourcePluginKind === 'remote' && group.status !== 'available') {
+      if (group.status === 'remote_downloading') {
+        toast('正在下载中，请稍候')
+        return
+      }
+      try {
+        const installed = await window.electronAPI.downloadRemoteExpert(group.id)
+        await loadGroups()
+        toast.success(`已下载 ${group.name}，正在召唤...`)
+        const session = await createExpertSession({
+          ...group,
+          status: 'available',
+          sourcePluginKind: 'user',
+          sourcePluginId: installed.name,
+          sourcePluginVersion: installed.version,
+        })
+        recordRecent(group.id)
+        openSession('agent', session.id, session.title)
+      } catch (err) {
+        console.error('[专家团] 下载远程专家团失败:', err)
+        toast.error(`下载 ${group.name} 失败`)
+      }
+      return
+    }
+
     if (group.status !== 'available') return
     try {
       const session = await createExpertSession(group)
@@ -72,7 +121,7 @@ export function ExpertPageView({ showFeaturedScenes = false, initialFilter }: Ex
       console.error('[专家团] 召唤失败:', error)
       toast.error('召唤专家团失败')
     }
-  }, [createExpertSession, openSession, recordRecent])
+  }, [createExpertSession, openSession, recordRecent, loadGroups])
 
   const emptyType: 'followed' | 'recent' | 'search' | 'all' = React.useMemo(() => {
     if (filterTag === 'followed') return 'followed'
@@ -83,7 +132,7 @@ export function ExpertPageView({ showFeaturedScenes = false, initialFilter }: Ex
 
   return (
     <div className="flex h-full flex-col bg-background">
-      {/* 顶部控制栏 — pt-10 留出窗口按钮空间，titlebar-no-drag 确保点击不被拖拽区域拦截 */}
+      {/* 顶部控制栏 */}
       <div className="flex-shrink-0 border-b px-6 pt-10 pb-4 titlebar-no-drag">
         <div className="flex items-center justify-between gap-4">
           <h2 className="text-lg font-semibold">
@@ -91,7 +140,14 @@ export function ExpertPageView({ showFeaturedScenes = false, initialFilter }: Ex
           </h2>
           <div className="flex items-center gap-2">
             <ExpertSearchBar value={query} onChange={setQuery} />
-            {initialFilter === 'all' && <ExpertImportButton />}
+            {initialFilter === 'all' && (
+              <>
+                <Button variant="outline" size="icon" className="h-9 w-9" onClick={handleRefresh} disabled={refreshing} title="刷新专家团列表">
+                  <RefreshCw className={`size-4 ${refreshing ? 'animate-spin' : ''}`} />
+                </Button>
+                <ExpertImportButton />
+              </>
+            )}
           </div>
         </div>
 
@@ -105,7 +161,11 @@ export function ExpertPageView({ showFeaturedScenes = false, initialFilter }: Ex
               expert: allGroups.filter((g) => g.expertType !== 'team').length,
               team: allGroups.filter((g) => g.expertType === 'team' || (g.subagents && g.subagents.length > 0)).length,
               available: allGroups.filter((g) => g.status === 'available').length,
-              unavailable: allGroups.filter((g) => g.status !== 'available').length,
+              not_downloaded: allGroups.filter((g) => g.sourcePluginKind === 'remote' && g.status !== 'available').length,
+              unavailable: allGroups.filter((g) => {
+                if (g.status === 'available') return false
+                return g.sourcePluginKind !== 'remote'
+              }).length,
             }}
           />
         </div>
@@ -120,9 +180,9 @@ export function ExpertPageView({ showFeaturedScenes = false, initialFilter }: Ex
               <ExpertFeaturedScenes
                 allGroups={allGroups}
                 activeScene={activeSceneId}
-                onSceneClick={(sceneId, tags) => {
-                  setSceneFilter(tags)
+                onSceneClick={(sceneId, ids) => {
                   setActiveSceneId(sceneId)
+                  setSceneFilter(ids ? new Set(ids) : null)
                 }}
               />
             </div>

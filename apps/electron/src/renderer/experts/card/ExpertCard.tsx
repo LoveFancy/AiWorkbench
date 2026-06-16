@@ -68,6 +68,11 @@ export function ExpertCard({ group, onOpen, onSummon, compact = false }: ExpertC
                     内置
                   </Badge>
                 )}
+                {group.sourcePluginKind === 'remote' && (
+                  <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[11px] bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
+                    云端
+                  </Badge>
+                )}
               </div>
               <p className="mt-1 truncate text-xs text-muted-foreground">主角色：{group.mainRole.name || '未配置'}</p>
             </div>
@@ -119,13 +124,18 @@ export function ExpertCard({ group, onOpen, onSummon, compact = false }: ExpertC
             />
           </button>
           {onSummon && (
-            <Button size="sm" className={cn(compact && 'h-8 px-3')} disabled={group.status !== 'available'} onClick={() => onSummon(group)}>
-              召唤
+            <Button
+              size="sm"
+              className={cn(compact && 'h-8 px-3')}
+              disabled={group.status !== 'available' && group.status !== 'remote_not_downloaded' && group.status !== 'remote_downloading'}
+              onClick={() => onSummon(group)}
+            >
+              {group.status === 'remote_not_downloaded' ? '下载' : group.status === 'remote_downloading' ? '下载中...' : '召唤'}
             </Button>
           )}
         </div>
       </div>
-      {!compact && (
+      {!compact && group.sourcePluginKind !== 'remote' && group.sourcePluginPath && (
         <div className="mt-3 flex items-center gap-2 border-t pt-3 text-xs text-muted-foreground">
           <FolderOpen size={13} className="shrink-0 text-muted-foreground/60" />
           <span className="min-w-0 flex-1 truncate font-mono text-[11px]" title={group.sourcePluginPath}>

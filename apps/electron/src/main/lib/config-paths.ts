@@ -535,6 +535,24 @@ export function getPluginMarketplacesPath(): string {
 }
 
 /**
+ * 获取专家团服务端列表缓存路径
+ *
+ * @returns ~/.workmate/expert-groups-cache.json
+ */
+export function getExpertGroupsCachePath(): string {
+  return join(getConfigDir(), 'expert-groups-cache.json')
+}
+
+/**
+ * 获取精选场景缓存路径
+ *
+ * @returns ~/.workmate/featured-scenes-cache.json
+ */
+export function getFeaturedScenesCachePath(): string {
+  return join(getConfigDir(), 'featured-scenes-cache.json')
+}
+
+/**
  * 从 SKILL.md 的 YAML frontmatter 中解析 version 字段
  *
  * 无 version 字段时返回 '0.0.0'（确保旧 Skill 会被更新）。

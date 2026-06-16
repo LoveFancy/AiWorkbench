@@ -13,7 +13,7 @@ function preloadElapsed(label: string): void {
 preloadElapsed('preload 脚本开始执行')
 
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import { IPC_CHANNELS, CHANNEL_IPC_CHANNELS, CHAT_IPC_CHANNELS, AGENT_IPC_CHANNELS, ENVIRONMENT_IPC_CHANNELS, INSTALLER_IPC_CHANNELS, PROXY_IPC_CHANNELS, GITHUB_RELEASE_IPC_CHANNELS, SYSTEM_PROMPT_IPC_CHANNELS, MEMORY_IPC_CHANNELS, CHAT_TOOL_IPC_CHANNELS, FEISHU_IPC_CHANNELS, DINGTALK_IPC_CHANNELS, WECHAT_IPC_CHANNELS, AUTOMATION_IPC_CHANNELS, SYSTEM_LOG_IPC_CHANNELS } from '@proma/shared'
+import { IPC_CHANNELS, CHANNEL_IPC_CHANNELS, CHAT_IPC_CHANNELS, AGENT_IPC_CHANNELS, EXPERT_IPC_CHANNELS, ENVIRONMENT_IPC_CHANNELS, INSTALLER_IPC_CHANNELS, PROXY_IPC_CHANNELS, GITHUB_RELEASE_IPC_CHANNELS, SYSTEM_PROMPT_IPC_CHANNELS, MEMORY_IPC_CHANNELS, CHAT_TOOL_IPC_CHANNELS, FEISHU_IPC_CHANNELS, DINGTALK_IPC_CHANNELS, WECHAT_IPC_CHANNELS, AUTOMATION_IPC_CHANNELS, SYSTEM_LOG_IPC_CHANNELS } from '@proma/shared'
 import { USER_PROFILE_IPC_CHANNELS, SETTINGS_IPC_CHANNELS, SCRATCH_PAD_IPC_CHANNELS, APP_ICON_IPC_CHANNELS, DOCK_BADGE_IPC_CHANNELS, STORAGE_IPC_CHANNELS } from '../types'
 import type {
   RuntimeStatus,
@@ -73,6 +73,9 @@ import type {
   AgentPluginInstallResult,
   AgentPluginMarketplaceType,
   AgentExpertGroupInfo,
+  ServerExpertGroupSummary,
+  FeaturedScene,
+  RemoteDownloadProgress,
   FileEntry,
   CreateFileEntryInput,
   FileSearchResult,
@@ -594,6 +597,19 @@ export interface ElectronAPI {
   configureAgentPluginMcpEnv: (serverId: string, env: Record<string, string>) => Promise<void>
   /** 测试插件 MCP */
   testAgentPluginMcp: (serverId: string) => Promise<{ success: boolean; message: string }>
+
+  // ===== 专家团服务端化 =====
+
+  /** 获取服务端专家团列表 */
+  fetchServerExpertGroups: () => Promise<ServerExpertGroupSummary[]>
+  /** 获取精选场景分类 */
+  fetchFeaturedScenes: () => Promise<FeaturedScene[]>
+  /** 下载并安装远程专家团 */
+  downloadRemoteExpert: (groupId: string) => Promise<AgentPluginInfo>
+  /** 取消远程专家团下载 */
+  cancelRemoteDownload: (groupId: string) => Promise<void>
+  /** 订阅下载进度事件（返回清理函数） */
+  onExpertDownloadProgress: (callback: (progress: RemoteDownloadProgress) => void) => () => void
 
   // ===== Agent 工作区管理相关 =====
 
@@ -1791,6 +1807,30 @@ const electronAPI: ElectronAPI = {
 
   testAgentPluginMcp: (serverId: string) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.TEST_PLUGIN_MCP, serverId)
+  },
+
+  // ===== 专家团服务端化 =====
+
+  fetchServerExpertGroups: () => {
+    return ipcRenderer.invoke(EXPERT_IPC_CHANNELS.FETCH_SERVER_EXPERT_GROUPS)
+  },
+
+  fetchFeaturedScenes: () => {
+    return ipcRenderer.invoke(EXPERT_IPC_CHANNELS.FETCH_FEATURED_SCENES)
+  },
+
+  downloadRemoteExpert: (groupId: string) => {
+    return ipcRenderer.invoke(EXPERT_IPC_CHANNELS.DOWNLOAD_REMOTE_EXPERT, groupId)
+  },
+
+  cancelRemoteDownload: (groupId: string) => {
+    return ipcRenderer.invoke(EXPERT_IPC_CHANNELS.CANCEL_DOWNLOAD, groupId)
+  },
+
+  onExpertDownloadProgress: (callback: (progress: RemoteDownloadProgress) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, progress: RemoteDownloadProgress) => callback(progress)
+    ipcRenderer.on(EXPERT_IPC_CHANNELS.DOWNLOAD_PROGRESS, listener)
+    return () => { ipcRenderer.removeListener(EXPERT_IPC_CHANNELS.DOWNLOAD_PROGRESS, listener) }
   },
 
   getWorkspaceCapabilities: (workspaceSlug: string) => {

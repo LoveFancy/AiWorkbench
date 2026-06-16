@@ -1,1 +1,1 @@
-export { filterByTag, searchByName, countByScene, filterByScene } from './filter'
+export { filterByTag, searchByName } from './filter'

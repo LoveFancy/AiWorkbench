@@ -13,6 +13,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
       position="top-center"
       offset={58}
       className="toaster group"
+      closeButton
       toastOptions={{
         classNames: {
           toast:

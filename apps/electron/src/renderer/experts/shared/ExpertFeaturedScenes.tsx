@@ -1,32 +1,22 @@
 import * as React from 'react'
-import type { AgentExpertGroupInfo } from '@proma/shared'
-import { countByScene } from '@/experts/utils/filter'
+import type { AgentExpertGroupInfo, FeaturedScene } from '@proma/shared'
+import { useAtomValue } from 'jotai'
+import { featuredScenesAtom } from '@/experts/atoms/expert-remote'
 import { cn } from '@/lib/utils'
-
-interface SceneCategory {
-  id: string
-  name: string
-  filterTags: string[]
-}
-
-const SCENE_CATEGORIES: SceneCategory[] = [
-  { id: 'content', name: '内容创作', filterTags: ['写作', '文案', '翻译'] },
-  { id: 'office', name: '办公场景', filterTags: ['文档', '邮件', '日程'] },
-  { id: 'legal', name: '法律咨询', filterTags: ['法律', '合同', '合规'] },
-  { id: 'research', name: '科研学术', filterTags: ['研究', '论文', '数据分析'] },
-  { id: 'uiux', name: 'UI/UX', filterTags: ['设计', '前端', '交互'] },
-  { id: 'data', name: '数据分析', filterTags: ['数据', '可视化', '统计'] },
-  { id: 'devops', name: 'DevOps', filterTags: ['部署', 'CI/CD', '运维'] },
-  { id: 'edu', name: '教育培训', filterTags: ['教学', '课程', '培训'] },
-]
 
 interface ExpertFeaturedScenesProps {
   allGroups: AgentExpertGroupInfo[]
   activeScene: string | null
-  onSceneClick: (sceneId: string | null, tags: string[] | null) => void
+  onSceneClick: (sceneId: string | null, expertGroupIds: string[] | null) => void
 }
 
 export function ExpertFeaturedScenes({ allGroups, activeScene, onSceneClick }: ExpertFeaturedScenesProps): React.ReactElement {
+  const scenes = useAtomValue(featuredScenesAtom)
+
+  if (scenes.length === 0) return <div />
+
+  const allGroupIds = new Set(allGroups.map(g => g.id))
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -41,8 +31,10 @@ export function ExpertFeaturedScenes({ allGroups, activeScene, onSceneClick }: E
         )}
       </div>
       <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
-        {SCENE_CATEGORIES.map((scene) => {
-          const count = countByScene(allGroups, scene.filterTags)
+        {scenes.map((scene: FeaturedScene) => {
+          const count = allGroupIds.size > 0
+            ? scene.expertGroupIds.filter(id => allGroupIds.has(id)).length
+            : scene.expertGroupIds.length
           const isActive = activeScene === scene.id
           if (count === 0) {
             return (
@@ -64,7 +56,7 @@ export function ExpertFeaturedScenes({ allGroups, activeScene, onSceneClick }: E
                   ? 'border-primary bg-primary/10 ring-1 ring-primary'
                   : 'bg-card',
               )}
-              onClick={() => onSceneClick(isActive ? null : scene.id, isActive ? null : scene.filterTags)}
+              onClick={() => onSceneClick(isActive ? null : scene.id, isActive ? null : scene.expertGroupIds)}
             >
               <div className={cn('text-sm font-medium', isActive && 'text-primary')}>{scene.name}</div>
               <div className="mt-1 text-xs text-muted-foreground">{count} 位专家</div>

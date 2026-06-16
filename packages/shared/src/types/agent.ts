@@ -858,7 +858,7 @@ export interface HtSkillHubInstallResult {
 
 // ===== Agent Plugins =====
 
-export type AgentPluginKind = 'builtin' | 'user'
+export type AgentPluginKind = 'builtin' | 'user' | 'remote'
 
 export type AgentPluginCapabilityType = 'skill' | 'command' | 'agent' | 'mcp' | 'expert-group'
 
@@ -900,6 +900,10 @@ export type AgentExpertGroupStatus =
   | 'missing_subagent'
   | 'missing_skill'
   | 'mcp_conflict'
+  | 'remote_not_downloaded'
+  | 'remote_downloading'
+  | 'remote_download_failed'
+  | 'remote_update_available'
 
 export interface AgentExpertGroupMainRole {
   name: string
@@ -1002,6 +1006,57 @@ export interface AgentPluginMcpServerState {
   lastTestAt?: string
   lastTestSuccess?: boolean
   lastTestMessage?: string
+}
+
+// ===== 专家团服务端化 =====
+
+/** 服务端专家团列表项 —— 前端筛选/展示用的摘要信息 */
+export interface ServerExpertGroupSummary {
+  id: string
+  name: string
+  description: string
+  introduction: string
+  mainRoleName: string
+  expertType: 'agent' | 'team'
+  subagentCount: number
+  subagentLabels: Record<string, string>
+  tags: string[]
+  samplePrompts: string[]
+  builtinTools: string[]
+  skills: string[]
+  mcpServers: string[]
+  version: string
+  downloadUrl: string
+  downloadSize: number
+  sortWeight: number
+  publishedAt: string
+  updatedAt: string
+}
+
+export interface ServerExpertGroupListResponse {
+  items: ServerExpertGroupSummary[]
+  total: number
+}
+
+export interface FeaturedScene {
+  id: string
+  name: string
+  expertGroupIds: string[]
+  iconUrl?: string
+  sortOrder: number
+}
+
+export interface FeaturedScenesResponse {
+  scenes: FeaturedScene[]
+}
+
+export interface RemoteDownloadProgress {
+  groupId: string
+  status: 'downloading' | 'installing' | 'done' | 'error'
+  progress: number
+  downloadedBytes: number
+  totalBytes: number
+  error?: string
 }
 
 export interface AgentPluginsConfig {
@@ -1829,6 +1884,20 @@ export const AGENT_IPC_CHANNELS = {
   // 待处理请求恢复（渲染进程重载后查询主进程状态）
   /** 获取所有待处理的交互请求快照 */
   GET_PENDING_REQUESTS: 'agent:get-pending-requests',
+} as const
+
+/** 专家团服务端化 IPC 通道常量 */
+export const EXPERT_IPC_CHANNELS = {
+  /** 获取服务端专家团列表 */
+  FETCH_SERVER_EXPERT_GROUPS: 'expert:fetch-server-list',
+  /** 获取精选场景分类 */
+  FETCH_FEATURED_SCENES: 'expert:fetch-featured-scenes',
+  /** 下载服务端专家团插件包 */
+  DOWNLOAD_REMOTE_EXPERT: 'expert:download-remote',
+  /** 下载进度推送（主进程 → 渲染进程） */
+  DOWNLOAD_PROGRESS: 'expert:download-progress',
+  /** 取消下载 */
+  CANCEL_DOWNLOAD: 'expert:cancel-download',
 } as const
 
 /**

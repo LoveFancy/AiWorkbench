@@ -7,9 +7,10 @@
 
 import { atom } from 'jotai'
 import { atomFamily, atomWithStorage } from 'jotai/utils'
-import type { AgentSessionMeta, AgentEvent, AgentWorkspace, AgentPendingFile, RetryAttempt, PromaPermissionMode, PermissionRequest, AskUserRequest, ExitPlanModeRequest, ThinkingConfig, AgentEffort, SDKMessage, UnstagedChangesResult, AgentExpertGroupInfo } from '@proma/shared'
+import type { AgentSessionMeta, AgentEvent, AgentWorkspace, AgentPendingFile, RetryAttempt, PromaPermissionMode, PermissionRequest, AskUserRequest, ExitPlanModeRequest, ThinkingConfig, AgentEffort, SDKMessage, UnstagedChangesResult, AgentExpertGroupInfo, ServerExpertGroupSummary } from '@proma/shared'
 import { PROMA_DEFAULT_PERMISSION_MODE } from '@proma/shared'
 import { calculateDockBadgeCount, countPendingRequests } from '@/lib/dock-badge-count'
+import { serverExpertGroupsAtom } from '@/experts/atoms/expert-remote'
 
 /** 活动状态 */
 export type ActivityStatus = 'pending' | 'running' | 'completed' | 'error' | 'backgrounded'
@@ -202,7 +203,8 @@ export interface AgentPendingPrompt {
 
 export const agentSessionsAtom = atom<AgentSessionMeta[]>([])
 export const agentWorkspacesAtom = atom<AgentWorkspace[]>([])
-export const agentExpertGroupsAtom = atom<AgentExpertGroupInfo[]>([])
+/** 本地已安装的专家团（builtin + user），由 loadAgentExpertGroupsAtom 填充 */
+export const agentLocalExpertGroupsAtom = atom<AgentExpertGroupInfo[]>([])
 export const currentAgentWorkspaceIdAtom = atom<string | null>(null)
 /** 全局默认渠道 ID（新会话继承用，从 settings.json 加载） */
 export const agentChannelIdAtom = atom<string | null>(null)
@@ -225,8 +227,72 @@ export const agentStreamingStatesAtom = atom<Map<string, AgentStreamState>>(new 
 
 export const loadAgentExpertGroupsAtom = atom(null, async (_get, set) => {
   const groups = await window.electronAPI.listAgentExpertGroups()
-  set(agentExpertGroupsAtom, groups)
+  set(agentLocalExpertGroupsAtom, groups)
 })
+
+/** 合并本地和服务端专家团的全量列表（只读 computed） */
+export const agentExpertGroupsAtom = atom<AgentExpertGroupInfo[]>((get) => {
+  const local = get(agentLocalExpertGroupsAtom)
+  const server = get(serverExpertGroupsAtom)
+  return mergeExpertGroups(local, server)
+})
+
+function mergeExpertGroups(
+  localGroups: AgentExpertGroupInfo[],
+  serverSummaries: ServerExpertGroupSummary[],
+): AgentExpertGroupInfo[] {
+  const result: AgentExpertGroupInfo[] = []
+  const localIds = new Set(localGroups.map((g) => g.id))
+
+  // 本地已有的：保留本地完整信息
+  for (const local of localGroups) {
+    const server = serverSummaries.find((s) => s.id === local.id)
+    result.push({
+      ...local,
+      status: server && server.version !== local.sourcePluginVersion
+        ? ('remote_update_available' as const)
+        : local.status,
+    })
+  }
+
+  // 仅服务端有的：构建 remote 条目
+  for (const server of serverSummaries) {
+    if (localIds.has(server.id)) continue
+    result.push({
+      id: server.id,
+      name: server.name,
+      description: server.description,
+      introduction: server.introduction,
+      mainRole: { name: server.mainRoleName, prompt: '' },
+      subagents: undefined,
+      subagentLabels: server.subagentLabels,
+      builtinTools: server.builtinTools,
+      skills: server.skills,
+      mcpServers: server.mcpServers,
+      tags: server.tags,
+      samplePrompts: server.samplePrompts,
+      // 兜底：若服务端未提供 expertType，根据 subagentCount 推断
+      expertType: server.expertType || (server.subagentCount > 0 ? 'team' : 'agent'),
+      sourcePluginId: '',
+      sourceLabel: server.name,
+      sourcePluginVersion: server.version,
+      sourcePluginKind: 'remote',
+      sourcePluginPath: '',
+      filePath: '',
+      enabled: true,
+      status: 'remote_not_downloaded',
+      issues: [],
+    })
+  }
+
+  // 按 sortWeight 降序（权重高的在前），相同时按 name 升序
+  return result.sort((a, b) => {
+    const aWeight = serverSummaries.find(s => s.id === a.id)?.sortWeight ?? 0
+    const bWeight = serverSummaries.find(s => s.id === b.id)?.sortWeight ?? 0
+    if (bWeight !== aWeight) return bWeight - aWeight
+    return a.name.localeCompare(b.name)
+  })
+}
 
 export const createExpertSessionAtom = atom(null, async (get, set, group: AgentExpertGroupInfo) => {
   const currentSessionId = get(currentAgentSessionIdAtom)

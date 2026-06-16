@@ -15,7 +15,7 @@ export {
   toggleFollowExpertGroupAtom,
   recordRecentExpertGroupAtom,
 } from './atoms/expert-follow'
-export { filterByTag, searchByName, countByScene, filterByScene } from './utils/filter'
+export { filterByTag, searchByName } from './utils/filter'
 
 // Shared components
 export { ExpertSearchBar } from './shared/ExpertSearchBar'

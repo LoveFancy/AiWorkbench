@@ -106,8 +106,13 @@ export function ExpertDetailDialog({ group, open, onOpenChange, onSummon }: Expe
             <DialogFooter>
               <Button variant="outline" onClick={() => onOpenChange(false)}>关闭</Button>
               {onSummon && (
-                <Button disabled={group.status !== 'available'} onClick={() => onSummon(group)}>
-                  召唤{group.name}
+                <Button
+                  disabled={group.status !== 'available' && group.status !== 'remote_not_downloaded' && group.status !== 'remote_downloading'}
+                  onClick={() => onSummon(group)}
+                >
+                  {group.sourcePluginKind === 'remote' && group.status !== 'available'
+                    ? group.status === 'remote_downloading' ? '下载中...' : '下载并召唤'
+                    : `召唤${group.name}`}
                 </Button>
               )}
             </DialogFooter>

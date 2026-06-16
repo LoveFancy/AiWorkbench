@@ -1,8 +1,8 @@
 import * as React from 'react'
-import { Star, Clock, CheckCircle, AlertTriangle, Bot, Users } from 'lucide-react'
+import { Star, Clock, CheckCircle, AlertTriangle, Bot, Users, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-export type FilterTag = 'all' | 'followed' | 'recent' | 'available' | 'unavailable' | 'expert' | 'team'
+export type FilterTag = 'all' | 'followed' | 'recent' | 'available' | 'unavailable' | 'expert' | 'team' | 'not_downloaded'
 
 interface ExpertFilterPillsProps {
   value: FilterTag
@@ -16,6 +16,7 @@ const PILLS: Array<{ tag: FilterTag; label: string; icon: typeof Star }> = [
   { tag: 'expert', label: '专家', icon: Bot },
   { tag: 'team', label: '专家团', icon: Users },
   { tag: 'available', label: '可用', icon: CheckCircle },
+  { tag: 'not_downloaded', label: '未下载', icon: Download },
   { tag: 'unavailable', label: '不可用', icon: AlertTriangle },
 ]
 

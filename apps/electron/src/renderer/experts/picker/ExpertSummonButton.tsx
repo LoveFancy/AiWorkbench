@@ -11,6 +11,7 @@ import {
   createExpertSessionAtom,
   loadAgentExpertGroupsAtom,
 } from '@/atoms/agent-atoms'
+import { loadRemoteExpertDataAtom } from '@/experts/atoms/expert-remote'
 import { recordRecentExpertGroupAtom } from '@/experts/atoms/expert-follow'
 import { useOpenSession } from '@/hooks/useOpenSession'
 import { ExpertPicker } from './ExpertPicker'
@@ -27,6 +28,7 @@ export function ExpertSummonButton({ variant = 'header', sessionId }: ExpertSumm
   const groups = useAtomValue(agentExpertGroupsAtom)
   const sessions = useAtomValue(agentSessionsAtom)
   const loadGroups = useSetAtom(loadAgentExpertGroupsAtom)
+  const loadRemote = useSetAtom(loadRemoteExpertDataAtom)
   const createExpertSession = useSetAtom(createExpertSessionAtom)
   const recordRecent = useSetAtom(recordRecentExpertGroupAtom)
   const openSession = useOpenSession()
@@ -37,14 +39,14 @@ export function ExpertSummonButton({ variant = 'header', sessionId }: ExpertSumm
   const refresh = React.useCallback(async (): Promise<void> => {
     setLoading(true)
     try {
-      await loadGroups()
+      await Promise.all([loadGroups(), loadRemote()])
     } catch (error) {
       console.error('[专家团] 加载专家团失败:', error)
       toast.error('加载专家团失败')
     } finally {
       setLoading(false)
     }
-  }, [loadGroups])
+  }, [loadGroups, loadRemote])
 
   React.useEffect(() => {
     if (open && groups.length === 0) {
@@ -65,6 +67,38 @@ export function ExpertSummonButton({ variant = 'header', sessionId }: ExpertSumm
   }, [currentSession?.expertGroupId, groups.length, refresh])
 
   const handleSummon = React.useCallback(async (group: AgentExpertGroupInfo): Promise<void> => {
+    // 远程专家团需先下载
+    if (group.sourcePluginKind === 'remote' && group.status !== 'available') {
+      if (group.status === 'remote_downloading') {
+        toast('正在下载中，请稍候')
+        return
+      }
+      setSummoningGroup(group)
+      try {
+        const installed = await window.electronAPI.downloadRemoteExpert(group.id)
+        // 重新加载本地列表使合并 atom 识别新下载的专家团
+        await loadGroups()
+        // 更新 group 为已安装版本用于召唤
+        toast.success(`已下载 ${group.name}，正在召唤...`)
+        const session = await createExpertSession({
+          ...group,
+          status: 'available',
+          sourcePluginKind: 'user',
+          sourcePluginId: installed.name,
+          sourcePluginVersion: installed.version,
+        })
+        recordRecent(group.id)
+        openSession('agent', session.id, session.title)
+        setOpen(false)
+      } catch (err) {
+        console.error('[专家团] 下载远程专家团失败:', err)
+        toast.error(`下载 ${group.name} 失败`)
+      } finally {
+        setSummoningGroup(null)
+      }
+      return
+    }
+
     if (group.status !== 'available') return
     setSummoningGroup(group)
     try {
@@ -79,7 +113,7 @@ export function ExpertSummonButton({ variant = 'header', sessionId }: ExpertSumm
     } finally {
       setSummoningGroup(null)
     }
-  }, [createExpertSession, openSession, recordRecent])
+  }, [createExpertSession, openSession, recordRecent, loadGroups])
 
   return (
     <>
