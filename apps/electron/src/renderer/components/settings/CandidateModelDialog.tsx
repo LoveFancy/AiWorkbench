@@ -104,15 +104,20 @@ export function CandidateModelDialog({
   const [pendingCandidates, setPendingCandidates] = React.useState<string[]>(candidateModelIds)
   const [pendingAutoMode, setPendingAutoMode] = React.useState(autoModeEnabled)
 
-  // dialog 打开时从 props 同步到本地暂存
+  // dialog 打开时（仅 transitioning false→true）从 props 同步到本地暂存。
+  // 不依赖 candidateModelIds/autoModeEnabled，防止对话框打开期间外部异步写
+  // 原子（如 getSettings() 回调）触发 re-sync，覆盖用户的编辑。
+  const prevOpenRef = React.useRef(open)
   React.useEffect(() => {
-    if (open) {
+    const justOpened = open && !prevOpenRef.current
+    prevOpenRef.current = open
+    if (justOpened) {
       setPendingCandidates(candidateModelIds)
       setPendingAutoMode(autoModeEnabled)
       setSearch('')
       setShowSaaSConfirm(null)
     }
-  }, [open, candidateModelIds, autoModeEnabled])
+  })
 
   const allModels = React.useMemo(() => buildModelList(channels, extraModels), [channels, extraModels])
   const localModelIds = React.useMemo(() => allModels.filter(m => m.isLocal).map(m => m.id), [allModels])
