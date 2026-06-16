@@ -196,6 +196,10 @@ const FRIENDLY_ERROR_MESSAGES: Array<{ pattern: RegExp; message: string }> = [
     message: '请检查是否选择了正确的 WorkMate 供应渠道和模型',
   },
   {
+    pattern: /authentication_failed|invalid.*api.?key|api.?key.*invalid|unauthorized|unauthenticated/i,
+    message: 'API 认证失败：请检查当前渠道的 API Key 是否正确配置',
+  },
+  {
     pattern: /validation error/i,
     message: 'API 请求格式校验失败，请重试或开启新会话',
   },

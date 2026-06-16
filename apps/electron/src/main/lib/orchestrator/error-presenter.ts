@@ -71,18 +71,6 @@ export function logStderr(stderrChunks: string[]): void {
 // ---- 错误分类 ----
 
 /**
- * 截取 stderr 的前 500 个可打印字符，拼接成用户可见的错误详情片段。
- * 过滤掉不可见字符（二进制），让网关返回的 HTML/JSON/纯文本报错可以部分展示。
- */
-function buildMalformedErrorContent(userFacingError: string, stderrText: string): string {
-  const maxPreview = 500
-  // 去掉不可打印字符（保留常见可读字符和中文），截取前 maxPreview 字符
-  const clean = stderrText.replace(/[^\x20-\x7E\u4e00-\u9fff\u3000-\u303f\uff00-\uffef\n\r]/g, '')
-  const preview = clean.length > maxPreview ? clean.slice(0, maxPreview) + '\n…（已截断，完整内容见应用日志）' : clean
-  return `${userFacingError}\n\n--- 原始响应 ---\n${preview}`
-}
-
-/**
  * 对 catch 路径捕获的原始错误进行分类，生成用户可见的错误展示信息。
  *
  * @param rawError    - catch 块捕获的 error 对象
@@ -135,9 +123,7 @@ export function classifyCatchError(
     ? '上下文过长：当前对话的上下文已超出模型限制，请压缩上下文或开启新会话'
     : isThinkingSignature
       ? `${THINKING_SIGNATURE_ERROR_TITLE}：${THINKING_SIGNATURE_ERROR_MESSAGE}`
-      : isMalformedResponse && stderrText
-        ? buildMalformedErrorContent(userFacingError, stderrText)
-        : userFacingError
+      : userFacingError
 
   const errorActions = isThinkingSignature
     ? [

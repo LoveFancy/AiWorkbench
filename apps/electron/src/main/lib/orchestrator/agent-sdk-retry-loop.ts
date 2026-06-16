@@ -246,6 +246,8 @@ export async function sdkRunSingleAttempt(
       // ============ api_retry 检测 ============
       if (msg.type === 'system' && (msg as { subtype?: string }).subtype === 'api_retry') {
         const retryError = (msg as { error?: string }).error || '未知'
+        const retryDetail = (msg as { message?: string }).message || ''
+        console.error(`[Gateway Diag] SDK api_retry system message: error="${retryError}" detail="${retryDetail.slice(0, 500)}"`)
         deps.abort(ctx.sessionId)
         if (pendingNext) { (pendingNext as Promise<unknown>).catch(() => {}); pendingNext = null }
         const action = await callbacks.onApiRetry(retryError, ctx)
@@ -439,6 +441,10 @@ export async function sdkRunSingleAttempt(
     }
 
     // 不可重试
+    console.error(`[Gateway Diag] sdkRunSingleAttempt catch → fatalError`)
+    console.error(`[Gateway Diag]   apiError: ${apiError ? `status=${apiError.statusCode} msg=${apiError.message}` : 'null'}`)
+    console.error(`[Gateway Diag]   rawErrorMessage: ${rawErrorMessage}`)
+    console.error(`[Gateway Diag]   stderrOutput (${stderrOutput.length} chars):\n${stderrOutput.slice(0, 2000)}`)
     return {
       kind: 'error_break',
       shouldRetryFromError: false,

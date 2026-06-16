@@ -878,6 +878,7 @@ export class AgentOrchestrator {
         agents: buildAgentsForSession({ claudeAvailable, expertRuntime }),
         onStderr: (data: string) => {
           stderrChunks.push(data)
+          console.error(`[Gateway Diag] SDK stderr: ${data.trimEnd()}`)
         },
         onSessionId: (sdkSessionId: string) => {
           // 仅在新 session ID 变更时保存（onSessionId 可能被多次回调但 ID 不变）
@@ -1153,8 +1154,12 @@ export class AgentOrchestrator {
             continue
           }
 
-          // 不可重试：throw 进入 catch 块做错误展示
-          throw new Error('Non-retryable SDK error')
+          // 不可重试：用 result.fatalError 中的真实错误信息
+          console.error(`[Gateway Diag] orchestrator: error_break with fatalError`)
+          console.error(`[Gateway Diag]   fatalError.apiError: ${result.fatalError?.apiError ? `status=${result.fatalError.apiError.statusCode} msg=${result.fatalError.apiError.message}` : 'null'}`)
+          console.error(`[Gateway Diag]   fatalError.rawErrorMessage: ${result.fatalError?.rawErrorMessage}`)
+          const fatalErrorMessage = result.fatalError?.rawErrorMessage || 'Non-retryable SDK error'
+          throw new Error(fatalErrorMessage)
 
 
         } catch (error) {
@@ -1176,6 +1181,21 @@ export class AgentOrchestrator {
           const stderrOutput = stderrChunks.join('').trim()
           const apiError = extractApiError(stderrOutput)
           const rawErrorMessage = error instanceof Error ? error.message : ''
+          const rawStack = error instanceof Error ? (error.stack ?? error.message) : String(error)
+
+          // ======== 网关排查诊断日志 ========
+          console.error(`[Gateway Diag] ====== 错误诊断 (session=${sessionId}) ======`)
+          console.error(`[Gateway Diag] rawErrorMessage: ${rawErrorMessage}`)
+          console.error(`[Gateway Diag] apiError from stderr: ${apiError ? `status=${apiError.statusCode} message=${apiError.message}` : 'null'}`)
+          console.error(`[Gateway Diag] stderrOutput length: ${stderrOutput.length}`)
+          if (stderrOutput) {
+            console.error(`[Gateway Diag] stderrOutput (first 2000 chars):\n${stderrOutput.slice(0, 2000)}`)
+            if (stderrOutput.length > 2000) {
+              console.error(`[Gateway Diag] ... (truncated, ${stderrOutput.length - 2000} more chars in app log)`)
+            }
+          }
+          console.error(`[Gateway Diag] error.stack (first 500 chars):\n${rawStack.slice(0, 500)}`)
+          // ======== 网关排查诊断日志 END ========
 
           // Session 不存在错误：清除 sdkSessionId，切换到上下文回填模式重试
           if (isSessionNotFoundError(rawErrorMessage, stderrOutput) && existingSdkSessionId && canAutoRetry(attempt)) {
