@@ -2245,9 +2245,8 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       onOpenChange={autoMode.closeCandidateDialog}
       channels={globalChannels}
       candidateModelIds={autoMode.candidates}
-      onCandidatesChange={autoMode.setCandidates}
       autoModeEnabled={autoMode.enabled}
-      onAutoModeEnabledChange={autoMode.setEnabled}
+      onCommit={autoMode.commitCandidates}
     />
     </>
   )

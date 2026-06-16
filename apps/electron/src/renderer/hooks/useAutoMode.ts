@@ -24,6 +24,8 @@ export interface AutoModeState {
   setEnabled: (enabled: boolean) => void
   /** 修改候选模型列表（含持久化） */
   setCandidates: (modelIds: string[]) => void
+  /** 一次性提交 candidates + autoModeEnabled，避免两次 updateSettings 调用竞态 */
+  commitCandidates: (modelIds: string[], enabled: boolean) => void
   /** 候选模型配置 Dialog 开关 */
   candidateDialogOpen: boolean
   /** 打开候选模型配置 */
@@ -64,6 +66,16 @@ export function useAutoMode(): AutoModeState {
     window.electronAPI.updateSettings({ autoSwitchCandidateModels: modelIds }).catch(console.error)
   }, [setCandidatesAtom])
 
+  // 一次性提交 candidates + autoModeEnabled，避免两次 updateSettings 调用竞态覆盖
+  const commitCandidates = React.useCallback((modelIds: string[], enabled: boolean) => {
+    setCandidatesAtom(modelIds)
+    setEnabledAtom(enabled)
+    window.electronAPI.updateSettings({
+      autoSwitchCandidateModels: modelIds,
+      autoModeEnabled: enabled,
+    }).catch(console.error)
+  }, [setCandidatesAtom, setEnabledAtom])
+
   const openCandidateDialog = React.useCallback(() => setCandidateDialogOpen(true), [])
   const closeCandidateDialog = React.useCallback(() => setCandidateDialogOpen(false), [])
 
@@ -80,6 +92,7 @@ export function useAutoMode(): AutoModeState {
     candidates,
     setEnabled,
     setCandidates,
+    commitCandidates,
     candidateDialogOpen,
     openCandidateDialog,
     closeCandidateDialog,

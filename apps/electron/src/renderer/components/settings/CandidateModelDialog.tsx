@@ -31,9 +31,9 @@ interface CandidateModelDialogProps {
   /** 更多模型（如平台模型），非渠道来源 */
   extraModels?: Array<{ id: string; name: string; provider: ProviderType; enabled?: boolean }>
   candidateModelIds: string[]
-  onCandidatesChange: (modelIds: string[]) => void
   autoModeEnabled: boolean
-  onAutoModeEnabledChange: (enabled: boolean) => void
+  /** 一次性提交 candidates + autoModeEnabled，避免两次 updateSettings 竞态覆盖 */
+  onCommit: (modelIds: string[], enabled: boolean) => void
 }
 
 interface FlatModel {
@@ -94,9 +94,8 @@ export function CandidateModelDialog({
   channels,
   extraModels,
   candidateModelIds,
-  onCandidatesChange,
   autoModeEnabled,
-  onAutoModeEnabledChange,
+  onCommit,
 }: CandidateModelDialogProps): React.ReactElement {
   const [search, setSearch] = React.useState('')
   const [showSaaSConfirm, setShowSaaSConfirm] = React.useState<string | null>(null)
@@ -158,10 +157,9 @@ export function CandidateModelDialog({
     })
   }
 
-  // "确定" 时一次性持久化
+  // "确定" 时一次性持久化（单次 updateSettings 调用，避免竞态）
   const handleConfirm = () => {
-    onCandidatesChange(pendingCandidates)
-    onAutoModeEnabledChange(pendingAutoMode)
+    onCommit(pendingCandidates, pendingAutoMode)
     onOpenChange(false)
   }
 
