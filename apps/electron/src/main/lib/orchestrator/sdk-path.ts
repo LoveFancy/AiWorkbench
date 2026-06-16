@@ -41,7 +41,6 @@ export function resolveSDKCliPath(): string {
     if (!existsSync(binaryPath)) {
       const subpkgPackagePath = cjsRequire.resolve(`${scopedSubpkg}/package.json`)
       binaryPath = join(dirname(subpkgPackagePath), binaryName)
-      console.log(`[Agent 编排] SDK binary 路径 (platform package): ${binaryPath}`)
     }
   } catch (e) {
     console.warn('[Agent 编排] createRequire 解析 SDK 路径失败:', e)
@@ -54,12 +53,10 @@ export function resolveSDKCliPath(): string {
       const sdkEntryPath = require.resolve('@anthropic-ai/claude-agent-sdk')
       const anthropicDir = dirname(dirname(sdkEntryPath))
       binaryPath = join(anthropicDir, subpkg, binaryName)
-      console.log(`[Agent 编排] SDK binary 路径 (require.resolve): ${binaryPath}`)
       if (!existsSync(binaryPath)) {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const subpkgPackagePath = require.resolve(`${scopedSubpkg}/package.json`)
         binaryPath = join(dirname(subpkgPackagePath), binaryName)
-        console.log(`[Agent 编排] SDK binary 路径 (require platform package): ${binaryPath}`)
       }
     } catch (e) {
       console.warn('[Agent 编排] require.resolve 解析 SDK 路径失败:', e)
@@ -71,13 +68,11 @@ export function resolveSDKCliPath(): string {
   // 或用户主目录，与 app 安装目录无关。
   if (!binaryPath || !existsSync(binaryPath)) {
     binaryPath = join(__dirname, '..', '..', 'node_modules', '@anthropic-ai', subpkg, binaryName)
-    console.log(`[Agent 编排] SDK binary 路径 (手动): ${binaryPath}`)
   }
 
   // 打包环境：将 .asar/ 路径转换为 .asar.unpacked/
   if (app.isPackaged && binaryPath.includes('.asar')) {
     binaryPath = binaryPath.replace(/\.asar([/\\])/, '.asar.unpacked$1')
-    console.log(`[Agent 编排] 转换为 asar.unpacked 路径: ${binaryPath}`)
   }
 
   return binaryPath

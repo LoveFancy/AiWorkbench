@@ -65,14 +65,14 @@ export const hasEnvironmentIssuesAtom = atom((get) => {
 })
 
 /**
- * Windows Shell 环境是否可用（Git Bash 或 WSL 任一可用即 true）
+ * Windows Shell 环境是否可用（Git Bash 可用即 true）
  * 非 Windows 平台返回 true（无此门槛）
  */
 export const isShellEnvironmentOkAtom = atom((get) => {
   const runtime = get(runtimeStatusAtom)
   if (!runtime) return true
   if (!runtime.shell) return true // 非 Windows
-  return !!(runtime.shell.gitBash?.available || runtime.shell.wsl?.available)
+  return !!runtime.shell.gitBash?.available
 })
 
 /**

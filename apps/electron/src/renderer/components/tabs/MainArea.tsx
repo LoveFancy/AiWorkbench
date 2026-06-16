@@ -20,6 +20,7 @@ import { AutomationFormView } from '@/components/automation/AutomationFormView'
 import { AutomationsListView } from '@/components/automation/AutomationsListView'
 import { automationFormAtom } from '@/atoms/automation-atoms'
 import { activeViewAtom } from '@/atoms/active-view'
+import { ExpertPageView } from '@/experts/views/ExpertPageView'
 
 const MIN_CONVERSATION_WIDTH = 360
 const MIN_PREVIEW_WIDTH = 320
@@ -47,7 +48,7 @@ export function MainArea(): React.ReactElement {
   const previewDragging = React.useRef(false)
 
   const previewOpen =
-    activeTab?.type === 'agent' && (previewOpenMap.get(activeTab.sessionId) ?? false)
+    activeView === 'conversations' && activeTab?.type === 'agent' && (previewOpenMap.get(activeTab.sessionId) ?? false)
   const previewSessionId = activeTab?.type === 'agent' ? activeTab.sessionId : null
 
   // 关闭动画状态：当 previewOpen 从 true → false 时，播放退出动画再移除 DOM
@@ -168,6 +169,14 @@ export function MainArea(): React.ReactElement {
                 // Automations 列表视图：全屏取代 TabBar + TabContent
                 <AutomationsListView />
               )
+            ) : activeView.startsWith('expert-') ? (
+              <ExpertPageView
+                showFeaturedScenes={activeView === 'expert-all'}
+                initialFilter={
+                  activeView === 'expert-followed' ? 'followed' :
+                  activeView === 'expert-recent' ? 'recent' : 'all'
+                }
+              />
             ) : (
               <>
                 <TabBar />

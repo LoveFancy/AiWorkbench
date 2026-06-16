@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain, app } from 'electron'
 import { loginWithEipGateway, getJobId, isLoggedIn, logout, getAuthInfo } from './auth-service'
 import { onLoginSuccess } from '../main/lib/updater/auto-updater'
 
@@ -8,6 +8,7 @@ export const AUTH_IPC_CHANNELS = {
   CHECK_SESSION: 'auth:check-session',
   LOGIN: 'auth:login',
   LOGOUT: 'auth:logout',
+  QUIT: 'auth:quit',
 } as const
 
 export function registerAuthIpcHandlers(): void {
@@ -74,5 +75,9 @@ export function registerAuthIpcHandlers(): void {
     }
 
     return { success: true }
+  })
+
+  ipcMain.handle(AUTH_IPC_CHANNELS.QUIT, () => {
+    app.quit()
   })
 }

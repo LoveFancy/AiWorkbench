@@ -8,7 +8,7 @@
  */
 
 import { homedir } from 'node:os'
-import type { AgentSessionMeta, SDKMessage, RewindSessionResult } from '@proma/shared'
+import type { RewindSessionResult } from '@proma/shared'
 import { getAgentWorkspace } from '../agent-workspace-manager'
 import { getAgentSessionWorkspacePath } from '../config-paths'
 import { getAgentSessionMeta, truncateSDKMessages, updateAgentSessionMeta, resolveUserUuidFromSDK, rewindFilesFromSnapshot } from '../agent-session-manager'

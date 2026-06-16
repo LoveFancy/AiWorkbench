@@ -217,6 +217,7 @@ export function listAgentExpertGroups(paths?: ExpertGroupRegistryPaths): AgentEx
           id: capability.name,
           name: plugin.name,
           mainRole: { name: '', prompt: '' },
+          expertType: capability.expertType,
           sourcePluginId: plugin.id,
           sourceLabel: plugin.name,
           sourcePluginVersion: plugin.version,
@@ -237,6 +238,7 @@ export function listAgentExpertGroups(paths?: ExpertGroupRegistryPaths): AgentEx
       ]
       groups.push({
         ...manifest,
+        expertType: manifest.expertType ?? capability.expertType,
         sourcePluginId: plugin.id,
         sourceLabel: plugin.name,
         sourcePluginVersion: plugin.version,

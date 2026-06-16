@@ -291,8 +291,8 @@ export interface ShellEnvironmentStatus {
   gitBash: GitBashStatus
   /** WSL 状态 */
   wsl: WslStatus
-  /** 推荐使用的 Shell 环境 */
-  recommended: 'git-bash' | 'wsl' | null
+  /** 推荐使用的 Shell 环境（WSL 已屏蔽，仅 Git Bash）*/
+  recommended: 'git-bash' | null
 }
 
 /**

@@ -11,17 +11,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { ExpertGroupStatusBadge } from './ExpertGroupStatusBadge'
-import { getExpertSubagentLabel } from './expert-group-subagents'
+import { ExpertStatusBadge } from '@/experts/card/ExpertStatusBadge'
+import { getExpertSubagentLabel } from '@/experts/card/subagents'
 
-interface ExpertGroupDetailDialogProps {
+interface ExpertDetailDialogProps {
   group: AgentExpertGroupInfo | null
   open: boolean
   onOpenChange: (open: boolean) => void
   onSummon?: (group: AgentExpertGroupInfo) => void
 }
 
-export function ExpertGroupDetailDialog({ group, open, onOpenChange, onSummon }: ExpertGroupDetailDialogProps): React.ReactElement {
+export function ExpertDetailDialog({ group, open, onOpenChange, onSummon }: ExpertDetailDialogProps): React.ReactElement {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
@@ -38,7 +38,7 @@ export function ExpertGroupDetailDialog({ group, open, onOpenChange, onSummon }:
                     主角色：{group.mainRole.name} · 来源：{group.sourceLabel} · 版本：{group.sourcePluginVersion}
                   </DialogDescription>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <ExpertGroupStatusBadge status={group.status} />
+                    <ExpertStatusBadge status={group.status} />
                     <Badge variant="outline">{group.sourcePluginKind === 'builtin' ? '内置' : '用户插件'}</Badge>
                     <Badge variant="outline">v{group.sourcePluginVersion}</Badge>
                     {(group.tags ?? []).map((tag) => <Badge key={tag} variant="secondary">{tag}</Badge>)}

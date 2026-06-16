@@ -63,14 +63,24 @@ export interface ErrorSDKMessageFields {
 export function logStderr(stderrChunks: string[]): void {
   const fullStderr = stderrChunks.join('').trim()
   if (fullStderr) {
-    console.error(`[Agent 编排] 完整 stderr 输出 (${fullStderr.length} 字符):`)
+    console.error(`[Agent 编排] stderr 输出 (${fullStderr.length} 字符):`)
     console.error(fullStderr)
-  } else {
-    console.error(`[Agent 编排] stderr 为空`)
   }
 }
 
 // ---- 错误分类 ----
+
+/**
+ * 截取 stderr 的前 500 个可打印字符，拼接成用户可见的错误详情片段。
+ * 过滤掉不可见字符（二进制），让网关返回的 HTML/JSON/纯文本报错可以部分展示。
+ */
+function buildMalformedErrorContent(userFacingError: string, stderrText: string): string {
+  const maxPreview = 500
+  // 去掉不可打印字符（保留常见可读字符和中文），截取前 maxPreview 字符
+  const clean = stderrText.replace(/[^\x20-\x7E\u4e00-\u9fff\u3000-\u303f\uff00-\uffef\n\r]/g, '')
+  const preview = clean.length > maxPreview ? clean.slice(0, maxPreview) + '\n…（已截断，完整内容见应用日志）' : clean
+  return `${userFacingError}\n\n--- 原始响应 ---\n${preview}`
+}
 
 /**
  * 对 catch 路径捕获的原始错误进行分类，生成用户可见的错误展示信息。
@@ -91,10 +101,8 @@ export function classifyCatchError(
   let userFacingError: string
   if (apiError) {
     userFacingError = friendlyErrorMessage(`API 错误 (${apiError.statusCode}):\n${apiError.message}`)
-    console.log(`[Agent 编排] catch API 错误: status=${apiError.statusCode}, message=${apiError.message}`)
   } else {
     userFacingError = friendlyErrorMessage(rawErrorMessage)
-    console.log(`[Agent 编排] catch 未知错误: ${rawErrorMessage.slice(0, 200)}`)
   }
 
   // 检测已知错误类型
@@ -114,6 +122,9 @@ export function classifyCatchError(
       ? THINKING_SIGNATURE_ERROR_CODE
       : 'unknown_error'
 
+  // "empty or malformed" 错误通常是暂态网络问题（代理/网关），给用户重试按钮
+  const isMalformedResponse = !apiError && rawErrorMessage.includes('empty or malformed')
+
   const errorTitle = isPromptTooLong
     ? '上下文过长'
     : isThinkingSignature
@@ -124,14 +135,20 @@ export function classifyCatchError(
     ? '上下文过长：当前对话的上下文已超出模型限制，请压缩上下文或开启新会话'
     : isThinkingSignature
       ? `${THINKING_SIGNATURE_ERROR_TITLE}：${THINKING_SIGNATURE_ERROR_MESSAGE}`
-      : userFacingError
+      : isMalformedResponse && stderrText
+        ? buildMalformedErrorContent(userFacingError, stderrText)
+        : userFacingError
 
   const errorActions = isThinkingSignature
     ? [
         { key: 'n', label: '在新对话继续', action: 'retry_in_new_session' },
         { key: 'r', label: '重试', action: 'retry' },
       ]
-    : undefined
+    : isMalformedResponse
+      ? [
+          { key: 'r', label: '重试', action: 'retry' },
+        ]
+      : undefined
 
   return {
     errorCode,

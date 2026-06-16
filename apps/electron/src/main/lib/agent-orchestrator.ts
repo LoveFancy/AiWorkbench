@@ -212,15 +212,14 @@ export class AgentOrchestrator {
       const runtimeStatus = getRuntimeStatus()
       const shellStatus = runtimeStatus?.shell
 
-      if (shellStatus && !shellStatus.gitBash?.available && !shellStatus.wsl?.available) {
+      if (shellStatus && !shellStatus.gitBash?.available) {
         reportPreflightError({
           code: 'windows_shell_missing',
           title: 'Windows 环境未就绪',
           message:
-            '需要 Git Bash 或 WSL 才能运行 Agent。建议安装 Git for Windows（自带 Git Bash），安装完成后点「打开环境检测」刷新状态。',
+            '需要 Git Bash 才能运行 Agent。建议安装 Git for Windows（自带 Git Bash），安装完成后点「打开环境检测」刷新状态。',
           details: [
             `Git Bash: ${shellStatus.gitBash?.error || '未检测到'}`,
-            `WSL: ${shellStatus.wsl?.error || '未检测到'}`,
           ],
           actions: [
             { key: 'e', label: '打开环境检测', action: 'open_environment_check' },
@@ -878,7 +877,6 @@ export class AgentOrchestrator {
         agents: buildAgentsForSession({ claudeAvailable, expertRuntime }),
         onStderr: (data: string) => {
           stderrChunks.push(data)
-          console.error(`[Agent SDK stderr] ${data}`)
         },
         onSessionId: (sdkSessionId: string) => {
           // 仅在新 session ID 变更时保存（onSessionId 可能被多次回调但 ID 不变）
@@ -887,9 +885,6 @@ export class AgentOrchestrator {
             try {
               updateAgentSessionMeta(sessionId, { sdkSessionId })
               console.log(`[Agent 编排] 已保存 SDK session_id: ${sdkSessionId}`)
-              // 验证保存是否成功
-              const verifyMeta = getAgentSessionMeta(sessionId)
-              console.log(`[Agent 编排] 验证读回: sdkSessionId=${verifyMeta?.sdkSessionId || '空'}`)
             } catch (err) {
               console.error(`[Agent 编排] 保存 SDK session_id 失败:`, err)
             }
@@ -908,10 +903,8 @@ export class AgentOrchestrator {
           // 通知渲染进程更新流式状态中的模型信息
           this.eventBus.emit(sessionId, { kind: 'proma_event', event: { type: 'model_resolved', model } })
         },
-        onContextWindow: (cw: number) => {
-          console.log(`[Agent 编排] 缓存 contextWindow: ${cw}`)
-        },
-      }
+       
+          }
 
       console.log(`[Agent 编排] 开始通过 Adapter 遍历事件流...`)
 
@@ -996,7 +989,6 @@ export class AgentOrchestrator {
         if (attempt > 1) {
           if (skipNextRetryDelay) {
             skipNextRetryDelay = false
-            console.log(`[Agent 编排] 已切换到上下文回填模式，立即重试`)
           } else {
             const retryAttempt = Math.max(1, attempt - 1 - invisibleRecoveryAttempts)
             const delayMs = getRetryDelayMs(retryAttempt, retryDelayElapsedMs)
@@ -1024,7 +1016,6 @@ export class AgentOrchestrator {
               event: { type: 'retry', status: 'attempt', attemptData },
             })
 
-            console.log(`[Agent 编排] 第 ${retryAttempt} 次重试，等待 ${delaySec}s...`)
             await new Promise((r) => setTimeout(r, delayMs))
 
             // 等待期间如果会话被中止，退出
@@ -1095,7 +1086,6 @@ export class AgentOrchestrator {
             if (!wasStoppedByUser && retryAttemptsScheduled > 0) {
               lastRetryableError = undefined
               this.eventBus.emit(sessionId, { kind: 'proma_event', event: { type: 'retry', status: 'cleared' } })
-              console.log(`[Agent 编排] 重试成功，已在第 ${attempt} 次尝试后恢复`)
             }
 
             retrySucceeded = true
@@ -1109,7 +1099,6 @@ export class AgentOrchestrator {
                 kind: 'sdk_message',
                 message: { type: 'prompt_suggestion', suggestion: '请执行该计划' } as unknown as SDKMessage,
               })
-              console.log(`[Agent 编排] Plan 模式：已注入计划确认建议`)
             }
 
             completeRun(getAgentSessionMessages(sessionId), { stoppedByUser: wasStoppedByUser, startedAt: streamStartedAt, resultSubtype: capturedResultSubtype })
@@ -1240,7 +1229,6 @@ export class AgentOrchestrator {
           if (accumulatedMessages.length > 0) {
             try {
               persistSDKMessages(sessionId, accumulatedMessages, Date.now() - queryStartedAt)
-              console.log(`[Agent 编排] 已保存部分执行结果 (${accumulatedMessages.length} 条消息)`)
             } catch (saveError) {
               console.error('[Agent 编排] 保存部分内容失败:', saveError)
             }
@@ -1248,13 +1236,24 @@ export class AgentOrchestrator {
 
           // 错误分类 + 用户可见消息
           const classified = classifyCatchError(error, stderrOutput, apiError)
+
+          // 当 SDK 报 "empty or malformed" 但无法从 stderr 解析出 HTTP 状态码时，
+          // 说明中间网关/代理返回了非标准响应。把原始 stderr 写到会话目录，
+          // 方便排查网关的真实报错（认证页、拦截页等 HTML 内容）
+          if (!apiError && rawErrorMessage.includes('empty or malformed') && stderrOutput.length > 0 && agentCwd) {
+            try {
+              const stderrLogPath = join(agentCwd, 'stderr-output.txt')
+              writeFileSync(stderrLogPath, `// 网关返回的原始响应 (${new Date().toISOString()})\n${stderrOutput}\n`, 'utf-8')
+              console.log(`[Agent 编排] 已将网关原始响应写入: ${stderrLogPath} (${stderrOutput.length} 字符)`)
+            } catch { /* 忽略 */ }
+          }
+
           const userFacingError = classified.errorContent
 
           // 保存错误消息到 JSONL
           try {
             const errMsg = buildErrorSDKMessage(classified)
             appendSDKMessages(sessionId, [errMsg])
-            console.log(`[Agent 编排] 已保存错误消息到 JSONL (code=${classified.errorCode})`)
           } catch (saveError) {
             console.error('[Agent 编排] 保存错误消息失败:', saveError)
           }
@@ -1274,10 +1273,7 @@ export class AgentOrchestrator {
           if (existingSdkSessionId && shouldClearSession) {
             try {
               updateAgentSessionMeta(sessionId, { sdkSessionId: undefined })
-              console.log(`[Agent 编排] 已清除失效的 sdkSessionId`)
             } catch { /* 忽略 */ }
-          } else if (existingSdkSessionId && !shouldClearSession) {
-            console.log(`[Agent 编排] 保留 sdkSessionId (API 错误 ${apiError?.statusCode})`)
           }
 
           return
@@ -1443,7 +1439,6 @@ export class AgentOrchestrator {
       }
 
       await this.adapter.sendQueuedMessage(sessionId, sdkMessage)
-      console.log(`[Agent 编排] 追加消息已注入: sessionId=${sessionId}, uuid=${uuid}, interrupt=${!!opts?.interrupt}`)
 
       // 立即持久化到 JSONL
       const persistMsg: SDKMessage = {

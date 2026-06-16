@@ -35,7 +35,7 @@ export default function App(): React.ReactElement {
 
   // 初始化：恢复登录状态 + 检查是否需要显示 Onboarding
   // macOS/Linux 上 SDK 自带 claude native binary 不依赖宿主 Node/Git；
-  // Windows 上仍需 Git Bash/WSL，由 Onboarding Step 2 与聊天错误卡片引导用户安装。
+  // Windows 上仍需 Git Bash，由 Onboarding Step 2 与聊天错误卡片引导用户安装。
   React.useEffect(() => {
     const initialize = async () => {
       try {
@@ -110,11 +110,11 @@ export default function App(): React.ReactElement {
       <div className="flex h-screen items-center justify-center bg-background">
         <LoginView
           onLoginSuccess={() => {
-            // 登录成功后刷新 authState
             window.electronAPI.auth.getAuthState().then((state: any) => {
               setAuthState(state)
             })
           }}
+          onQuit={() => { window.electronAPI.auth.quit() }}
           allowSkip={false}
         />
       </div>

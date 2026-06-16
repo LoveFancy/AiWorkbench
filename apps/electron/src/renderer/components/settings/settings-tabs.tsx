@@ -17,7 +17,6 @@ import {
   Info,
   Wrench,
   Package,
-  UsersRound,
   TerminalSquare,
 } from 'lucide-react'
 import type { SettingsTab } from '@/atoms/settings-tab'
@@ -46,12 +45,6 @@ const PLUGINS_TAB: TabItem = {
   id: 'plugins',
   label: '插件管理',
   icon: <Package size={16} />,
-}
-
-const EXPERTS_TAB: TabItem = {
-  id: 'experts',
-  label: '专家团',
-  icon: <UsersRound size={16} />,
 }
 
 const TOOLS_TAB: TabItem = {
@@ -86,6 +79,6 @@ const TAIL_TABS: TabItem[] = [
 
 export function getSettingsTabs(appMode: 'chat' | 'agent'): TabItem[] {
   return appMode === 'agent'
-    ? [...BASE_TABS, TOOLS_TAB, AGENT_TAB, PLUGINS_TAB, EXPERTS_TAB, TUTORIAL_TAB, SHORTCUTS_TAB, ...TAIL_TABS, SYSTEM_LOG_TAB]
+    ? [...BASE_TABS, TOOLS_TAB, AGENT_TAB, PLUGINS_TAB, TUTORIAL_TAB, SHORTCUTS_TAB, ...TAIL_TABS, SYSTEM_LOG_TAB]
     : [...BASE_TABS, TOOLS_TAB, TUTORIAL_TAB, SHORTCUTS_TAB, ...TAIL_TABS, SYSTEM_LOG_TAB]
 }

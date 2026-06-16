@@ -329,6 +329,7 @@ function discoverExpertGroups(
     relativePath,
     description: sourceLabel,
     enabled,
+    expertType: manifest.expertType,
     ...(issue ? { issue } : warningMessage ? { issue: { level: 'warning', message: warningMessage } } : {}),
   }]
 }

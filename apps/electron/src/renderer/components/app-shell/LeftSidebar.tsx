@@ -20,6 +20,7 @@ import { UserAvatar } from '@/components/chat/UserAvatar'
 import { activeViewAtom } from '@/atoms/active-view'
 import { automationFormAtom, automationsAtom } from '@/atoms/automation-atoms'
 import { appModeAtom, type AppMode } from '@/atoms/app-mode'
+import { ExpertSidebarSection } from '@/experts/sidebar/ExpertSidebarSection'
 import { settingsTabAtom, settingsOpenAtom } from '@/atoms/settings-tab'
 import {
   conversationsAtom,
@@ -1795,6 +1796,9 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
           onClick={handleOpenAutomations}
         />
       </div>
+
+      {/* 专家团入口：仅 Agent 模式 active 视图下显示 */}
+      {mode === 'agent' && viewMode === 'active' && <ExpertSidebarSection />}
 
       {/* Chat 模式 active 视图：置顶 + 对话历史，结构与 Agent active 视图保持一致 */}
       {mode === 'chat' && viewMode === 'active' ? (

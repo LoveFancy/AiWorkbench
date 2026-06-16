@@ -1,7 +1,7 @@
 /**
  * Windows 环境检测面板
  *
- * 展示 Shell 环境（Git Bash / WSL）和 Node.js 的检测结果，
+ * 展示 Shell 环境（Git Bash）和 Node.js 的检测结果，
  * 用于 Onboarding Step 2 和设置里的 EnvironmentCheckDialog 复用。
  */
 
@@ -67,7 +67,6 @@ export function EnvironmentCheckPanel({
   // ----- Shell 环境卡片 -----
   const shell = runtime?.shell
   const gitBashAvailable = shell?.gitBash?.available ?? false
-  const wslAvailable = shell?.wsl?.available ?? false
 
   let shellStatus: 'checking' | 'success' | 'error' = 'error'
   let shellStatusText = ''
@@ -77,12 +76,9 @@ export function EnvironmentCheckPanel({
   } else if (gitBashAvailable) {
     shellStatus = 'success'
     shellStatusText = `Git Bash v${shell?.gitBash?.version ?? ''} 已可用`
-  } else if (wslAvailable) {
-    shellStatus = 'success'
-    shellStatusText = `WSL ${shell?.wsl?.defaultDistro ?? ''} 已可用`
   } else {
     shellStatus = 'error'
-    shellStatusText = '未检测到 Git Bash 或 WSL'
+    shellStatusText = '未检测到 Git Bash'
   }
 
   // ----- Node.js 卡片 -----
@@ -108,7 +104,7 @@ export function EnvironmentCheckPanel({
         <div>
           <h3 className="text-sm font-semibold">Windows 环境检测</h3>
           <p className="text-xs text-muted-foreground mt-0.5">
-            WorkMate 在 Windows 上需要 Git Bash 或 WSL 才能运行 Agent
+            WorkMate 在 Windows 上需要 Git Bash 才能运行 Agent
           </p>
         </div>
         <Button
@@ -131,7 +127,7 @@ export function EnvironmentCheckPanel({
         <EnvironmentCheckCard
           name="Shell 环境"
           status={shellStatus}
-          requirement="必需 · Git Bash 或 WSL 任一可用即可"
+          requirement="必需 · Git Bash 可用即可"
           statusText={shellStatusText}
           action={
             shellStatus === 'error'

@@ -854,6 +854,9 @@ export interface ElectronAPI {
   /** 在系统文件管理器中显示文件 */
   showInFolder: (filePath: string) => Promise<void>
 
+  /** 在系统文件管理器中打开插件目录 */
+  showPluginInFolder: (pluginPath: string) => Promise<void>
+
   /** 解析文件路径并读取内容（供内联预览使用） */
   resolveAndReadFile: (filePath: string, access?: import('@proma/shared').FileAccessOptions) => Promise<{ resolvedPath: string; content: string } | null>
 
@@ -2145,6 +2148,9 @@ const electronAPI: ElectronAPI = {
 
   showInFolder: (filePath: string) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.SHOW_IN_FOLDER, filePath)
+  },
+  showPluginInFolder: (pluginPath: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.SHOW_PLUGIN_IN_FOLDER, pluginPath)
   },
 
   resolveAndReadFile: (filePath: string, access?: import('@proma/shared').FileAccessOptions) => {
