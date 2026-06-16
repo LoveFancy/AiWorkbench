@@ -568,11 +568,19 @@ interface AnthropicModelItem {
   type?: string
   supportsMultimodal?: boolean
   supports_multimodal?: boolean
+  /** 自定义渠道可能返回 support_vision，值为 1.0 表示支持多模态 */
+  support_vision?: number | null
 }
 
-function readSupportsMultimodal(item: { supportsMultimodal?: boolean; supports_multimodal?: boolean }): boolean {
+function readSupportsMultimodal(item: {
+  supportsMultimodal?: boolean
+  supports_multimodal?: boolean
+  support_vision?: number | null
+}): boolean {
   if (typeof item.supportsMultimodal === 'boolean') return item.supportsMultimodal
   if (typeof item.supports_multimodal === 'boolean') return item.supports_multimodal
+  // 自定义渠道：support_vision 为数值，1.0 表示支持，其余（0、null、undefined、NaN 等）均视为不支持
+  if (typeof item.support_vision === 'number' && item.support_vision === 1) return true
   return false
 }
 
@@ -649,6 +657,8 @@ interface OpenAIModelItem {
   owned_by?: string
   supportsMultimodal?: boolean
   supports_multimodal?: boolean
+  /** 自定义渠道可能返回 support_vision，值为 1.0 表示支持多模态 */
+  support_vision?: number | null
 }
 
 /**
@@ -707,6 +717,8 @@ interface GoogleModelItem {
   supportedGenerationMethods?: string[]
   supportsMultimodal?: boolean
   supports_multimodal?: boolean
+  /** 自定义渠道可能返回 support_vision，值为 1.0 表示支持多模态 */
+  support_vision?: number | null
 }
 
 /**

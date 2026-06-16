@@ -1,3 +1,11 @@
+/**
+ * 泰为平台模型 — 核心服务
+ *
+ * 负责从后端 /workmate/models 拉取平台模型列表和统一 API Key，
+ * 提供 L1 内存缓存 + 磁盘缓存，以及定期刷新机制。
+ * 将后端字段 supportVision 映射为客户端字段 supportsMultimodal。
+ */
+
 import { safeStorage } from 'electron'
 import { writeFileSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
