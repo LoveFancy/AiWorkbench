@@ -77,7 +77,7 @@ export function InlineEditForm({ message, onSubmit, onCancel }: InlineEditFormPr
       imageAttachments.map(async (att) => {
         try {
           const base64 = await window.electronAPI.readAttachment(att.localPath)
-          return { id: `existing-${att.id}`, previewUrl: `data:${att.mediaType};base64,${base64}` }
+          return { id: `existing-${att.id}`, previewUrl: base64 ? `data:${att.mediaType};base64,${base64}` : undefined }
         } catch {
           return { id: `existing-${att.id}`, previewUrl: undefined }
         }
