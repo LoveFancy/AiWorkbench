@@ -513,6 +513,7 @@ export type AgentEvent =
   // 控制流
   | { type: 'complete'; stopReason?: string; usage?: AgentEventUsage }
   | { type: 'run_resumed' }
+  | { type: 'model_switched'; fromModel: string; toModel: string }
   | { type: 'error'; message: string }
   | { type: 'typed_error'; error: TypedError }
   // 重试机制
@@ -563,6 +564,7 @@ export type PromaEvent =
   | { type: 'title_updated'; title: string }
   | { type: 'external_run_started'; source: AgentExternalRunSource; sessionId: string; title?: string; workspaceId?: string; modelId?: string; startedAt: number }
   | { type: 'run_resumed'; sessionId: string }
+  | { type: 'model_switched'; fromModel: string; toModel: string }
 
 /** 外部入口触发 Agent 运行的来源 */
 export type AgentExternalRunSource = 'feishu' | 'dingtalk' | 'wechat' | 'bridge'
@@ -619,6 +621,8 @@ export interface AgentSessionMeta {
   permissionMode?: PromaPermissionMode
   /** 来源定时任务 ID（该会话由定时任务自动创建/复用时标记，用于侧栏显示钟表图标 + 跳转设置） */
   sourceAutomationId?: string
+  /** Auto Mode 下当前激活的模型 ID（跨轮记忆用） */
+  activeModelId?: string
   /** 创建时间戳 */
   createdAt: number
   /** 更新时间戳 */

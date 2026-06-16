@@ -57,7 +57,7 @@ import { autoPreviewEnabledAtom, previewPanelOpenMapAtom, previewFileMapAtom, pr
 import type { NotificationSoundType } from '@/types/settings'
 import { toast } from 'sonner'
 import type { AgentStreamEvent, AgentStreamCompletePayload, AgentEvent, AgentStreamPayload, SDKAssistantMessage, SDKUserMessage, SDKSystemMessage, SDKContentBlock, SDKUserContentBlock, PromaEvent, AgentSessionMeta } from '@proma/shared'
-import { buildExternalAgentRunActivation } from '@/lib/external-agent-run'
+import { buildExternalAgentRunActivation, type ExternalAgentRunTab } from '@/lib/external-agent-run'
 import { getAgentCompletionMarkers } from '@/lib/agent-completion-presence'
 import { getPlanModeChangeFromToolName, updatePlanModeSessionSet } from '@/lib/agent-plan-mode'
 import { isHtmlPreviewPath } from '@/components/diff/html-preview-utils'
@@ -153,6 +153,8 @@ function payloadToLegacyEvents(payload: AgentStreamPayload): AgentEvent[] {
         return [{ type: 'permission_mode_changed', mode: evt.mode }]
       case 'run_resumed':
         return [{ type: 'run_resumed' }]
+      case 'model_switched':
+        return [{ type: 'model_switched', fromModel: evt.fromModel, toModel: evt.toModel }]
       case 'retry': {
         const events: AgentEvent[] = []
         if (evt.status === 'starting' && evt.attempt != null && evt.maxAttempts != null) {
@@ -378,7 +380,7 @@ export function useGlobalAgentListeners(): void {
     const activateExternalAgentRun = (event: Extract<PromaEvent, { type: 'external_run_started' }>): void => {
       const applyActivation = (sessions: AgentSessionMeta[]): void => {
         const activation = buildExternalAgentRunActivation({
-          tabs: store.get(tabsAtom),
+          tabs: store.get(tabsAtom).filter((t) => t.type !== 'manual') as ExternalAgentRunTab[],
           sessions,
           sessionId: event.sessionId,
           title: event.title,
@@ -881,6 +883,12 @@ export function useGlobalAgentListeners(): void {
               const map = new Map(prev)
               map.set(sessionId, { ...current, running: true })
               return map
+            })
+          } else if (event.type === 'model_switched') {
+            // Auto Mode 模型切换通知
+            toast.warning(`模型已切换：${event.fromModel} → ${event.toModel}`, {
+              description: '自动切换候选池中的下一个可用模型',
+              duration: 6000,
             })
           }
         }

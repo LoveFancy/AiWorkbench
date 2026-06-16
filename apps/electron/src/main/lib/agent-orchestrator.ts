@@ -16,36 +16,71 @@
 
 import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
-import { join, dirname } from 'node:path'
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
-import { app } from 'electron'
-import type { AgentSendInput, AgentMessage, AgentGenerateTitleInput, AgentProviderAdapter, AgentSessionMeta, TypedError, RetryAttempt, SDKMessage, SDKAssistantMessage, AgentStreamPayload, RewindSessionResult, SdkBeta, ProviderType } from '@proma/shared'
+import { join } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import type { AgentSendInput, AgentMessage, AgentProviderAdapter, AgentSessionMeta, TypedError, RetryAttempt, SDKMessage, RewindSessionResult, SdkBeta } from '@proma/shared'
 import {
   PROMA_DEFAULT_PERMISSION_MODE,
-  PROMA_PERMISSION_MODE_CONFIG,
   SAFE_TOOLS,
-  THINKING_SIGNATURE_ERROR_CODE,
-  THINKING_SIGNATURE_ERROR_MESSAGE,
-  THINKING_SIGNATURE_ERROR_TITLE,
 } from '@proma/shared'
 import type { PermissionRequest, PromaPermissionMode, AskUserRequest, ExitPlanModeRequest } from '@proma/shared'
 import type { ClaudeAgentQueryOptions } from './adapters/claude-agent-adapter'
-import { isPromptTooLongError, isThinkingSignatureError, friendlyErrorMessage, mapSDKErrorToTypedError, extractErrorDetails, shouldKeepChannelOpen } from './adapters/claude-agent-adapter'
-import { isTransientNetworkError } from './error-patterns'
+import { isThinkingSignatureError } from './adapters/claude-agent-adapter'
 import { AgentEventBus } from './agent-event-bus'
-import { decryptApiKey, getChannelById, listChannels } from './channel-manager'
+import { decryptApiKey, getChannelById } from './channel-manager'
 import { injectAutomationMcpServer } from './automation-agent-tools'
-import { getAdapter, fetchTitle, normalizeAnthropicBaseUrlForSdk, getPromaUserAgent } from '@proma/core'
+import { normalizeAnthropicBaseUrlForSdk, getPromaUserAgent } from '@proma/core'
 import pkg from '../../../package.json' with { type: 'json' }
-import { getFetchFn } from './proxy-fetch'
-import { getEffectiveProxyUrl } from './proxy-settings-service'
-import { appendSDKMessages, updateAgentSessionMeta, getAgentSessionMeta, getAgentSessionMessages, getAgentSessionSDKMessages, truncateSDKMessages, resolveUserUuidFromSDK, rewindFilesFromSnapshot } from './agent-session-manager'
-import { getAgentWorkspace, getWorkspaceMcpConfig, ensurePluginManifest } from './agent-workspace-manager'
-import { getAgentWorkspacePath, getAgentSessionWorkspacePath, getSdkConfigDir, getWorkspaceFilesDir, getConfigDirName } from './config-paths'
-import { getWorkspaceAttachedDirectories, getWorkspaceAttachedFiles } from './agent-workspace-manager'
+import { appendSDKMessages, updateAgentSessionMeta, getAgentSessionMeta, getAgentSessionMessages } from './agent-session-manager'
+import { getAgentWorkspace, ensurePluginManifest } from './agent-workspace-manager'
+import { getAgentSessionWorkspacePath } from './config-paths'
 import { getRuntimeStatus } from './runtime-init'
 import { getSettings } from './settings-service'
+import {
+  MAX_SAME_MODEL_RETRIES,
+  selectNextCandidateModel,
+  resolveAutoModeConfig,
+  resolveInitialModel,
+  findChannelForModel,
+} from './agent-auto-model-switcher'
+import {
+  MAX_AUTO_RETRIES,
+  MAX_AUTO_RETRY_WAIT_MS,
+  isAutoRetryableCatchError,
+  isSessionNotFoundError,
+  getRetryDelayMs,
+  extractApiError,
+  sdkRunSingleAttempt,
+  type SdkRunContext,
+  type SdkRunCallbacks,
+  type SdkRunnerDeps,
+} from './orchestrator/agent-sdk-retry-loop'
+import {
+  sdkPermissionModeForPromaMode,
+  mergeDisallowedTools,
+  DEFAULT_MODEL_ID,
+  supports1MContext,
+} from './orchestrator/constants'
+import { buildContextPrompt, buildRecoveryPrompt, buildReferencedSessionsPrompt, MAX_CONTEXT_MESSAGES } from './orchestrator/context-prompt'
+import { collectAttachedDirectories } from './orchestrator/workspace-context'
+import { resolveSDKCliPath, getAgentPluginPaths } from './orchestrator/sdk-path'
+import {
+  classifyCatchError,
+  buildErrorSDKMessage,
+  shouldClearSDKSessionId,
+  logStderr,
+} from './orchestrator/error-presenter'
+import { buildSdkEnv } from './orchestrator/sdk-env'
+import {
+  buildMcpServers,
+  injectMemoryTools,
+  injectNanoBananaTools,
+  injectWebSearchTools,
+} from './orchestrator/mcp-builder'
+import { generateTitle, autoGenerateTitle } from './orchestrator/title-generator'
+import { persistSDKMessages } from './orchestrator/sdk-message-persister'
+import { prepareResumeFallbackRecovery, prepareSessionNotFoundRecovery } from './orchestrator/resume-recovery'
+import { rewindSession as rewindSessionImpl } from './orchestrator/rewind'
 import { buildSystemPrompt, buildDynamicContext, buildAgentsForSession } from './agent-prompt-builder'
 import { permissionService } from './agent-permission-service'
 import type { PermissionResult, CanUseToolOptions } from './agent-permission-service'
@@ -53,10 +88,8 @@ import { askUserService } from './agent-ask-user-service'
 import { exitPlanService, type ExitPlanPermissionResult } from './agent-exit-plan-service'
 import { applyAgentModelRoutingToEnv, resolveAgentModelRouting } from './agent-model-routing'
 import { getMemoryConfig } from './memory-service'
-import { searchMemory, addMemory, formatSearchResult } from './memos-client'
 import { validateToolInput } from './agent-tool-input-validator'
 import { estimateTokenCount, WRITE_CONTENT_TOKEN_THRESHOLD } from './agent-tool-token-estimator'
-import { buildPluginRuntimePaths } from './plugin-registry-service'
 import { resolveExpertGroupRuntime } from './agent-expert-group-manager'
 
 // ===== 类型定义 =====
@@ -78,443 +111,6 @@ export interface SessionCallbacks {
   onRunStarted?: (opts: { startedAt: number }) => void
 }
 
-// ===== 工具函数 =====
-
-function sdkPermissionModeForPromaMode(mode: PromaPermissionMode): PromaPermissionMode {
-  return PROMA_PERMISSION_MODE_CONFIG[mode].sdkMode
-}
-
-const SDK_NATIVE_SEARCH_TOOLS = ['WebSearch'] as const
-
-function mergeDisallowedTools(disallowedTools?: readonly string[]): string[] {
-  return Array.from(new Set([...SDK_NATIVE_SEARCH_TOOLS, ...(disallowedTools ?? [])]))
-}
-
-/**
- * 从 stderr 中提取 API 错误信息
- *
- * 解析类似这样的错误：
- * "401 {\"error\":{\"message\":\"...\"}}"
- * "API error: 400 Bad Request ..."
- */
-function extractApiError(stderr: string): { statusCode: number; message: string } | null {
-  if (!stderr) return null
-
-  // 模式 1：JSON 错误格式 - "401 {...}"
-  const jsonMatch = stderr.match(/(\d{3})\s+(\{[^}]*"error"[^}]*\})/s)
-  if (jsonMatch) {
-    try {
-      const statusCode = parseInt(jsonMatch[1]!)
-      const errorObj = JSON.parse(jsonMatch[2]!)
-      const message = errorObj.error?.message || errorObj.message || '未知错误'
-      return { statusCode, message }
-    } catch {
-      // JSON 解析失败，继续尝试其他模式
-    }
-  }
-
-  // 模式 2：API error 格式 - "API error (attempt X/Y): 401 401 {...}"
-  const apiErrorMatch = stderr.match(/API error[^:]*:\s+(\d{3})\s+\d{3}\s+(\{.*?\})/s)
-  if (apiErrorMatch) {
-    try {
-      const statusCode = parseInt(apiErrorMatch[1]!)
-      const errorObj = JSON.parse(apiErrorMatch[2]!)
-      const message = errorObj.error?.message || errorObj.message || '未知错误'
-      return { statusCode, message }
-    } catch {
-      // JSON 解析失败
-    }
-  }
-
-  // 模式 3：直接的状态码 + 消息
-  const simpleMatch = stderr.match(/(\d{3})[:\s]+(.+?)(?:\n|$)/i)
-  if (simpleMatch) {
-    const statusCode = parseInt(simpleMatch[1]!)
-    const message = simpleMatch[2]!.trim()
-    if (statusCode >= 400 && statusCode < 600) {
-      return { statusCode, message }
-    }
-  }
-
-  return null
-}
-
-// ===== 自动重试工具函数 =====
-
-/** 可自动重试的 TypedError 错误码 */
-const AUTO_RETRYABLE_ERROR_CODES: ReadonlySet<string> = new Set([
-  'rate_limited',
-  'provider_error',      // overloaded 映射为 provider_error
-  'service_error',
-  'service_unavailable',
-  'network_error',
-])
-
-/** 判断 typed_error 事件是否可自动重试 */
-function isAutoRetryableTypedError(error: TypedError): boolean {
-  return AUTO_RETRYABLE_ERROR_CODES.has(error.code)
-}
-
-/** 判断 catch 块中的 API 错误是否可自动重试（HTTP 429 / 5xx / 已知可恢复错误模式 / 瞬时网络错误） */
-function isAutoRetryableCatchError(
-  apiError: { statusCode: number; message: string } | null,
-  rawErrorMessage?: string,
-  stderr?: string,
-): boolean {
-  if (apiError) {
-    // 529 是 Anthropic 的过载状态码，通常很快恢复；与 429 / 5xx 一并重试。
-    if (apiError.statusCode === 429 || apiError.statusCode >= 500) return true
-  }
-  // 已知的可恢复错误模式（无 HTTP 状态码但可重试）
-  if (rawErrorMessage) {
-    if (rawErrorMessage.includes('context_management')) return true
-  }
-  // 兜底：extractApiError 未识别但 stderr / 错误文本中包含 502 / 529 或 overloaded 关键字时也视为可重试
-  // 502 (Bad Gateway) 通常是上游网关瞬时异常，与 529 一样很快自行恢复
-  const text = `${rawErrorMessage ?? ''}\n${stderr ?? ''}`
-  if (/\b502\b|\b529\b|overloaded/i.test(text)) return true
-  // 瞬时网络错误（terminated / ECONNRESET / socket hang up 等）
-  if (isTransientNetworkError(rawErrorMessage, stderr)) return true
-  return false
-}
-
-/**
- * 判断错误是否为 SDK session 不存在（"No conversation found with session ID"）
- *
- * 当 resume 目标 session 已过期或被清理时，SDK 会抛出此错误。
- * 此类错误可通过清除 sdkSessionId 并切换到上下文回填模式来恢复。
- */
-function isSessionNotFoundError(errorMessage: string, stderr?: string): boolean {
-  const pattern = /No conversation found.*with session/i
-  return pattern.test(errorMessage) || (!!stderr && pattern.test(stderr))
-}
-
-/** 最大自动重试次数 */
-const MAX_AUTO_RETRIES = 25
-
-/** 自动重试累计等待预算（毫秒） */
-const MAX_AUTO_RETRY_WAIT_MS = 5 * 60_000
-
-/** 重试单次延迟上限（毫秒） */
-const RETRY_MAX_DELAY_MS = 15_000
-
-/**
- * 计算重试延迟（指数退避 + ±20% jitter）
- *
- * 基础序列：1s, 2s, 4s, 8s, 15s, 15s...（cap = 15s）
- * 叠加 ±20% 随机抖动，避免大量 session 同时重试造成惊群。
- * 累计等待会被限制在 5 分钟以内。
- */
-function getRetryDelayMs(attempt: number, elapsedRetryDelayMs: number): number {
-  const remainingMs = MAX_AUTO_RETRY_WAIT_MS - elapsedRetryDelayMs
-  if (remainingMs <= 0) return 0
-
-  const base = Math.min(1000 * Math.pow(2, attempt - 1), RETRY_MAX_DELAY_MS)
-  const jitter = base * (Math.random() * 0.4 - 0.2)
-  return Math.min(remainingMs, Math.max(0, Math.round(base + jitter)))
-}
-
-/**
- * 解析 SDK native CLI binary 路径
- *
- * 0.2.113+ 起 SDK 改为按平台分发 native binary，通过 optionalDependencies 安装到
- * `@anthropic-ai/claude-agent-sdk-{platform}-{arch}` 子包，与主包 `@anthropic-ai/claude-agent-sdk`
- * 同级。binary 名 macOS/Linux 为 `claude`，Windows 为 `claude.exe`。
- *
- * SDK 作为 esbuild external 依赖，require.resolve 可在运行时解析主包入口路径，
- * 再沿父目录 `@anthropic-ai/` 找到同级的平台子包。
- *
- * 多种策略降级：createRequire → 全局 require → cwd/node_modules 手动查找
- * 打包环境下：asar 内的路径需要转换为 asar.unpacked 路径（即便 Proma 当前 `asar: false`
- * 兜底不伤人）。
- */
-function resolveSDKCliPath(): string {
-  const subpkg = `claude-agent-sdk-${process.platform}-${process.arch}`
-  const scopedSubpkg = `@anthropic-ai/${subpkg}`
-  const binaryName = process.platform === 'win32' ? 'claude.exe' : 'claude'
-  let binaryPath: string | null = null
-
-  // 策略 1：createRequire（标准 ESM/CJS 互操作）
-  try {
-    const cjsRequire = createRequire(__filename)
-    const sdkEntryPath = cjsRequire.resolve('@anthropic-ai/claude-agent-sdk')
-    // sdkEntryPath: .../@anthropic-ai/claude-agent-sdk/sdk.mjs
-    // anthropicDir:  .../@anthropic-ai
-    const anthropicDir = dirname(dirname(sdkEntryPath))
-    binaryPath = join(anthropicDir, subpkg, binaryName)
-    console.log(`[Agent 编排] SDK binary 路径 (createRequire): ${binaryPath}`)
-    if (!existsSync(binaryPath)) {
-      const subpkgPackagePath = cjsRequire.resolve(`${scopedSubpkg}/package.json`)
-      binaryPath = join(dirname(subpkgPackagePath), binaryName)
-      console.log(`[Agent 编排] SDK binary 路径 (platform package): ${binaryPath}`)
-    }
-  } catch (e) {
-    console.warn('[Agent 编排] createRequire 解析 SDK 路径失败:', e)
-  }
-
-  // 策略 2：全局 require（esbuild CJS bundle 可能保留）
-  if (!binaryPath || !existsSync(binaryPath)) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const sdkEntryPath = require.resolve('@anthropic-ai/claude-agent-sdk')
-      const anthropicDir = dirname(dirname(sdkEntryPath))
-      binaryPath = join(anthropicDir, subpkg, binaryName)
-      console.log(`[Agent 编排] SDK binary 路径 (require.resolve): ${binaryPath}`)
-      if (!existsSync(binaryPath)) {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const subpkgPackagePath = require.resolve(`${scopedSubpkg}/package.json`)
-        binaryPath = join(dirname(subpkgPackagePath), binaryName)
-        console.log(`[Agent 编排] SDK binary 路径 (require platform package): ${binaryPath}`)
-      }
-    } catch (e) {
-      console.warn('[Agent 编排] require.resolve 解析 SDK 路径失败:', e)
-    }
-  }
-
-  // 策略 3：从当前模块目录手动查找（打包后 __dirname 指向 app/dist/，上一级即 app/）
-  // 注意：不使用 process.cwd()，因为打包后的 Electron 应用 cwd 通常是 '/'
-  // 或用户主目录，与 app 安装目录无关。
-  if (!binaryPath || !existsSync(binaryPath)) {
-    binaryPath = join(__dirname, '..', 'node_modules', '@anthropic-ai', subpkg, binaryName)
-    console.log(`[Agent 编排] SDK binary 路径 (手动): ${binaryPath}`)
-  }
-
-  // 打包环境：将 .asar/ 路径转换为 .asar.unpacked/
-  if (app.isPackaged && binaryPath.includes('.asar')) {
-    binaryPath = binaryPath.replace(/\.asar([/\\])/, '.asar.unpacked$1')
-    console.log(`[Agent 编排] 转换为 asar.unpacked 路径: ${binaryPath}`)
-  }
-
-  return binaryPath
-}
-
-/** 构建 SDK local plugin 列表：当前工作区插件 + 已启用的全局插件 */
-function getAgentPluginPaths(workspaceSlug?: string): Array<{ type: 'local'; path: string }> {
-  return [
-    ...(workspaceSlug ? [{ type: 'local' as const, path: getAgentWorkspacePath(workspaceSlug) }] : []),
-    ...buildPluginRuntimePaths(),
-  ]
-}
-
-/** 最大回填消息条数 */
-const MAX_CONTEXT_MESSAGES = 20
-
-/** 单条工具摘要最大字符数 */
-const MAX_TOOL_SUMMARY_LENGTH = 200
-
-/**
- * 从 SDKMessage assistant 消息的 content 中提取工具活动摘要
- *
- * 扫描 tool_use 块，提取工具名称和关键参数，帮助新 SDK 会话理解之前做过什么。
- */
-function extractSDKToolSummary(content: Array<{ type: string; name?: string; input?: Record<string, unknown> }>): string {
-  const summaries: string[] = []
-  for (const block of content) {
-    if (block.type === 'tool_use' && block.name) {
-      const input = block.input ?? {}
-      const keyParam = input.file_path ?? input.command ?? input.path ?? input.query ?? ''
-      const paramStr = keyParam ? `: ${String(keyParam).slice(0, 100)}` : ''
-      summaries.push(`[tool: ${block.name}${paramStr}]`)
-    }
-  }
-  if (summaries.length === 0) return ''
-  const joined = summaries.join(' ')
-  return joined.length > MAX_TOOL_SUMMARY_LENGTH
-    ? joined.slice(0, MAX_TOOL_SUMMARY_LENGTH) + '...'
-    : joined
-}
-
-/**
- * 构建带历史上下文的 prompt
- *
- * 当 resume 不可用时，将最近消息拼接为上下文注入 prompt，
- * 让新 SDK 会话保留对话记忆。包含文本内容和工具活动摘要。
- */
-function buildContextPrompt(sessionId: string, currentUserMessage: string, sessionHint?: { agentCwd: string }): string {
-  const allMessages = getAgentSessionSDKMessages(sessionId)
-  if (allMessages.length === 0) return currentUserMessage
-
-  // 排除最后一条（当前用户消息，刚刚才 append 的）
-  const history = allMessages.slice(0, -1)
-  if (history.length === 0) return currentUserMessage
-
-  const recent = history.slice(-MAX_CONTEXT_MESSAGES)
-  const lines = recent
-    .filter((m) => (m.type === 'user' || m.type === 'assistant'))
-    .map((m) => {
-      // 从 SDKMessage 的 message.content 中提取文本
-      const content = (m as { message?: { content?: Array<{ type: string; text?: string; name?: string; input?: Record<string, unknown> }> } }).message?.content
-      if (!Array.isArray(content)) return null
-
-      const textParts = content
-        .filter((b) => b.type === 'text' && b.text)
-        .map((b) => b.text!)
-      const text = textParts.join('\n')
-      if (!text) return null
-
-      let line = `[${m.type}]: ${text}`
-      // assistant 消息附带工具活动摘要
-      if (m.type === 'assistant') {
-        const toolSummary = extractSDKToolSummary(content)
-        if (toolSummary) {
-          line += `\n  工具活动: ${toolSummary}`
-        }
-      }
-      return line
-    })
-    .filter(Boolean)
-
-  if (lines.length === 0) return currentUserMessage
-
-  // 注入 session 元信息，便于 Agent 在需要时读取完整历史
-  const sessionInfoBlock = sessionHint
-    ? `\n<session_info>\nSession ID: ${sessionId}\nSession CWD: ${sessionHint.agentCwd}\nNote: 上方为近期对话摘要。如需更多上下文，可读取 ~/${getConfigDirName()}/agent-sessions/${sessionId}.jsonl 获取完整历史。\n</session_info>\n`
-    : ''
-
-  console.log(`[Agent 编排] buildContextPrompt: 读取 ${allMessages.length} 条消息，注入 ${lines.length} 条历史${sessionHint ? '（含 session 元信息）' : ''}`)
-  return `<conversation_history>${sessionInfoBlock}\n${lines.join('\n')}\n</conversation_history>\n\n${currentUserMessage}`
-}
-
-/**
- * 构建 Session 恢复 prompt
- *
- * 当 SDK resume 失败（session 过期、thinking signature 不兼容等）时，
- * 注入 <session_recovery> 标签指向当前会话的完整 JSONL 历史文件，
- * 让 Agent 自己读取完整历史后无缝继续工作。
- */
-function buildRecoveryPrompt(
-  sessionId: string,
-  currentUserMessage: string,
-  sessionHint: { agentCwd: string },
-): string {
-  const meta = getAgentSessionMeta(sessionId)
-  const title = meta ? escapeContextAttr(meta.title) : sessionId
-  const historyPath = `~/${getConfigDirName()}/agent-sessions/${sessionId}.jsonl`
-
-  const recoveryBlock =
-    `<session_recovery>\n` +
-    `你正在接续一个已有的 Agent 会话（因模型切换等原因需要重新建立连接）。\n` +
-    `当前会话的完整历史记录在下方路径中，请先读取它以恢复上下文，然后继续处理用户的最新请求。\n` +
-    `<session id="${sessionId}" title="${title}" cwd="${sessionHint.agentCwd}">\n` +
-    `History path: ${historyPath}\n` +
-    `</session>\n` +
-    `</session_recovery>`
-
-  console.log(`[Agent 编排] buildRecoveryPrompt: 注入 session 自引用 → ${historyPath}`)
-  return `${recoveryBlock}\n\n${currentUserMessage}`
-}
-
-function escapeContextAttr(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-}
-
-function buildReferencedSessionsPrompt(
-  currentSessionId: string,
-  mentionedSessionIds?: string[],
-  workspaceId?: string,
-): string {
-  const uniqueIds = [...new Set((mentionedSessionIds ?? []).filter(Boolean))]
-  if (uniqueIds.length === 0) return ''
-
-  const currentWorkspaceId = workspaceId ?? getAgentSessionMeta(currentSessionId)?.workspaceId
-  const sessionBlocks: string[] = []
-
-  for (const referencedSessionId of uniqueIds) {
-    if (referencedSessionId === currentSessionId) continue
-
-    const meta = getAgentSessionMeta(referencedSessionId)
-    if (!meta || meta.archived) continue
-    if (currentWorkspaceId && meta.workspaceId !== currentWorkspaceId) continue
-
-    const title = escapeContextAttr(meta.title)
-    const historyPath = `~/${getConfigDirName()}/agent-sessions/${referencedSessionId}.jsonl`
-    sessionBlocks.push(
-      `<session id="${referencedSessionId}" title="${title}" updatedAt="${meta.updatedAt}">\n` +
-      `History path: ${historyPath}\n` +
-      '</session>',
-    )
-  }
-
-  if (sessionBlocks.length === 0) return ''
-
-  return `<referenced_sessions>\n用户在消息中明确引用了以下同工作区 Agent 会话。不要假设这些会话的内容；需要上下文时，请先读取对应的 History path，再基于读取结果继续完成任务。\n${sessionBlocks.join('\n\n')}\n</referenced_sessions>`
-}
-
-/** 标题生成 Prompt */
-const TITLE_PROMPT = '根据用户的第一条消息，生成一个简短的对话标题（10字以内）。只输出标题，不要有任何其他内容、标点符号或引号。\n\n用户消息：'
-
-/** 标题最大长度 */
-const MAX_TITLE_LENGTH = 20
-
-/** 默认会话标题（用于判断是否需要自动生成） */
-const DEFAULT_SESSION_TITLE = '新 Agent 会话'
-
-/** 默认模型 ID */
-const DEFAULT_MODEL_ID = 'claude-sonnet-4-6'
-
-/**
- * 判断模型是否支持 1M context window beta（context-1m-2025-08-07）
- * 当前支持：Claude Sonnet 4 / 4.5 / 4.6、Opus 4.6 / 4.7 / 4.8、DeepSeek V4 系列、
- * 小米 MiMo V2.5 / V2.5 Pro / V2 Pro
- * 参考：https://docs.anthropic.com/en/docs/build-with-claude/context-windows
- */
-function supports1MContext(modelId: string): boolean {
-  const m = modelId.toLowerCase()
-  if (m.includes('haiku')) return false
-  // Claude: Sonnet 4+ 与 Opus 4.6+ 都支持
-  if (m.includes('claude')) {
-    if (m.includes('sonnet-4')) return true
-    if (m.includes('opus-4-6') || m.includes('opus-4-7') || m.includes('opus-4-8')) return true
-    return false
-  }
-  // DeepSeek V4 系列（deepseek-v4-pro、deepseek-v4-flash）
-  if (m.includes('deepseek-v4')) return true
-  // 小米 MiMo：v2.5 / v2.5-pro / v2-pro 为 1M（omni / flash 不支持）
-  if (m.includes('mimo-v2.5') || m.includes('mimo-v2-pro')) return true
-  return false
-}
-
-/**
- * 聚合一次 SDK 调用涉及的所有附加目录（去重，保持插入顺序）。
- *
- * 发消息（sendMessage）和回退恢复文件（rewindSession）必须使用同一份聚合结果，
- * 否则 SDK 写入 file-history-snapshot 时使用的目录范围，与回退时校验路径越界的目录范围不一致，
- * 会导致 attachedDirectories 内的文件在回退时被静默跳过（"会话回退、代码不回退"）。
- *
- * 来源：
- *   1. extraDirs：调用方传入的临时附加目录（例如 sendMessage 时用户当次提交的目录）
- *   2. 会话级 attachedDirectories + attachedFiles 的父目录
- *   3. 工作区级 attachedDirectories + attachedFiles 的父目录
- *   4. 工作区文件目录 workspace-files/
- */
-function collectAttachedDirectories(params: {
-  sessionMeta?: AgentSessionMeta
-  workspaceSlug?: string
-  extraDirs?: string[]
-}): string[] {
-  const { sessionMeta, workspaceSlug, extraDirs } = params
-  const result: string[] = []
-  const push = (dir: string | undefined | null) => {
-    if (!dir) return
-    if (!result.includes(dir)) result.push(dir)
-  }
-
-  for (const d of extraDirs ?? []) push(d)
-  for (const d of sessionMeta?.attachedDirectories ?? []) push(d)
-  for (const file of sessionMeta?.attachedFiles ?? []) push(dirname(file))
-
-  if (workspaceSlug) {
-    for (const d of getWorkspaceAttachedDirectories(workspaceSlug)) push(d)
-    for (const f of getWorkspaceAttachedFiles(workspaceSlug)) push(dirname(f))
-    push(getWorkspaceFilesDir(workspaceSlug))
-  }
-
-  return result
-}
 
 // ===== AgentOrchestrator =====
 
@@ -550,307 +146,6 @@ export class AgentOrchestrator {
   }
 
   /**
-   * 构建 SDK 环境变量
-   *
-   * 注入 API Key、Base URL、代理、Shell 配置等。
-   * 对 Kimi Coding Plan / MiniMax Coding Plan：使用 Bearer 认证（ANTHROPIC_AUTH_TOKEN）。
-   */
-  private async buildSdkEnv(
-    apiKey: string,
-    baseUrl: string | undefined,
-    provider: ProviderType,
-  ): Promise<Record<string, string | undefined>> {
-    const DEFAULT_ANTHROPIC_URL = 'https://api.anthropic.com'
-
-    // 从 process.env 继承系统变量，但清理所有 ANTHROPIC_ 前缀的变量，
-    // 防止本地开发环境（如 ANTHROPIC_AUTH_TOKEN、ANTHROPIC_API_KEY、
-    // ANTHROPIC_BASE_URL 等）干扰 SDK 的认证和请求目标。
-    // 即使 index.ts 启动时已清理过一次，initializeRuntime() 中的
-    // loadShellEnv() 可能从 shell 配置文件（~/.zshrc 等）重新注入这些变量。
-    const cleanEnv: Record<string, string | undefined> = {}
-    for (const [key, value] of Object.entries(process.env)) {
-      if (!key.startsWith('ANTHROPIC_')) {
-        cleanEnv[key] = value
-      }
-    }
-
-    const sdkEnv: Record<string, string | undefined> = {
-      ...cleanEnv,
-      // 提升输出 token 上限，避免 "exceeded 32000 output token maximum" 错误
-      CLAUDE_CODE_MAX_OUTPUT_TOKENS: '64000',
-      // 启用 Tasks 功能
-      CLAUDE_CODE_ENABLE_TASKS: 'true',
-      // 禁用实验性 beta 功能，使用稳定模式
-      CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
-      // 配置隔离：让 SDK 使用独立的配置目录，不读取用户的 ~/.claude.json
-      CLAUDE_CONFIG_DIR: getSdkConfigDir(),
-    }
-
-    // 认证方式按 provider 分支
-    // - Kimi Coding Plan：只认 Bearer，通过 ANTHROPIC_CUSTOM_HEADERS 注入 Proma UA
-    // - MiniMax Coding Plan：Claude Code 场景使用 Bearer（ANTHROPIC_AUTH_TOKEN）
-    // - 通过 ANTHROPIC_AUTH_TOKEN 让 SDK 发 Authorization: Bearer
-    // - 其它：ANTHROPIC_API_KEY（SDK 内部会同时带上 x-api-key 和 Bearer）
-    if (provider === 'kimi-coding' || provider === 'zhipu-coding' || provider === 'xiaomi-token-plan') {
-      sdkEnv.ANTHROPIC_AUTH_TOKEN = apiKey
-      sdkEnv.ANTHROPIC_CUSTOM_HEADERS = `User-Agent: ${getPromaUserAgent(pkg.version)}`
-    } else if (provider === 'minimax') {
-      sdkEnv.ANTHROPIC_AUTH_TOKEN = apiKey
-      sdkEnv.API_TIMEOUT_MS = '3000000'
-      sdkEnv.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1'
-    } else {
-      sdkEnv.ANTHROPIC_API_KEY = apiKey
-    }
-
-    // 显式控制 ANTHROPIC_BASE_URL：仅在用户配置了自定义 Base URL 时注入
-    // 使用统一的 normalizeAnthropicBaseUrlForSdk 规范化，SDK 内部会自动拼接 /v1/messages
-    if (baseUrl && baseUrl !== DEFAULT_ANTHROPIC_URL) {
-      sdkEnv.ANTHROPIC_BASE_URL = normalizeAnthropicBaseUrlForSdk(baseUrl)
-    }
-
-    const proxyUrl = await getEffectiveProxyUrl()
-    if (proxyUrl) {
-      sdkEnv.HTTPS_PROXY = proxyUrl
-      sdkEnv.HTTP_PROXY = proxyUrl
-    }
-
-    // Windows 平台：配置 Shell 环境
-    if (process.platform === 'win32') {
-      const runtimeStatus = getRuntimeStatus()
-      const shellStatus = runtimeStatus?.shell
-
-      if (shellStatus) {
-        if (shellStatus.gitBash?.available && shellStatus.gitBash.path) {
-          sdkEnv.CLAUDE_CODE_SHELL = shellStatus.gitBash.path
-          console.log(`[Agent 编排] 配置 Shell 环境: Git Bash (${shellStatus.gitBash.path})`)
-        } else if (shellStatus.wsl?.available) {
-          sdkEnv.CLAUDE_CODE_SHELL = 'wsl'
-          console.log(`[Agent 编排] 配置 Shell 环境: WSL ${shellStatus.wsl.version} (${shellStatus.wsl.defaultDistro})`)
-        } else {
-          console.warn('[Agent 编排] Windows 平台未检测到可用的 Shell 环境（Git Bash / WSL）')
-        }
-        sdkEnv.CLAUDE_BASH_NO_LOGIN = '1'
-      }
-    }
-
-    // 针对 claude-agent-sdk 0.2.111+ 的 options.env 叠加语义加固：
-    // SDK 将 options.env 叠加到 process.env 之上传递给子进程。
-    // 若 shell 中存在 ANTHROPIC_CUSTOM_HEADERS、ANTHROPIC_MODEL 等变量，
-    // 且 sdkEnv 未显式管理，叠加后会回流到 SDK 子进程。
-    // 对于 sdkEnv 未显式管理的 ANTHROPIC_* 变量，显式置空字符串以覆盖回流。
-    for (const key of Object.keys(process.env)) {
-      if (key.startsWith('ANTHROPIC_') && !(key in sdkEnv)) {
-        sdkEnv[key] = ''
-      }
-    }
-
-    return sdkEnv
-  }
-
-  /**
-   * 构建工作区 MCP 服务器配置
-   */
-  private buildMcpServers(workspaceSlug: string | undefined): Record<string, Record<string, unknown>> {
-    const mcpServers: Record<string, Record<string, unknown>> = {}
-    if (!workspaceSlug) return mcpServers
-
-    const mcpConfig = getWorkspaceMcpConfig(workspaceSlug)
-    for (const [name, entry] of Object.entries(mcpConfig.servers ?? {})) {
-      if (!entry.enabled) continue
-      if (name === 'memos-cloud') continue
-
-      if (entry.type === 'stdio' && entry.command) {
-        const mergedEnv: Record<string, string> = {
-          ...(process.env.PATH && { PATH: process.env.PATH }),
-          ...entry.env,
-        }
-        mcpServers[name] = {
-          type: 'stdio',
-          command: entry.command,
-          ...(entry.args && entry.args.length > 0 && { args: entry.args }),
-          ...(Object.keys(mergedEnv).length > 0 && { env: mergedEnv }),
-          required: false,
-          startup_timeout_sec: entry.timeout ?? 30,
-        }
-      } else if ((entry.type === 'http' || entry.type === 'sse') && entry.url) {
-        mcpServers[name] = {
-          type: entry.type,
-          url: entry.url,
-          ...(entry.headers && Object.keys(entry.headers).length > 0 && { headers: entry.headers }),
-          required: false,
-        }
-      }
-    }
-
-    if (Object.keys(mcpServers).length > 0) {
-      console.log(`[Agent 编排] 已加载 ${Object.keys(mcpServers).length} 个 MCP 服务器`)
-    }
-
-    return mcpServers
-  }
-
-  /**
-   * 注入 SDK 内置记忆工具（全局，不依赖工作区）
-   */
-  private async injectMemoryTools(
-    sdk: typeof import('@anthropic-ai/claude-agent-sdk'),
-    mcpServers: Record<string, Record<string, unknown>>,
-  ): Promise<void> {
-    const memoryConfig = getMemoryConfig()
-    const memUserId = memoryConfig.userId?.trim() || 'proma-user'
-    if (!memoryConfig.enabled || !memoryConfig.apiKey) return
-
-    try {
-      const { z } = await import('zod')
-      const memosServer = sdk.createSdkMcpServer({
-        name: 'mem',
-        version: '1.0.0',
-        tools: [
-          sdk.tool(
-            'recall_memory',
-            'Search user memories (facts and preferences) from MemOS Cloud. Use this to recall relevant context about the user.',
-            { query: z.string().describe('Search query for memory retrieval'), limit: z.number().optional().describe('Max results (default 6)') },
-            async (args) => {
-              const result = await searchMemory(
-                { apiKey: memoryConfig.apiKey, userId: memUserId, baseUrl: memoryConfig.baseUrl },
-                args.query,
-                args.limit,
-              )
-              return { content: [{ type: 'text' as const, text: formatSearchResult(result) }] }
-            },
-            { annotations: { readOnlyHint: true } },
-          ),
-          sdk.tool(
-            'add_memory',
-            'Store a conversation message pair into MemOS Cloud for long-term memory. Call this after meaningful exchanges worth remembering.',
-            {
-              userMessage: z.string().describe('The user message to store'),
-              assistantMessage: z.string().optional().describe('The assistant response to store'),
-              conversationId: z.string().optional().describe('Conversation ID for grouping'),
-              tags: z.array(z.string()).optional().describe('Tags for categorization'),
-            },
-            async (args) => {
-              await addMemory(
-                { apiKey: memoryConfig.apiKey, userId: memUserId, baseUrl: memoryConfig.baseUrl },
-                args,
-              )
-              return { content: [{ type: 'text' as const, text: 'Memory stored successfully.' }] }
-            },
-          ),
-        ],
-      })
-      mcpServers['mem'] = memosServer as unknown as Record<string, unknown>
-      console.log(`[Agent 编排] 已注入内置记忆工具 (mem)`)
-    } catch (err) {
-      console.error(`[Agent 编排] 注入记忆工具失败:`, err)
-    }
-  }
-
-  /**
-   * 注入 SDK 内置生图工具（Nano Banana）
-   */
-  private async injectNanoBananaTools(
-    sdk: typeof import('@anthropic-ai/claude-agent-sdk'),
-    mcpServers: Record<string, Record<string, unknown>>,
-    sessionId: string,
-    agentCwd?: string,
-  ): Promise<void> {
-    try {
-      const { injectNanoBananaMcpServer } = await import('./chat-tools/nano-banana-mcp')
-      await injectNanoBananaMcpServer(sdk, mcpServers, sessionId, agentCwd)
-    } catch (err) {
-      console.error(`[Agent 编排] 注入 Nano Banana MCP 失败:`, err)
-    }
-  }
-
-  /**
-   * 注入 WorkMate 内置联网搜索工具（专家团按需启用）
-   */
-  private async injectWebSearchTools(
-    sdk: typeof import('@anthropic-ai/claude-agent-sdk'),
-    mcpServers: Record<string, Record<string, unknown>>,
-  ): Promise<void> {
-    try {
-      const { injectWebSearchMcpServer } = await import('./chat-tools/web-search-mcp')
-      await injectWebSearchMcpServer(sdk, mcpServers)
-    } catch (err) {
-      console.error(`[Agent 编排] 注入 WorkMate 联网搜索 MCP 失败:`, err)
-    }
-  }
-
-  /**
-   * 生成 Agent 会话标题
-   *
-   * 使用 Provider 适配器系统，支持所有渠道。任何错误返回 null。
-   */
-  async generateTitle(input: AgentGenerateTitleInput): Promise<string | null> {
-    const { userMessage, channelId, modelId } = input
-    console.log('[Agent 标题生成] 开始生成标题:', { channelId, modelId, userMessage: userMessage.slice(0, 50) })
-
-    try {
-      const channels = listChannels()
-      const channel = channels.find((c) => c.id === channelId)
-      if (!channel) {
-        console.warn('[Agent 标题生成] 渠道不存在:', channelId)
-        return null
-      }
-
-      const apiKey = decryptApiKey(channelId)
-      const providerAdapter = getAdapter(channel.provider)
-      const request = providerAdapter.buildTitleRequest({
-        baseUrl: channel.baseUrl,
-        apiKey,
-        modelId,
-        prompt: TITLE_PROMPT + userMessage,
-      })
-
-      const proxyUrl = await getEffectiveProxyUrl()
-      const fetchFn = getFetchFn(proxyUrl)
-      const title = await fetchTitle(request, providerAdapter, fetchFn)
-      if (!title) {
-        console.warn('[Agent 标题生成] API 返回空标题')
-        return null
-      }
-
-      const cleaned = title.trim().replace(/^["'""''「《]+|["'""''」》]+$/g, '').trim()
-      const result = cleaned.slice(0, MAX_TITLE_LENGTH) || null
-
-      console.log(`[Agent 标题生成] 生成标题成功: "${result}"`)
-      return result
-    } catch (error) {
-      console.warn('[Agent 标题生成] 生成失败:', error)
-      return null
-    }
-  }
-
-  /**
-   * 流完成后自动生成标题
-   *
-   * 如果会话标题仍为默认值，自动调用标题生成并通过回调通知。
-   */
-  private async autoGenerateTitle(
-    sessionId: string,
-    userMessage: string,
-    channelId: string,
-    modelId: string,
-    callbacks: SessionCallbacks,
-  ): Promise<void> {
-    try {
-      const meta = getAgentSessionMeta(sessionId)
-      if (!meta || meta.title !== DEFAULT_SESSION_TITLE) return
-
-      const title = await this.generateTitle({ userMessage, channelId, modelId })
-      if (!title) return
-
-      updateAgentSessionMeta(sessionId, { title })
-      callbacks.onTitleUpdated(title)
-      console.log(`[Agent 编排] 自动标题生成完成: "${title}"`)
-    } catch (error) {
-      console.warn('[Agent 编排] 自动标题生成失败:', error)
-    }
-  }
-
-  /**
    * Session-not-found 恢复：清除失效的 sdkSessionId，切换到上下文回填模式
    *
    * 当 resume 的目标 session 已过期/被清理时，SDK 会抛出 "No conversation found" 错误。
@@ -858,26 +153,6 @@ export class AgentOrchestrator {
    *
    * @returns lastRetryableError 描述字符串
    */
-  private prepareSessionNotFoundRecovery(
-    sessionId: string,
-    queryOptions: ClaudeAgentQueryOptions,
-    contextualMessage: string,
-    agentCwd: string,
-    accumulatedMessages: SDKMessage[],
-    queryStartedAt: number,
-  ): string {
-    return this.prepareResumeFallbackRecovery(
-      sessionId,
-      queryOptions,
-      contextualMessage,
-      agentCwd,
-      accumulatedMessages,
-      queryStartedAt,
-      '检测到 session-not-found 错误，清除 sdkSessionId 并切换到上下文回填模式',
-      'Session 已失效，切换到上下文回填模式',
-    )
-  }
-
   /**
    * Resume 失败恢复：清除 SDK resume 关系，注入 session 自引用让 Agent 读取完整历史继续工作。
    *
@@ -885,71 +160,6 @@ export class AgentOrchestrator {
    * 使用 <session_recovery> 标签指向当前会话的 JSONL 历史文件，Agent 会自动读取并恢复上下文，
    * 比 buildContextPrompt（仅注入 20 条摘要）提供完整得多的上下文连续性。
    */
-  private prepareResumeFallbackRecovery(
-    sessionId: string,
-    queryOptions: ClaudeAgentQueryOptions,
-    contextualMessage: string,
-    agentCwd: string,
-    accumulatedMessages: SDKMessage[],
-    queryStartedAt: number,
-    logMessage: string,
-    retryReason: string,
-  ): string {
-    console.log(`[Agent 编排] ${logMessage}`)
-    // 先持久化当前已累积的消息，确保 JSONL 文件包含最新内容
-    this.persistSDKMessages(sessionId, accumulatedMessages, Date.now() - queryStartedAt)
-    accumulatedMessages.length = 0
-    // 清除失效的 SDK session，新 SDK 会话产生的 sdkSessionId 会通过 onSessionId 回调自动保存
-    try { updateAgentSessionMeta(sessionId, { sdkSessionId: undefined }) } catch { /* 忽略 */ }
-    queryOptions.resumeSessionId = undefined
-    queryOptions.resumeSessionAt = undefined
-    queryOptions.prompt = buildRecoveryPrompt(sessionId, contextualMessage, { agentCwd })
-    return retryReason
-  }
-
-  /**
-   * 持久化累积的 SDKMessage（Phase 4: 直接存储原始 SDKMessage）
-   *
-   * 只持久化 assistant、user、result 和需要长期可见的 system 消息
-   * （跳过 tool_progress、compacting 等临时消息）。
-   */
-  private persistSDKMessages(
-    sessionId: string,
-    accumulatedMessages: SDKMessage[],
-    durationMs?: number,
-  ): void {
-    if (accumulatedMessages.length === 0) return
-
-    const toPersist = accumulatedMessages.filter(
-      (m) => m.type === 'assistant' || m.type === 'user' || m.type === 'result'
-        || (m.type === 'system' && ['compact_boundary', 'permission_denied'].includes((m as import('@proma/shared').SDKSystemMessage).subtype ?? ''))
-    ).filter((m) => {
-      // 过滤 SDK 内部生成的 user 文本消息（如 Skill 展开 prompt），与实时流过滤逻辑一致
-      if (m.type === 'user') {
-        const content = (m as { message?: { content?: Array<{ type: string }> } }).message?.content
-        const hasToolResult = Array.isArray(content) && content.some((b) => b.type === 'tool_result')
-        if (!hasToolResult) return false
-      }
-      return true
-    })
-
-    if (toPersist.length === 0) return
-
-    // 为没有 _createdAt 的消息补上时间戳（assistant 消息来自 SDK 原始输出，不含时间）
-    const now = Date.now()
-    const withTimestamps = toPersist.map((m) => {
-      const msg = m as Record<string, unknown>
-      if (typeof msg._createdAt === 'number') return m
-      // 为 result 消息附加 _durationMs
-      if (m.type === 'result' && durationMs != null) {
-        return { ...m, _createdAt: now, _durationMs: durationMs } as unknown as SDKMessage
-      }
-      return { ...m, _createdAt: now } as unknown as SDKMessage
-    })
-
-    appendSDKMessages(sessionId, withTimestamps)
-  }
-
   /**
    * 发送消息并流式推送事件
    *
@@ -1023,7 +233,7 @@ export class AgentOrchestrator {
     }
 
     // 2. 获取渠道信息并解密 API Key
-    const channel = getChannelById(channelId)
+    let channel = getChannelById(channelId)
     if (!channel) {
       reportPreflightError({
         code: 'channel_not_found',
@@ -1127,7 +337,7 @@ export class AgentOrchestrator {
     }
 
     const modelRouting = resolveAgentModelRouting({ modelId: modelId || DEFAULT_MODEL_ID, provider: channel.provider })
-    const sdkEnv = await this.buildSdkEnv(apiKey, channel.baseUrl, channel.provider)
+    let sdkEnv = await buildSdkEnv(apiKey, channel.baseUrl, channel.provider)
     applyAgentModelRoutingToEnv(sdkEnv, modelRouting)
 
     // 4. 读取已有的 SDK session ID（用于 resume）
@@ -1160,6 +370,30 @@ export class AgentOrchestrator {
     // 6. 状态初始化
     const accumulatedMessages: SDKMessage[] = []
     let resolvedModel = modelId || DEFAULT_MODEL_ID
+
+    // Auto Mode：可切换渠道 local 副本
+    let currentChannelId = channelId
+
+    // Auto Mode 配置解析与初始模型确定
+    const autoModeConfig = await resolveAutoModeConfig()
+    const { activeModelId, state: autoModeState } = resolveInitialModel(sessionId, modelId, autoModeConfig)
+
+    if (autoModeConfig.enabled && activeModelId !== modelId) {
+      console.log(`[Auto Mode] 初始模型切换: ${modelId || DEFAULT_MODEL_ID} -> ${activeModelId}`)
+      const chInfo = findChannelForModel(activeModelId)
+      if (chInfo && chInfo.channelId !== currentChannelId) {
+        console.log(`[Auto Mode] 初始渠道切换: ${currentChannelId} -> ${chInfo.channelId} (模型: ${activeModelId})`)
+        currentChannelId = chInfo.channelId
+        channel = getChannelById(chInfo.channelId)!
+        apiKey = chInfo.apiKey
+        sdkEnv = await buildSdkEnv(apiKey, chInfo.baseUrl, chInfo.provider)
+        const initRouting = resolveAgentModelRouting({ modelId: activeModelId, provider: chInfo.provider })
+        applyAgentModelRoutingToEnv(sdkEnv, initRouting)
+      }
+    }
+    resolvedModel = activeModelId
+
+
     let titleGenerationStarted = false
     let agentCwd: string | undefined
     let workspaceSlug: string | undefined
@@ -1267,10 +501,10 @@ export class AgentOrchestrator {
       }
 
       // 10. 构建 MCP 服务器配置 + 记忆工具 + 生图工具 + 自定义工具
-      const mcpServers = this.buildMcpServers(workspaceSlug)
-      await this.injectMemoryTools(sdk, mcpServers)
-      await this.injectNanoBananaTools(sdk, mcpServers, sessionId, agentCwd)
-      await this.injectWebSearchTools(sdk, mcpServers)
+      const mcpServers = buildMcpServers(workspaceSlug)
+      await injectMemoryTools(sdk, mcpServers)
+      await injectNanoBananaTools(sdk, mcpServers, sessionId, agentCwd)
+      await injectWebSearchTools(sdk, mcpServers)
       await injectAutomationMcpServer(sdk, mcpServers, {
         sessionId,
         channelId,
@@ -1566,7 +800,7 @@ export class AgentOrchestrator {
 
       // 13. 构建 Adapter 查询选项
       // 检测用户选用的模型是否为 Claude 系列，决定 SubAgent 是否使用独立模型分层
-      const claudeAvailable = (modelId || DEFAULT_MODEL_ID).toLowerCase().includes('claude')
+      const claudeAvailable = (resolvedModel || DEFAULT_MODEL_ID).toLowerCase().includes('claude')
       const maxTurns = appSettings.agentMaxTurns && appSettings.agentMaxTurns > 0
         ? appSettings.agentMaxTurns
         : undefined
@@ -1647,8 +881,9 @@ export class AgentOrchestrator {
           console.error(`[Agent SDK stderr] ${data}`)
         },
         onSessionId: (sdkSessionId: string) => {
-          capturedSdkSessionId = sdkSessionId
-          if (sdkSessionId !== existingSdkSessionId) {
+          // 仅在新 session ID 变更时保存（onSessionId 可能被多次回调但 ID 不变）
+          if (sdkSessionId !== capturedSdkSessionId) {
+            capturedSdkSessionId = sdkSessionId
             try {
               updateAgentSessionMeta(sessionId, { sdkSessionId })
               console.log(`[Agent 编排] 已保存 SDK session_id: ${sdkSessionId}`)
@@ -1663,7 +898,7 @@ export class AgentOrchestrator {
           // SDK 初始化完成后立即触发标题生成，使多会话并发时用户能快速区分
           if (!titleGenerationStarted) {
             titleGenerationStarted = true
-            this.autoGenerateTitle(sessionId, userMessage, channelId, resolvedModel, callbacks)
+            autoGenerateTitle(sessionId, userMessage, channelId, resolvedModel, callbacks)
               .catch((err) => console.error('[Agent 编排] 标题生成未捕获异常:', err))
           }
         },
@@ -1688,6 +923,62 @@ export class AgentOrchestrator {
       let skipNextRetryDelay = false
       let thinkingSignatureRecoveryAttempted = false
       let invisibleRecoveryAttempts = 0
+
+      // Auto Mode：切换模型时同步切换渠道
+      const switchChannelForModel = async (newModelId: string): Promise<void> => {
+        const chInfo = findChannelForModel(newModelId)
+        if (!chInfo) {
+          console.warn(`[Auto Mode] 找不到模型 ${newModelId} 所属的渠道，sdkEnv 保持不变`)
+          return
+        }
+        if (chInfo.channelId === currentChannelId) return
+        console.log(`[Auto Mode] 渠道切换: ${currentChannelId} (${channel!.provider}) -> ${chInfo.channelId} (${chInfo.provider}), baseUrl=${chInfo.baseUrl}`)
+        currentChannelId = chInfo.channelId
+        channel = getChannelById(chInfo.channelId)!
+        apiKey = chInfo.apiKey
+        sdkEnv = await buildSdkEnv(apiKey, chInfo.baseUrl, chInfo.provider)
+        const newRouting = resolveAgentModelRouting({ modelId: newModelId, provider: chInfo.provider })
+        applyAgentModelRoutingToEnv(sdkEnv, newRouting)
+        queryOptions.env = sdkEnv
+      }
+
+      // Auto Mode：跨模型切换公共逻辑
+      const trySwitchAutoModeModel = async (): Promise<boolean> => {
+        if (autoModeState.sameModelAttempts <= MAX_SAME_MODEL_RETRIES) return true
+
+        const excludeSet = new Set(autoModeState.triedModelIds)
+        const nextModel = selectNextCandidateModel(
+          autoModeState.activeModelId,
+          autoModeConfig.candidatePool,
+          excludeSet,
+          autoModeConfig.availableModelIds,
+        )
+        if (nextModel) {
+          console.log(`[Auto Mode] 切换模型: ${autoModeState.activeModelId} -> ${nextModel}`)
+          this.eventBus.emit(sessionId, {
+            kind: 'proma_event',
+            event: { type: 'model_switched', fromModel: autoModeState.activeModelId, toModel: nextModel },
+          })
+          autoModeState.activeModelId = nextModel
+          autoModeState.sameModelAttempts = 0
+          autoModeState.triedModelIds.add(nextModel)
+          try { updateAgentSessionMeta(sessionId, { activeModelId: nextModel } as Partial<AgentSessionMeta>) } catch { /* ignore */ }
+          queryOptions.model = nextModel
+          resolvedModel = nextModel
+          if (existingSdkSessionId) {
+            existingSdkSessionId = undefined
+            capturedSdkSessionId = undefined
+            queryOptions.resumeSessionId = undefined
+          }
+          await switchChannelForModel(nextModel)
+          skipNextRetryDelay = true
+          return true
+        }
+
+        console.log(`[Auto Mode] 候选池已耗尽`)
+        return false
+      }
+
       const canAutoRetry = (attempt: number): boolean =>
         attempt <= MAX_AUTO_RETRIES && retryDelayElapsedMs < MAX_AUTO_RETRY_WAIT_MS
 
@@ -1739,7 +1030,7 @@ export class AgentOrchestrator {
             // 等待期间如果会话被中止，退出
             if (!this.activeSessions.has(sessionId)) {
               const wasStoppedByUser = this.consumeStoppedByUser(sessionId)
-              this.persistSDKMessages(sessionId, accumulatedMessages, Date.now() - queryStartedAt)
+              persistSDKMessages(sessionId, accumulatedMessages, Date.now() - queryStartedAt)
               try { updateAgentSessionMeta(sessionId, { stoppedByUser: wasStoppedByUser }) } catch { /* 会话可能已删除 */ }
               completeRun(getAgentSessionMessages(sessionId), { stoppedByUser: wasStoppedByUser, startedAt: streamStartedAt })
               return
@@ -1750,306 +1041,141 @@ export class AgentOrchestrator {
         let shouldRetryFromError = false
 
         try {
-          // 获取异步迭代器（手动 .next() 以支持 Promise.race 中断）
-          const queryIterable = this.adapter.query(queryOptions)
-          const queryIterator = queryIterable[Symbol.asyncIterator]()
+          // 委托给 sdkRunSingleAttempt（模式特定行为通过 callbacks 注入）
+          const queryStartedAt = Date.now()
 
-          // 手动事件循环：Promise.race（SDKMessage vs result drain timeout）
-          let pendingNext: Promise<IteratorResult<SDKMessage>> | null = null
-          // 捕获 result.subtype 以传递给前端（用于区分 success/error_max_turns/error_max_budget_usd）
-          let capturedResultSubtype: string | undefined
-          // result 收到后的安全超时：adapter 层 channel.close() 应让 iterator 自然关闭，
-          // 此 timeout 仅作安全网，防止极端情况下 iterator 仍未关闭
-          let drainTimeoutPromise: Promise<'drain_timeout'> | null = null
-          const RESULT_DRAIN_TIMEOUT_MS = 2_000
-          // 后台任务等待态：result 走轻量完成后置 true，下一轮真正开始（收到 assistant/user/task 消息）时
-          // 置回 false 并发 run_resumed，让 UI 从空闲态恢复运行态。
-          let awaitingBackgroundWake = false
-
-          while (true) {
-            if (!pendingNext) {
-              pendingNext = queryIterator.next()
-            }
-
-            const racePromises: Array<Promise<{ kind: string; result: IteratorResult<SDKMessage> | null }>> = [
-              pendingNext.then((r) => ({ kind: 'event' as const, result: r })),
-            ]
-            if (drainTimeoutPromise) {
-              racePromises.push(drainTimeoutPromise.then(() => ({ kind: 'drain_timeout' as const, result: null })))
-            }
-
-            const raceResult = await Promise.race(racePromises)
-
-            if (raceResult.kind === 'drain_timeout') {
-              // 安全网：channel.close() 后 SDK 仍未在超时内关闭 iterator，强制退出
-              console.warn(`[Agent 编排] drain timeout: SDK iterator 在 result 后 ${RESULT_DRAIN_TIMEOUT_MS}ms 内未关闭，强制退出`)
-              pendingNext?.catch(() => {})
-              pendingNext = null
-              queryIterator.return?.(undefined as never).catch(() => {})
-              break
-            }
-
-            const iterResult = raceResult.result
-            if (!iterResult || iterResult.done) break
-
-            pendingNext = null
-            const msg = iterResult.value
-
-            // 后台任务唤醒：轻量完成后处于等待态，收到新一轮的首条实质消息时
-            // 发 run_resumed，让 UI 从"空闲可输入"恢复到"运行中"。
-            // applyAgentEvent 的流式分支不会重置 running，故必须显式通知。
-            if (awaitingBackgroundWake) {
-              const sub = msg.type === 'system' ? (msg as { subtype?: string }).subtype : undefined
-              if (msg.type === 'assistant' || msg.type === 'user' || sub === 'task_started' || sub === 'task_progress') {
-                awaitingBackgroundWake = false
-                this.eventBus.emit(sessionId, { kind: 'proma_event', event: { type: 'run_resumed', sessionId } })
-              }
-            }
-
-            // SDK 权限模式可能在 canUseTool 前直接批准工具（如 bypassPermissions）。
-            // 因此计划阶段状态要从实际 tool_use 流里同步，不能只依赖权限回调。
-            if (msg.type === 'assistant') {
-              const assistantMsg = msg as SDKAssistantMessage
-              if (!assistantMsg.isReplay) {
-                for (const block of assistantMsg.message.content) {
-                  if (block.type === 'tool_use' && 'name' in block && typeof block.name === 'string') {
-                    syncPlanModeFromToolUse(block.name)
-                  }
-                }
-              }
-            }
-
-            // 检测 assistant 消息中的 SDK 错误
-            if (msg.type === 'assistant') {
-              const assistantMsg = msg as SDKAssistantMessage
-              if (assistantMsg.error) {
-                const { detailedMessage, originalError } = extractErrorDetails(assistantMsg as unknown as Parameters<typeof extractErrorDetails>[0])
-                let errorCode = assistantMsg.error.errorType || 'unknown_error'
-                if (isPromptTooLongError(detailedMessage, originalError)) {
-                  errorCode = 'prompt_too_long'
-                }
-                const typedError = mapSDKErrorToTypedError(errorCode, friendlyErrorMessage(detailedMessage), originalError)
-
-                // Session 不存在错误：清除 sdkSessionId，切换到上下文回填模式重试
-                if (isSessionNotFoundError(detailedMessage, originalError) && existingSdkSessionId && canAutoRetry(attempt)) {
-                  existingSdkSessionId = undefined
-                  capturedSdkSessionId = undefined
-                  lastRetryableError = this.prepareSessionNotFoundRecovery(sessionId, queryOptions, contextualMessage, agentCwd, accumulatedMessages, queryStartedAt)
-                  shouldRetryFromError = true
-                  break
-                }
-
-                // Thinking signature 不兼容：通常由跨模型 resume 触发。
-                // 先自动清除 SDK resume 关系，改用 Proma 已持久化上下文重跑一次；再失败才展示用户提示。
-                if (
-                  typedError.code === THINKING_SIGNATURE_ERROR_CODE &&
-                  canTryThinkingSignatureRecovery(attempt)
-                ) {
-                  thinkingSignatureRecoveryAttempted = true
-                  invisibleRecoveryAttempts += 1
-                  existingSdkSessionId = undefined
-                  capturedSdkSessionId = undefined
-                  skipNextRetryDelay = true
-                  lastRetryableError = this.prepareResumeFallbackRecovery(
-                    sessionId,
-                    queryOptions,
-                    contextualMessage,
-                    agentCwd,
-                    accumulatedMessages,
-                    queryStartedAt,
-                    '检测到 thinking signature 不兼容，清除 sdkSessionId 并切换到上下文回填模式',
-                    '思考签名不兼容，切换到上下文回填模式',
-                  )
-                  stderrChunks.length = 0
-                  shouldRetryFromError = true
-                  break
-                }
-
-                // 判断是否可自动重试
-                if (isAutoRetryableTypedError(typedError) && canAutoRetry(attempt)) {
-                  lastRetryableError = typedError.title
-                    ? `${typedError.title}: ${typedError.message}`
-                    : typedError.message
-                  console.log(`[Agent 编排] 可重试错误 (assistant error): ${typedError.code} - ${lastRetryableError}`)
-                  this.persistSDKMessages(sessionId, accumulatedMessages, Date.now() - queryStartedAt)
-                  accumulatedMessages.length = 0
-                  // 与 catch 路径（isAutoRetryableCatchError）和思考签名回填路径保持一致：
-                  // 重试前清空已累积的 stderr，避免 25 次重试上限内字符串无限增长
-                  stderrChunks.length = 0
-                  shouldRetryFromError = true
-                  break
-                }
-
-                // 不可重试 → 终止
-                this.persistSDKMessages(sessionId, accumulatedMessages, Date.now() - queryStartedAt)
-
-                const errorContent = typedError.title
-                    ? `${typedError.title}: ${typedError.message}`
-                    : typedError.message
-                const errorSDKMsg: SDKMessage = {
-                  type: 'assistant',
-                  message: {
-                    content: [{ type: 'text', text: errorContent }],
-                  },
-                  parent_tool_use_id: null,
-                  error: { message: typedError.message, errorType: typedError.code },
-                  _createdAt: Date.now(),
-                  _errorCode: typedError.code,
-                  _errorTitle: typedError.title,
-                  _errorDetails: typedError.details,
-                  _errorCanRetry: typedError.canRetry,
-                  _errorActions: typedError.actions,
-                } as unknown as SDKMessage
-                appendSDKMessages(sessionId, [errorSDKMsg])
-                console.log(`[Agent 编排] 已保存 TypedError 消息: ${typedError.code} - ${typedError.title}`)
-
-                // 如果之前有重试记录，发送 retry_failed
-                if (retryAttemptsScheduled > 0 && lastRetryableError) {
-                  this.eventBus.emit(sessionId, {
-                    kind: 'proma_event',
-                    event: { type: 'retry', status: 'failed', attemptData: { attempt: retryAttemptsScheduled, timestamp: Date.now(), reason: lastRetryableError, errorMessage: typedError.message, delaySeconds: 0 } },
-                  })
-                }
-
-                // 透传归一化后的错误消息到前端，避免 SDK 原始 API Error 直接暴露给用户。
-                this.eventBus.emit(sessionId, { kind: 'sdk_message', message: errorSDKMsg })
-                try { updateAgentSessionMeta(sessionId, {}) } catch { /* 忽略 */ }
-                completeRun(getAgentSessionMessages(sessionId), { startedAt: streamStartedAt })
-                return
-              }
-            }
-
-            // 累积 assistant 和 user 消息用于持久化
-            // - 跳过 replay 消息，避免 resume 时重复写入
-            // - 对 user 消息，仅累积含 tool_result 的（初始用户消息已在步骤 5 手动持久化）
-            // - 对 system 消息，仅累积 compact_boundary（上下文压缩分界线需要持久化显示）
-            if (msg.type === 'assistant' || msg.type === 'user' || msg.type === 'result') {
-              const msgRecord = msg as Record<string, unknown>
-              if (!msgRecord.isReplay) {
-                if (msg.type === 'user') {
-                  // 仅累积包含 tool_result 的 user 消息（跳过 SDK 重新发出的初始用户消息）
-                  const content = (msg as { message?: { content?: Array<{ type: string }> } }).message?.content
-                  const hasToolResult = Array.isArray(content) && content.some((b) => b.type === 'tool_result')
-                  if (hasToolResult) {
-                    accumulatedMessages.push(msg)
-                  }
-                } else {
-                  // 为 assistant 消息注入渠道 modelId，确保持久化后能正确匹配模型显示名
-                  if (msg.type === 'assistant' && modelId) {
-                    (msg as Record<string, unknown>)._channelModelId = modelId
-                  }
-                  accumulatedMessages.push(msg)
-                }
-              }
-            } else if (msg.type === 'system') {
-              const sysMsg = msg as import('@proma/shared').SDKSystemMessage
-              if (sysMsg.subtype === 'compact_boundary' || sysMsg.subtype === 'permission_denied') {
-                accumulatedMessages.push(msg)
-              }
-            }
-
-            // Turn 结束时：持久化累积消息
-            if (msg.type === 'result') {
-              capturedResultSubtype = (msg as { subtype?: string }).subtype
-              this.persistSDKMessages(sessionId, accumulatedMessages, Date.now() - queryStartedAt)
-              accumulatedMessages.length = 0
-              // 软中断 / 延迟工具 / hook 暂停等场景下，adapter 保留 channel
-              // 等待队列或后续消息继续 drive Query，此处跳过 drain 超时以免误关闭事件循环。
-              // 完整白名单见 adapters/claude-agent-adapter.ts 的 CONTINUABLE_TERMINAL_REASONS。
-              const resultTerminalReason = (msg as { terminal_reason?: string }).terminal_reason
-              // adapter 在"本轮结束但仍有后台任务/定时任务在飞行"时打的注解：
-              // 走轻量完成（UI 空闲可输入、host 保留会话），等待 task_notification 自动续轮。
-              const keptOpenForTasks = (msg as Record<string, unknown>)._keepChannelOpenForTasks === true
-              const keepChannelOpen = shouldKeepChannelOpen(resultTerminalReason) || keptOpenForTasks
-              // 分类打点：跟踪线上哪种 terminal_reason 最常见，配合 deferred_tool_use 回填决策
-              const hasDeferredTool = (msg as { deferred_tool_use?: unknown }).deferred_tool_use != null
-              console.log(
-                `[Agent 编排] result 到达: sessionId=${sessionId}, subtype=${capturedResultSubtype ?? 'unknown'}, ` +
-                `terminal_reason=${resultTerminalReason ?? 'undefined'}, keepChannelOpen=${keepChannelOpen}` +
-                (keptOpenForTasks ? ', keptOpenForTasks=true' : '') +
-                (hasDeferredTool ? ', hasDeferredTool=true' : ''),
-              )
-              if (keptOpenForTasks) {
-                // 轻量完成：UI 置空闲可输入，但 host 保持运行态（不 releaseActiveRun、不 break、不启动 drain 超时），
-                // while 循环继续 park 在 queryIterator.next()，等待后台任务完成时 SDK 自动 yield 的新一轮消息。
-                awaitingBackgroundWake = true
-                idleComplete(getAgentSessionMessages(sessionId), { startedAt: streamStartedAt, resultSubtype: capturedResultSubtype })
-              } else if (!keepChannelOpen && !drainTimeoutPromise) {
-                // 启动 drain 超时安全网：adapter 层 channel.close() 应让 iterator 自然关闭，
-                // 此处仅在极端情况下（如 SDK 版本不兼容）保护事件循环不无限挂起
-                drainTimeoutPromise = new Promise((resolve) =>
-                  setTimeout(() => resolve('drain_timeout'), RESULT_DRAIN_TIMEOUT_MS),
-                )
-              }
-            }
-
-            // 过滤 SDK 内部生成的 user 消息（如 Skill 展开文本），避免在前端渲染为用户消息
-            // 仅允许含 tool_result 的 user 消息通过（这些是工具调用的响应，需要展示）
-            // 初始用户消息已通过前端乐观注入显示，无需 SDK 重复推送
-            let shouldEmit = true
-            if (msg.type === 'user') {
-              const content = (msg as { message?: { content?: Array<{ type: string }> } }).message?.content
-              const hasToolResult = Array.isArray(content) && content.some((b) => b.type === 'tool_result')
-              if (!hasToolResult) {
-                shouldEmit = false
-              }
-            }
-
-            if (!shouldEmit) {
-              // 跳过 SDK 内部 user 消息的前端推送
-            } else {
-              this.eventBus.emit(sessionId, { kind: 'sdk_message', message: msg })
-            }
+          const ctx: SdkRunContext = {
+            sessionId, existingSdkSessionId, capturedSdkSessionId,
+            queryOptions, resolvedModel,
+            activeModelId,
+            accumulatedMessages, stderrChunks,
+            contextualMessage, agentCwd,
+            retryDelayElapsedMs, retryAttemptsScheduled,
+            skipNextRetryDelay,
+            thinkingSignatureRecoveryAttempted, invisibleRecoveryAttempts,
+            planModeEntered,
           }
 
-          // 错误 break 触发了 → 继续循环
-          if (shouldRetryFromError) {
+          const sdkCallbacks: SdkRunCallbacks = {
+            onApiRetry: async (retryError: string) => {
+              if (autoModeConfig.enabled && autoModeConfig.candidatePool.length > 0) {
+                const es = Math.round((Date.now() - queryStartedAt) / 1000)
+                console.log(`[Auto Mode] 检测到 SDK api_retry (attempt ${attempt}, t+${es}s, error=${retryError})，中断并触发切换`)
+                autoModeState.sameModelAttempts = MAX_SAME_MODEL_RETRIES
+                return 'retry'
+              }
+              // 非自动模式：api_retry 直接终止
+              const es = Math.round((Date.now() - queryStartedAt) / 1000)
+              console.log(`[Agent 编排] 检测到 SDK api_retry (attempt ${attempt}, t+${es}s, error=${retryError})，提前终止`)
+              return 'throw'
+            },
+            onSyncPlanMode: syncPlanModeFromToolUse,
+          }
+
+          const sdkDeps: SdkRunnerDeps = {
+            isActive: (sid: string) => this.activeSessions.has(sid),
+            abort: (sid: string) => this.adapter.abort(sid),
+            emit: (sid: string, event: any) => this.eventBus.emit(sid, event),
+            persistMessages: (sid: string, messages: SDKMessage[], elapsedMs: number) => persistSDKMessages(sid, messages, elapsedMs),
+            query: (opts: ClaudeAgentQueryOptions) => this.adapter.query(opts),
+          }
+
+          const result = await sdkRunSingleAttempt(ctx, sdkDeps, sdkCallbacks, attempt, queryStartedAt)
+
+          // 同步回 mutable 状态
+          capturedSdkSessionId = ctx.capturedSdkSessionId
+          thinkingSignatureRecoveryAttempted = ctx.thinkingSignatureRecoveryAttempted
+          invisibleRecoveryAttempts = ctx.invisibleRecoveryAttempts
+          planModeEntered = ctx.planModeEntered
+
+          if (result.kind === 'success') {
+            const capturedResultSubtype = result.capturedResultSubtype
+            const wasStoppedByUser = this.consumeStoppedByUser(sessionId)
+
+            if (!wasStoppedByUser && retryAttemptsScheduled > 0) {
+              lastRetryableError = undefined
+              this.eventBus.emit(sessionId, { kind: 'proma_event', event: { type: 'retry', status: 'cleared' } })
+              console.log(`[Agent 编排] 重试成功，已在第 ${attempt} 次尝试后恢复`)
+            }
+
+            retrySucceeded = true
+
+            if (autoModeConfig.enabled && activeModelId) {
+              try { updateAgentSessionMeta(sessionId, { activeModelId } as Partial<AgentSessionMeta>) } catch { /* ignore */ }
+            }
+
+            if (initialPermissionMode === 'plan' && planModeEntered && this.activeSessions.has(sessionId)) {
+              this.eventBus.emit(sessionId, {
+                kind: 'sdk_message',
+                message: { type: 'prompt_suggestion', suggestion: '请执行该计划' } as unknown as SDKMessage,
+              })
+              console.log(`[Agent 编排] Plan 模式：已注入计划确认建议`)
+            }
+
+            completeRun(getAgentSessionMessages(sessionId), { stoppedByUser: wasStoppedByUser, startedAt: streamStartedAt, resultSubtype: capturedResultSubtype })
+            break  // 成功完成，退出重试循环
+          }
+
+          if (result.kind === 'stopped_by_user') {
+            const wasStoppedByUser = this.consumeStoppedByUser(sessionId)
+            console.log(`[Agent 编排] 会话 ${sessionId} 已被用户中止`)
+            persistSDKMessages(sessionId, accumulatedMessages, Date.now() - queryStartedAt)
+            try { updateAgentSessionMeta(sessionId, { stoppedByUser: wasStoppedByUser }) } catch { /* ignore */ }
+            completeRun(getAgentSessionMessages(sessionId), { stoppedByUser: wasStoppedByUser, startedAt: streamStartedAt })
+            return
+          }
+
+          // error_break — 模式特定处理
+          if (result.shouldRetryFromError) {
+            // Session 不存在恢复
+            if (result.recoveryType === 'session_not_found' && existingSdkSessionId) {
+              existingSdkSessionId = undefined
+              capturedSdkSessionId = undefined
+              lastRetryableError = prepareSessionNotFoundRecovery(sessionId, queryOptions, contextualMessage, agentCwd, accumulatedMessages, queryStartedAt)
+              stderrChunks.length = 0
+              continue
+            }
+
+            // Thinking signature 恢复
+            if (result.recoveryType === 'thinking_signature' && canTryThinkingSignatureRecovery(attempt)) {
+              thinkingSignatureRecoveryAttempted = true
+              invisibleRecoveryAttempts += 1
+              existingSdkSessionId = undefined
+              capturedSdkSessionId = undefined
+              skipNextRetryDelay = true
+              lastRetryableError = prepareResumeFallbackRecovery(
+                sessionId, queryOptions, contextualMessage, agentCwd,
+                accumulatedMessages, queryStartedAt,
+                '检测到 thinking signature 不兼容，清除 sdkSessionId 并切换到上下文回填模式',
+                '思考签名不兼容，切换到上下文回填模式',
+              )
+              stderrChunks.length = 0
+              continue
+            }
+
+            // API 失败：Auto Mode 尝试切换模型，非 Auto 直接 continue
+            if (autoModeConfig.enabled && autoModeConfig.candidatePool.length > 0) {
+              autoModeState.sameModelAttempts++
+              console.log(`[Auto Mode] 模型失败计数: ${autoModeState.activeModelId} -> ${autoModeState.sameModelAttempts}/${MAX_SAME_MODEL_RETRIES} (attempt ${attempt})`)
+              if (!await trySwitchAutoModeModel()) break
+            }
+
             continue
           }
 
-          const wasStoppedByUser = this.consumeStoppedByUser(sessionId)
+          // 不可重试：throw 进入 catch 块做错误展示
+          throw new Error('Non-retryable SDK error')
 
-          // 正常完成 — 如果之前有重试，发送 retry_cleared
-          if (!wasStoppedByUser && retryAttemptsScheduled > 0) {
-            this.eventBus.emit(sessionId, { kind: 'proma_event', event: { type: 'retry', status: 'cleared' } })
-            console.log(`[Agent 编排] 重试成功，已在第 ${attempt} 次尝试后恢复`)
-          }
-          retrySucceeded = true
-
-          // 15. 持久化 assistant 消息
-          this.persistSDKMessages(sessionId, accumulatedMessages, Date.now() - queryStartedAt)
-
-          try { updateAgentSessionMeta(sessionId, wasStoppedByUser ? { stoppedByUser: true } : {}) } catch { /* 忽略 */ }
-
-          // Plan 模式：Agent 完成规划后注入"接受计划"建议
-          if (initialPermissionMode === 'plan' && planModeEntered && this.activeSessions.has(sessionId)) {
-            this.eventBus.emit(sessionId, {
-              kind: 'sdk_message',
-              message: { type: 'prompt_suggestion', suggestion: '请执行该计划' } as unknown as SDKMessage,
-            })
-            console.log(`[Agent 编排] Plan 模式：已注入计划确认建议`)
-          }
-
-          // 发送完成信号
-          completeRun(getAgentSessionMessages(sessionId), { stoppedByUser: wasStoppedByUser, startedAt: streamStartedAt, resultSubtype: capturedResultSubtype })
-
-          break  // 成功完成，退出重试循环
 
         } catch (error) {
-          // 打印 stderr
-          const fullStderr = stderrChunks.join('').trim()
-          if (fullStderr) {
-            console.error(`[Agent 编排] 完整 stderr 输出 (${fullStderr.length} 字符):`)
-            console.error(fullStderr)
-          } else {
-            console.error(`[Agent 编排] stderr 为空`)
-          }
+          // 打印 stderr（结构化日志由 error-presenter 处理）
+          logStderr(stderrChunks)
 
           // 用户主动中止
           if (!this.activeSessions.has(sessionId)) {
             const wasStoppedByUser = this.consumeStoppedByUser(sessionId)
             console.log(`[Agent 编排] 会话 ${sessionId} 已被用户中止`)
-            this.persistSDKMessages(sessionId, accumulatedMessages, Date.now() - queryStartedAt)
+            persistSDKMessages(sessionId, accumulatedMessages, Date.now() - queryStartedAt)
             // 持久化中断状态到会话 meta
             try { updateAgentSessionMeta(sessionId, { stoppedByUser: wasStoppedByUser }) } catch { /* 会话可能已删除 */ }
             completeRun(getAgentSessionMessages(sessionId), { stoppedByUser: wasStoppedByUser, startedAt: streamStartedAt })
@@ -2065,7 +1191,7 @@ export class AgentOrchestrator {
           if (isSessionNotFoundError(rawErrorMessage, stderrOutput) && existingSdkSessionId && canAutoRetry(attempt)) {
             existingSdkSessionId = undefined
             capturedSdkSessionId = undefined
-            lastRetryableError = this.prepareSessionNotFoundRecovery(sessionId, queryOptions, contextualMessage, agentCwd, accumulatedMessages, queryStartedAt)
+            lastRetryableError = prepareSessionNotFoundRecovery(sessionId, queryOptions, contextualMessage, agentCwd, accumulatedMessages, queryStartedAt)
             stderrChunks.length = 0
             continue  // 进入下一次 retry 循环
           }
@@ -2080,7 +1206,7 @@ export class AgentOrchestrator {
             existingSdkSessionId = undefined
             capturedSdkSessionId = undefined
             skipNextRetryDelay = true
-            lastRetryableError = this.prepareResumeFallbackRecovery(
+            lastRetryableError = prepareResumeFallbackRecovery(
               sessionId,
               queryOptions,
               contextualMessage,
@@ -2101,85 +1227,34 @@ export class AgentOrchestrator {
               : (error instanceof Error ? error.message : '未知错误')
             console.log(`[Agent 编排] 可重试错误 (catch, attempt ${attempt}/${MAX_AUTO_RETRIES}): ${lastRetryableError}`)
             // 保存部分内容
-            this.persistSDKMessages(sessionId, accumulatedMessages, Date.now() - queryStartedAt)
+            persistSDKMessages(sessionId, accumulatedMessages, Date.now() - queryStartedAt)
             accumulatedMessages.length = 0
             stderrChunks.length = 0
             continue  // 进入下一次 retry 循环
           }
 
-          // 不可重试 — 走原有终止逻辑
-          const errorMessage = error instanceof Error ? error.message : '未知错误'
+          // 不可重试 — 分类错误并构建用户可见消息
           console.error(`[Agent 编排] 执行失败:`, error)
 
           // 保存已累积的部分内容
           if (accumulatedMessages.length > 0) {
             try {
-              this.persistSDKMessages(sessionId, accumulatedMessages, Date.now() - queryStartedAt)
+              persistSDKMessages(sessionId, accumulatedMessages, Date.now() - queryStartedAt)
               console.log(`[Agent 编排] 已保存部分执行结果 (${accumulatedMessages.length} 条消息)`)
             } catch (saveError) {
               console.error('[Agent 编排] 保存部分内容失败:', saveError)
             }
           }
 
-          let userFacingError: string
-          if (apiError) {
-            userFacingError = friendlyErrorMessage(`API 错误 (${apiError.statusCode}):\n${apiError.message}`)
-          } else {
-            userFacingError = friendlyErrorMessage(errorMessage)
-          }
+          // 错误分类 + 用户可见消息
+          const classified = classifyCatchError(error, stderrOutput, apiError)
+          const userFacingError = classified.errorContent
 
           // 保存错误消息到 JSONL
           try {
-            // 检测是否为 prompt too long 错误
-            const isPromptTooLong = isPromptTooLongError(
-              userFacingError,
-              error instanceof Error ? (error.stack ?? error.message) : String(error),
-              stderrOutput,
-            )
-            const isThinkingSignature = isThinkingSignatureError(
-              apiError?.message ?? '',
-              userFacingError,
-              rawErrorMessage,
-              error instanceof Error ? (error.stack ?? error.message) : String(error),
-              stderrOutput,
-            )
-            const errorCode = isPromptTooLong
-              ? 'prompt_too_long'
-              : isThinkingSignature
-                ? THINKING_SIGNATURE_ERROR_CODE
-                : 'unknown_error'
-            const errorTitle = isPromptTooLong
-              ? '上下文过长'
-              : isThinkingSignature
-                ? THINKING_SIGNATURE_ERROR_TITLE
-                : '执行错误'
-            const errorContent = isPromptTooLong
-              ? '上下文过长：当前对话的上下文已超出模型限制，请压缩上下文或开启新会话'
-              : isThinkingSignature
-                ? `${THINKING_SIGNATURE_ERROR_TITLE}：${THINKING_SIGNATURE_ERROR_MESSAGE}`
-                : userFacingError
-            const errorActions = isThinkingSignature
-              ? [
-                  { key: 'n', label: '在新对话继续', action: 'retry_in_new_session' },
-                  { key: 'r', label: '重试', action: 'retry' },
-                ]
-              : undefined
-            userFacingError = errorContent
-
-            const errMsg: SDKMessage = {
-              type: 'assistant',
-              message: {
-                content: [{ type: 'text', text: errorContent }],
-              },
-              parent_tool_use_id: null,
-              error: { message: errorContent, errorType: errorCode },
-              _createdAt: Date.now(),
-              _errorCode: errorCode,
-              _errorTitle: errorTitle,
-              _errorActions: errorActions,
-            } as unknown as SDKMessage
+            const errMsg = buildErrorSDKMessage(classified)
             appendSDKMessages(sessionId, [errMsg])
-            console.log(`[Agent 编排] 已保存错误消息到 JSONL`)
+            console.log(`[Agent 编排] 已保存错误消息到 JSONL (code=${classified.errorCode})`)
           } catch (saveError) {
             console.error('[Agent 编排] 保存错误消息失败:', saveError)
           }
@@ -2195,7 +1270,7 @@ export class AgentOrchestrator {
           failRun(userFacingError, getAgentSessionMessages(sessionId), { startedAt: streamStartedAt })
 
           // 根据错误类型决定是否保留 sdkSessionId
-          const shouldClearSession = !apiError || apiError.statusCode >= 500
+          const shouldClearSession = shouldClearSDKSessionId(apiError)
           if (existingSdkSessionId && shouldClearSession) {
             try {
               updateAgentSessionMeta(sessionId, { sdkSessionId: undefined })
@@ -2292,78 +1367,13 @@ export class AgentOrchestrator {
   /**
    * 回退会话到指定消息点
    *
-   * 1. 直接从 SDK JSONL 的 file-history-snapshot 恢复文件到目标时刻的状态
-   * 2. 截断 Proma JSONL 到 assistantMessageUuid（inclusive）
-   * 3. 记录 resumeAtMessageUuid，下次发消息时 SDK 从该点分支继续
-   *
-   * 文件恢复通过解析 SDK JSONL 中的快照完成，无需运行中的 Query。
-   * 文件恢复失败时仍然截断对话（优雅降级）。
+   * 委托给 orchestrator/rewind.ts
    */
   async rewindSession(
     sessionId: string,
     assistantMessageUuid: string,
   ): Promise<RewindSessionResult> {
-    // 0. 阻止运行中会话回退（JSONL 并发写入会损坏文件）
-    if (this.activeSessions.has(sessionId)) {
-      throw new Error('会话正在运行中，请停止后再回退')
-    }
-
-    const sessionMeta = getAgentSessionMeta(sessionId)
-    if (!sessionMeta?.sdkSessionId) {
-      throw new Error('会话没有 SDK session ID，无法回退')
-    }
-
-    // 0.5 从 SDK session JSONL 解析对应的 user message UUID（rewindFiles 需要）
-    let projectDir: string | undefined
-    let workspaceSlug: string | undefined
-    if (sessionMeta.workspaceId) {
-      const ws = getAgentWorkspace(sessionMeta.workspaceId)
-      if (ws) {
-        workspaceSlug = ws.slug
-        projectDir = getAgentSessionWorkspacePath(ws.slug, sessionMeta.id)
-      }
-    }
-    const userMessageUuid = resolveUserUuidFromSDK(sessionMeta.sdkSessionId, assistantMessageUuid, projectDir, sessionMeta.forkSourceSdkSessionId)
-    console.log(`[Agent 编排] 回退: 解析 user uuid=${userMessageUuid || '未找到'} (assistant uuid=${assistantMessageUuid}, forkSource=${sessionMeta.forkSourceSdkSessionId ?? 'none'})`)
-
-    // 1. 文件恢复：直接从 SDK JSONL 的 file-history-snapshot 恢复，无需临时 Query
-    let fileRewindResult: { canRewind: boolean; error?: string; filesChanged?: string[]; insertions?: number; deletions?: number } | undefined
-    if (userMessageUuid === '__LAST_TURN__') {
-      // 最后一个 turn：当前文件系统已是该 turn 完成后的状态，无需回退文件
-      console.log(`[Agent 编排] 回退: 最后一个 turn，跳过文件恢复`)
-      fileRewindResult = { canRewind: true, filesChanged: [] }
-    } else if (userMessageUuid) {
-      try {
-        // 确定 cwd（文件的基准路径）
-        let cwd = homedir()
-        if (projectDir) cwd = projectDir
-        // 收集附加目录（必须与 sendMessage 中传给 SDK 的 additionalDirectories 一致，
-        // 否则会话级 attachedDirectories 内的文件会因路径越界检查被静默跳过）
-        const rewindAttachedDirs = collectAttachedDirectories({ sessionMeta, workspaceSlug })
-        console.log(`[Agent 编排] 回退: 直接从 snapshot 恢复文件 (cwd=${cwd}, forkSource=${sessionMeta.forkSourceSdkSessionId ?? 'none'}, attachedDirs=${rewindAttachedDirs.length})`)
-        fileRewindResult = rewindFilesFromSnapshot(sessionMeta.sdkSessionId, userMessageUuid, cwd, projectDir, sessionMeta.forkSourceSdkSessionId, rewindAttachedDirs)
-      } catch (err) {
-        const errMsg = err instanceof Error ? err.message : String(err)
-        console.warn('[Agent 编排] 文件恢复失败，继续截断对话:', errMsg)
-        if (err instanceof Error && err.stack) console.warn('[Agent 编排] 文件恢复错误堆栈:', err.stack)
-        fileRewindResult = { canRewind: false, error: errMsg }
-      }
-    } else {
-      fileRewindResult = { canRewind: false, error: '无法从 SDK session 中解析 user message UUID' }
-    }
-
-    // 2. 截断 Proma JSONL
-    const kept = truncateSDKMessages(sessionId, assistantMessageUuid)
-
-    // 3. 记录 resumeAtMessageUuid，下次发消息时 SDK 从此点继续
-    updateAgentSessionMeta(sessionId, { resumeAtMessageUuid: assistantMessageUuid })
-
-    console.log(`[Agent 编排] 回退完成: sessionId=${sessionId}, 保留 ${kept.length} 条消息, 文件恢复=${fileRewindResult?.canRewind ?? '跳过'}`)
-
-    return {
-      remainingMessages: kept.length,
-      fileRewind: fileRewindResult,
-    }
+    return rewindSessionImpl(sessionId, assistantMessageUuid, this.activeSessions)
   }
 
   /** 中止所有活跃的 Agent 会话（应用退出时调用） */
