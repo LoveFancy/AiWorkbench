@@ -9,7 +9,7 @@
  * 不侵入 Proma 核心文件，所有 WorkMate 特定逻辑集中于此。
  */
 
-import { init as initObservability, shutdown as shutdownObservability } from './observability-service'
+import { init as initObservability, shutdown as shutdownObservability, reportStartupEvent } from './observability-service'
 import { registerGlobalErrorHandlers } from './error-handler'
 import { resolveApiBase } from '../../shared/hteip-client'
 import type { ObservabilityConfig } from '../../types/workmate'
@@ -22,7 +22,7 @@ function getWorkmateServerUrl(): string {
   return _serverUrl
 }
 
-export function initWorkmateServices(): void {
+export function initWorkmateServices(startupDurationMs?: number): void {
   // 1. 全局异常捕获（必须在最前面注册）
   registerGlobalErrorHandlers()
 
@@ -43,6 +43,11 @@ export function initWorkmateServices(): void {
   initObservability(config)
 
   console.log('[WorkMate] 观测上报服务已初始化, url=%s', config.url)
+
+  // 3. 上报 App 启动事件
+  if (startupDurationMs !== undefined) {
+    reportStartupEvent(startupDurationMs)
+  }
 }
 
 export async function shutdownWorkmateServices(): Promise<void> {

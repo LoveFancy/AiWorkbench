@@ -559,8 +559,8 @@ async function bootstrap(): Promise<void> {
   registerPlatformModelsIpcHandlers()
   elapsed('bootstrap: IPC handlers 注册完成')
 
-  // WorkMate 观测上报服务初始化
-  safeRun('initWorkmateServices', initWorkmateServices)
+  // WorkMate 观测上报服务初始化（传入启动耗时用于 app_startup 上报）
+  safeRun('initWorkmateServices', () => initWorkmateServices(Date.now() - STARTUP_TIME))
   elapsed('bootstrap: WorkMate 服务初始化完成')
 
   // 从磁盘加载模型缓存
