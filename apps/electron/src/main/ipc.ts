@@ -9,7 +9,7 @@ import { join, resolve, sep, dirname, extname, relative } from 'node:path'
 import { existsSync, realpathSync, rmSync, readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { IPC_CHANNELS, CHANNEL_IPC_CHANNELS, CHAT_IPC_CHANNELS, AGENT_IPC_CHANNELS, ENVIRONMENT_IPC_CHANNELS, INSTALLER_IPC_CHANNELS, PROXY_IPC_CHANNELS, GITHUB_RELEASE_IPC_CHANNELS, SYSTEM_PROMPT_IPC_CHANNELS, MEMORY_IPC_CHANNELS, CHAT_TOOL_IPC_CHANNELS, FEISHU_IPC_CHANNELS, DINGTALK_IPC_CHANNELS, WECHAT_IPC_CHANNELS, AUTOMATION_IPC_CHANNELS, SYSTEM_LOG_IPC_CHANNELS, isPromaPermissionMode } from '@proma/shared'
+import { IPC_CHANNELS, CHANNEL_IPC_CHANNELS, CHAT_IPC_CHANNELS, AGENT_IPC_CHANNELS, EXPERT_IPC_CHANNELS, ENVIRONMENT_IPC_CHANNELS, INSTALLER_IPC_CHANNELS, PROXY_IPC_CHANNELS, GITHUB_RELEASE_IPC_CHANNELS, SYSTEM_PROMPT_IPC_CHANNELS, MEMORY_IPC_CHANNELS, CHAT_TOOL_IPC_CHANNELS, FEISHU_IPC_CHANNELS, DINGTALK_IPC_CHANNELS, WECHAT_IPC_CHANNELS, AUTOMATION_IPC_CHANNELS, SYSTEM_LOG_IPC_CHANNELS, isPromaPermissionMode } from '@proma/shared'
 import { USER_PROFILE_IPC_CHANNELS, SETTINGS_IPC_CHANNELS, SCRATCH_PAD_IPC_CHANNELS, QUICK_TASK_IPC_CHANNELS, VOICE_DICTATION_IPC_CHANNELS, APP_ICON_IPC_CHANNELS, DOCK_BADGE_IPC_CHANNELS, STORAGE_IPC_CHANNELS } from '../types'
 import type {
   QuickTaskSubmitInput,
@@ -123,6 +123,8 @@ import type {
   AgentPluginInstallInput,
   AgentPluginInstallResult,
   AgentExpertGroupInfo,
+  ServerExpertGroupSummary,
+  FeaturedScene,
   Automation,
   CreateAutomationInput,
   UpdateAutomationInput,
@@ -757,8 +759,6 @@ export function resolveAppIconPath(variantId: string): string | null {
 }
 
 export function registerIpcHandlers(): void {
-  console.log('[IPC] 正在注册 IPC 处理器...')
-
   // ===== 运行时相关 =====
 
   // 获取运行时状态
@@ -1329,6 +1329,10 @@ export function registerIpcHandlers(): void {
       if (result.canceled || !result.filePath) return false
 
       const base64 = readAttachmentAsBase64(localPath)
+      if (!base64) {
+        console.warn(`[文件另存] 附件文件不存在: ${localPath}`)
+        return false
+      }
       writeFileSync(result.filePath, Buffer.from(base64, 'base64'))
       return true
     }
@@ -2432,6 +2436,40 @@ export function registerIpcHandlers(): void {
     }
   )
 
+  // ===== 专家团服务端化 =====
+
+  ipcMain.handle(
+    EXPERT_IPC_CHANNELS.FETCH_SERVER_EXPERT_GROUPS,
+    async (): Promise<ServerExpertGroupSummary[]> => {
+      const { fetchServerExpertGroups } = await import('./lib/expert-remote-service')
+      return fetchServerExpertGroups()
+    }
+  )
+
+  ipcMain.handle(
+    EXPERT_IPC_CHANNELS.FETCH_FEATURED_SCENES,
+    async (): Promise<FeaturedScene[]> => {
+      const { fetchFeaturedScenes } = await import('./lib/expert-remote-service')
+      return fetchFeaturedScenes()
+    }
+  )
+
+  ipcMain.handle(
+    EXPERT_IPC_CHANNELS.DOWNLOAD_REMOTE_EXPERT,
+    async (_, groupId: string): Promise<AgentPluginInfo> => {
+      const { downloadAndInstallRemoteExpert } = await import('./lib/expert-download-service')
+      return downloadAndInstallRemoteExpert(groupId)
+    }
+  )
+
+  ipcMain.handle(
+    EXPERT_IPC_CHANNELS.CANCEL_DOWNLOAD,
+    async (_, groupId: string): Promise<void> => {
+      // 初版不实现断点续传/取消，预留通道
+      console.log('[IPC] 取消下载请求（初版未实现）:', groupId)
+    }
+  )
+
   // 发送 Agent 消息（触发 Agent SDK 流式响应）
   ipcMain.handle(
     AGENT_IPC_CHANNELS.SEND_MESSAGE,
@@ -3133,6 +3171,24 @@ export function registerIpcHandlers(): void {
       }
 
       shell.showItemInFolder(safePath)
+    }
+  )
+
+  // 在系统文件管理器中打开插件目录
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.SHOW_PLUGIN_IN_FOLDER,
+    async (_, pluginPath: string): Promise<void> => {
+      const { resolve } = await import('node:path')
+      const { getUserPluginsDir } = await import('./lib/config-paths')
+
+      const safePath = resolve(pluginPath)
+      const pluginsRoot = resolve(getUserPluginsDir())
+      // 仅允许在插件目录范围内
+      if (!safePath.startsWith(pluginsRoot)) {
+        throw new Error('访问路径超出插件目录范围')
+      }
+
+      shell.openPath(safePath)
     }
   )
 
@@ -4191,7 +4247,7 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  console.log('[IPC] IPC 处理器注册完成')
+  console.log('[IPC] 处理器注册完成')
 
   // 注册更新 IPC 处理器
   registerUpdaterIpc()

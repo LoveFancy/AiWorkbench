@@ -5,8 +5,15 @@
  * 使用上下文隔离确保安全性
  */
 
+// 启动耗时追踪
+const PRELOAD_START_MS = Date.now()
+function preloadElapsed(label: string): void {
+  console.log(`[启动耗时-preload] +${((Date.now() - PRELOAD_START_MS) / 1000).toFixed(2)}s | ${label}`)
+}
+preloadElapsed('preload 脚本开始执行')
+
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import { IPC_CHANNELS, CHANNEL_IPC_CHANNELS, CHAT_IPC_CHANNELS, AGENT_IPC_CHANNELS, ENVIRONMENT_IPC_CHANNELS, INSTALLER_IPC_CHANNELS, PROXY_IPC_CHANNELS, GITHUB_RELEASE_IPC_CHANNELS, SYSTEM_PROMPT_IPC_CHANNELS, MEMORY_IPC_CHANNELS, CHAT_TOOL_IPC_CHANNELS, FEISHU_IPC_CHANNELS, DINGTALK_IPC_CHANNELS, WECHAT_IPC_CHANNELS, AUTOMATION_IPC_CHANNELS, SYSTEM_LOG_IPC_CHANNELS } from '@proma/shared'
+import { IPC_CHANNELS, CHANNEL_IPC_CHANNELS, CHAT_IPC_CHANNELS, AGENT_IPC_CHANNELS, EXPERT_IPC_CHANNELS, ENVIRONMENT_IPC_CHANNELS, INSTALLER_IPC_CHANNELS, PROXY_IPC_CHANNELS, GITHUB_RELEASE_IPC_CHANNELS, SYSTEM_PROMPT_IPC_CHANNELS, MEMORY_IPC_CHANNELS, CHAT_TOOL_IPC_CHANNELS, FEISHU_IPC_CHANNELS, DINGTALK_IPC_CHANNELS, WECHAT_IPC_CHANNELS, AUTOMATION_IPC_CHANNELS, SYSTEM_LOG_IPC_CHANNELS } from '@proma/shared'
 import { USER_PROFILE_IPC_CHANNELS, SETTINGS_IPC_CHANNELS, SCRATCH_PAD_IPC_CHANNELS, APP_ICON_IPC_CHANNELS, DOCK_BADGE_IPC_CHANNELS, STORAGE_IPC_CHANNELS } from '../types'
 import type {
   RuntimeStatus,
@@ -66,6 +73,9 @@ import type {
   AgentPluginInstallResult,
   AgentPluginMarketplaceType,
   AgentExpertGroupInfo,
+  ServerExpertGroupSummary,
+  FeaturedScene,
+  RemoteDownloadProgress,
   FileEntry,
   CreateFileEntryInput,
   FileSearchResult,
@@ -588,6 +598,19 @@ export interface ElectronAPI {
   /** 测试插件 MCP */
   testAgentPluginMcp: (serverId: string) => Promise<{ success: boolean; message: string }>
 
+  // ===== 专家团服务端化 =====
+
+  /** 获取服务端专家团列表 */
+  fetchServerExpertGroups: () => Promise<ServerExpertGroupSummary[]>
+  /** 获取精选场景分类 */
+  fetchFeaturedScenes: () => Promise<FeaturedScene[]>
+  /** 下载并安装远程专家团 */
+  downloadRemoteExpert: (groupId: string) => Promise<AgentPluginInfo>
+  /** 取消远程专家团下载 */
+  cancelRemoteDownload: (groupId: string) => Promise<void>
+  /** 订阅下载进度事件（返回清理函数） */
+  onExpertDownloadProgress: (callback: (progress: RemoteDownloadProgress) => void) => () => void
+
   // ===== Agent 工作区管理相关 =====
 
   /** 获取 Agent 工作区列表 */
@@ -846,6 +869,9 @@ export interface ElectronAPI {
 
   /** 在系统文件管理器中显示文件 */
   showInFolder: (filePath: string) => Promise<void>
+
+  /** 在系统文件管理器中打开插件目录 */
+  showPluginInFolder: (pluginPath: string) => Promise<void>
 
   /** 解析文件路径并读取内容（供内联预览使用） */
   resolveAndReadFile: (filePath: string, access?: import('@proma/shared').FileAccessOptions) => Promise<{ resolvedPath: string; content: string } | null>
@@ -1783,6 +1809,30 @@ const electronAPI: ElectronAPI = {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.TEST_PLUGIN_MCP, serverId)
   },
 
+  // ===== 专家团服务端化 =====
+
+  fetchServerExpertGroups: () => {
+    return ipcRenderer.invoke(EXPERT_IPC_CHANNELS.FETCH_SERVER_EXPERT_GROUPS)
+  },
+
+  fetchFeaturedScenes: () => {
+    return ipcRenderer.invoke(EXPERT_IPC_CHANNELS.FETCH_FEATURED_SCENES)
+  },
+
+  downloadRemoteExpert: (groupId: string) => {
+    return ipcRenderer.invoke(EXPERT_IPC_CHANNELS.DOWNLOAD_REMOTE_EXPERT, groupId)
+  },
+
+  cancelRemoteDownload: (groupId: string) => {
+    return ipcRenderer.invoke(EXPERT_IPC_CHANNELS.CANCEL_DOWNLOAD, groupId)
+  },
+
+  onExpertDownloadProgress: (callback: (progress: RemoteDownloadProgress) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, progress: RemoteDownloadProgress) => callback(progress)
+    ipcRenderer.on(EXPERT_IPC_CHANNELS.DOWNLOAD_PROGRESS, listener)
+    return () => { ipcRenderer.removeListener(EXPERT_IPC_CHANNELS.DOWNLOAD_PROGRESS, listener) }
+  },
+
   getWorkspaceCapabilities: (workspaceSlug: string) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_CAPABILITIES, workspaceSlug)
   },
@@ -2138,6 +2188,9 @@ const electronAPI: ElectronAPI = {
 
   showInFolder: (filePath: string) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.SHOW_IN_FOLDER, filePath)
+  },
+  showPluginInFolder: (pluginPath: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.SHOW_PLUGIN_IN_FOLDER, pluginPath)
   },
 
   resolveAndReadFile: (filePath: string, access?: import('@proma/shared').FileAccessOptions) => {
@@ -2683,7 +2736,9 @@ const electronAPI: ElectronAPI = {
 }
 
 // 将 API 暴露到渲染进程的 window 对象上
+preloadElapsed('准备暴露 electronAPI 到渲染进程')
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)
+preloadElapsed('electronAPI 暴露完成，preload 脚本结束')
 
 // 扩展 Window 接口的类型定义
 declare global {

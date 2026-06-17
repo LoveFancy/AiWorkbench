@@ -23,11 +23,12 @@ import { AgentHeader } from './AgentHeader'
 import { ContextUsageBadge } from './ContextUsageBadge'
 import { PermissionBanner } from './PermissionBanner'
 import { PermissionModeSelector } from './PermissionModeSelector'
-import { ExpertSummonButton } from './ExpertSummonButton'
+import { ExpertSummonButton } from '@/experts/picker/ExpertSummonButton'
 import { AskUserBanner } from './AskUserBanner'
 import { ExitPlanModeBanner } from './ExitPlanModeBanner'
 import { PlanModeDashedBorder } from './PlanModeDashedBorder'
 import { ModelSelector } from '@/components/chat/ModelSelector'
+import { CandidateModelDialog } from '@/components/settings/CandidateModelDialog'
 import { AttachmentPreviewItem } from '@/components/chat/AttachmentPreviewItem'
 import { QuotedSelectionChip } from '@/components/diff/QuotedSelectionChip'
 import { RichTextInput } from '@/components/ai-elements/rich-text-input'
@@ -96,6 +97,7 @@ import type { AgentContextStatus } from '@/atoms/agent-atoms'
 import { settingsOpenAtom } from '@/atoms/settings-tab'
 import { channelsAtom, thinkingExpandedAtom } from '@/atoms/chat-atoms'
 import { useOpenSession } from '@/hooks/useOpenSession'
+import { useAutoMode } from '@/hooks/useAutoMode'
 import { AgentSessionProvider } from '@/contexts/session-context'
 import { draftSessionIdsAtom } from '@/atoms/draft-session-atoms'
 import { sendWithCmdEnterAtom } from '@/atoms/shortcut-atoms'
@@ -344,6 +346,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
   const setSettingsOpen = useSetAtom(settingsOpenAtom)
   const setDraftSessionIds = useSetAtom(draftSessionIdsAtom)
   const globalWorkspaceId = useAtomValue(currentAgentWorkspaceIdAtom)
+  const autoMode = useAutoMode()
   const sessions = useAtomValue(agentSessionsAtom)
   // 从会话元数据派生 workspaceId：会话数据已加载时以自身为准，未加载时回退全局 atom
   const currentWorkspaceId = React.useMemo(() => {
@@ -793,7 +796,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
     const snapshot = {
       message: pendingPrompt.message,
       channelId: agentChannelId,
-      modelId: agentModelId || undefined,
+      modelId: autoMode.enabled ? undefined : (agentModelId || undefined),
       workspaceId: currentWorkspaceId || undefined,
       additionalDirectories: Array.from(new Set([...attachedDirs, ...attachedFileDirectories, ...(pendingPrompt.additionalDirectories ?? [])])),
     }
@@ -852,7 +855,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
         })
       })
     })
-  }, [messagesLoaded, pendingPrompt, sessionId, agentChannelId, agentModelId, currentWorkspaceId, streaming, setPendingPrompt, setStreamingStates, permissionMode, attachedDirs, attachedFileDirectories])
+  }, [messagesLoaded, pendingPrompt, sessionId, agentChannelId, agentModelId, autoMode.enabled, currentWorkspaceId, streaming, setPendingPrompt, setStreamingStates, permissionMode, attachedDirs, attachedFileDirectories])
   // ===== 附件处理 =====
 
   /** 为文件生成唯一文件名（避免粘贴多张图片时文件名重复导致覆盖） */
@@ -1554,7 +1557,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       sessionId,
       userMessage: finalMessage,
       channelId: agentChannelId,
-      modelId: agentModelId || undefined,
+      modelId: autoMode.enabled ? undefined : (agentModelId || undefined),
       workspaceId: currentWorkspaceId || undefined,
       startedAt: streamStartedAt,
       permissionModeOverride: permissionMode,
@@ -1585,7 +1588,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
         return map
       })
     })
-  }, [inputContent, attachedDirs, attachedFileDirectories, sessionId, agentChannelId, agentModelId, currentWorkspaceId, workspaces, streaming, backgroundWaiting, suggestion, hasAvailableModel, currentAgentModelSupportsMultimodal, showBlockedPngToast, store, setStreamingStates, setPendingFiles, setAgentStreamErrors, setPromptSuggestions, setInputContent, setLiveMessagesMap, permissionMode, messagesLoaded])
+  }, [inputContent, attachedDirs, attachedFileDirectories, sessionId, agentChannelId, agentModelId, autoMode.enabled, currentWorkspaceId, workspaces, streaming, backgroundWaiting, suggestion, hasAvailableModel, currentAgentModelSupportsMultimodal, showBlockedPngToast, store, setStreamingStates, setPendingFiles, setAgentStreamErrors, setPromptSuggestions, setInputContent, setLiveMessagesMap, permissionMode, messagesLoaded])
 
   /** 停止生成 */
   const handleStop = React.useCallback((): void => {
@@ -1647,7 +1650,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       sessionId,
       userMessage: '/compact',
       channelId: agentChannelId,
-      modelId: agentModelId || undefined,
+      modelId: autoMode.enabled ? undefined : (agentModelId || undefined),
       workspaceId: currentWorkspaceId || undefined,
       startedAt: streamStartedAt,
       permissionModeOverride: permissionMode,
@@ -1670,7 +1673,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
         return map
       })
     })
-  }, [sessionId, agentChannelId, agentModelId, currentWorkspaceId, streaming, setStreamingStates, store, permissionMode])
+  }, [sessionId, agentChannelId, agentModelId, autoMode.enabled, currentWorkspaceId, streaming, setStreamingStates, store, permissionMode])
 
   /** 复制错误信息到剪贴板 */
   const handleCopyError = React.useCallback(async (): Promise<void> => {
@@ -1725,12 +1728,12 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       sessionId,
       userMessage: lastUserMessage,
       channelId: agentChannelId,
-      modelId: agentModelId || undefined,
+      modelId: autoMode.enabled ? undefined : (agentModelId || undefined),
       workspaceId: currentWorkspaceId || undefined,
       startedAt: streamStartedAt,
       permissionModeOverride: permissionMode,
     }).catch(console.error)
-  }, [persistedSDKMessages, sessionId, agentChannelId, agentModelId, currentWorkspaceId, streaming, setAgentStreamErrors, setStreamingStates, permissionMode])
+  }, [persistedSDKMessages, sessionId, agentChannelId, agentModelId, autoMode.enabled, currentWorkspaceId, streaming, setAgentStreamErrors, setStreamingStates, permissionMode])
 
   /** 在新对话继续：创建新会话 + 切换 tab + 使用 &session 引用旧会话 */
   const handleRetryInNewSession = React.useCallback(async (): Promise<void> => {
@@ -1756,7 +1759,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
           running: true,
           content: '',
           toolActivities: [],
-          model: agentModelId || undefined,
+          model: autoMode.enabled ? undefined : (agentModelId || undefined),
           startedAt: streamStartedAt,
         })
         return map
@@ -1766,7 +1769,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
         sessionId: meta.id,
         userMessage: prompt,
         channelId: agentChannelId,
-        modelId: agentModelId || undefined,
+        modelId: autoMode.enabled ? undefined : (agentModelId || undefined),
         workspaceId: currentWorkspaceId || undefined,
         mentionedSessionIds: [sessionId],
         startedAt: streamStartedAt,
@@ -1775,7 +1778,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
     } catch (error) {
       console.error('[AgentView] 在新会话中重试失败:', error)
     }
-  }, [sessionId, agentChannelId, agentModelId, currentWorkspaceId, openSession, setAgentSessions, setStreamingStates, permissionMode])
+  }, [sessionId, agentChannelId, agentModelId, autoMode.enabled, currentWorkspaceId, openSession, setAgentSessions, setStreamingStates, permissionMode])
 
   /** 分叉会话：从指定消息处创建新会话并自动切换 */
   const handleFork = React.useCallback(async (upToMessageUuid: string): Promise<void> => {
@@ -1911,6 +1914,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
           filterChannelIds={agentChannelIds}
           externalSelectedModel={externalSelectedModel}
           onModelSelect={handleModelSelect}
+          autoModeConfig={autoMode.autoModeConfig}
         />
       ),
     },
@@ -2003,6 +2007,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
     agentChannelIds,
     externalSelectedModel,
     handleModelSelect,
+    autoMode.autoModeConfig,
     sessionId,
     agentThinking,
     setAgentThinking,
@@ -2234,6 +2239,16 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+
+    {/* Auto Mode 候选模型配置 */}
+    <CandidateModelDialog
+      open={autoMode.candidateDialogOpen}
+      onOpenChange={autoMode.closeCandidateDialog}
+      channels={globalChannels}
+      candidateModelIds={autoMode.candidates}
+      autoModeEnabled={autoMode.enabled}
+      onCommit={autoMode.commitCandidates}
+    />
     </>
   )
 }

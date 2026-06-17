@@ -1,5 +1,6 @@
 import * as React from 'react'
-import { RefreshCw, Search, Sparkles } from 'lucide-react'
+import { RefreshCw, Search, Sparkles, Star, Clock } from 'lucide-react'
+import { useAtomValue } from 'jotai'
 import type { AgentExpertGroupInfo } from '@proma/shared'
 import { Button } from '@/components/ui/button'
 import {
@@ -11,11 +12,13 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { ExpertGroupCard } from '@/components/expert-groups/ExpertGroupCard'
-import { ExpertGroupDetailDialog } from '@/components/expert-groups/ExpertGroupDetailDialog'
-import { getExpertGroupSearchTerms } from '@/components/expert-groups/expert-group-subagents'
+import { ExpertCard } from '@/experts/card/ExpertCard'
+import { ExpertDetailDialog } from '@/experts/detail/ExpertDetailDialog'
+import { getExpertGroupSearchTerms } from '@/experts/card/subagents'
+import { followedExpertGroupsAtom, recentExpertGroupsAtom } from '@/experts/atoms/expert-follow'
+import { cn } from '@/lib/utils'
 
-interface ExpertGroupPickerProps {
+interface ExpertPickerProps {
   open: boolean
   groups: AgentExpertGroupInfo[]
   loading: boolean
@@ -27,35 +30,50 @@ interface ExpertGroupPickerProps {
 function matchesGroup(group: AgentExpertGroupInfo, query: string): boolean {
   const normalized = query.trim().toLowerCase()
   if (!normalized) return true
-
   return getExpertGroupSearchTerms(group).some((item) => item.toLowerCase().includes(normalized))
 }
 
-export function ExpertGroupPicker({
+export function ExpertPicker({
   open,
   groups,
   loading,
   onOpenChange,
   onRefresh,
   onSummon,
-}: ExpertGroupPickerProps): React.ReactElement {
+}: ExpertPickerProps): React.ReactElement {
+  const followed = useAtomValue(followedExpertGroupsAtom)
+  const recent = useAtomValue(recentExpertGroupsAtom)
   const [query, setQuery] = React.useState('')
+  const [filter, setFilter] = React.useState<'all' | 'followed' | 'recent'>('all')
   const [selected, setSelected] = React.useState<AgentExpertGroupInfo | null>(null)
 
   React.useEffect(() => {
     if (!open) {
       setQuery('')
+      setFilter('all')
       setSelected(null)
     }
   }, [open])
 
-  const visibleGroups = React.useMemo(
-    () => groups.filter((group) => matchesGroup(group, query)),
-    [groups, query],
-  )
+  const visibleGroups = React.useMemo(() => {
+    // 先按筛选标签过滤，再按搜索词过滤
+    let filtered = groups
+    if (filter === 'followed') {
+      filtered = filtered.filter(g => followed[g.id])
+    } else if (filter === 'recent') {
+      const withRecent = filtered.filter(g => recent[g.id])
+      filtered = withRecent.sort((a, b) => (recent[b.id] ?? 0) - (recent[a.id] ?? 0))
+    }
+    return filtered.filter((group) => matchesGroup(group, query))
+  }, [groups, query, filter, followed, recent])
 
-  const availableGroups = visibleGroups.filter((group) => group.status === 'available')
-  const issueGroups = visibleGroups.filter((group) => group.status !== 'available')
+  // 可召唤：状态正常，或远程条目（支持下载后召唤）
+  const availableGroups = visibleGroups.filter(
+    (group) => group.status === 'available' || group.sourcePluginKind === 'remote'
+  )
+  const issueGroups = visibleGroups.filter(
+    (group) => group.status !== 'available' && group.sourcePluginKind !== 'remote'
+  )
 
   const handleSummon = React.useCallback((group: AgentExpertGroupInfo): void => {
     setSelected(null)
@@ -100,9 +118,35 @@ export function ExpertGroupPicker({
                 className="pl-9"
               />
             </div>
+
+            {/* 筛选按钮 */}
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {([
+                { tag: 'all' as const, label: '全部' },
+                { tag: 'followed' as const, label: '已关注', icon: Star },
+                { tag: 'recent' as const, label: '最近使用', icon: Clock },
+              ]).map(({ tag, label, icon: Icon }) => {
+                const active = filter === tag
+                return (
+                  <button
+                    key={tag}
+                    onClick={() => setFilter(tag)}
+                    className={cn(
+                      'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
+                      active
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground',
+                    )}
+                  >
+                    {Icon && <Icon size={12} />}
+                    <span>{label}</span>
+                  </button>
+                )
+              })}
+            </div>
           </div>
 
-          <ScrollArea className="max-h-[68vh] px-5 pb-5">
+          <ScrollArea className="h-[500px] px-5 pb-5">
             {visibleGroups.length === 0 ? (
               <div className="rounded-lg bg-muted/50 px-4 py-10 text-center">
                 <Sparkles className="mx-auto size-8 text-muted-foreground" />
@@ -118,7 +162,7 @@ export function ExpertGroupPicker({
                     </div>
                     <div className="grid gap-2 md:grid-cols-2">
                       {availableGroups.map((group) => (
-                        <ExpertGroupCard
+                        <ExpertCard
                           key={`${group.sourcePluginId}:${group.id}`}
                           group={group}
                           compact
@@ -138,7 +182,7 @@ export function ExpertGroupPicker({
                     </div>
                     <div className="grid gap-2 md:grid-cols-2">
                       {issueGroups.map((group) => (
-                        <ExpertGroupCard
+                        <ExpertCard
                           key={`${group.sourcePluginId}:${group.id}`}
                           group={group}
                           compact
@@ -155,7 +199,7 @@ export function ExpertGroupPicker({
         </DialogContent>
       </Dialog>
 
-      <ExpertGroupDetailDialog
+      <ExpertDetailDialog
         group={selected}
         open={selected !== null}
         onOpenChange={(nextOpen) => { if (!nextOpen) setSelected(null) }}

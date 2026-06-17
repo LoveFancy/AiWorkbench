@@ -1,3 +1,10 @@
+/**
+ * 泰为平台模型 — IPC handlers
+ *
+ * 注册 models:fetch / models:get-models / models:get-api-key / models:clear-cache 四个 IPC 通道，
+ * 供 preload 桥接调用。
+ */
+
 import { ipcMain } from 'electron'
 import { fetchUserModels, getModels, getApiKey, clearCache } from './model-service'
 

@@ -935,7 +935,11 @@ function AttachedImageThumb({ file }: { file: AttachedFileRef }): React.ReactEle
 
     window.electronAPI
       .readAttachment(file.path)
-      .then((base64) => setImageSrc(`data:${mediaType};base64,${base64}`))
+      .then((base64) => {
+        if (base64) {
+          setImageSrc(`data:${mediaType};base64,${base64}`)
+        }
+      })
       .catch((err) => console.error('[AttachedImageThumb] 读取附件失败:', err))
   }, [file.path, file.filename])
 

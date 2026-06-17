@@ -196,8 +196,32 @@ const FRIENDLY_ERROR_MESSAGES: Array<{ pattern: RegExp; message: string }> = [
     message: '请检查是否选择了正确的 WorkMate 供应渠道和模型',
   },
   {
+    pattern: /authentication_failed|invalid.*api.?key|api.?key.*invalid|unauthorized|unauthenticated|api.?key.*无|没有资源|无权限/i,
+    message: 'API 认证失败或配额不足：请检查当前渠道的 API Key 是否正确配置',
+  },
+  {
+    pattern: /quota.*exceed|insufficient.*quota|余额|配额|billing/i,
+    message: 'API 配额已用尽或余额不足，请检查账户状态',
+  },
+  {
+    pattern: /forbidden|permission.*denied|access.*denied/i,
+    message: '无权限访问该资源，请检查 API Key 的权限范围',
+  },
+  {
+    pattern: /does not support.*image|not support.*image|multimodal.*not.*support|invalid.*image.*content/i,
+    message: '当前模型不支持图片输入，请切换到支持多模态的模型',
+  },
+  {
+    pattern: /model.*not.*found|model.*not.*available/i,
+    message: '当前模型不可用，请检查模型名称或切换到其他模型',
+  },
+  {
     pattern: /validation error/i,
     message: 'API 请求格式校验失败，请重试或开启新会话',
+  },
+  {
+    pattern: /empty or malformed response/i,
+    message: '请求未到达模型服务，可能被代理或网关拦截。请检查网络代理设置，然后点击重试',
   },
 ]
 
@@ -317,10 +341,34 @@ export function mapSDKErrorToTypedError(
       message: '无法通过 API 认证，API Key 可能无效或已过期',
       canRetry: true,
     },
+    'forbidden': {
+      code: 'invalid_api_key',
+      title: '权限不足',
+      message: '当前 API Key 无权限访问该资源',
+      canRetry: false,
+    },
+    'permission_denied': {
+      code: 'invalid_api_key',
+      title: '权限不足',
+      message: '当前 API Key 无权限访问该资源',
+      canRetry: false,
+    },
     'billing_error': {
       code: 'billing_error',
       title: '账单错误',
       message: '您的账户存在账单问题',
+      canRetry: false,
+    },
+    'quota_exceeded': {
+      code: 'billing_error',
+      title: '配额已用尽',
+      message: 'API 配额已用尽或余额不足，请检查账户状态',
+      canRetry: false,
+    },
+    'insufficient_quota': {
+      code: 'billing_error',
+      title: '配额不足',
+      message: 'API 配额不足，请检查账户余额',
       canRetry: false,
     },
     'model_not_found': {
@@ -333,6 +381,18 @@ export function mapSDKErrorToTypedError(
       code: 'invalid_request',
       title: '请求无效',
       message: 'API 请求参数无效，请检查当前渠道与模型配置',
+      canRetry: false,
+    },
+    'invalid_content_type': {
+      code: 'invalid_request',
+      title: '输入格式不兼容',
+      message: '当前模型不支持该输入格式（如图片），请切换到支持多模态的模型',
+      canRetry: false,
+    },
+    'unsupported_media': {
+      code: 'invalid_request',
+      title: '媒体类型不支持',
+      message: '当前模型不支持该媒体类型，请切换到合适的模型',
       canRetry: false,
     },
     'rate_limit': {

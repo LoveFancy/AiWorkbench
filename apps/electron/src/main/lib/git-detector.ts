@@ -121,8 +121,6 @@ function getGitVersion(gitPath: string): string | null {
  * @returns Git 运行时状态
  */
 export async function detectGitRuntime(): Promise<GitRuntimeStatus> {
-  console.log('[Git 检测] 开始检测 Git 运行时...')
-
   const gitPath = findGitPath()
 
   if (!gitPath) {

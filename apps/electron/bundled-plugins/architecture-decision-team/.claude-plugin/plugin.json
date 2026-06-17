@@ -12,5 +12,6 @@
     "architecture",
     "agent"
   ],
-  "expertGroup": "architecture-decision-team"
+  "expertGroup": "architecture-decision-team",
+  "expertType": "team"
 }

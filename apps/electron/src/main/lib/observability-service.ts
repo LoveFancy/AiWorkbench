@@ -46,6 +46,17 @@ function getClientInfo(): { appVersion: string; platform: string; osVersion: str
   }
 }
 
+// ===== Error 信息提取（复用） =====
+
+function extractErrorInfo(error: Error, extras?: { fingerprint?: string }): NonNullable<ObservabilityEventItem['error']> {
+  return {
+    type: error.name,
+    message: error.message,
+    stack: error.stack,
+    ...extras,
+  }
+}
+
 // ===== 指纹生成 =====
 
 /**
@@ -124,6 +135,13 @@ export function reportEvent(item: Omit<ObservabilityEventItem, 'eventId'>): void
   if (eventQueue.length >= (config.maxQueueSize ?? 200)) {
     void flushQueue()
   }
+
+  // 硬上限保护：超出上限时丢弃最旧的事件，防止持续上报失败导致内存无限增长
+  const hardLimit = (config.maxQueueSize ?? 200) * QUEUE_HARD_LIMIT_MULTIPLIER
+  while (eventQueue.length > hardLimit) {
+    const dropped = eventQueue.shift()
+    console.warn('[观测上报] 队列超硬上限，已丢弃最旧事件', { type: dropped?.type, eventId: dropped?.eventId })
+  }
 }
 
 // ===== 各类事件上报快捷方法 =====
@@ -141,11 +159,7 @@ export function reportChatEvent(params: {
     modelId: params.modelId,
     result: params.result,
     responseDurationMs: params.responseDurationMs,
-    error: params.error ? {
-      type: params.error.name,
-      message: params.error.message,
-      stack: params.error.stack,
-    } : undefined,
+    error: params.error ? extractErrorInfo(params.error) : undefined,
     client: getClientInfo(),
   })
 }
@@ -166,11 +180,7 @@ export function reportAgentEvent(params: {
     workspaceId: params.workspaceId,
     result: params.result,
     responseDurationMs: params.responseDurationMs,
-    error: params.error ? {
-      type: params.error.name,
-      message: params.error.message,
-      stack: params.error.stack,
-    } : undefined,
+    error: params.error ? extractErrorInfo(params.error) : undefined,
     client: getClientInfo(),
   })
 }
@@ -183,7 +193,7 @@ export function reportLoginEvent(
     userId: jobId,
     timestamp: Date.now(),
     result,
-    error: error ? { type: error.name, message: error.message } : undefined,
+    error: error ? extractErrorInfo(error) : undefined,
     client: getClientInfo(),
   })
 }
@@ -204,7 +214,18 @@ export function reportUpgradeCheckEvent(result: 'success' | 'failure', error?: E
     userId: getJobId() ?? 'unknown',
     timestamp: Date.now(),
     result,
-    error: error ? { type: error.name, message: error.message } : undefined,
+    error: error ? extractErrorInfo(error) : undefined,
+    client: getClientInfo(),
+  })
+}
+
+export function reportStartupEvent(startupDurationMs: number): void {
+  reportEvent({
+    type: 'app_startup',
+    userId: getJobId() ?? 'unknown',
+    timestamp: Date.now(),
+    result: 'success',
+    startupDurationMs,
     client: getClientInfo(),
   })
 }
@@ -222,12 +243,7 @@ export function reportErrorEvent(error: Error, context?: { tags?: Record<string,
       userId: getJobId() ?? 'unknown',
       timestamp: Date.now(),
       result: 'failure',
-      error: {
-        type: error.name,
-        message: error.message,
-        stack: error.stack,
-        fingerprint,
-      },
+      error: extractErrorInfo(error, { fingerprint }),
       breadcrumbs: [...breadcrumbs],
       tags: context?.tags,
       client: getClientInfo(),
@@ -235,6 +251,18 @@ export function reportErrorEvent(error: Error, context?: { tags?: Record<string,
   } finally {
     isReportingError = false
   }
+}
+
+// ===== 重试限制 =====
+
+const MAX_RETRIES = 3
+
+/** 队列硬上限（与 maxQueueSize 一致），防止持续上报失败导致内存无限增长 */
+const QUEUE_HARD_LIMIT_MULTIPLIER = 1
+
+/** 剥离内部字段，构造上报用的事件副本 */
+function stripInternalFields(batch: ObservabilityEventItem[]): ObservabilityEventItem[] {
+  return batch.map(({ _retryCount, ...rest }) => rest)
 }
 
 // ===== 冲刷上报 =====
@@ -271,7 +299,7 @@ async function doFlushQueue(): Promise<void> {
     const response = await fetch(config.url, {
       method: 'POST',
       headers,
-      body: safeStringify({ events: batch }),
+      body: safeStringify({ events: stripInternalFields(batch) }),
       signal: AbortSignal.timeout(config.timeoutMs ?? 5000),
     })
 
@@ -285,10 +313,24 @@ async function doFlushQueue(): Promise<void> {
       throw new Error(`业务错误 code=${body?.code ?? 'unknown'} message=${body?.message ?? ''}`)
     }
   } catch (error) {
-    // 失败时回写到队列头部（保持事件顺序），同时用 eventId 去重写入磁盘
-    eventQueue.unshift(...batch)
-    writeToDiskCache(batch)
-    console.warn('[观测上报] 上报失败, url=%s, events=%d, error=', config.url, batch.length, error)
+    // 递增重试次数，超出上限的事件丢弃
+    const retryable: ObservabilityEventItem[] = []
+    let discarded = 0
+    for (const event of batch) {
+      const count = (event._retryCount ?? 0) + 1
+      if (count >= MAX_RETRIES) {
+        discarded++
+      } else {
+        event._retryCount = count
+        retryable.push(event)
+      }
+    }
+    if (retryable.length > 0) {
+      eventQueue.unshift(...retryable)
+      writeToDiskCache(retryable)
+    }
+    console.warn('[观测上报] 上报失败, url=%s, events=%d, retryable=%d, discarded=%d, error=',
+      config.url, batch.length, retryable.length, discarded, error)
   } finally {
     isFlushing = false
     currentFlushPromise = null
@@ -324,6 +366,11 @@ function restoreFromDiskCache(): void {
       eventQueue.unshift(...restored)
       // 恢复后清空磁盘文件（事件已回到内存队列）
       writeFileSync(diskCachePath, '', 'utf-8')
+      // 硬上限保护：恢复后裁剪队列（config 已由 init() 赋值）
+      const hardLimit = (config?.maxQueueSize ?? 200) * QUEUE_HARD_LIMIT_MULTIPLIER
+      while (eventQueue.length > hardLimit) {
+        eventQueue.shift()
+      }
       console.log(`[观测上报] 从磁盘恢复 ${restored.length} 条事件`)
     }
   } catch (error) {

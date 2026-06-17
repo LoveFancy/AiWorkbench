@@ -148,8 +148,6 @@ function meetsVersion(version: string, target: string): boolean {
  * @returns Node.js 运行时状态
  */
 export async function detectNodeRuntime(): Promise<NodeRuntimeStatus> {
-  console.log('[Node.js 检测] 开始检测 Node.js 运行时...')
-
   const nodePath = findNodePath()
 
   if (!nodePath) {
