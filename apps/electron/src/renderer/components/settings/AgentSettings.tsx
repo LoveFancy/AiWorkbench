@@ -765,8 +765,10 @@ function SkillListPanel({ skills, defaultSkillSlugs, skillHubSlugs, selectedSlug
     })
   }
 
-  const openSkillFolder = (slug: string): void => {
-    if (skillsDir) window.electronAPI.openFile(`${skillsDir}/${slug}`)
+  const openSkillFolder = (slug: string, enabled: boolean): void => {
+    if (!skillsDir) return
+    const dir = enabled ? skillsDir : skillsDir.replace(/skills$/, 'skills-inactive')
+    window.electronAPI.openFile(`${dir}/${slug}`)
   }
 
   return (
@@ -798,7 +800,7 @@ function SkillListPanel({ skills, defaultSkillSlugs, skillHubSlugs, selectedSlug
                     onSelect={() => onSelect(skill.slug)}
                     onDelete={() => onDelete(skill.slug, skill.name)}
                     onToggle={(enabled) => onToggle(skill.slug, enabled)}
-                    onOpenFolder={() => openSkillFolder(skill.slug)}
+                    onOpenFolder={() => openSkillFolder(skill.slug, skill.enabled)}
                     onUpdate={skill.hasUpdate ? () => onUpdate(skill.slug) : undefined}
                     isBuiltin={group.isBuiltin}
                     hideManagementActions={group.prefix === 'SkillHub'}
@@ -818,7 +820,7 @@ function SkillListPanel({ skills, defaultSkillSlugs, skillHubSlugs, selectedSlug
               onSelect={() => onSelect(skill.slug)}
               onDelete={() => onDelete(skill.slug, skill.name)}
               onToggle={(enabled) => onToggle(skill.slug, enabled)}
-              onOpenFolder={() => openSkillFolder(skill.slug)}
+              onOpenFolder={() => openSkillFolder(skill.slug, skill.enabled)}
               onUpdate={skill.hasUpdate ? () => onUpdate(skill.slug) : undefined}
             />
           ))

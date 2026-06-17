@@ -274,7 +274,10 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
 
   const handleToggle = React.useCallback(async (skillName: string, enabled: boolean): Promise<void> => {
     try {
-      await window.electronAPI.toggleWorkspaceSkill(workspaceSlug, skillName, enabled)
+      // skillName 是完整名称（如 @ht-skills/code-review），toggleWorkspaceSkill 需要目录名（如 code-review）
+      const slash = skillName.lastIndexOf('/')
+      const dirName = slash >= 0 ? skillName.substring(slash + 1) : skillName
+      await window.electronAPI.toggleWorkspaceSkill(workspaceSlug, dirName, enabled)
       toast.success(enabled ? `已启用: ${skillName}` : `已禁用: ${skillName}`)
       await loadSkills()
     } catch (error) {
@@ -319,7 +322,9 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
     // 根据启用状态判断实际目录：禁用 → skills-inactive，启用 → skills
     const enabled = selectedSkill?.enabled !== false
     const dir = enabled ? skillsDir : skillsDir.replace(/skills$/, 'skills-inactive')
-    window.electronAPI.openFile(`${dir}/${skillName}`)
+    const slash = skillName.lastIndexOf('/')
+    const dirName = slash >= 0 ? skillName.substring(slash + 1) : skillName
+    window.electronAPI.openFile(`${dir}/${dirName}`)
   }
 
   // ===== 过滤 =====
