@@ -11,7 +11,6 @@ import {
   Radio,
   BookOpen,
   Plug,
-  GraduationCap,
   Keyboard,
   Palette,
   Info,
@@ -66,12 +65,6 @@ const SYSTEM_LOG_TAB: TabItem = {
   icon: <TerminalSquare size={16} />,
 }
 
-const TUTORIAL_TAB: TabItem = {
-  id: 'tutorial',
-  label: '使用教程',
-  icon: <GraduationCap size={16} />,
-}
-
 const SHORTCUTS_TAB: TabItem = {
   id: 'shortcuts',
   label: '快捷键管理',
@@ -86,6 +79,6 @@ const TAIL_TABS: TabItem[] = [
 
 export function getSettingsTabs(appMode: 'chat' | 'agent'): TabItem[] {
   return appMode === 'agent'
-    ? [...BASE_TABS, TOOLS_TAB, AGENT_TAB, PLUGINS_TAB, EXPERTS_TAB, TUTORIAL_TAB, SHORTCUTS_TAB, ...TAIL_TABS, SYSTEM_LOG_TAB]
-    : [...BASE_TABS, TOOLS_TAB, TUTORIAL_TAB, SHORTCUTS_TAB, ...TAIL_TABS, SYSTEM_LOG_TAB]
+    ? [...BASE_TABS, TOOLS_TAB, AGENT_TAB, PLUGINS_TAB, EXPERTS_TAB, SHORTCUTS_TAB, ...TAIL_TABS, SYSTEM_LOG_TAB]
+    : [...BASE_TABS, TOOLS_TAB, SHORTCUTS_TAB, ...TAIL_TABS, SYSTEM_LOG_TAB]
 }
