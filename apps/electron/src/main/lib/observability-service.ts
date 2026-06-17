@@ -366,8 +366,8 @@ function restoreFromDiskCache(): void {
       eventQueue.unshift(...restored)
       // 恢复后清空磁盘文件（事件已回到内存队列）
       writeFileSync(diskCachePath, '', 'utf-8')
-      // 硬上限保护：恢复后裁剪队列
-      const hardLimit = (config.maxQueueSize ?? 200) * QUEUE_HARD_LIMIT_MULTIPLIER
+      // 硬上限保护：恢复后裁剪队列（config 已由 init() 赋值）
+      const hardLimit = (config?.maxQueueSize ?? 200) * QUEUE_HARD_LIMIT_MULTIPLIER
       while (eventQueue.length > hardLimit) {
         eventQueue.shift()
       }
