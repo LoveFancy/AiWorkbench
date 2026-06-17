@@ -50,7 +50,7 @@ function buildZodSchema(
     }
 
     if (param.enum && param.enum.length > 0 && param.type === 'string') {
-      const allowedValues = param.enum as readonly [string, ...string[]]
+      const allowedValues = param.enum as unknown as readonly [string, ...string[]]
       field = (field as import('zod').ZodString).refine(
         (val) => allowedValues.includes(val),
         { message: `必须是以下值之一: ${allowedValues.join(', ')}` },
