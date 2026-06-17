@@ -70,7 +70,6 @@ export function updateSettings(updates: Partial<AppSettings>): AppSettings {
 
   try {
     writeFileSync(filePath, JSON.stringify(updated, null, 2), 'utf-8')
-    console.log('[设置] 已更新 keys:', Object.keys(updates).join(', '))
   } catch (error) {
     console.error('[设置] 写入失败:', error)
     throw new Error('写入应用设置失败')

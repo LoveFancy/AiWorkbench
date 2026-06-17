@@ -140,7 +140,6 @@ export async function detectGitBash(): Promise<GitBashStatus> {
   for (const path of getCommonGitBashPaths()) {
     const version = verifyBashPath(path)
     if (version) {
-      console.log(`[Git Bash 检测] 找到 Git Bash (常见路径): ${path} (${version})`)
       return {
         available: true,
         path,
@@ -161,7 +160,6 @@ export async function detectGitBash(): Promise<GitBashStatus> {
     for (const path of candidatePaths) {
       const version = verifyBashPath(path)
       if (version) {
-        console.log(`[Git Bash 检测] 找到 Git Bash (注册表): ${path} (${version})`)
         return {
           available: true,
           path,
@@ -177,7 +175,6 @@ export async function detectGitBash(): Promise<GitBashStatus> {
   if (pathBash) {
     const version = verifyBashPath(pathBash)
     if (version) {
-      console.log(`[Git Bash 检测] 找到 Git Bash (PATH): ${pathBash} (${version})`)
       return {
         available: true,
         path: pathBash,

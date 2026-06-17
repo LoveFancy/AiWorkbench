@@ -701,7 +701,7 @@ function TabStatePersistenceInitializer(): null {
         }
       }
 
-      console.log(`[TabRestore] 已恢复当前会话入口，历史标签 ${validTabs.length} 个已收敛到左侧列表`)
+
     }).catch((err) => console.error('[TabRestore] 恢复标签页失败:', err))
       .finally(() => { restoredRef.current = true })
   }, [store])
@@ -798,7 +798,7 @@ function ScratchPadPersistence(): null {
           store.set(activeTabIdAtom, SCRATCH_PAD_ID)
         }
 
-        console.log('[ScratchPad] 初始化完成，已加载内容:', !!loadedMd)
+
       } catch (err) {
         console.error('[ScratchPad] 初始化失败:', err)
       } finally {

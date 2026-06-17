@@ -2007,6 +2007,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
     agentChannelIds,
     externalSelectedModel,
     handleModelSelect,
+    autoMode.autoModeConfig,
     sessionId,
     agentThinking,
     setAgentThinking,

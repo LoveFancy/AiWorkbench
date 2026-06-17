@@ -759,8 +759,6 @@ export function resolveAppIconPath(variantId: string): string | null {
 }
 
 export function registerIpcHandlers(): void {
-  console.log('[IPC] 正在注册 IPC 处理器...')
-
   // ===== 运行时相关 =====
 
   // 获取运行时状态
@@ -4249,7 +4247,7 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  console.log('[IPC] IPC 处理器注册完成')
+  console.log('[IPC] 处理器注册完成')
 
   // 注册更新 IPC 处理器
   registerUpdaterIpc()

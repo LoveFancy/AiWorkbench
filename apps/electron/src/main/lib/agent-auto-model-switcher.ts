@@ -55,6 +55,9 @@ export interface AutoModeState {
 
 /**
  * 从候选池中选择下一个可用模型
+ *
+ * 从当前模型位置向后遍历，到末尾后回绕到开头继续搜索，
+ * 跳过已尝试和不可用的模型。
  */
 export function selectNextCandidateModel(
   currentModelId: string,
@@ -62,13 +65,23 @@ export function selectNextCandidateModel(
   excludeModelIds: Set<string>,
   availableModels: Set<string>,
 ): string | null {
+  const n = candidatePool.length
+  if (n === 0) return null
+
   const startIdx = candidatePool.indexOf(currentModelId)
-  for (let i = startIdx >= 0 ? startIdx + 1 : 0; i < candidatePool.length; i++) {
+  const skipped: string[] = []
+
+  // 从 startIdx+1 到末尾，再回绕到 0 到 startIdx（遍历一圈）
+  for (let offset = 1; offset <= n; offset++) {
+    const i = (startIdx + offset) % n
     const candidate = candidatePool[i]
-    if (candidate && !excludeModelIds.has(candidate) && availableModels.has(candidate)) {
-      return candidate
-    }
+    if (!candidate) continue
+    if (excludeModelIds.has(candidate)) { skipped.push(`${candidate}(已尝试)`); continue }
+    if (!availableModels.has(candidate)) { skipped.push(`${candidate}(不可用)`); continue }
+    return candidate
   }
+
+  console.log(`[Auto Mode] selectNextCandidateModel 未找到下一个候选: current=${currentModelId}, pool=[${candidatePool.join(', ')}], tried=[${[...excludeModelIds].join(', ')}], availableCount=${availableModels.size}, skipped=[${skipped.join(', ') || '无'}]`)
   return null
 }
 
@@ -102,6 +115,14 @@ export async function resolveAutoModeConfig(): Promise<AutoModeConfig> {
       }
     }
   } catch { /* model-service 不可用则跳过 */ }
+
+  // 诊断：候选池中有哪些模型不在可用集合中
+  if (enabled && candidatePool.length > 0) {
+    const missing = candidatePool.filter((id) => !availableModelIds.has(id))
+    if (missing.length > 0) {
+      console.log(`[Auto Mode] 候选池中 ${missing.length}/${candidatePool.length} 个模型不可用: [${missing.join(', ')}]`)
+    }
+  }
 
   return { enabled, candidatePool, availableModelIds }
 }

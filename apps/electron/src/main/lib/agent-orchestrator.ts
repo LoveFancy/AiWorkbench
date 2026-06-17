@@ -888,7 +888,9 @@ export class AgentOrchestrator {
           // SDK 初始化完成后立即触发标题生成，使多会话并发时用户能快速区分
           if (!titleGenerationStarted) {
             titleGenerationStarted = true
-            autoGenerateTitle(sessionId, userMessage, channelId, resolvedModel, callbacks)
+            // Auto Mode 下 resolvedModel 可能不属于当前 channel，优先使用 channel 自身的模型
+            const titleModel = channel?.models?.find(m => m.enabled)?.id || resolvedModel
+            autoGenerateTitle(sessionId, userMessage, currentChannelId, titleModel, callbacks)
               .catch((err) => console.error('[Agent 编排] 标题生成未捕获异常:', err))
           }
         },
@@ -911,6 +913,7 @@ export class AgentOrchestrator {
       let skipNextRetryDelay = false
       let thinkingSignatureRecoveryAttempted = false
       let invisibleRecoveryAttempts = 0
+      let lastAttempt = 0
 
       // Auto Mode：切换模型时同步切换渠道
       const switchChannelForModel = async (newModelId: string): Promise<void> => {
@@ -963,7 +966,7 @@ export class AgentOrchestrator {
           return true
         }
 
-        console.log(`[Auto Mode] 候选池已耗尽`)
+        console.log(`[Auto Mode] 候选池已耗尽 (candidates=${autoModeConfig.candidatePool.length}, tried=[${[...autoModeState.triedModelIds].join(', ')}], available=${autoModeConfig.availableModelIds.size}, activeModel=${autoModeState.activeModelId})`)
         return false
       }
 
@@ -980,6 +983,7 @@ export class AgentOrchestrator {
       const queryStartedAt = Date.now()
 
       for (let attempt = 1; attempt <= MAX_AUTO_RETRIES + 1; attempt++) {
+        lastAttempt = attempt
         // 非首次尝试：等待 + 发送重试事件到 UI
         if (attempt > 1) {
           if (skipNextRetryDelay) {
@@ -1140,7 +1144,10 @@ export class AgentOrchestrator {
             if (autoModeConfig.enabled && autoModeConfig.candidatePool.length > 0) {
               autoModeState.sameModelAttempts++
               console.log(`[Auto Mode] 模型失败计数: ${autoModeState.activeModelId} -> ${autoModeState.sameModelAttempts}/${MAX_SAME_MODEL_RETRIES} (attempt ${attempt})`)
-              if (!await trySwitchAutoModeModel()) break
+              if (!await trySwitchAutoModeModel()) {
+                lastRetryableError = `Auto Mode 候选池已耗尽，已尝试模型: ${[...autoModeState.triedModelIds].join(', ')}`
+                break
+              }
             }
 
             continue
@@ -1206,16 +1213,21 @@ export class AgentOrchestrator {
 
       // 重试循环结束（达到最大次数仍失败）
       if (!retrySucceeded && lastRetryableError) {
-        const retryFailureMessage = retryDelayElapsedMs >= MAX_AUTO_RETRY_WAIT_MS
-          ? '重试等待已达到 5 分钟后仍然失败'
-          : `重试 ${retryAttemptsScheduled || MAX_AUTO_RETRIES} 次后仍然失败`
+        const isPoolExhausted = lastRetryableError.includes('候选池已耗尽')
+        const retryFailureMessage = isPoolExhausted
+          ? lastRetryableError
+          : retryDelayElapsedMs >= MAX_AUTO_RETRY_WAIT_MS
+            ? '重试等待已达到 5 分钟后仍然失败'
+            : `重试 ${lastAttempt - 1} 次后仍然失败`
         this.eventBus.emit(sessionId, {
           kind: 'proma_event',
-          event: { type: 'retry', status: 'failed', attemptData: { attempt: retryAttemptsScheduled || MAX_AUTO_RETRIES, timestamp: Date.now(), reason: lastRetryableError, errorMessage: retryFailureMessage, delaySeconds: 0 } },
+          event: { type: 'retry', status: 'failed', attemptData: { attempt: isPoolExhausted ? lastAttempt : retryAttemptsScheduled || lastAttempt - 1, timestamp: Date.now(), reason: lastRetryableError, errorMessage: retryFailureMessage, delaySeconds: 0 } },
         })
 
         // 保存错误消息
-        const retryErrorContent = `${retryFailureMessage}: ${lastRetryableError}`
+        const retryErrorContent = isPoolExhausted
+          ? lastRetryableError
+          : `${retryFailureMessage}: ${lastRetryableError}`
         const retryErrorSDKMsg: SDKMessage = {
           type: 'assistant',
           message: {

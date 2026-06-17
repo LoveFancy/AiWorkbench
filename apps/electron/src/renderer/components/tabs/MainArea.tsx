@@ -116,7 +116,7 @@ export function MainArea(): React.ReactElement {
 
   React.useEffect(() => {
     if (tabs.length === 0) {
-      console.warn('[FLASH-DEBUG] MainArea: tabs.length === 0, showing WelcomeView!', new Error().stack)
+      console.warn('[MainArea] tabs.length === 0, showing WelcomeView!')
     }
   }, [tabs.length])
 

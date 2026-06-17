@@ -65,8 +65,6 @@ export function createQuickTaskWindow(): void {
   quickTaskWindow.on('closed', () => {
     quickTaskWindow = null
   })
-
-  console.log('[快速任务窗口] 预创建完成')
 }
 
 /**
