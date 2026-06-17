@@ -473,8 +473,9 @@ export async function fetchTitle(
     // 标题为 null 且响应中包含错误信息时，额外记录业务错误码
     if (!title && typeof data === 'object' && data !== null) {
       const d = data as Record<string, unknown>
-      const bizCode = d.code ?? d.error?.code ?? d.error?.type
-      const bizMsg = d.msg ?? d.message ?? d.error?.message
+      const err = (d.error ?? {}) as Record<string, unknown>
+      const bizCode = d.code ?? err.code ?? err.type
+      const bizMsg = d.msg ?? d.message ?? err.message
       if (bizCode || bizMsg) {
         console.warn(`[fetchTitle] API 返回业务错误: code=${bizCode}, msg=${bizMsg}`)
       }

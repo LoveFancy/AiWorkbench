@@ -24,16 +24,22 @@ import type { Channel, ProviderType } from '@proma/shared'
 
 // ===== Types =====
 
+/** 候选模型引用（与 main process agent-auto-model-switcher 保持一致） */
+interface CandidateModelRef {
+  modelId: string
+  channelId: string
+}
+
 interface CandidateModelDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   channels: Channel[]
   /** 更多模型（如平台模型），非渠道来源 */
   extraModels?: Array<{ id: string; name: string; provider: ProviderType; enabled?: boolean }>
-  candidateModelIds: string[]
+  candidateModelIds: CandidateModelRef[]
   autoModeEnabled: boolean
   /** 一次性提交 candidates + autoModeEnabled，避免两次 updateSettings 竞态覆盖 */
-  onCommit: (modelIds: string[], enabled: boolean) => void
+  onCommit: (modelIds: CandidateModelRef[], enabled: boolean) => void
 }
 
 interface FlatModel {
@@ -41,6 +47,8 @@ interface FlatModel {
   name: string
   provider: ProviderType
   isLocal: boolean
+  channelId: string
+  channelName: string
 }
 
 // ===== Helpers =====
@@ -49,21 +57,25 @@ function isLocalModel(modelId: string, _provider: ProviderType): boolean {
   return modelId.toLowerCase().includes('local')
 }
 
+/** 构建唯一的内部 key，用于区分同一模型在不同渠道的实例 */
+function modelKey(modelId: string, channelId: string): string {
+  return `${channelId}:${modelId}`
+}
+
 function buildModelList(channels: Channel[], extraModels?: FlatModel['id'][] | Array<{ id: string; name: string; provider: ProviderType; enabled?: boolean }>): FlatModel[] {
-  const seen = new Set<string>()
   const result: FlatModel[] = []
 
   for (const channel of channels) {
     if (!channel.enabled) continue
     for (const model of channel.models) {
       if (!model.enabled) continue
-      if (seen.has(model.id)) continue
-      seen.add(model.id)
       result.push({
         id: model.id,
         name: model.name,
         provider: channel.provider,
         isLocal: isLocalModel(model.id, channel.provider),
+        channelId: channel.id,
+        channelName: channel.name,
       })
     }
   }
@@ -71,14 +83,14 @@ function buildModelList(channels: Channel[], extraModels?: FlatModel['id'][] | A
   if (extraModels) {
     for (const m of extraModels) {
       if (typeof m === 'string') continue
-      if (seen.has(m.id)) continue
       if (m.enabled === false) continue
-      seen.add(m.id)
       result.push({
         id: m.id,
         name: m.name,
         provider: m.provider,
         isLocal: isLocalModel(m.id, m.provider),
+        channelId: `__extra__`,
+        channelName: '平台',
       })
     }
   }
@@ -101,7 +113,7 @@ export function CandidateModelDialog({
   const [showSaaSConfirm, setShowSaaSConfirm] = React.useState<string | null>(null)
 
   // 本地暂存：解决快速勾选竞态 + 提供"确定/取消"语义
-  const [pendingCandidates, setPendingCandidates] = React.useState<string[]>(candidateModelIds)
+  const [pendingCandidates, setPendingCandidates] = React.useState<CandidateModelRef[]>(candidateModelIds)
   const [pendingAutoMode, setPendingAutoMode] = React.useState(autoModeEnabled)
 
   // dialog 打开时（仅 transitioning false→true）从 props 同步到本地暂存。
@@ -128,24 +140,30 @@ export function CandidateModelDialog({
     return allModels.filter(m => m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q))
   }, [allModels, search])
 
-  const candidateSet = React.useMemo(() => new Set(pendingCandidates), [pendingCandidates])
+  const candidateSet = React.useMemo(() => {
+    const set = new Set<string>()
+    for (const c of pendingCandidates) {
+      set.add(modelKey(c.modelId, c.channelId))
+    }
+    return set
+  }, [pendingCandidates])
 
-  const handleToggle = (modelId: string, checked: boolean) => {
+  const handleToggle = (flatModel: FlatModel, checked: boolean) => {
     if (checked) {
-      const model = allModels.find(m => m.id === modelId)
-      if (model && !model.isLocal) {
-        setShowSaaSConfirm(modelId)
+      if (!flatModel.isLocal) {
+        setShowSaaSConfirm(flatModel.id)
         return
       }
-      setPendingCandidates(prev => [...prev, modelId])
+      setPendingCandidates(prev => [...prev, { modelId: flatModel.id, channelId: flatModel.channelId }])
     } else {
-      setPendingCandidates(prev => prev.filter(id => id !== modelId))
+      setPendingCandidates(prev => prev.filter(c => !(c.modelId === flatModel.id && c.channelId === flatModel.channelId)))
     }
   }
 
   const confirmSaaS = () => {
     if (showSaaSConfirm) {
-      setPendingCandidates(prev => [...prev, showSaaSConfirm])
+      const model = allModels.find(m => m.id === showSaaSConfirm)
+      setPendingCandidates(prev => [...prev, { modelId: showSaaSConfirm, channelId: model?.channelId ?? '__unknown__' }])
       setShowSaaSConfirm(null)
     }
   }
@@ -157,8 +175,17 @@ export function CandidateModelDialog({
 
   const handleSelectAllLocal = () => {
     setPendingCandidates(prev => {
-      const merged = new Set([...prev, ...localModelIds])
-      return Array.from(merged)
+      const existing = new Set(prev.map(c => modelKey(c.modelId, c.channelId)))
+      const merged = [...prev]
+      for (const m of allModels) {
+        if (!m.isLocal) continue
+        const key = modelKey(m.id, m.channelId)
+        if (!existing.has(key)) {
+          merged.push({ modelId: m.id, channelId: m.channelId })
+          existing.add(key)
+        }
+      }
+      return merged
     })
   }
 
@@ -179,6 +206,19 @@ export function CandidateModelDialog({
       setShowSaaSConfirm(null)
     }
   }, [open])
+
+  // 检测跨渠道重复的模型 ID，用于显示渠道名以区分
+  const duplicateModelIds = React.useMemo(() => {
+    const count = new Map<string, number>()
+    for (const m of allModels) {
+      count.set(m.id, (count.get(m.id) || 0) + 1)
+    }
+    const dups = new Set<string>()
+    for (const [id, c] of count) {
+      if (c > 1) dups.add(id)
+    }
+    return dups
+  }, [allModels])
 
   return (
     <>
@@ -217,10 +257,12 @@ export function CandidateModelDialog({
               </div>
             ) : (
               filteredModels.map((model) => {
-                const checked = candidateSet.has(model.id)
+                const key = modelKey(model.id, model.channelId)
+                const checked = candidateSet.has(key)
+                const showChannel = duplicateModelIds.has(model.id)
                 return (
                   <label
-                    key={model.id}
+                    key={key}
                     className={cn(
                       'flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors hover:bg-accent/50',
                       checked && 'bg-accent/30',
@@ -228,14 +270,19 @@ export function CandidateModelDialog({
                   >
                     <Checkbox
                       checked={checked}
-                      onCheckedChange={(v) => handleToggle(model.id, v === true)}
+                      onCheckedChange={(v) => handleToggle(model, v === true)}
                     />
                     <img
                       src={getModelLogo(model.id, model.provider)}
                       alt={model.name}
                       className="size-5 rounded object-cover flex-shrink-0"
                     />
-                    <span className="flex-1 text-sm truncate">{model.name}</span>
+                    <span className="flex-1 text-sm truncate">
+                      {model.name}
+                      {showChannel && (
+                        <span className="ml-1.5 text-[10px] text-muted-foreground">({model.channelName})</span>
+                      )}
+                    </span>
                     <span className={cn(
                       'inline-flex h-5 shrink-0 items-center rounded px-1.5 text-[10px] font-medium',
                       model.isLocal

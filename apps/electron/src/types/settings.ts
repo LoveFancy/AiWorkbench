@@ -236,8 +236,8 @@ export interface AppSettings {
   workmateServerUrl?: string
   /** Auto Mode 是否启用（模型失败后自动切换候选模型） */
   autoModeEnabled?: boolean
-  /** Auto Mode 候选模型 ID 列表 */
-  autoSwitchCandidateModels?: string[]
+  /** Auto Mode 候选模型列表。兼容 string[]（仅 modelId）和 {modelId, channelId?}[]（含渠道信息） */
+  autoSwitchCandidateModels?: Array<string | { modelId: string; channelId?: string }>
 }
 
 /** 主窗口大小、位置和最大化状态 */
