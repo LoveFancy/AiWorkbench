@@ -146,7 +146,7 @@ export function ExpertPicker({
             </div>
           </div>
 
-          <ScrollArea className="max-h-[68vh] px-5 pb-5">
+          <ScrollArea className="h-[500px] px-5 pb-5">
             {visibleGroups.length === 0 ? (
               <div className="rounded-lg bg-muted/50 px-4 py-10 text-center">
                 <Sparkles className="mx-auto size-8 text-muted-foreground" />
