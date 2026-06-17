@@ -1,5 +1,6 @@
 import * as React from 'react'
-import { RefreshCw, Search, Sparkles } from 'lucide-react'
+import { RefreshCw, Search, Sparkles, Star, Clock } from 'lucide-react'
+import { useAtomValue } from 'jotai'
 import type { AgentExpertGroupInfo } from '@proma/shared'
 import { Button } from '@/components/ui/button'
 import {
@@ -14,6 +15,8 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { ExpertCard } from '@/experts/card/ExpertCard'
 import { ExpertDetailDialog } from '@/experts/detail/ExpertDetailDialog'
 import { getExpertGroupSearchTerms } from '@/experts/card/subagents'
+import { followedExpertGroupsAtom, recentExpertGroupsAtom } from '@/experts/atoms/expert-follow'
+import { cn } from '@/lib/utils'
 
 interface ExpertPickerProps {
   open: boolean
@@ -38,20 +41,31 @@ export function ExpertPicker({
   onRefresh,
   onSummon,
 }: ExpertPickerProps): React.ReactElement {
+  const followed = useAtomValue(followedExpertGroupsAtom)
+  const recent = useAtomValue(recentExpertGroupsAtom)
   const [query, setQuery] = React.useState('')
+  const [filter, setFilter] = React.useState<'all' | 'followed' | 'recent'>('all')
   const [selected, setSelected] = React.useState<AgentExpertGroupInfo | null>(null)
 
   React.useEffect(() => {
     if (!open) {
       setQuery('')
+      setFilter('all')
       setSelected(null)
     }
   }, [open])
 
-  const visibleGroups = React.useMemo(
-    () => groups.filter((group) => matchesGroup(group, query)),
-    [groups, query],
-  )
+  const visibleGroups = React.useMemo(() => {
+    // 先按筛选标签过滤，再按搜索词过滤
+    let filtered = groups
+    if (filter === 'followed') {
+      filtered = filtered.filter(g => followed[g.id])
+    } else if (filter === 'recent') {
+      const withRecent = filtered.filter(g => recent[g.id])
+      filtered = withRecent.sort((a, b) => (recent[b.id] ?? 0) - (recent[a.id] ?? 0))
+    }
+    return filtered.filter((group) => matchesGroup(group, query))
+  }, [groups, query, filter, followed, recent])
 
   // 可召唤：状态正常，或远程条目（支持下载后召唤）
   const availableGroups = visibleGroups.filter(
@@ -103,6 +117,32 @@ export function ExpertPicker({
                 placeholder="搜索专家团、角色、技能"
                 className="pl-9"
               />
+            </div>
+
+            {/* 筛选按钮 */}
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {([
+                { tag: 'all' as const, label: '全部' },
+                { tag: 'followed' as const, label: '已关注', icon: Star },
+                { tag: 'recent' as const, label: '最近使用', icon: Clock },
+              ]).map(({ tag, label, icon: Icon }) => {
+                const active = filter === tag
+                return (
+                  <button
+                    key={tag}
+                    onClick={() => setFilter(tag)}
+                    className={cn(
+                      'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
+                      active
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground',
+                    )}
+                  >
+                    {Icon && <Icon size={12} />}
+                    <span>{label}</span>
+                  </button>
+                )
+              })}
             </div>
           </div>
 
