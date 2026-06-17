@@ -38,7 +38,6 @@ import { SystemLogSettings } from "./SystemLogSettings";
 import { PluginSettings } from "./PluginSettings";
 import { ExpertGroupSettings } from "./ExpertGroupSettings";
 import { ShortcutSettings } from "./ShortcutSettings";
-import { tabsAtom, activeTabIdAtom, openTab, MANUAL_TAB_ID, MANUAL_TAB_TITLE } from "@/atoms/tab-atoms";
 import type { TabItem } from "./settings-tabs";
 import { getSettingsTabs } from "./settings-tabs";
 
@@ -67,8 +66,6 @@ function renderTabContent(tab: SettingsTab): React.ReactElement {
       return <AppearanceSettings />;
     case "about":
       return <AboutSettings />;
-    case "tutorial":
-      return <TutorialOpener />;
     case "shortcuts":
       return <ShortcutSettings />;
     default:
@@ -78,23 +75,6 @@ function renderTabContent(tab: SettingsTab): React.ReactElement {
 
 interface SettingsPanelProps {
   onClose?: () => void;
-}
-
-/** 点击"使用教程"时打开手册 Tab 并关闭设置 */
-function TutorialOpener(): React.ReactElement {
-  const tabs = useAtomValue(tabsAtom)
-  const setTabs = useSetAtom(tabsAtom)
-  const setActiveTabId = useSetAtom(activeTabIdAtom)
-  const setSettingsOpen = useSetAtom(settingsOpenAtom)
-
-  React.useEffect(() => {
-    const result = openTab(tabs, { type: 'manual', sessionId: MANUAL_TAB_ID, title: MANUAL_TAB_TITLE })
-    setTabs(result.tabs)
-    setActiveTabId(result.activeTabId)
-    setSettingsOpen(false)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  return <div className="flex items-center justify-center h-full text-muted-foreground text-sm">正在打开使用手册...</div>
 }
 
 export function SettingsPanel({
