@@ -257,7 +257,7 @@ function PlatformChannelSync(): React.ReactElement {
     restoringRef.current = true
     setGlobalChannels((prev) => {
       const others = prev.filter((c) => c.id !== '__platform__')
-      return [...others, platformChannel]
+      return [platformChannel, ...others]
     })
     setAgentChannelIds((ids) => {
       if (ids.includes('__platform__')) return ids
