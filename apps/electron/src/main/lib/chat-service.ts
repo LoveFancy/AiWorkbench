@@ -450,7 +450,6 @@ export async function sendMessage(
     try {
       reportChatEvent({
         userId: getJobId() ?? 'unknown',
-        question: userMessage,
         modelId,
         result: 'success',
         responseDurationMs: Date.now() - startTime,
@@ -494,11 +493,10 @@ export async function sendMessage(
         })
       }
 
-      // 上报用户中止事件（仅上报用户问题，不带上报模型回复，防止日志过大）
+      // 上报用户中止事件（不上报用户问题，防止日志过大）
       try {
         reportChatEvent({
           userId: getJobId() ?? 'unknown',
-          question: userMessage,
           modelId,
           result: 'failure',
           responseDurationMs: Date.now() - startTime,
@@ -545,7 +543,6 @@ export async function sendMessage(
       try {
         reportChatEvent({
           userId: getJobId() ?? 'unknown',
-          question: userMessage,
           modelId,
           result: 'failure',
           responseDurationMs: Date.now() - startTime,
