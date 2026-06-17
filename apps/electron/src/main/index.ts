@@ -526,6 +526,7 @@ app.whenReady().then(() => {
 async function bootstrap(): Promise<void> {
   // 初始化 Proma 版本号（供 User-Agent 等全局标识使用）
   setPromaVersion(app.getVersion())
+  console.log(`[启动] Proma v${app.getVersion()} ${app.isPackaged ? '' : '(dev)'}`)
 
   // 注册自定义协议 proma-file:// 用于内联预览本地文件。
   // 协议只接受主进程签发的 opaque token，不解析 renderer 提供的绝对路径。
