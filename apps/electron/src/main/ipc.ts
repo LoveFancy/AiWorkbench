@@ -225,6 +225,10 @@ import {
   ensureDefaultWorkspace,
   getWorkspaceMcpConfig,
   saveWorkspaceMcpConfig,
+  getWorkspaceConnectorsConfig,
+  saveWorkspaceConnectorsConfig,
+  migrateMcpJsonToConnectors,
+  syncDefaultConnectorsToWorkspace,
   getAllWorkspaceSkills,
   getOtherWorkspaceSkills,
   getDefaultSkillSlugs,
@@ -2055,6 +2059,31 @@ export function registerIpcHandlers(): void {
         success: result.valid,
         message: result.valid ? '连接成功' : (result.reason || '连接失败'),
       }
+    }
+  )
+
+  // 获取工作区连接器配置
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.GET_CONNECTORS_CONFIG,
+    async (_, workspaceSlug: string): Promise<import('@proma/shared').ConnectorsConfig> => {
+      return getWorkspaceConnectorsConfig(workspaceSlug)
+    }
+  )
+
+  // 保存工作区连接器配置
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.SAVE_CONNECTORS_CONFIG,
+    async (_, workspaceSlug: string, config: import('@proma/shared').ConnectorsConfig): Promise<void> => {
+      return saveWorkspaceConnectorsConfig(workspaceSlug, config)
+    }
+  )
+
+  // 同步预置连接器到当前工作区
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.SYNC_DEFAULT_CONNECTORS,
+    async (_, workspaceSlug: string): Promise<void> => {
+      migrateMcpJsonToConnectors(workspaceSlug)
+      syncDefaultConnectorsToWorkspace(workspaceSlug)
     }
   )
 

@@ -225,15 +225,15 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
           </button>
         )}
 
-        {/* 新增 MCP */}
-        {tab === 'mcp' && (
+        {/* 新增连接器 */}
+        {tab === 'connectors' && (
           <button
             type="button"
             onClick={() => { setEditingMcp(null); setMcpSheetOpen(true) }}
             className="flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-[13px] font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
           >
             <Plus size={14} />
-            <span>添加服务器</span>
+            <span>添加连接器</span>
           </button>
         )}
       </div>
@@ -500,7 +500,7 @@ function McpTab({ entries, total, query, onOpen, onToggle, onRequestDelete, onAd
       <EmptyState
         icon={<Plus className="size-8 text-foreground/30" />}
         title="还没有连接器"
-        hint="点击右上角「添加服务器」开始，或在 Agent 模式下让 Proma 帮你查找并配置。"
+        hint="点击右上角「添加连接器」开始，或在 Agent 模式下让 Proma 帮你查找并配置。"
         action={
           <button
             type="button"
@@ -508,7 +508,7 @@ function McpTab({ entries, total, query, onOpen, onToggle, onRequestDelete, onAd
             className="mt-2 flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-[13px] font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
           >
             <Plus size={14} />
-            <span>添加服务器</span>
+            <span>添加连接器</span>
           </button>
         }
       />

@@ -110,7 +110,7 @@ import { createApplicationMenu } from './menu'
 import { registerIpcHandlers } from './ipc'
 import { createTray, destroyTray, getTray } from './tray'
 import { initializeRuntime } from './lib/runtime-init'
-import { getConfigDirPath, seedDefaultPlugins, seedDefaultSkills } from './lib/config-paths'
+import { getConfigDirPath, seedDefaultPlugins, seedDefaultSkills, seedDefaultConnectors } from './lib/config-paths'
 import { upgradeDefaultSkillsInWorkspaces } from './lib/agent-workspace-manager'
 import { stopAllAgents, killOrphanedClaudeSubprocesses } from './lib/agent-service'
 import { stopAllGenerations } from './lib/chat-service'
@@ -544,6 +544,9 @@ async function bootstrap(): Promise<void> {
 
   // 同步默认插件到 ~/.workmate/default-plugins/
   seedDefaultPlugins()
+
+  // 同步默认连接器到 ~/.workmate/default-connectors/
+  safeRun('seedDefaultConnectors', seedDefaultConnectors)
 
   // 升级所有工作区中版本过旧的默认 Skills
   safeRun('upgradeDefaultSkillsInWorkspaces', upgradeDefaultSkillsInWorkspaces)

@@ -874,3 +874,115 @@ export function getScratchPadPath(): string {
 export function getAutomationsPath(): string {
   return join(getConfigDir(), 'automations.json')
 }
+
+// ===== 连接器（Connector）路径 =====
+
+/**
+ * 获取工作区连接器目录路径
+ *
+ * @param workspaceSlug 工作区 slug
+ * @returns ~/.workmate/agent-workspaces/{slug}/connectors/
+ */
+export function getConnectorsDir(workspaceSlug: string): string {
+  const dir = join(getAgentWorkspacePath(workspaceSlug), 'connectors')
+
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true })
+  }
+
+  return dir
+}
+
+/**
+ * 获取工作区连接器总配置文件路径
+ *
+ * @param workspaceSlug 工作区 slug
+ * @returns ~/.workmate/agent-workspaces/{slug}/connectors/connectors.json
+ */
+export function getConnectorsConfigPath(workspaceSlug: string): string {
+  return join(getConnectorsDir(workspaceSlug), 'connectors.json')
+}
+
+/**
+ * 获取默认连接器模板目录路径
+ *
+ * @returns ~/.workmate/default-connectors/
+ */
+export function getDefaultConnectorsDir(): string {
+  const dir = join(getConfigDir(), 'default-connectors')
+
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true })
+  }
+
+  return dir
+}
+
+/**
+ * 从连接器目录的 connector.json 中解析 version 字段
+ *
+ * 无 version 字段时返回 '0.0.0'（确保旧连接器会被更新）。
+ */
+function parseConnectorVersion(connectorDir: string): string {
+  const metaPath = join(connectorDir, 'connector.json')
+  if (!existsSync(metaPath)) return '0.0.0'
+
+  try {
+    const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
+    return typeof meta.version === 'string' && meta.version.trim() ? meta.version.trim() : '0.0.0'
+  } catch {
+    return '0.0.0'
+  }
+}
+
+/**
+ * 从 app bundle 同步默认连接器到 ~/.workmate/default-connectors/
+ *
+ * 打包模式下从 process.resourcesPath/default-connectors 复制。
+ * 开发模式下从源码 default-connectors/ 目录复制。
+ */
+export function seedDefaultConnectors(): void {
+  const { app } = require('electron')
+  const bundledDir = app.isPackaged
+    ? join(process.resourcesPath, 'default-connectors')
+    : join(__dirname, '../default-connectors')
+
+  if (!existsSync(bundledDir)) {
+    console.log('[配置] 未找到内置 default-connectors 目录，跳过')
+    return
+  }
+
+  const userDir = getDefaultConnectorsDir()
+
+  try {
+    const entries = readdirSync(bundledDir, { withFileTypes: true })
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+
+      const source = join(bundledDir, entry.name)
+      const target = join(userDir, entry.name)
+
+      try {
+        if (!existsSync(target)) {
+          cpSync(source, target, { recursive: true, filter: defaultSkillCopyFilter })
+          console.log(`[配置] 已同步默认连接器: ${entry.name}`)
+          continue
+        }
+
+        // 已存在则比较版本：bundled 更新时覆盖
+        const bundledVer = parseConnectorVersion(source)
+        const existingVer = parseConnectorVersion(target)
+        if (compareSemver(bundledVer, existingVer) > 0) {
+          rmSync(target, { recursive: true, force: true })
+          cpSync(source, target, { recursive: true, filter: defaultSkillCopyFilter })
+          console.log(`[配置] 已升级默认连接器: ${entry.name} (${existingVer} → ${bundledVer})`)
+        }
+      } catch (err) {
+        console.warn(`[配置] 同步默认连接器失败 (${entry.name})，跳过:`, err)
+      }
+    }
+  } catch (err) {
+    console.warn('[配置] 同步默认连接器失败:', err)
+  }
+}

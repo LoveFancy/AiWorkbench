@@ -31,7 +31,7 @@ import { injectAutomationMcpServer } from './automation-agent-tools'
 import { normalizeAnthropicBaseUrlForSdk, getPromaUserAgent } from '@proma/core'
 import pkg from '../../../package.json' with { type: 'json' }
 import { appendSDKMessages, updateAgentSessionMeta, getAgentSessionMeta, getAgentSessionMessages } from './agent-session-manager'
-import { getAgentWorkspace, ensurePluginManifest } from './agent-workspace-manager'
+import { getAgentWorkspace, ensurePluginManifest, getWorkspaceConnectorsConfig, migrateMcpJsonToConnectors, syncDefaultConnectorsToWorkspace } from './agent-workspace-manager'
 import { getAgentSessionWorkspacePath } from './config-paths'
 import { getRuntimeStatus } from './runtime-init'
 import { getSettings } from './settings-service'
@@ -68,6 +68,7 @@ import {
 import { buildSdkEnv } from './orchestrator/sdk-env'
 import {
   buildMcpServers,
+  collectConnectorDisabledTools,
   injectMemoryTools,
   injectNanoBananaTools,
   injectWebSearchTools,
@@ -448,6 +449,14 @@ export class AgentOrchestrator {
           workspace = ws
           console.log(`[Agent 编排] 使用 session 级别 cwd: ${agentCwd} (${ws.name}/${sessionId})`)
 
+          // 连接器：迁移旧 mcp.json + 同步预置连接器
+          try {
+            migrateMcpJsonToConnectors(ws.slug)
+            syncDefaultConnectorsToWorkspace(ws.slug)
+          } catch (err) {
+            console.warn('[Agent 编排] 连接器同步失败:', err)
+          }
+
           ensurePluginManifest(ws.slug, ws.name)
 
           if (existingSdkSessionId) {
@@ -495,8 +504,10 @@ export class AgentOrchestrator {
         console.log(`[Agent 编排] 将直接使用已保存的 sdkSessionId 进行 resume: ${existingSdkSessionId}`)
       }
 
-      // 10. 构建 MCP 服务器配置 + 记忆工具 + 生图工具 + 自定义工具
-      const mcpServers = buildMcpServers(workspaceSlug)
+      // 10. 构建 MCP 服务器配置
+      // 预读连接器配置一次，避免 buildMcpServers + collectConnectorDisabledTools 重复 I/O
+      const connectorsConfig = workspaceSlug ? getWorkspaceConnectorsConfig(workspaceSlug) : { version: '1.0', connectors: {} }
+      const mcpServers = buildMcpServers(workspaceSlug, connectorsConfig)
       await injectMemoryTools(sdk, mcpServers)
       await injectNanoBananaTools(sdk, mcpServers, sessionId, agentCwd)
       await injectWebSearchTools(sdk, mcpServers)
@@ -848,6 +859,12 @@ export class AgentOrchestrator {
           ]
           return plugins.length > 0 ? { plugins } : {}
         })(),
+        // 连接器 CLI Skill 扫描：传入 connectors/ 目录让 SDK 扫描其中的 skill/
+        ...(() => {
+          const { getConnectorsDir } = require('./config-paths')
+          const connectorsDir = workspaceSlug ? getConnectorsDir(workspaceSlug) : ''
+          return connectorsDir ? { additionalSkillDirs: [connectorsDir] } : {}
+        })(),
         // 合并附加目录：用户当次输入 + 会话级 + 工作区级（详见 collectAttachedDirectories）
         ...(() => {
           const allDirs = collectAttachedDirectories({
@@ -865,7 +882,10 @@ export class AgentOrchestrator {
         ...(appSettings.agentMaxBudgetUsd != null && appSettings.agentMaxBudgetUsd > 0 && {
           maxBudgetUsd: appSettings.agentMaxBudgetUsd,
         }),
-        disallowedTools: mergeDisallowedTools(expertRuntime?.disallowedTools),
+        disallowedTools: mergeDisallowedTools([
+          ...(expertRuntime?.disallowedTools ?? []),
+          ...collectConnectorDisabledTools(workspaceSlug, connectorsConfig),
+        ]),
         // 1M context window: 支持的模型自动启用 beta（Claude: Sonnet 4+ / Opus 4.6+ / 4.7 / 4.8、DeepSeek V4 系列）
         // 未启用时 SDK 默认 200K 并在约 150K 触发压缩；启用后上限提升至 1M
         ...(supports1MContext(modelId || DEFAULT_MODEL_ID) && {

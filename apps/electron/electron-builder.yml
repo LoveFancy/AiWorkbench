@@ -59,6 +59,11 @@ extraResources:
     to: default-plugins
     filter:
       - "**/*"
+  # 默认连接器模板（首次打开工作区时同步到 connectors/ 目录）
+  - from: default-connectors
+    to: default-connectors
+    filter:
+      - "**/*"
   # 教程文件（教程查看器 + 欢迎对话使用）
   - from: ../../tutorial/tutorial.md
     to: tutorial.md

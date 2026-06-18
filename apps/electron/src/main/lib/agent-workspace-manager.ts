@@ -20,11 +20,15 @@ import {
   getWorkspaceSkillsDir,
   getInactiveSkillsDir,
   getDefaultSkillsDir,
+  getConnectorsDir,
+  getConnectorsConfigPath,
+  getDefaultConnectorsDir,
+  seedDefaultConnectors,
   parseSkillVersion,
 } from './config-paths'
 import { listInstalledPlugins } from './plugin-registry-service'
 import type { AgentPluginInfo } from '@proma/shared'
-import type { AgentWorkspace, WorkspaceMcpConfig, SkillMeta, SkillImportSource, OtherWorkspaceSkillsGroup, WorkspaceCapabilities, SkillFileNode, SkillFileContent } from '@proma/shared'
+import type { AgentWorkspace, WorkspaceMcpConfig, SkillMeta, SkillImportSource, OtherWorkspaceSkillsGroup, WorkspaceCapabilities, SkillFileNode, SkillFileContent, ConnectorsConfig, ConnectorEntry } from '@proma/shared'
 
 interface AgentWorkspacesIndex {
   version: number
@@ -517,6 +521,193 @@ export function saveWorkspaceMcpConfig(workspaceSlug: string, config: WorkspaceM
   } catch (error) {
     console.error('[Agent 工作区] 保存 MCP 配置失败:', error)
     throw new Error('保存 MCP 配置失败')
+  }
+}
+
+// ===== 连接器（Connector）管理 =====
+
+/**
+ * 读取工作区连接器总配置文件
+ */
+export function getWorkspaceConnectorsConfig(workspaceSlug: string): ConnectorsConfig {
+  const configPath = getConnectorsConfigPath(workspaceSlug)
+
+  if (!existsSync(configPath)) {
+    return { version: '1.0', connectors: {} }
+  }
+
+  try {
+    const raw = readFileSync(configPath, 'utf-8')
+    return JSON.parse(raw) as ConnectorsConfig
+  } catch (error) {
+    console.error('[Agent 工作区] 读取连接器配置失败:', error)
+    return { version: '1.0', connectors: {} }
+  }
+}
+
+/**
+ * 保存工作区连接器总配置文件
+ */
+export function saveWorkspaceConnectorsConfig(workspaceSlug: string, config: ConnectorsConfig): void {
+  const configPath = getConnectorsConfigPath(workspaceSlug)
+
+  try {
+    if (!existsSync(getConnectorsDir(workspaceSlug))) {
+      mkdirSync(getConnectorsDir(workspaceSlug), { recursive: true })
+    }
+    writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8')
+    console.log(`[Agent 工作区] 已保存连接器配置: ${workspaceSlug}`)
+  } catch (error) {
+    console.error('[Agent 工作区] 保存连接器配置失败:', error)
+    throw new Error('保存连接器配置失败')
+  }
+}
+
+/**
+ * 一次性迁移：旧 mcp.json → 新 connectors/ 结构
+ *
+ * 如果 connectors.json 已存在则跳过（已迁移）。
+ * 迁移后旧 mcp.json 重命名为 mcp.json.bak。
+ */
+export function migrateMcpJsonToConnectors(workspaceSlug: string): void {
+  const configPath = getConnectorsConfigPath(workspaceSlug)
+
+  // 已迁移则跳过
+  if (existsSync(configPath)) return
+
+  const mcpPath = getWorkspaceMcpPath(workspaceSlug)
+
+  // 旧 mcp.json 不存在则跳过
+  if (!existsSync(mcpPath)) return
+
+  try {
+    const oldConfig = JSON.parse(readFileSync(mcpPath, 'utf-8')) as WorkspaceMcpConfig
+    const connectors: Record<string, ConnectorEntry> = {}
+
+    for (const [name, entry] of Object.entries(oldConfig.servers ?? {})) {
+      if (name === 'memos-cloud') continue // 系统保留
+      if (!entry.command && !entry.url) continue // 无有效配置跳过
+
+      const mcpDir = join(getConnectorsDir(workspaceSlug), name)
+      if (!existsSync(mcpDir)) {
+        mkdirSync(mcpDir, { recursive: true })
+      }
+
+      // 写入子目录 mcp.json（不含 enabled 字段，启用状态统一由 connectors.json 管理）
+      const serverConfig: Record<string, unknown> = {
+        type: entry.type,
+      }
+      if (entry.command) serverConfig.command = entry.command
+      if (entry.args && entry.args.length > 0) serverConfig.args = entry.args
+      if (entry.env && Object.keys(entry.env).length > 0) serverConfig.env = entry.env
+      if (entry.url) serverConfig.url = entry.url
+      if (entry.headers && Object.keys(entry.headers).length > 0) serverConfig.headers = entry.headers
+      if (entry.timeout) serverConfig.timeout = entry.timeout
+
+      writeFileSync(join(mcpDir, 'mcp.json'), JSON.stringify(serverConfig, null, 2), 'utf-8')
+
+      connectors[name] = {
+        type: 'mcp',
+        enabled: entry.enabled ?? false,
+        source: 'user',
+        displayName: name,
+      }
+    }
+
+    saveWorkspaceConnectorsConfig(workspaceSlug, { version: '1.0', connectors })
+    renameSync(mcpPath, mcpPath + '.bak')
+    console.log(`[Agent 工作区] 已迁移 mcp.json → connectors/ (${workspaceSlug})`)
+  } catch (error) {
+    console.error('[Agent 工作区] 迁移 MCP 配置失败:', error)
+  }
+}
+
+/**
+ * 同步预置连接器到当前工作区
+ *
+ * 时机：用户打开/切换工作区时调用。
+ * 1. 将 default-connectors/ 复制到工作区 connectors/（缺失的）
+ * 2. 更新 connectors.json（添加新预置连接器，默认 disabled）
+ * 3. 清理旧 Skill（如 skills-inactive/feishu-lark-setup）
+ */
+export function syncDefaultConnectorsToWorkspace(workspaceSlug: string): void {
+  const defaultDir = getDefaultConnectorsDir()
+  const workspaceConnectorsDir = getConnectorsDir(workspaceSlug)
+
+  // 1. 复制预置连接器文件
+  try {
+    if (!existsSync(defaultDir)) return
+
+    const entries = readdirSync(defaultDir, { withFileTypes: true })
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      const source = join(defaultDir, entry.name)
+      const target = join(workspaceConnectorsDir, entry.name)
+
+      if (!existsSync(target)) {
+        // 防御性复制：跳过 .git / node_modules 等
+        const blocklist = new Set(['.git', 'node_modules', '__pycache__', '.DS_Store'])
+        cpSync(source, target, {
+          recursive: true,
+          filter: (src) => !blocklist.has(basename(src)),
+        })
+        console.log(`[Agent 工作区] 已同步预置连接器: ${entry.name}`)
+      }
+    }
+  } catch (err) {
+    console.warn('[Agent 工作区] 同步预置连接器文件失败:', err)
+  }
+
+  // 2. 更新 connectors.json（添加新的预置连接器）
+  const config = getWorkspaceConnectorsConfig(workspaceSlug)
+  const presetConnectors = getDefaultConnectorEntries()
+
+  let changed = false
+  for (const [name, entry] of Object.entries(presetConnectors)) {
+    if (config.connectors[name]) continue // 已存在，保留用户状态
+    config.connectors[name] = entry
+    changed = true
+    console.log(`[Agent 工作区] 添加预置连接器: ${name}`)
+  }
+
+  if (changed) {
+    saveWorkspaceConnectorsConfig(workspaceSlug, config)
+  }
+
+  // 3. 清理旧 Skill（统一由 connectors/ 管理）
+  const inactiveDir = getInactiveSkillsDir(workspaceSlug)
+  const oldLarkSkill = join(inactiveDir, 'feishu-lark-setup')
+  if (existsSync(oldLarkSkill)) {
+    try {
+      rmSync(oldLarkSkill, { recursive: true, force: true })
+      console.log(`[Agent 工作区] 已清理旧 Skill: feishu-lark-setup`)
+    } catch (err) {
+      console.warn('[Agent 工作区] 清理旧 Skill 失败:', err)
+    }
+  }
+}
+
+/**
+ * 获取所有预置连接器的默认条目
+ */
+function getDefaultConnectorEntries(): Record<string, ConnectorEntry> {
+  return {
+    'huatai-email': {
+      type: 'mcp',
+      enabled: false,
+      source: 'preset',
+      displayName: '华泰邮箱',
+      description: '华泰证券企业邮箱 IMAP/SMTP，基于 mcp-email-server',
+      disabledTools: ['send_email', 'delete_email'],
+    },
+    'feishu-cli': {
+      type: 'cli',
+      enabled: false,
+      source: 'preset',
+      displayName: '飞书 CLI',
+      description: '飞书命令行工具（日历/消息/文档/云盘等）',
+      skillDir: 'skill',
+    },
   }
 }
 

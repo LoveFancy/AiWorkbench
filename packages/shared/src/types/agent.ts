@@ -768,6 +768,37 @@ export interface WorkspaceMcpConfig {
   servers: Record<string, McpServerEntry>
 }
 
+// ===== 连接器（Connector）类型 =====
+
+/** 连接器类型 */
+export type ConnectorType = 'mcp' | 'cli'
+
+/** 连接器来源 */
+export type ConnectorSource = 'preset' | 'user'
+
+/** 连接器状态条目 */
+export interface ConnectorEntry {
+  type: ConnectorType
+  enabled: boolean
+  source: ConnectorSource
+  /** 展示名称 */
+  displayName?: string
+  /** 功能描述 */
+  description?: string
+  /** CLI 类型专用：Skill 所在子目录名 */
+  skillDir?: string
+  /** 版本号（用于预置连接器升级判断） */
+  version?: string
+  /** MCP 类型专用：禁用的工具名列表（不暴露给 Agent） */
+  disabledTools?: string[]
+}
+
+/** 工作区连接器总配置文件 */
+export interface ConnectorsConfig {
+  version: string
+  connectors: Record<string, ConnectorEntry>
+}
+
 // ===== Skill 元数据 =====
 
 /** 从其他工作区导入的 Skill 来源元数据 */
@@ -1680,6 +1711,12 @@ export const AGENT_IPC_CHANNELS = {
   SAVE_MCP_CONFIG: 'agent:save-mcp-config',
   /** 测试 MCP 服务器连接 */
   TEST_MCP_SERVER: 'agent:test-mcp-server',
+  /** 获取工作区连接器配置 */
+  GET_CONNECTORS_CONFIG: 'agent:get-connectors-config',
+  /** 保存工作区连接器配置 */
+  SAVE_CONNECTORS_CONFIG: 'agent:save-connectors-config',
+  /** 同步预置连接器到工作区 */
+  SYNC_DEFAULT_CONNECTORS: 'agent:sync-default-connectors',
   /** 获取工作区 Skill 列表 */
   GET_SKILLS: 'agent:get-skills',
   /** 获取工作区 Skills 目录绝对路径 */

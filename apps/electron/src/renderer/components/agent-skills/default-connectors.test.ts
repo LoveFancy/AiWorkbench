@@ -10,9 +10,9 @@ import {
 
 const agentSkillsViewSource = readFileSync(join(import.meta.dir, 'AgentSkillsView.tsx'), 'utf-8')
 
-test('默认连接器包含个人邮箱和飞书 CLI', () => {
+test('默认连接器包含华泰邮箱和飞书 CLI', () => {
   expect(DEFAULT_CONNECTOR_DEFINITIONS.map((connector) => connector.id)).toEqual(['personal-email', 'feishu-cli'])
-  expect(DEFAULT_CONNECTOR_DEFINITIONS.map((connector) => connector.name)).toEqual(['个人邮箱', '飞书 CLI'])
+  expect(DEFAULT_CONNECTOR_DEFINITIONS.map((connector) => connector.name)).toEqual(['华泰邮箱', '飞书 CLI'])
 })
 
 test('飞书 CLI 默认连接流程使用指定开放平台地址', () => {

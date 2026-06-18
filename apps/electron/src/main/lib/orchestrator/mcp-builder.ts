@@ -7,45 +7,44 @@
  * - 联网搜索工具（WebSearch）
  */
 
-import { getWorkspaceMcpConfig } from '../agent-workspace-manager'
+import { getWorkspaceMcpConfig, getWorkspaceConnectorsConfig } from '../agent-workspace-manager'
+import type { ConnectorsConfig } from '@proma/shared'
 import { getMemoryConfig } from '../memory-service'
 import { searchMemory, addMemory, formatSearchResult } from '../memos-client'
+import { getConnectorsDir } from '../config-paths'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 // ---- MCP 服务器 ----
 
 /**
  * 构建工作区 MCP 服务器配置
+ *
+ * 优先从 connectors/ 目录加载（新格式），兜底从旧 mcp.json 加载。
  */
-export function buildMcpServers(workspaceSlug: string | undefined): Record<string, Record<string, unknown>> {
+export function buildMcpServers(
+  workspaceSlug: string | undefined,
+  preReadConfig?: ConnectorsConfig,
+): Record<string, Record<string, unknown>> {
   const mcpServers: Record<string, Record<string, unknown>> = {}
   if (!workspaceSlug) return mcpServers
 
+  // 尝试从 connectors/ 加载（新格式）
+  const connectorsConfig = preReadConfig ?? getWorkspaceConnectorsConfig(workspaceSlug)
+  if (Object.keys(connectorsConfig.connectors).length > 0) {
+    loadMcpFromConnectors(workspaceSlug, connectorsConfig, mcpServers)
+    if (Object.keys(mcpServers).length > 0) {
+      console.log(`[Agent 编排] 已从 connectors/ 加载 ${Object.keys(mcpServers).length} 个 MCP 服务器`)
+    }
+    return mcpServers
+  }
+
+  // 兜底：从旧 mcp.json 加载
   const mcpConfig = getWorkspaceMcpConfig(workspaceSlug)
   for (const [name, entry] of Object.entries(mcpConfig.servers ?? {})) {
     if (!entry.enabled) continue
     if (name === 'memos-cloud') continue
-
-    if (entry.type === 'stdio' && entry.command) {
-      const mergedEnv: Record<string, string> = {
-        ...(process.env.PATH && { PATH: process.env.PATH }),
-        ...entry.env,
-      }
-      mcpServers[name] = {
-        type: 'stdio',
-        command: entry.command,
-        ...(entry.args && entry.args.length > 0 && { args: entry.args }),
-        ...(Object.keys(mergedEnv).length > 0 && { env: mergedEnv }),
-        required: false,
-        startup_timeout_sec: entry.timeout ?? 30,
-      }
-    } else if ((entry.type === 'http' || entry.type === 'sse') && entry.url) {
-      mcpServers[name] = {
-        type: entry.type,
-        url: entry.url,
-        ...(entry.headers && Object.keys(entry.headers).length > 0 && { headers: entry.headers }),
-        required: false,
-      }
-    }
+    registerMcpServer(name, entry, mcpServers)
   }
 
   if (Object.keys(mcpServers).length > 0) {
@@ -53,6 +52,94 @@ export function buildMcpServers(workspaceSlug: string | undefined): Record<strin
   }
 
   return mcpServers
+}
+
+/**
+ * 从 connectors/ 目录加载 MCP 类型的连接器
+ */
+function loadMcpFromConnectors(
+  workspaceSlug: string,
+  connectorsConfig: ReturnType<typeof getWorkspaceConnectorsConfig>,
+  mcpServers: Record<string, Record<string, unknown>>,
+): void {
+  const connectorsDir = getConnectorsDir(workspaceSlug)
+
+  for (const [name, connector] of Object.entries(connectorsConfig.connectors)) {
+    if (!connector.enabled) continue
+    if (connector.type !== 'mcp') continue
+
+    const mcpPath = join(connectorsDir, name, 'mcp.json')
+    if (!existsSync(mcpPath)) continue
+
+    try {
+      const entry = JSON.parse(readFileSync(mcpPath, 'utf-8'))
+      registerMcpServer(name, entry, mcpServers)
+    } catch (err) {
+      console.error(`[Agent 编排] 读取连接器 MCP 配置失败 (${name}):`, err)
+    }
+  }
+}
+
+/**
+ * 注册单个 MCP Server 到配置表
+ */
+function registerMcpServer(
+  name: string,
+  entry: Record<string, unknown>,
+  mcpServers: Record<string, Record<string, unknown>>,
+): void {
+  if (entry.type === 'stdio' && entry.command) {
+    const mergedEnv: Record<string, string> = {
+      ...(process.env.PATH && { PATH: process.env.PATH }),
+      ...(entry.env as Record<string, string> ?? {}),
+    }
+    mcpServers[name] = {
+      type: 'stdio',
+      command: entry.command,
+      ...(entry.args && (entry.args as string[]).length > 0 && { args: entry.args }),
+      ...(Object.keys(mergedEnv).length > 0 && { env: mergedEnv }),
+      required: false,
+      startup_timeout_sec: (entry.timeout as number) ?? 30,
+    }
+  } else if ((entry.type === 'http' || entry.type === 'sse') && entry.url) {
+    mcpServers[name] = {
+      type: entry.type,
+      url: entry.url,
+      ...(entry.headers && Object.keys(entry.headers as Record<string, string>).length > 0 && { headers: entry.headers }),
+      required: false,
+    }
+  }
+}
+
+/**
+ * 收集连接器级别的禁用工具列表
+ *
+ * 从 connectors.json 中读取各 MCP 连接器的 disabledTools，
+ * 转为 SDK 格式 mcp__<connectorName>__<toolName>，由 agent-orchestrator
+ * 合并到 disallowedTools 中传给 SDK。
+ *
+ * @param workspaceSlug 工作区 slug
+ * @param preReadConfig 可选，调用方已读好的配置，避免重复 I/O
+ */
+export function collectConnectorDisabledTools(
+  workspaceSlug: string | undefined,
+  preReadConfig?: ConnectorsConfig,
+): string[] {
+  if (!workspaceSlug) return []
+
+  const connectorsConfig = preReadConfig ?? getWorkspaceConnectorsConfig(workspaceSlug)
+  const disabled: string[] = []
+
+  for (const [name, connector] of Object.entries(connectorsConfig.connectors)) {
+    if (!connector.enabled) continue
+    if (!connector.disabledTools?.length) continue
+
+    for (const tool of connector.disabledTools) {
+      disabled.push(`mcp__${name}__${tool}`)
+    }
+  }
+
+  return disabled
 }
 
 // ---- 工具注入 ----

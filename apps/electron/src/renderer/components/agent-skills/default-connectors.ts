@@ -20,7 +20,7 @@ export const FEISHU_CLI_AUTHORIZATION_URL = 'https://open.feishu.cn/page/scope-a
 export const DEFAULT_CONNECTOR_DEFINITIONS: readonly DefaultConnectorDefinition[] = [
   {
     id: 'personal-email',
-    name: '个人邮箱',
+    name: '华泰邮箱',
     category: '邮件服务',
     description: '绑定华泰邮箱后，Agent 可读取邮件主题、发件人和正文内容，辅助整理邮件与提炼信息。',
   },
