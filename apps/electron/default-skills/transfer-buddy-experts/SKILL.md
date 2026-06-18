@@ -1,7 +1,7 @@
 ---
 name: transfer-buddy-experts
 description: 将 WorkBuddy 专家团转换为 WorkMate 专家团。当用户想要导入、转换、迁移 WorkBuddy 的专家团到 WorkMate 时使用。也适用于用户说"把 WorkBuddy 专家转过来"、"导入 WorkBuddy 专家团"、"转换专家团格式"、"迁移专家"等场景。支持单 Agent 和团队模式，自动处理 SubAgent 拆分、Rules 融入、Skills 映射等。
-version: "1.0.0"
+version: "1.2.0"
 ---
 
 # Transfer Buddy Experts
@@ -72,8 +72,7 @@ version: "1.0.0"
   "author": { "name": "WorkBuddy Import" },
   "license": "MIT",
   "keywords": ["expert-group", ...{中文标签}],
-  "expertGroup": "{英文name}",
-  "expertType": "{'agent' | 'team'}"
+  "expertGroup": "{英文name}"
 }
 ```
 
@@ -83,6 +82,7 @@ version: "1.0.0"
 {
   "id": "{英文name}",
   "name": "{中文显示名}",
+  "categories": ["{分类1}", "{分类2}"],
   "description": "{中文描述}",
   "introduction": "{默认入口提示}",
   "mainRole": {
@@ -135,7 +135,6 @@ description: {角色描述}
 | `quickPrompts[].zh` | `samplePrompts` | 转为 string[] |
 | `skills[]` 路径 | `skills` | 提取最外层目录名（如 `./skills/ima-skills` → `ima-skills`） |
 | `version` | `version` | 直接使用，默认 1.0.0 |
-| `expertType` | `expertType` | 固定为 `"agent"`（单 Agent 模式） |
 | agent .md 正文 | `mainRole.prompt` | 见 prompt 构建规则 |
 | `rules/*.md` | 融入 `mainRole.prompt` | 见 prompt 构建规则 |
 
@@ -151,7 +150,75 @@ description: {角色描述}
 | `members[].profession.zh` | agents/{id}.md 的 frontmatter description | 职业 |
 | `tags[]` | `tags` | 如无 tags，从 members 的 profession 中提取 |
 | `quickPrompts[]` | `samplePrompts` | 如无，从 lead agent 的典型场景中提取 |
-| `expertType` | `expertType` | 固定为 `"team"`（团队模式） |
+
+## 分类推断规则
+
+转换完成后，根据内容推断 `categories`（字符串数组），专家可归属多个分类。
+
+### 分类体系
+
+| 分类 | 说明 | 典型标签/关键词 |
+|------|------|----------------|
+| 投行与资本市场 | 投资银行、并购、债券承销、IPO | 投行、并购、IPO、债券、承销 |
+| 交易与量化投资 | 自营交易、量化策略、算法交易 | 交易、量化、做市、算法、回测、选股 |
+| 研究分析 | 行业/宏观/股票/固收研究 | 研究、分析、研报、行业分析、宏观 |
+| 财富管理 | 理财规划、资产配置、家族办公室 | 财富管理、理财、资产配置、私人银行 |
+| 财务与会计 | 核算、对账、结账、报表、AP | 财务、会计、核算、对账、AP、GL、结账 |
+| 风险管理 | 市场/信用/操作风险 | 风控、风险、压力测试 |
+| 合规与法务 | 监管合规、法律事务、反洗钱 | 合规、法务、法律、监管、KYC、AML |
+| AI与数据智能 | ML、NLP、大模型、数据分析、知识管理 | AI、机器学习、数据分析、知识库、资讯、大模型 |
+| 技术研发 | 开发、架构、DevOps、安全、SRE、基础设施 | 开发、架构、前端、后端、移动、DevOps、嵌入式、安全、SRE |
+| 产品设计 | 产品管理、UI/UX、交互设计、游戏设计 | 产品、设计、UI、UX、游戏、原型 |
+| 内容创作 | 新媒体、视频、文案、文档、AI图像 | 内容、文案、视频、剪映、新媒体、公众号、小红书、技术文档 |
+| 营销增长 | 广告投放、SEO、电商、品牌、增长 | 营销、增长、广告、SEO、电商、品牌、私域 |
+| 销售商务 | 销售、商务拓展、提案 | 销售、商务、提案、招投标、预销售 |
+| 项目管理与质量 | 项目管理、测试、QA、文档、流程优化 | 项目管理、测试、QA、文档、流程、敏捷 |
+| 运营与人力 | HR、招聘、培训、客服、供应链 | 招聘、HR、培训、客服、运营、供应链 |
+| 战略与咨询 | 行业咨询、战略规划、创业辅导 | 战略、咨询、创业、行业场景、合伙人 |
+| 生活服务 | 出行、教育、日常生活 | 旅行、高考、留学、出行 |
+
+### categoryId 映射（优先信号）
+
+源 `plugin.json` 中的 `categoryId` 是最强的分类信号，**在清理之前先读取并映射**：
+
+| 源 categoryId | 新分类 |
+|---------------|--------|
+| `01-ProductDesign` | 产品设计 |
+| `02-Engineering` | 技术研发 |
+| `03-GameSpatial` | 产品设计 |
+| `04-DataAI` | AI与数据智能 |
+| `05-MarketingGrowth` | 营销增长 |
+| `06-ContentCreative` | 内容创作 |
+| `07-SalesCommerce` | 销售商务 |
+| `08-FinanceInvestment` | 拆分为：投行与资本市场 / 交易与量化投资 / 研究分析 / 财富管理 / 财务与会计 (根据 tags 进一步判断) |
+| `09-OperationsHR` | 运营与人力 |
+| `10-ProjectQuality` | 项目管理与质量 |
+| `11-SecurityCompliance` | 合规与法务 |
+| `12-IndustryConsultant` | 拆分为：战略与咨询 / 生活服务 (根据 tags 进一步判断) |
+
+> 映射完成后，再将 `categoryId` 从 prompt 中清理（见 prompt 构建步骤四）。
+
+### 推断优先级
+
+1. **categoryId 优先**：先按上表映射，得到基础分类
+2. **tags 补充**：遍历 tags 字段，命中分类体系关键词即追加分类（如跨类则作为第二分类）
+3. **description 语义**：上述均未覆盖时，分析 description 做语义匹配
+4. **profession 辅助**：取 profession 字段的关键词做最后补充
+5. **兜底**：以上均未匹配时，留空数组，人工补充
+
+### 跨类原则
+
+- 一个专家可归属 **1-2 个分类**，主分类在前，次要分类在后
+- 跨类条件：prompt 内容真正覆盖多个领域的能力（不只是涉及）
+- 例如：AI图像工程师 → `["内容创作", "AI与数据智能"]`
+- 例如：技术文档工程师 → `["内容创作", "技术研发"]`
+
+### 分类字段在后续使用中的作用
+
+`categories` 用于：
+- 专家市场的分类筛选与浏览
+- 与用户意图的匹配召回
+- 跨类专家的多入口曝光
 
 ## mainRole.prompt 构建规则
 
@@ -230,7 +297,7 @@ description: {角色描述}
 ```markdown
 ---
 name: {subagent-id}
-description: {一句话角色描述，英文}
+description: {角色描述，中文}
 ---
 
 {角色 prompt 正文，包含：}
@@ -280,6 +347,26 @@ description: {一句话角色描述，英文}
 - **提取核心规则要点**，精简融入 prompt 对应章节
 - 保留规则的约束力和可操作性，去掉冗余格式说明
 
+## Skills 复制
+
+WorkBuddy 专家的 `skills/` 目录中的每个 skill 需要做以下处理：
+
+### 复制到输出目录
+
+将 `skills/{skill-name}/` 目录完整复制到输出目录的 `skills/{skill-name}/` 下，保持目录结构不变（含 SKILL.md、prompts/、examples/ 等子目录）。
+
+### 更新 mainRole.prompt
+
+在 prompt 末尾添加可用 Skills 列表（见 mainRole.prompt 构建规则中的步骤三），让专家知道如何调用这些技能。
+
+### 在 expert-group.json 中引用
+
+`expert-groups/{id}.json` 的 `skills` 字段写入提取的 skill 名称列表：
+
+```json
+"skills": ["{skill-name-1}", "{skill-name-2}"]
+```
+
 ## 输出格式
 
 转换完成后，将结果文件写入目标目录。输出结构：
@@ -292,7 +379,7 @@ description: {一句话角色描述，英文}
 │   └── {id}.json
 ├── agents/                # 仅 SubAgent 时有
 │   └── {subagent-name}.md
-└── skills/                # 从源目录复制
+└── skills/                # 从源目录复制（专家自带）
     └── {skill-name}/
         └── SKILL.md
 ```
@@ -302,9 +389,11 @@ description: {一句话角色描述，英文}
 ```
 转换完成：
 - 类型：单Agent / 团队
+- 分类：{分类1} / {分类2}
 - SubAgent 拆分：是/否（原因）
 - builtinTools：无 / web-search
 - Rules 处理：无 / 已融入（方式）
+- Skills：{skill-name-1}, {skill-name-2}...
 - 特殊情况：（如有）
 ```
 
@@ -312,8 +401,11 @@ description: {一句话角色描述，英文}
 
 输出前请自检：
 
+- [ ] `categories` 已赋值（至少 1 个，跨类不超过 2 个），与 categoryId 映射和 tags/description 语义一致
 - [ ] `expertGroup` 字段与 `id` 一致，均为英文
 - [ ] `name` 字段为中文，不是英文
+- [ ] `introduction` 字段已赋值，非空
+- [ ] `mainRole.name` 为中文
 - [ ] `subagents` 与 `subagentLabels` 键名一致
 - [ ] 每个 subagent 在 `agents/` 下有对应的 .md 文件
 - [ ] mainRole.prompt 中不含 WorkBuddy 特有内容（avatars、.downloaded_at 等）
@@ -321,3 +413,4 @@ description: {一句话角色描述，英文}
 - [ ] 如有 rules，已融入 prompt 且不重复
 - [ ] `builtinTools` 值合法（目前仅支持 `web-search`）
 - [ ] `toolsPolicy.mode` 为 `"inherit"`
+- [ ] 输出目录结构完整（`.claude-plugin/plugin.json` + `expert-groups/{id}.json` 均存在）

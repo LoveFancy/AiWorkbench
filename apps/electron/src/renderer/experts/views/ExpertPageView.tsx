@@ -123,16 +123,17 @@ export function ExpertPageView({ embedded = false }: ExpertPageViewProps): React
   return (
     <div className="flex h-full flex-col bg-background">
       {/* 顶部控制栏 */}
-      <div className={cn('flex-shrink-0 titlebar-no-drag', embedded ? 'pb-4' : 'border-b px-6 pt-10 pb-4')}>
+      <div className={cn('flex-shrink-0 titlebar-no-drag', embedded ? 'pt-4 pb-4' : 'border-b px-6 pt-10 pb-4')}>
         <div className={cn(embedded && 'mx-auto w-full max-w-6xl px-8')}>
           <div className="flex items-center justify-between gap-4">
             {!embedded && <h2 className="text-lg font-semibold">专家/专家团</h2>}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               <ExpertSearchBar value={query} onChange={setQuery} />
-              <Button variant="outline" size="icon" className="h-9 w-9" onClick={handleRefresh} disabled={refreshing} title="刷新专家团列表">
-                <RefreshCw className={`size-4 ${refreshing ? 'animate-spin' : ''}`} />
-              </Button>
               <ExpertImportButton />
+              <Button variant="outline" size="sm" className="h-9" onClick={handleRefresh} disabled={refreshing} title="刷新专家团列表">
+                <RefreshCw className={`size-4 ${refreshing ? 'animate-spin' : ''}`} />
+                <span className="ml-1.5">{refreshing ? '刷新中' : '刷新'}</span>
+              </Button>
             </div>
           </div>
 

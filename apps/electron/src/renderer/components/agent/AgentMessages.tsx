@@ -7,7 +7,8 @@
 
 import * as React from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
-import { Bot, RotateCw, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react'
+import { Bot, ChevronDown, ChevronRight } from 'lucide-react'
+import { RetryingNotice as RetryingNoticeBase } from '@/components/ai-elements/retrying-notice'
 import { WelcomeEmptyState } from '@/components/welcome/WelcomeEmptyState'
 import {
   Message,
@@ -134,100 +135,28 @@ function AssistantLogo({ model }: { model?: string }): React.ReactElement {
   )
 }
 
-/** 重试提示组件 - 折叠式 */
+/** 重试提示组件（包装共享 RetryingNotice） */
 function RetryingNotice({ retrying }: { retrying: NonNullable<AgentStreamState['retrying']> }): React.ReactElement {
-  const [expanded, setExpanded] = React.useState(false)
-  const [countdown, setCountdown] = React.useState(0)
-
-  // 倒计时逻辑
-  React.useEffect(() => {
-    if (retrying.failed || retrying.history.length === 0) {
-      setCountdown(0)
-      return
-    }
-
-    const lastAttempt = retrying.history[retrying.history.length - 1]
-    if (!lastAttempt) return
-
-    // 计算倒计时
-    const updateCountdown = (): void => {
-      const elapsed = (Date.now() - lastAttempt.timestamp) / 1000 // 已过去的秒数
-      const remaining = Math.max(0, lastAttempt.delaySeconds - elapsed)
-      setCountdown(Math.ceil(remaining))
-
-      if (remaining <= 0) {
-        setCountdown(0)
-      }
-    }
-
-    // 立即更新一次
-    updateCountdown()
-
-    // 每 100ms 更新一次倒计时
-    const timer = setInterval(updateCountdown, 100)
-    return () => clearInterval(timer)
-  }, [retrying.failed, retrying.history])
+  const lastAttempt = retrying.history[retrying.history.length - 1]
 
   return (
-    <div className="rounded-lg border border-amber-200 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/20 p-3 mb-3">
-      {/* 头部：简洁状态 */}
-      <button
-        type="button"
-        className="flex items-center gap-2 w-full text-left hover:opacity-80 transition-opacity"
-        onClick={() => setExpanded(!expanded)}
-      >
-        {retrying.failed ? (
-          <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400 shrink-0" />
-        ) : (
-          <RotateCw className="size-4 animate-spin text-amber-600 dark:text-amber-400 shrink-0" />
-        )}
-        <span className="text-sm text-amber-900 dark:text-amber-100 flex-1">
-          {retrying.failed
-            ? `重试失败 (${retrying.currentAttempt}/${retrying.maxAttempts})`
-            : countdown > 0
-              ? `重试倒计时 ${countdown}秒 (${retrying.currentAttempt}/${retrying.maxAttempts})`
-              : `重试中 (${retrying.currentAttempt}/${retrying.maxAttempts})`}
-          {retrying.history.length > 0 && ` · ${retrying.history[retrying.history.length - 1]?.reason}`}
-        </span>
-        {expanded ? (
-          <ChevronDown className="size-4 text-amber-600 dark:text-amber-400 shrink-0" />
-        ) : (
-          <ChevronRight className="size-4 text-amber-600 dark:text-amber-400 shrink-0" />
-        )}
-      </button>
-
-      {/* 展开内容：重试历史 */}
-      {expanded && retrying.history.length > 0 && (
-        <div className="mt-3 space-y-3 border-t border-amber-200 dark:border-amber-800 pt-3">
-          <div className="text-xs font-medium text-amber-900 dark:text-amber-100">
-            尝试历史：
-          </div>
-          {retrying.history.map((attempt, index) => (
-            <RetryAttemptItem
-              key={attempt.timestamp}
-              attempt={attempt}
-              isLatest={index === retrying.history.length - 1}
-              isFailed={retrying.failed && index === retrying.history.length - 1}
-            />
-          ))}
-          {!retrying.failed && (
-            <div className="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-300 pl-6">
-              {countdown > 0 ? (
-                <>
-                  <RotateCw className="size-3 animate-spin" />
-                  <span>等待 {countdown} 秒后开始第 {retrying.currentAttempt} 次尝试</span>
-                </>
-              ) : (
-                <>
-                  <RotateCw className="size-3 animate-spin" />
-                  <span>正在进行第 {retrying.currentAttempt} 次尝试...</span>
-                </>
-              )}
-            </div>
-          )}
-        </div>
+    <RetryingNoticeBase<RetryAttempt>
+      currentAttempt={retrying.currentAttempt}
+      maxAttempts={retrying.maxAttempts}
+      failed={retrying.failed}
+      delaySeconds={lastAttempt?.delaySeconds ?? 0}
+      reason={lastAttempt?.reason}
+      lastAttemptTimestamp={lastAttempt?.timestamp}
+      history={retrying.history}
+      renderHistoryItem={(attempt, index) => (
+        <RetryAttemptItem
+          key={attempt.timestamp}
+          attempt={attempt}
+          isLatest={index === retrying.history.length - 1}
+          isFailed={retrying.failed && index === retrying.history.length - 1}
+        />
       )}
-    </div>
+    />
   )
 }
 

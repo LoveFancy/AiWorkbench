@@ -30,6 +30,7 @@ import {
   pendingAgentRecommendationAtom,
   conversationModelsAtom,
   chatPendingMessageAtom,
+  chatRetryingAtom,
   INITIAL_MESSAGE_LIMIT,
 } from '@/atoms/chat-atoms'
 import type { PendingAttachment, ChatPendingMessage } from '@/atoms/chat-atoms'
@@ -88,6 +89,7 @@ function ChatViewInner({ conversationId }: ChatViewProps): React.ReactElement {
   const setConversationModels = useSetAtom(conversationModelsAtom)
   const setChatStreamErrors = useSetAtom(chatStreamErrorsAtom)
   const chatStreamErrors = useAtomValue(chatStreamErrorsAtom)
+  const chatRetryingMap = useAtomValue(chatRetryingAtom)
   const refreshMap = useAtomValue(chatMessageRefreshAtom)
   const promptConfig = useAtomValue(promptConfigAtom)
   const userProfile = useAtomValue(userProfileAtom)
@@ -117,6 +119,7 @@ function ChatViewInner({ conversationId }: ChatViewProps): React.ReactElement {
   const streamingModel = streamState?.model ?? null
   const toolActivities = streamState?.toolActivities ?? []
   const chatError = chatStreamErrors.get(conversationId) ?? null
+  const chatRetrying = chatRetryingMap.get(conversationId) ?? null
   const refreshVersion = refreshMap.get(conversationId) ?? 0
 
   // ===== 对话切换时重置状态 =====
@@ -582,6 +585,7 @@ function ChatViewInner({ conversationId }: ChatViewProps): React.ReactElement {
             inlineEditingMessageId={inlineEditingMessageId}
             onDeleteDivider={handleDeleteDivider}
             onLoadMore={handleLoadMore}
+            retrying={chatRetrying}
           />
 
           {/* 错误提示 */}

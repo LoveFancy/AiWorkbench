@@ -257,260 +257,330 @@ export async function sendMessage(
 
   const startTime = Date.now()
 
-  try {
-    // 7. 获取适配器
-    const adapter = getAdapter(channel.provider)
+  const MAX_CHAT_RETRIES = 5
+  const RETRY_MAX_DELAY_MS = 10_000
 
-    // 8. 从工具注册表获取启用的工具
-    const { tools, systemPromptAppend } = getEnabledTools(enabledToolIds)
+  let lastError: Error | undefined
+  let retrySucceeded = false
 
-    // 注入工具系统提示词
-    const effectiveSystemMessage = systemPromptAppend && systemMessage
-      ? systemMessage + systemPromptAppend
-      : systemPromptAppend
-        ? systemPromptAppend
-        : systemMessage
+  for (let attempt = 1; attempt <= MAX_CHAT_RETRIES; attempt++) {
+    // 重试前：等待并通知前端
+    if (attempt > 1) {
+      const delayMs = Math.min(
+        Math.round(1000 * Math.pow(2, attempt - 2) + Math.random() * 1000),
+        RETRY_MAX_DELAY_MS,
+      )
+      const delaySec = Math.round(delayMs / 1000)
+      const reason = lastError?.message ?? '未知错误'
 
-    const proxyUrl = await getEffectiveProxyUrl()
-    const fetchFn = getFetchFn(proxyUrl)
+      webContents.send(CHAT_IPC_CHANNELS.STREAM_RETRYING, {
+        conversationId,
+        attempt,
+        maxAttempts: MAX_CHAT_RETRIES,
+        delaySeconds: delaySec,
+        reason,
+      })
 
-    // 9. 工具续接循环
-    let continuationMessages: ContinuationMessage[] = []
-    let round = 0
-    /** 标记最近一轮是否执行了工具（用于判断是否需要最终响应轮） */
-    let pendingToolResults = false
+      await new Promise<void>((resolve) => setTimeout(resolve, delayMs))
 
-    /** 流式事件处理器（工具轮和最终响应轮复用） */
-    const handleStreamEvent = (event: { type: string; delta?: string; toolCallId?: string; toolName?: string }): void => {
-      switch (event.type) {
-        case 'chunk':
-          accumulatedContent += event.delta ?? ''
-          webContents.send(CHAT_IPC_CHANNELS.STREAM_CHUNK, {
-            conversationId,
-            delta: event.delta,
-          })
-          break
-        case 'reasoning':
-          accumulatedReasoning += event.delta ?? ''
-          webContents.send(CHAT_IPC_CHANNELS.STREAM_REASONING, {
-            conversationId,
-            delta: event.delta,
-          })
-          break
-        case 'tool_call_start':
-          accumulatedToolActivities.push({
-            toolCallId: event.toolCallId!,
-            toolName: event.toolName!,
-            type: 'start',
-          })
-          webContents.send(CHAT_IPC_CHANNELS.STREAM_TOOL_ACTIVITY, {
-            conversationId,
-            activity: { type: 'start', toolName: event.toolName!, toolCallId: event.toolCallId! },
-          })
-          break
-        // done 事件在外部处理
+      // 等待期间被中止
+      if (controller.signal.aborted) {
+        console.log(`[聊天服务] 对话 ${conversationId} 在重试等待期间被中止`)
+        activeControllers.delete(conversationId)
+        return
       }
+
+      // 重置累积状态
+      accumulatedContent = ''
+      accumulatedReasoning = ''
+      accumulatedToolActivities.length = 0
+      accumulatedGeneratedAttachments.length = 0
     }
 
-    while (round < MAX_TOOL_ROUNDS) {
-      round++
-      pendingToolResults = false
+    try {
+      // 7. 获取适配器
+      const adapter = getAdapter(channel.provider)
 
-      const request = adapter.buildStreamRequest({
-        baseUrl: channel.baseUrl,
-        apiKey,
-        modelId,
-        history: enrichedHistory,
-        userMessage: enrichedUserMessage,
-        systemMessage: effectiveSystemMessage,
-        attachments,
-        readImageAttachments: getImageAttachmentData,
-        thinkingEnabled,
-        tools,
-        continuationMessages: continuationMessages.length > 0 ? continuationMessages : undefined,
-      })
+      // 8. 从工具注册表获取启用的工具
+      const { tools, systemPromptAppend } = getEnabledTools(enabledToolIds)
 
-      const { content, reasoning, thinkingBlocks, toolCalls, stopReason } = await streamSSE({
-        request,
-        adapter,
-        signal: controller.signal,
-        fetchFn,
-        onEvent: handleStreamEvent,
-      })
+      // 注入工具系统提示词
+      const effectiveSystemMessage = systemPromptAppend && systemMessage
+        ? systemMessage + systemPromptAppend
+        : systemPromptAppend
+          ? systemPromptAppend
+          : systemMessage
 
-      // 如果没有工具调用或不是 tool_use 停止，退出循环
-      if (!toolCalls || toolCalls.length === 0 || stopReason !== 'tool_use') {
-        break
-      }
+      const proxyUrl = await getEffectiveProxyUrl()
+      const fetchFn = getFetchFn(proxyUrl)
 
-      // 执行工具调用（通过统一执行器）
-      // 提取前一轮对话的附件（用于参考图支持）
-      const lastUserMsg = fullHistory.filter((m) => m.role === 'user').at(-1)
-      const lastAssistantMsg = fullHistory.filter((m) => m.role === 'assistant').at(-1)
-      const toolResults = await executeToolCalls(toolCalls, {
-        webContents,
-        conversationId,
-        currentAttachments: attachments,
-        previousUserAttachments: lastUserMsg?.attachments,
-        previousAssistantAttachments: lastAssistantMsg?.attachments,
-      })
+      // 9. 工具续接循环
+      let continuationMessages: ContinuationMessage[] = []
+      let round = 0
+      /** 标记最近一轮是否执行了工具（用于判断是否需要最终响应轮） */
+      let pendingToolResults = false
 
-      // 累积工具结果到持久化数据
-      for (const tc of toolCalls) {
-        const tr = toolResults.find((r) => r.toolCallId === tc.id)
-        if (tr) {
-          accumulatedToolActivities.push({
-            toolCallId: tc.id,
-            toolName: tc.name,
-            type: 'result',
-            result: tr.content,
-            isError: tr.isError,
-            input: tc.arguments,
-          })
-          // 收集工具生成的附件（如生图工具的图片）
-          if (tr.generatedAttachments) {
-            accumulatedGeneratedAttachments.push(...tr.generatedAttachments)
-          }
+      /** 流式事件处理器（工具轮和最终响应轮复用） */
+      const handleStreamEvent = (event: { type: string; delta?: string; toolCallId?: string; toolName?: string }): void => {
+        switch (event.type) {
+          case 'chunk':
+            accumulatedContent += event.delta ?? ''
+            webContents.send(CHAT_IPC_CHANNELS.STREAM_CHUNK, {
+              conversationId,
+              delta: event.delta,
+            })
+            break
+          case 'reasoning':
+            accumulatedReasoning += event.delta ?? ''
+            webContents.send(CHAT_IPC_CHANNELS.STREAM_REASONING, {
+              conversationId,
+              delta: event.delta,
+            })
+            break
+          case 'tool_call_start':
+            accumulatedToolActivities.push({
+              toolCallId: event.toolCallId!,
+              toolName: event.toolName!,
+              type: 'start',
+            })
+            webContents.send(CHAT_IPC_CHANNELS.STREAM_TOOL_ACTIVITY, {
+              conversationId,
+              activity: { type: 'start', toolName: event.toolName!, toolCallId: event.toolCallId! },
+            })
+            break
+          // done 事件在外部处理
         }
       }
 
-      // 构建续接消息
-      // thinkingBlocks 保留服务端原始的 thinking 块结构（含签名），
-      // 在思考+工具模式下必须原样回传给 Anthropic 协议家族（Anthropic/DeepSeek/Kimi）
-      continuationMessages = [
-        ...continuationMessages,
-        { role: 'assistant' as const, content, reasoning, thinkingBlocks, toolCalls },
-        { role: 'tool' as const, results: toolResults },
-      ]
-      pendingToolResults = true
+      while (round < MAX_TOOL_ROUNDS) {
+        round++
+        pendingToolResults = false
 
-      // 注意：不重置 accumulatedContent/accumulatedReasoning，跨轮次持续累积
-    }
+        const request = adapter.buildStreamRequest({
+          baseUrl: channel.baseUrl,
+          apiKey,
+          modelId,
+          history: enrichedHistory,
+          userMessage: enrichedUserMessage,
+          systemMessage: effectiveSystemMessage,
+          attachments,
+          readImageAttachments: getImageAttachmentData,
+          thinkingEnabled,
+          tools,
+          continuationMessages: continuationMessages.length > 0 ? continuationMessages : undefined,
+        })
 
-    // 10. 最终响应轮：如果因达到 MAX_TOOL_ROUNDS 退出但仍有待处理的工具结果，
-    // 再发起一次 API 调用（不传 tools）让模型基于工具结果生成最终文本回复
-    if (pendingToolResults && continuationMessages.length > 0) {
-      console.log(`[聊天服务] 工具轮次已达上限 (${MAX_TOOL_ROUNDS})，发起最终响应轮`)
+        const { content, reasoning, thinkingBlocks, toolCalls, stopReason } = await streamSSE({
+          request,
+          adapter,
+          signal: controller.signal,
+          fetchFn,
+          onEvent: handleStreamEvent,
+        })
 
-      const finalRequest = adapter.buildStreamRequest({
-        baseUrl: channel.baseUrl,
-        apiKey,
-        modelId,
-        history: enrichedHistory,
-        userMessage: enrichedUserMessage,
-        systemMessage: effectiveSystemMessage,
-        attachments,
-        readImageAttachments: getImageAttachmentData,
-        thinkingEnabled,
-        // 不传 tools，强制模型生成文本回复而非继续调用工具
-        continuationMessages,
-      })
+        // 如果没有工具调用或不是 tool_use 停止，退出循环
+        if (!toolCalls || toolCalls.length === 0 || stopReason !== 'tool_use') {
+          break
+        }
 
-      await streamSSE({
-        request: finalRequest,
-        adapter,
-        signal: controller.signal,
-        fetchFn,
-        onEvent: handleStreamEvent,
-      })
-    }
+        // 执行工具调用（通过统一执行器）
+        // 提取前一轮对话的附件（用于参考图支持）
+        const lastUserMsg = fullHistory.filter((m) => m.role === 'user').at(-1)
+        const lastAssistantMsg = fullHistory.filter((m) => m.role === 'assistant').at(-1)
+        const toolResults = await executeToolCalls(toolCalls, {
+          webContents,
+          conversationId,
+          currentAttachments: attachments,
+          previousUserAttachments: lastUserMsg?.attachments,
+          previousAssistantAttachments: lastAssistantMsg?.attachments,
+        })
 
-    // 10. 保存 assistant 消息（空内容不保存，除非有生成的附件）
-    const assistantMsgId = randomUUID()
-    if (accumulatedContent.trim() || accumulatedGeneratedAttachments.length > 0) {
-      const assistantMsg: ChatMessage = {
-        id: assistantMsgId,
-        role: 'assistant',
-        content: accumulatedContent,
-        createdAt: Date.now(),
-        model: modelId,
-        reasoning: accumulatedReasoning || undefined,
-        toolActivities: accumulatedToolActivities.length > 0 ? accumulatedToolActivities : undefined,
-        attachments: accumulatedGeneratedAttachments.length > 0 ? accumulatedGeneratedAttachments : undefined,
+        // 累积工具结果到持久化数据
+        for (const tc of toolCalls) {
+          const tr = toolResults.find((r) => r.toolCallId === tc.id)
+          if (tr) {
+            accumulatedToolActivities.push({
+              toolCallId: tc.id,
+              toolName: tc.name,
+              type: 'result',
+              result: tr.content,
+              isError: tr.isError,
+              input: tc.arguments,
+            })
+            // 收集工具生成的附件（如生图工具的图片）
+            if (tr.generatedAttachments) {
+              accumulatedGeneratedAttachments.push(...tr.generatedAttachments)
+            }
+          }
+        }
+
+        // 构建续接消息
+        // thinkingBlocks 保留服务端原始的 thinking 块结构（含签名），
+        // 在思考+工具模式下必须原样回传给 Anthropic 协议家族（Anthropic/DeepSeek/Kimi）
+        continuationMessages = [
+          ...continuationMessages,
+          { role: 'assistant' as const, content, reasoning, thinkingBlocks, toolCalls },
+          { role: 'tool' as const, results: toolResults },
+        ]
+        pendingToolResults = true
+
+        // 注意：不重置 accumulatedContent/accumulatedReasoning，跨轮次持续累积
       }
-      appendMessage(conversationId, assistantMsg)
 
-      // 更新对话索引的 updatedAt
-      try {
-        updateConversationMeta(conversationId, {})
-      } catch {
-        // 索引更新失败不影响主流程
+      // 10. 最终响应轮：如果因达到 MAX_TOOL_ROUNDS 退出但仍有待处理的工具结果，
+      // 再发起一次 API 调用（不传 tools）让模型基于工具结果生成最终文本回复
+      if (pendingToolResults && continuationMessages.length > 0) {
+        console.log(`[聊天服务] 工具轮次已达上限 (${MAX_TOOL_ROUNDS})，发起最终响应轮`)
+
+        const finalRequest = adapter.buildStreamRequest({
+          baseUrl: channel.baseUrl,
+          apiKey,
+          modelId,
+          history: enrichedHistory,
+          userMessage: enrichedUserMessage,
+          systemMessage: effectiveSystemMessage,
+          attachments,
+          readImageAttachments: getImageAttachmentData,
+          thinkingEnabled,
+          // 不传 tools，强制模型生成文本回复而非继续调用工具
+          continuationMessages,
+        })
+
+        await streamSSE({
+          request: finalRequest,
+          adapter,
+          signal: controller.signal,
+          fetchFn,
+          onEvent: handleStreamEvent,
+        })
       }
-    } else {
-      console.warn(`[聊天服务] 模型返回空内容且无生成附件，跳过保存 (对话 ${conversationId})`)
-    }
 
-    webContents.send(CHAT_IPC_CHANNELS.STREAM_COMPLETE, {
-      conversationId,
-      model: modelId,
-      messageId: (accumulatedContent.trim() || accumulatedGeneratedAttachments.length > 0) ? assistantMsgId : undefined,
-    })
-
-    // 上报 Chat 成功事件
-    try {
-      reportChatEvent({
-        userId: getJobId() ?? 'unknown',
-        modelId,
-        result: 'success',
-        responseDurationMs: Date.now() - startTime,
-      })
-    } catch { /* 上报失败不影响主流程 */ }
-  } catch (error) {
-    // 被中止的请求：保存已输出的部分内容，通知前端停止
-    if (controller.signal.aborted) {
-      console.log(`[聊天服务] 对话 ${conversationId} 已被用户中止`)
-
-      // 保存已累积的部分助手消息
-      if (accumulatedContent) {
-        const assistantMsgId = randomUUID()
-        const partialMsg: ChatMessage = {
+      // 10. 保存 assistant 消息（空内容不保存，除非有生成的附件）
+      const assistantMsgId = randomUUID()
+      if (accumulatedContent.trim() || accumulatedGeneratedAttachments.length > 0) {
+        const assistantMsg: ChatMessage = {
           id: assistantMsgId,
           role: 'assistant',
           content: accumulatedContent,
           createdAt: Date.now(),
           model: modelId,
           reasoning: accumulatedReasoning || undefined,
-          stopped: true,
           toolActivities: accumulatedToolActivities.length > 0 ? accumulatedToolActivities : undefined,
+          attachments: accumulatedGeneratedAttachments.length > 0 ? accumulatedGeneratedAttachments : undefined,
         }
-        appendMessage(conversationId, partialMsg)
+        appendMessage(conversationId, assistantMsg)
 
+        // 更新对话索引的 updatedAt
         try {
           updateConversationMeta(conversationId, {})
         } catch {
           // 索引更新失败不影响主流程
         }
-
-        webContents.send(CHAT_IPC_CHANNELS.STREAM_COMPLETE, {
-          conversationId,
-          model: modelId,
-          messageId: assistantMsgId,
-        })
       } else {
-        webContents.send(CHAT_IPC_CHANNELS.STREAM_COMPLETE, {
-          conversationId,
-          model: modelId,
-        })
+        console.warn(`[聊天服务] 模型返回空内容且无生成附件，跳过保存 (对话 ${conversationId})`)
       }
 
-      // 上报用户中止事件（不上报用户问题，防止日志过大）
+      webContents.send(CHAT_IPC_CHANNELS.STREAM_COMPLETE, {
+        conversationId,
+        model: modelId,
+        messageId: (accumulatedContent.trim() || accumulatedGeneratedAttachments.length > 0) ? assistantMsgId : undefined,
+      })
+
+      // 上报 Chat 成功事件
       try {
         reportChatEvent({
           userId: getJobId() ?? 'unknown',
           modelId,
-          result: 'failure',
+          result: 'success',
           responseDurationMs: Date.now() - startTime,
-          error: new Error('用户中止'),
         })
       } catch { /* 上报失败不影响主流程 */ }
 
-      return
+      // 成功：发送重试清除并退出循环
+      retrySucceeded = true
+      if (attempt > 1) {
+        webContents.send(CHAT_IPC_CHANNELS.STREAM_RETRY_CLEARED, { conversationId })
+      }
+      break
+    } catch (error) {
+      // 被中止的请求：不重试，保存部分内容后返回
+      if (controller.signal.aborted) {
+        console.log(`[聊天服务] 对话 ${conversationId} 已被用户中止`)
+
+        if (accumulatedContent) {
+          const assistantMsgId = randomUUID()
+          const partialMsg: ChatMessage = {
+            id: assistantMsgId,
+            role: 'assistant',
+            content: accumulatedContent,
+            createdAt: Date.now(),
+            model: modelId,
+            reasoning: accumulatedReasoning || undefined,
+            stopped: true,
+            toolActivities: accumulatedToolActivities.length > 0 ? accumulatedToolActivities : undefined,
+          }
+          appendMessage(conversationId, partialMsg)
+
+          try { updateConversationMeta(conversationId, {}) } catch { /* ignore */ }
+
+          webContents.send(CHAT_IPC_CHANNELS.STREAM_COMPLETE, {
+            conversationId,
+            model: modelId,
+            messageId: assistantMsgId,
+          })
+        } else {
+          webContents.send(CHAT_IPC_CHANNELS.STREAM_COMPLETE, {
+            conversationId,
+            model: modelId,
+          })
+        }
+
+        try {
+          reportChatEvent({
+            userId: getJobId() ?? 'unknown',
+            modelId,
+            result: 'failure',
+            responseDurationMs: Date.now() - startTime,
+            error: new Error('用户中止'),
+          })
+        } catch { /* ignore */ }
+
+        activeControllers.delete(conversationId)
+        return
+      }
+
+      lastError = error instanceof Error ? error : new Error(String(error))
+
+      if (attempt < MAX_CHAT_RETRIES) {
+        console.log(`[聊天服务] 第 ${attempt} 次尝试失败，将重试: ${lastError.message}`)
+        continue
+      }
+
+      // 已达最大重试次数
+      console.error(`[聊天服务] 已重试 ${MAX_CHAT_RETRIES} 次均失败: ${lastError.message}`)
     }
+  }
 
-    const errorMessage = error instanceof Error ? error.message : '未知错误'
-    console.error(`[聊天服务] 流式请求失败:`, error)
+  // 所有重试均失败，执行最终错误处理
+  if (!retrySucceeded && lastError) {
+    const errorMessage = lastError.message
 
-    // 保存已累积的部分助手消息（与 abort 逻辑一致，防止内容丢失）
+    // 通知前端重试全部失败
+    webContents.send(CHAT_IPC_CHANNELS.STREAM_RETRY_FAILED, {
+      conversationId,
+      finalAttempt: {
+        attempt: MAX_CHAT_RETRIES,
+        maxAttempts: MAX_CHAT_RETRIES,
+        timestamp: Date.now(),
+        delaySeconds: 0,
+        reason: '重试已达上限',
+        errorMessage,
+      },
+    })
+
+    console.error(`[聊天服务] 流式请求最终失败:`, lastError)
+
+    // 保存已累积的部分助手消息
     if (accumulatedContent) {
       const assistantMsgId = randomUUID()
       const partialMsg: ChatMessage = {
@@ -526,11 +596,7 @@ export async function sendMessage(
       }
       appendMessage(conversationId, partialMsg)
 
-      try {
-        updateConversationMeta(conversationId, {})
-      } catch {
-        // 索引更新失败不影响主流程
-      }
+      try { updateConversationMeta(conversationId, {}) } catch { /* ignore */ }
     }
 
     webContents.send(CHAT_IPC_CHANNELS.STREAM_ERROR, {
@@ -538,21 +604,22 @@ export async function sendMessage(
       error: errorMessage,
     })
 
-    // 上报 Chat 失败事件（中止除外）
-    if (!controller.signal.aborted) {
-      try {
-        reportChatEvent({
-          userId: getJobId() ?? 'unknown',
-          modelId,
-          result: 'failure',
-          responseDurationMs: Date.now() - startTime,
-          error: error instanceof Error ? error : new Error(errorMessage),
-        })
-      } catch { /* 上报失败不影响主流程 */ }
+    // 上报 Chat 失败事件
+    try {
+      reportChatEvent({
+        userId: getJobId() ?? 'unknown',
+        modelId,
+        result: 'failure',
+        responseDurationMs: Date.now() - startTime,
+        error: lastError,
+      })
+    } catch { 
+      /* 上报失败不影响主流程 */ 
     }
-  } finally {
-    activeControllers.delete(conversationId)
   }
+
+  // 清理 AbortController
+  activeControllers.delete(conversationId)
 }
 
 /**
