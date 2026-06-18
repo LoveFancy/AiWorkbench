@@ -147,15 +147,13 @@ export function reportEvent(item: Omit<ObservabilityEventItem, 'eventId'>): void
 // ===== 各类事件上报快捷方法 =====
 
 export function reportChatEvent(params: {
-  userId: string; question: string; modelId: string;
+  userId: string; modelId: string;
   result: 'success' | 'failure'; responseDurationMs: number; error?: Error;
 }): void {
   reportEvent({
     type: 'chat_question',
     userId: params.userId,
     timestamp: Date.now(),
-    question: params.question,
-    questionLength: params.question.length,
     modelId: params.modelId,
     result: params.result,
     responseDurationMs: params.responseDurationMs,
@@ -165,7 +163,7 @@ export function reportChatEvent(params: {
 }
 
 export function reportAgentEvent(params: {
-  userId: string; question: string; modelId: string;
+  userId: string; modelId: string;
   result: 'success' | 'failure'; responseDurationMs: number; error?: Error;
   sessionId?: string; workspaceId?: string;
 }): void {
@@ -173,8 +171,6 @@ export function reportAgentEvent(params: {
     type: 'agent_question',
     userId: params.userId,
     timestamp: Date.now(),
-    question: params.question,
-    questionLength: params.question.length,
     modelId: params.modelId,
     sessionId: params.sessionId,
     workspaceId: params.workspaceId,

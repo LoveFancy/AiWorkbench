@@ -139,7 +139,6 @@ export async function runAgent(
         try {
           reportAgentEvent({
             userId: getJobId() ?? 'unknown',
-            question: input.userMessage,
             modelId: input.modelId ?? 'unknown',
             sessionId: input.sessionId,
             workspaceId: input.workspaceId,
@@ -166,7 +165,6 @@ export async function runAgent(
             const effectiveStartedAt = opts?.startedAt ?? input.startedAt
             reportAgentEvent({
               userId: getJobId() ?? 'unknown',
-              question: input.userMessage,
               modelId: input.modelId ?? 'unknown',
               sessionId: input.sessionId,
               workspaceId: input.workspaceId,
@@ -207,7 +205,6 @@ export async function runAgent(
     try {
       reportAgentEvent({
         userId: getJobId() ?? 'unknown',
-        question: input.userMessage,
         modelId: input.modelId ?? 'unknown',
         sessionId: input.sessionId,
         workspaceId: input.workspaceId,
@@ -263,7 +260,6 @@ export async function runAgentHeadless(
         try {
           reportAgentEvent({
             userId: getJobId() ?? 'unknown',
-            question: runInput.userMessage,
             modelId: runInput.modelId ?? 'unknown',
             sessionId: runInput.sessionId,
             workspaceId: runInput.workspaceId,
@@ -292,7 +288,6 @@ export async function runAgentHeadless(
             const effectiveStartedAt = opts?.startedAt ?? startedAt
             reportAgentEvent({
               userId: getJobId() ?? 'unknown',
-              question: runInput.userMessage,
               modelId: runInput.modelId ?? 'unknown',
               sessionId: runInput.sessionId,
               workspaceId: runInput.workspaceId,
@@ -345,7 +340,6 @@ export async function runAgentHeadless(
     try {
       reportAgentEvent({
         userId: getJobId() ?? 'unknown',
-        question: runInput.userMessage,
         modelId: runInput.modelId ?? 'unknown',
         sessionId: runInput.sessionId,
         workspaceId: runInput.workspaceId,

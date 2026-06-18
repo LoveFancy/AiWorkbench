@@ -215,8 +215,17 @@ export const agentChannelIdsAtom = atom<string[]>([])
 
 /** Auto Mode 开关状态（全局，持久化到 settings.json） */
 export const autoModeEnabledAtom = atom<boolean>(false)
-/** Auto Mode 候选模型 ID 列表（全局，持久化到 settings.json） */
-export const autoSwitchCandidateModelsAtom = atom<string[]>([])
+
+/**
+ * 候选模型引用（与 main process agent-auto-model-switcher CandidateModelRef 保持一致）
+ */
+export interface CandidateModelRef {
+  modelId: string
+  channelId: string
+}
+
+/** Auto Mode 候选模型列表（含渠道信息，持久化到 settings.json） */
+export const autoSwitchCandidateModelsAtom = atom<CandidateModelRef[]>([])
 
 /** Per-session 渠道 ID Map — sessionId → channelId */
 export const agentSessionChannelMapAtom = atom<Map<string, string>>(new Map())

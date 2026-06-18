@@ -229,6 +229,15 @@ export interface ElectronAPI {
     | { success: false; error: string }
   >
 
+  /** 提交问题反馈 */
+  submitIssue: (input: {
+    description: string
+    files: Array<{ name: string; data: number[]; mimeType: string }>
+  }) => Promise<
+    | { success: true; id: number; imageCount: number }
+    | { success: false; error: string }
+  >
+
   // ===== 窗口控制（Windows 自定义标题栏）=====
 
   /** 最小化窗口 */
@@ -1283,6 +1292,10 @@ const electronAPI: ElectronAPI = {
 
   uploadSystemLog: () => {
     return ipcRenderer.invoke('system-log:upload')
+  },
+
+  submitIssue: (input) => {
+    return ipcRenderer.invoke('issue:submit', input)
   },
 
   // 窗口控制

@@ -26,11 +26,22 @@ const DEFAULT_MODEL_ID = 'claude-sonnet-4-6'
 
 // ===== 类型 =====
 
+/**
+ * 候选模型引用
+ *
+ * 包含模型 ID 和可选的渠道 ID。
+ * 当同一模型 ID 跨多个渠道时，通过 channelId 精确指定使用哪个渠道。
+ */
+export interface CandidateModelRef {
+  modelId: string
+  channelId?: string
+}
+
 export interface AutoModeConfig {
   /** Auto Mode 是否启用 */
   enabled: boolean
-  /** 候选模型 ID 列表 */
-  candidatePool: string[]
+  /** 候选模型列表（含渠道信息） */
+  candidatePool: CandidateModelRef[]
   /** 系统当前可用模型 ID 集合 */
   availableModelIds: Set<string>
 }
@@ -61,14 +72,17 @@ export interface AutoModeState {
  */
 export function selectNextCandidateModel(
   currentModelId: string,
-  candidatePool: string[],
+  candidatePool: CandidateModelRef[],
   excludeModelIds: Set<string>,
   availableModels: Set<string>,
-): string | null {
+): CandidateModelRef | null {
   const n = candidatePool.length
   if (n === 0) return null
 
-  const startIdx = candidatePool.indexOf(currentModelId)
+  // 查找当前模型在候选池中的位置
+  let startIdx = candidatePool.findIndex((c) => c.modelId === currentModelId)
+  if (startIdx === -1) startIdx = -1  // 未找到则从 -1 开始，下一轮从 0 开始
+
   const skipped: string[] = []
 
   // 从 startIdx+1 到末尾，再回绕到 0 到 startIdx（遍历一圈）
@@ -76,12 +90,12 @@ export function selectNextCandidateModel(
     const i = (startIdx + offset) % n
     const candidate = candidatePool[i]
     if (!candidate) continue
-    if (excludeModelIds.has(candidate)) { skipped.push(`${candidate}(已尝试)`); continue }
-    if (!availableModels.has(candidate)) { skipped.push(`${candidate}(不可用)`); continue }
+    if (excludeModelIds.has(candidate.modelId)) { skipped.push(`${candidate.modelId}(已尝试)`); continue }
+    if (!availableModels.has(candidate.modelId)) { skipped.push(`${candidate.modelId}(不可用)`); continue }
     return candidate
   }
 
-  console.log(`[Auto Mode] selectNextCandidateModel 未找到下一个候选: current=${currentModelId}, pool=[${candidatePool.join(', ')}], tried=[${[...excludeModelIds].join(', ')}], availableCount=${availableModels.size}, skipped=[${skipped.join(', ') || '无'}]`)
+  console.log(`[Auto Mode] selectNextCandidateModel 未找到下一个候选: current=${currentModelId}, pool=[${candidatePool.map(c => c.modelId).join(', ')}], tried=[${[...excludeModelIds].join(', ')}], availableCount=${availableModels.size}, skipped=[${skipped.join(', ') || '无'}]`)
   return null
 }
 
@@ -89,11 +103,20 @@ export function selectNextCandidateModel(
 
 /**
  * 读取 Auto Mode 配置并构建可用模型集合
+ *
+ * 将 settings 中的候选列表（可能是 string[] 或 CandidateModelRef[]）归一化为 CandidateModelRef[]。
  */
 export async function resolveAutoModeConfig(): Promise<AutoModeConfig> {
   const appSettings = getSettings()
   const enabled = appSettings.autoModeEnabled ?? false
-  const candidatePool = appSettings.autoSwitchCandidateModels ?? []
+  const rawPool: Array<string | CandidateModelRef> = appSettings.autoSwitchCandidateModels ?? []
+
+  const candidatePool: CandidateModelRef[] = rawPool.map((item) => {
+    if (typeof item === 'string') {
+      return { modelId: item }
+    }
+    return item as CandidateModelRef
+  })
 
   const availableModelIds = new Set<string>()
   const channels = listChannels()
@@ -118,9 +141,9 @@ export async function resolveAutoModeConfig(): Promise<AutoModeConfig> {
 
   // 诊断：候选池中有哪些模型不在可用集合中
   if (enabled && candidatePool.length > 0) {
-    const missing = candidatePool.filter((id) => !availableModelIds.has(id))
+    const missing = candidatePool.filter((c) => !availableModelIds.has(c.modelId))
     if (missing.length > 0) {
-      console.log(`[Auto Mode] 候选池中 ${missing.length}/${candidatePool.length} 个模型不可用: [${missing.join(', ')}]`)
+      console.log(`[Auto Mode] 候选池中 ${missing.length}/${candidatePool.length} 个模型不可用: [${missing.map(c => c.modelId).join(', ')}]`)
     }
   }
 
@@ -135,12 +158,15 @@ export async function resolveAutoModeConfig(): Promise<AutoModeConfig> {
  * Auto Mode 切换模型时，新模型可能属于不同的渠道（不同 endpoint / API Key），
  * 必须联动切换渠道信息以重建 sdkEnv。
  *
+ * @param modelId 模型 ID
+ * @param channelId 可选，指定渠道 ID 以在模型 ID 跨多个渠道时精确匹配
  * @returns 渠道信息，若模型不属于任何已启用渠道则返回 null
  */
-export function findChannelForModel(modelId: string): ChannelSwitchInfo | null {
+export function findChannelForModel(modelId: string, channelId?: string): ChannelSwitchInfo | null {
   const channels = listChannels()
   for (const ch of channels) {
     if (!ch.enabled) continue
+    if (channelId && ch.id !== channelId) continue
     if (ch.models.some((m) => m.id === modelId && m.enabled)) {
       const apiKey = decryptApiKey(ch.id)
       return {
@@ -167,8 +193,9 @@ export function resolveInitialModel(
   config: AutoModeConfig,
 ): { activeModelId: string; state: AutoModeState } {
   const defaultId = userModelId || DEFAULT_MODEL_ID
+  const pool = config.candidatePool
 
-  if (!config.enabled || config.candidatePool.length === 0) {
+  if (!config.enabled || pool.length === 0) {
     return {
       activeModelId: defaultId,
       state: { activeModelId: defaultId, sameModelAttempts: 0, triedModelIds: new Set() },
@@ -177,8 +204,8 @@ export function resolveInitialModel(
 
   const sm = getAgentSessionMeta(sessionId)
   const activeModelId = sm?.activeModelId
-    ?? (userModelId && config.candidatePool.includes(userModelId) ? userModelId : null)
-    ?? config.candidatePool[0]
+    ?? (userModelId && pool.some((c) => c.modelId === userModelId) ? userModelId : null)
+    ?? pool[0]!.modelId
     ?? DEFAULT_MODEL_ID
 
   const state: AutoModeState = {

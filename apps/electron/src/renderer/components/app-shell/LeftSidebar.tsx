@@ -22,6 +22,7 @@ import { automationFormAtom, automationsAtom } from '@/atoms/automation-atoms'
 import { appModeAtom, type AppMode } from '@/atoms/app-mode'
 import { ExpertSidebarSection } from '@/experts/sidebar/ExpertSidebarSection'
 import { settingsTabAtom, settingsOpenAtom } from '@/atoms/settings-tab'
+import { IssueReportButton } from '@/components/issue-report'
 import {
   conversationsAtom,
   currentConversationIdAtom,
@@ -2134,6 +2135,9 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
           </TooltipTrigger>
           <TooltipContent side="top">查看使用手册</TooltipContent>
         </Tooltip>
+
+        {/* 问题反馈按钮 */}
+        <IssueReportButton />
 
         {/* 用户头像 + 设置 */}
         <div className="flex items-center gap-1">

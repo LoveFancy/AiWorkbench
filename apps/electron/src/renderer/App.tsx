@@ -6,6 +6,7 @@ import { EnvironmentCheckDialog } from './components/environment/EnvironmentChec
 import { MigrationImportDialog } from './components/migration/MigrationImportDialog'
 import { TooltipProvider } from './components/ui/tooltip'
 import { SettingsDialog } from './components/settings/SettingsDialog'
+import { IssueReportDialog } from './components/issue-report'
 import { LoginView } from '@/auth/renderer'
 import { loginDialogOpenAtom, authStateAtom } from '@/auth/renderer'
 import { conversationsAtom, channelsAtom } from './atoms/chat-atoms'
@@ -132,6 +133,7 @@ export default function App(): React.ReactElement {
     <TooltipProvider delayDuration={200}>
       <AppShell contextValue={contextValue} />
       <SettingsDialog />
+      <IssueReportDialog />
       <GlobalEnvironmentCheckDialog />
       <MigrationImportDialog />
       <LoginDialog />
@@ -255,7 +257,7 @@ function PlatformChannelSync(): React.ReactElement {
     restoringRef.current = true
     setGlobalChannels((prev) => {
       const others = prev.filter((c) => c.id !== '__platform__')
-      return [...others, platformChannel]
+      return [platformChannel, ...others]
     })
     setAgentChannelIds((ids) => {
       if (ids.includes('__platform__')) return ids
