@@ -37,6 +37,7 @@ import { UsageLogSettings } from "./UsageLogSettings";
 import { SystemLogSettings } from "./SystemLogSettings";
 import { PluginSettings } from "./PluginSettings";
 import { ShortcutSettings } from "./ShortcutSettings";
+import { BotHubSettings } from "./BotHubSettings";
 import type { TabItem } from "./settings-tabs";
 import { getSettingsTabs } from "./settings-tabs";
 
@@ -59,6 +60,8 @@ function renderTabContent(tab: SettingsTab): React.ReactElement {
       return <SystemLogSettings />;
     case "plugins":
       return <PluginSettings />;
+    case "bots":
+      return <BotHubSettings />;
     case "appearance":
       return <AppearanceSettings />;
     case "about":

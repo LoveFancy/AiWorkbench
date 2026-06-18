@@ -18,7 +18,7 @@ import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import type { AgentSendInput, AgentMessage, AgentProviderAdapter, AgentSessionMeta, TypedError, RetryAttempt, SDKMessage, RewindSessionResult, SdkBeta } from '@proma/shared'
+import type { AgentSendInput, AgentMessage, AgentProviderAdapter, AgentSessionMeta, TypedError, RetryAttempt, SDKMessage, RewindSessionResult, SdkBeta, AgentGenerateTitleInput } from '@proma/shared'
 import {
   PROMA_DEFAULT_PERMISSION_MODE,
   SAFE_TOOLS,
@@ -374,7 +374,8 @@ export class AgentOrchestrator {
 
     if (autoModeConfig.enabled && activeModelId !== modelId) {
       console.log(`[Auto Mode] 初始模型切换: ${modelId || DEFAULT_MODEL_ID} -> ${activeModelId}`)
-      const chInfo = findChannelForModel(activeModelId)
+      const candidateRef = autoModeConfig.candidatePool.find((c) => c.modelId === activeModelId)
+      const chInfo = findChannelForModel(activeModelId, candidateRef?.channelId)
       if (chInfo && chInfo.channelId !== currentChannelId) {
         console.log(`[Auto Mode] 初始渠道切换: ${currentChannelId} -> ${chInfo.channelId} (模型: ${activeModelId})`)
         currentChannelId = chInfo.channelId
@@ -805,7 +806,7 @@ export class AgentOrchestrator {
       const queryOptions: ClaudeAgentQueryOptions = {
         sessionId,
         prompt: finalPrompt,
-        model: modelId || DEFAULT_MODEL_ID,
+        model: resolvedModel,
         cwd: agentCwd,
         sdkCliPath: cliPath,
         env: sdkEnv,
@@ -920,8 +921,8 @@ export class AgentOrchestrator {
       let lastAttempt = 0
 
       // Auto Mode：切换模型时同步切换渠道
-      const switchChannelForModel = async (newModelId: string): Promise<void> => {
-        const chInfo = findChannelForModel(newModelId)
+      const switchChannelForModel = async (newModelId: string, preferredChannelId?: string): Promise<void> => {
+        const chInfo = findChannelForModel(newModelId, preferredChannelId)
         if (!chInfo) {
           console.warn(`[Auto Mode] 找不到模型 ${newModelId} 所属的渠道，sdkEnv 保持不变`)
           return
@@ -942,14 +943,15 @@ export class AgentOrchestrator {
         if (autoModeState.sameModelAttempts <= MAX_SAME_MODEL_RETRIES) return true
 
         const excludeSet = new Set(autoModeState.triedModelIds)
-        const nextModel = selectNextCandidateModel(
+        const nextCandidate = selectNextCandidateModel(
           autoModeState.activeModelId,
           autoModeConfig.candidatePool,
           excludeSet,
           autoModeConfig.availableModelIds,
         )
-        if (nextModel) {
-          console.log(`[Auto Mode] 切换模型: ${autoModeState.activeModelId} -> ${nextModel}`)
+        if (nextCandidate) {
+          const nextModel = nextCandidate.modelId
+          console.log(`[Auto Mode] 切换模型: ${autoModeState.activeModelId} -> ${nextModel}${nextCandidate.channelId ? ` (渠道: ${nextCandidate.channelId})` : ''}`)
           this.eventBus.emit(sessionId, {
             kind: 'proma_event',
             event: { type: 'model_switched', fromModel: autoModeState.activeModelId, toModel: nextModel },
@@ -965,7 +967,7 @@ export class AgentOrchestrator {
             capturedSdkSessionId = undefined
             queryOptions.resumeSessionId = undefined
           }
-          await switchChannelForModel(nextModel)
+          await switchChannelForModel(nextModel, nextCandidate.channelId)
           skipNextRetryDelay = true
           return true
         }
@@ -1035,7 +1037,6 @@ export class AgentOrchestrator {
         let shouldRetryFromError = false
 
           // 委托给 sdkRunSingleAttempt（模式特定行为通过 callbacks 注入）
-          const queryStartedAt = Date.now()
 
           const ctx: SdkRunContext = {
             sessionId, existingSdkSessionId, capturedSdkSessionId,
@@ -1092,8 +1093,8 @@ export class AgentOrchestrator {
 
             retrySucceeded = true
 
-            if (autoModeConfig.enabled && activeModelId) {
-              try { updateAgentSessionMeta(sessionId, { activeModelId } as Partial<AgentSessionMeta>) } catch { /* ignore */ }
+            if (autoModeConfig.enabled && autoModeState.activeModelId) {
+              try { updateAgentSessionMeta(sessionId, { activeModelId: autoModeState.activeModelId } as Partial<AgentSessionMeta>) } catch { /* ignore */ }
             }
 
             if (initialPermissionMode === 'plan' && planModeEntered && this.activeSessions.has(sessionId)) {
@@ -1296,6 +1297,17 @@ export class AgentOrchestrator {
       await this.adapter.setPermissionMode(sessionId, sdkPermissionModeForPromaMode(mode))
     }
     console.log(`[Agent 编排] 运行中权限模式已切换: sessionId=${sessionId}, mode=${mode}`)
+  }
+
+  // ===== 标题生成 =====
+
+  /**
+   * 生成 Agent 会话标题
+   *
+   * 委托给 orchestrator/title-generator.ts
+   */
+  async generateTitle(input: AgentGenerateTitleInput): Promise<string | null> {
+    return generateTitle(input)
   }
 
   // ===== 快照回退 =====

@@ -252,8 +252,8 @@ export function ModelSelector({
 
   if (channelsLoaded && modelOptions.length === 0) {
     return (
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground px-2 py-1">
-        <Cpu className="size-3.5" />
+      <div className="flex items-center gap-1.5 text-sm text-muted-foreground/60 px-2 py-1">
+        <Cpu className="size-4" />
         <span>暂无可用模型</span>
       </div>
     )
@@ -261,10 +261,10 @@ export function ModelSelector({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
+      <PopoverTrigger className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-foreground/70 hover:text-foreground hover:bg-accent border border-transparent hover:border-border/60 transition-all">
         {autoModeConfig?.enabled ? (
           <>
-            <Cpu className="size-3.5" />
+            <Cpu className="size-4" />
             <span className="max-w-[200px] truncate">Auto</span>
           </>
         ) : (
@@ -273,10 +273,10 @@ export function ModelSelector({
               <img
                 src={getModelLogo(displayModelInfo.modelId, displayModelInfo.provider)}
                 alt={displayModelInfo.modelName}
-                className="size-4 rounded object-cover"
+                className="size-[18px] rounded object-cover"
               />
             ) : (
-              <Cpu className="size-3.5" />
+              <Cpu className="size-4" />
             )}
             <span className="max-w-[200px] truncate">
               {displayModelInfo
@@ -285,7 +285,7 @@ export function ModelSelector({
             </span>
           </>
         )}
-        <ChevronDown className="size-3" />
+        <ChevronDown className="size-3.5" />
       </PopoverTrigger>
 
       {/* 内联下拉面板 */}
@@ -297,14 +297,14 @@ export function ModelSelector({
       >
         {/* Auto Mode 开关区 */}
         {autoModeConfig && (
-          <div className="px-3 py-2 border-b border-border/60">
+          <div className="px-3.5 py-2.5 border-b border-border/60">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 min-w-0">
-                <span className="text-xs font-medium whitespace-nowrap">Auto Mode</span>
+                <span className="text-sm font-medium whitespace-nowrap">Auto Mode</span>
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-5 px-1.5 text-[10px] text-muted-foreground hover:text-foreground gap-0.5"
+                  className="h-5 px-1.5 text-xs text-muted-foreground hover:text-foreground gap-0.5"
                   onClick={editingCandidates ? cancelEditCandidates : enterEditCandidates}
                 >
                   <Settings2 className="size-3" />
@@ -330,13 +330,8 @@ export function ModelSelector({
                 </Tooltip>
               </TooltipProvider>
             </div>
-            {!editingCandidates && (
-              <p className="text-[10px] text-muted-foreground mt-0.5">
-                模型异常时自动切换候选模型
-              </p>
-            )}
             {editingCandidates && (
-              <p className="text-[10px] text-blue-600 dark:text-blue-400 mt-1">
+              <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
                 勾选作为自动切换候补的模型，完成后点击下方「确定」
               </p>
             )}
@@ -344,15 +339,15 @@ export function ModelSelector({
         )}
 
         {/* 搜索栏 */}
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-border/40">
-          <Search className="size-3.5 text-muted-foreground/50 flex-shrink-0" />
+        <div className="flex items-center gap-2.5 px-3.5 py-2.5 border-b border-border/40">
+          <Search className="size-4 text-muted-foreground/40 flex-shrink-0" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={handleSearchKeyDown}
             placeholder="搜索模型..."
-            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/50"
+            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/40"
             autoFocus
           />
         </div>
@@ -360,7 +355,7 @@ export function ModelSelector({
         {/* 模型列表 */}
         <div className="max-h-[320px] overflow-y-auto scrollbar-thin">
           {filteredGrouped.size === 0 ? (
-            <div className="py-8 text-center text-xs text-muted-foreground">
+            <div className="py-10 text-center text-sm text-muted-foreground/50">
               未找到模型
             </div>
           ) : (
@@ -373,14 +368,14 @@ export function ModelSelector({
                 return (
                   <div key={channelId}>
                     {/* 供应商标题行 */}
-                    <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/50 border-b border-border/30">
+                    <div className="flex items-center gap-2.5 px-3.5 py-2 bg-muted/40 border-b border-border/20">
                       <img
                         src={(() => {
                           const ch = channels.find((c) => c.id === channelId)
                           return ch ? getChannelLogo(ch) : DefaultLogo
                         })()}
                         alt={first.channelName}
-                        className="size-4 rounded object-cover"
+                        className="size-[18px] rounded object-cover"
                       />
                       <span className="text-xs font-medium text-muted-foreground">
                         {first.channelName}
@@ -412,22 +407,22 @@ export function ModelSelector({
                           }}
                           onMouseEnter={() => setHighlightIndex(currentFlatIndex)}
                           className={cn(
-                            'flex items-center gap-2.5 w-full px-3 py-1.5 text-left transition-colors',
-                            'hover:bg-accent',
-                            isHighlighted && 'bg-accent',
-                            !editingCandidates && isSelected && 'bg-foreground/5 border-l-2 border-l-primary'
+                            'flex items-center gap-3 w-full px-3.5 py-2 text-left transition-colors',
+                            'hover:bg-accent/80',
+                            isHighlighted && 'bg-accent/80',
+                            !editingCandidates && isSelected && 'bg-primary/8 border-l-[3px] border-l-primary'
                           )}
                         >
                           {/* 编辑模式下显示 checkbox */}
                           {editingCandidates && (
                             <span className={cn(
-                              'flex-shrink-0 size-4 rounded border-2 flex items-center justify-center transition-colors',
+                              'flex-shrink-0 size-[18px] rounded border-2 flex items-center justify-center transition-colors',
                               localCandidatesRef.current.has(option.modelId)
                                 ? 'bg-primary border-primary'
                                 : 'border-muted-foreground/30'
                             )}>
                               {localCandidatesRef.current.has(option.modelId) && (
-                                <svg className="size-3 text-primary-foreground" viewBox="0 0 16 16" fill="none">
+                                <svg className="size-3.5 text-primary-foreground" viewBox="0 0 16 16" fill="none">
                                   <path d="M3 8l3.5 3.5L13 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                                 </svg>
                               )}
@@ -436,25 +431,25 @@ export function ModelSelector({
                           <img
                             src={getModelLogo(option.modelId, option.provider)}
                             alt={option.modelName}
-                            className="size-4 rounded object-cover flex-shrink-0"
+                            className="size-[18px] rounded object-cover flex-shrink-0"
                           />
                           <span className={cn(
-                            'flex-1 text-xs truncate',
-                            !editingCandidates && isSelected ? 'font-medium text-foreground' : 'text-foreground/80'
+                            'flex-1 text-sm truncate',
+                            !editingCandidates && isSelected ? 'font-semibold text-foreground' : 'text-foreground/75'
                           )}>
                             {option.modelName}
                           </span>
                           {option.supportsMultimodal ? (
-                            <span className="inline-flex h-4 shrink-0 items-center rounded px-1 text-[9px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                            <span className="inline-flex h-5 shrink-0 items-center rounded px-1.5 text-[10px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
                               多模态
                             </span>
                           ) : (
-                            <span className="inline-flex h-4 shrink-0 items-center rounded px-1 text-[9px] font-medium bg-muted text-muted-foreground">
+                            <span className="inline-flex h-5 shrink-0 items-center rounded px-1.5 text-[10px] font-medium bg-muted text-muted-foreground">
                               文本
                             </span>
                           )}
                           {!editingCandidates && autoModeConfig?.candidateModelIds?.includes(option.modelId) && (
-                            <span className="inline-flex h-4 shrink-0 items-center rounded px-1 text-[9px] font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                            <span className="inline-flex h-5 shrink-0 items-center rounded px-1.5 text-[10px] font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400">
                               Auto
                             </span>
                           )}

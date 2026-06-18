@@ -20,8 +20,8 @@ import { UserAvatar } from '@/components/chat/UserAvatar'
 import { activeViewAtom } from '@/atoms/active-view'
 import { automationFormAtom, automationsAtom } from '@/atoms/automation-atoms'
 import { appModeAtom, type AppMode } from '@/atoms/app-mode'
-import { ExpertSidebarSection } from '@/experts/sidebar/ExpertSidebarSection'
 import { settingsTabAtom, settingsOpenAtom } from '@/atoms/settings-tab'
+import { IssueReportButton } from '@/components/issue-report'
 import {
   conversationsAtom,
   currentConversationIdAtom,
@@ -157,6 +157,45 @@ function AutomationSidebarEntry({ count, active, onClick }: AutomationSidebarEnt
       <span
         className={cn(
           'ml-2 flex h-5 min-w-[22px] flex-shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-medium tabular-nums automation-entry-badge',
+          active
+            ? 'bg-accent-foreground/[0.26] text-primary-foreground'
+            : 'bg-foreground/[0.045] text-foreground/[0.42] group-hover:text-foreground/65',
+        )}
+      >
+        {formatAutomationCount(count)}
+      </span>
+    </button>
+  )
+}
+
+interface SkillsSidebarEntryProps {
+  count: number
+  active: boolean
+  onClick: () => void
+}
+
+function SkillsSidebarEntry({ count, active, onClick }: SkillsSidebarEntryProps): React.ReactElement {
+  return (
+    <button
+      type="button"
+      aria-label={`Agent 技能，${count} 个能力`}
+      onClick={onClick}
+      className={cn(
+        'group w-full flex items-center justify-between px-3 py-2 rounded-md text-[13px] transition-colors duration-100 titlebar-no-drag',
+        active
+          ? 'bg-accent-foreground/[0.10] text-foreground shadow-[0_1px_2px_0_rgba(0,0,0,0.05)]'
+          : 'text-foreground/60 hover:bg-accent-foreground/[0.08] hover:text-foreground',
+      )}
+    >
+      <span className="flex items-center gap-3 min-w-0">
+        <span className={cn('flex-shrink-0 w-[18px] h-[18px]', active ? 'text-accent-foreground' : 'text-foreground/45')}>
+          <Plug size={16} className="block" />
+        </span>
+        <span className="truncate">Agent 技能</span>
+      </span>
+      <span
+        className={cn(
+          'ml-2 flex h-5 min-w-[22px] flex-shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-medium tabular-nums',
           active
             ? 'bg-accent-foreground/[0.26] text-primary-foreground'
             : 'bg-foreground/[0.045] text-foreground/[0.42] group-hover:text-foreground/65',
@@ -656,6 +695,12 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
   const handleOpenAutomations = React.useCallback((): void => {
     setAutomationForm({ open: false, draft: null })
     setActiveView('automations')
+  }, [setAutomationForm, setActiveView])
+
+  /** 打开 Agent 技能视图 */
+  const handleOpenAgentSkills = React.useCallback((): void => {
+    setAutomationForm({ open: false, draft: null })
+    setActiveView('agent-skills')
   }, [setAutomationForm, setActiveView])
 
   // 切换模式时重置归档视图
@@ -1797,8 +1842,16 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
         />
       </div>
 
-      {/* 专家团入口：仅 Agent 模式 active 视图下显示 */}
-      {mode === 'agent' && viewMode === 'active' && <ExpertSidebarSection />}
+      {/* Agent 技能入口：Skills / MCP 能力中心，仅 Agent 模式可见。 */}
+      {mode === 'agent' && capabilities && (
+        <div className="px-3 pt-1 pb-0.5">
+          <SkillsSidebarEntry
+            count={capabilities.skills.length + capabilities.mcpServers.filter((s) => s.enabled).length}
+            active={activeView === 'agent-skills'}
+            onClick={handleOpenAgentSkills}
+          />
+        </div>
+      )}
 
       {/* Chat 模式 active 视图：置顶 + 对话历史，结构与 Agent active 视图保持一致 */}
       {mode === 'chat' && viewMode === 'active' ? (
@@ -2096,7 +2149,7 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                onClick={() => { setSettingsTab('agent'); setSettingsOpen(true) }}
+                onClick={handleOpenAgentSkills}
                 className="w-full flex items-center gap-3 px-3 py-2 rounded-[10px] text-[12px] text-foreground/50 hover:bg-foreground/[0.04] hover:text-foreground/70 transition-colors titlebar-no-drag"
               >
                 <div className="flex items-center gap-2.5 flex-1 min-w-0">
@@ -2114,7 +2167,7 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
                 </div>
               </button>
             </TooltipTrigger>
-            <TooltipContent side="top">点击配置 MCP 与 Skills</TooltipContent>
+            <TooltipContent side="top">打开 Agent 技能</TooltipContent>
           </Tooltip>
         </div>
       )}
@@ -2134,6 +2187,9 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
           </TooltipTrigger>
           <TooltipContent side="top">查看使用手册</TooltipContent>
         </Tooltip>
+
+        {/* 问题反馈按钮 */}
+        <IssueReportButton />
 
         {/* 用户头像 + 设置 */}
         <div className="flex items-center gap-1">

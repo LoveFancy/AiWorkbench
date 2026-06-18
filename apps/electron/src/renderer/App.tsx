@@ -6,8 +6,9 @@ import { EnvironmentCheckDialog } from './components/environment/EnvironmentChec
 import { MigrationImportDialog } from './components/migration/MigrationImportDialog'
 import { TooltipProvider } from './components/ui/tooltip'
 import { SettingsDialog } from './components/settings/SettingsDialog'
+import { IssueReportDialog } from './components/issue-report'
 import { LoginView } from '@/auth/renderer'
-import { loginDialogOpenAtom, authStateAtom } from '@/auth/renderer'
+import { loginDialogOpenAtom, authStateAtom, resolveLoginPresentation } from '@/auth/renderer'
 import { conversationsAtom, channelsAtom } from './atoms/chat-atoms'
 import { agentChannelIdsAtom } from './atoms/agent-atoms'
 import { environmentCheckDialogOpenAtom } from './atoms/environment'
@@ -25,6 +26,7 @@ export default function App(): React.ReactElement {
   const [isLoading, setIsLoading] = React.useState(true)
   const [showOnboarding, setShowOnboarding] = React.useState(false)
   const [authState, setAuthState] = useAtom(authStateAtom)
+  const loginPresentation = resolveLoginPresentation(authState)
 
   // 初始化：恢复登录状态 + 检查是否需要显示 Onboarding
   // macOS/Linux 上 SDK 自带 claude native binary 不依赖宿主 Node/Git；
@@ -97,22 +99,22 @@ export default function App(): React.ReactElement {
     )
   }
 
-  // 强制登录：未登录时显示全屏登录页，不可跳过
-  if (!authState.isLoggedIn) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <LoginView
-          onLoginSuccess={() => {
-            window.electronAPI.auth.getAuthState().then((state: any) => {
-              setAuthState(state)
-            })
-          }}
-          onQuit={() => { window.electronAPI.auth.quit() }}
-          allowSkip={false}
-        />
-      </div>
-    )
+  const handleLoginSuccess = () => {
+    window.electronAPI.auth.getAuthState().then((state: AuthStateLike) => {
+      setAuthState(state)
+    })
   }
+
+  const handleSkipLogin = () => {
+    setAuthState((prev) => ({ ...prev, loginSkipped: true }))
+  }
+
+  const loginOverlay = loginPresentation.showLoginOverlay ? (
+    <InitialLoginOverlay
+      onLoginSuccess={handleLoginSuccess}
+      onSkip={handleSkipLogin}
+    />
+  ) : null
 
   // 显示 onboarding 界面
   if (showOnboarding) {
@@ -120,6 +122,7 @@ export default function App(): React.ReactElement {
       <TooltipProvider delayDuration={200}>
         <OnboardingView onComplete={handleOnboardingComplete} />
         <MigrationImportDialog />
+        {loginOverlay}
       </TooltipProvider>
     )
   }
@@ -132,11 +135,40 @@ export default function App(): React.ReactElement {
     <TooltipProvider delayDuration={200}>
       <AppShell contextValue={contextValue} />
       <SettingsDialog />
+      <IssueReportDialog />
       <GlobalEnvironmentCheckDialog />
       <MigrationImportDialog />
       <LoginDialog />
       <PlatformChannelSync />
+      {loginOverlay}
     </TooltipProvider>
+  )
+}
+
+interface AuthStateLike {
+  isLoggedIn: boolean
+  jobId?: string
+  loginSkipped?: boolean
+}
+
+/** 初始登录提示：主界面保持可见，仅用半透明浮层承载登录卡片。 */
+function InitialLoginOverlay({
+  onLoginSuccess,
+  onSkip,
+}: {
+  onLoginSuccess: () => void
+  onSkip: () => void
+}): React.ReactElement {
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/45 backdrop-blur-sm">
+      <div className="pointer-events-auto" onClick={(e) => e.stopPropagation()}>
+        <LoginView
+          onLoginSuccess={onLoginSuccess}
+          onSkip={onSkip}
+          allowSkip
+        />
+      </div>
+    </div>
   )
 }
 
@@ -255,7 +287,7 @@ function PlatformChannelSync(): React.ReactElement {
     restoringRef.current = true
     setGlobalChannels((prev) => {
       const others = prev.filter((c) => c.id !== '__platform__')
-      return [...others, platformChannel]
+      return [platformChannel, ...others]
     })
     setAgentChannelIds((ids) => {
       if (ids.includes('__platform__')) return ids

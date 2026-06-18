@@ -161,10 +161,10 @@ export function listChannels(): Channel[] {
 
   const result = config.channels.map(withApiKeyConfigured)
 
-  // 注入 __platform__ 虚拟渠道（泰为平台模型）
+  // 注入 __platform__ 虚拟渠道（泰为平台模型，放在最前面）
   const platformChannel = getPlatformChannel()
   if (platformChannel) {
-    return [...result, platformChannel]
+    return [platformChannel, ...result]
   }
   return result
 }
