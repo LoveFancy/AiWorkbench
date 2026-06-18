@@ -553,6 +553,15 @@ export function getFeaturedScenesCachePath(): string {
 }
 
 /**
+ * 获取专家团分类列表缓存路径
+ *
+ * @returns ~/.workmate/expert-group-categories-cache.json
+ */
+export function getExpertGroupCategoriesCachePath(): string {
+  return join(getConfigDir(), 'expert-group-categories-cache.json')
+}
+
+/**
  * 从 SKILL.md 的 YAML frontmatter 中解析 version 字段
  *
  * 无 version 字段时返回 '0.0.0'（确保旧 Skill 会被更新）。

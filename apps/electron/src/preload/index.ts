@@ -630,6 +630,8 @@ export interface ElectronAPI {
   downloadRemoteExpert: (groupId: string) => Promise<AgentPluginInfo>
   /** 取消远程专家团下载 */
   cancelRemoteDownload: (groupId: string) => Promise<void>
+  /** 获取服务端专家团分类列表 */
+  fetchServerExpertGroupCategories: () => Promise<string[]>
   /** 订阅下载进度事件（返回清理函数） */
   onExpertDownloadProgress: (callback: (progress: RemoteDownloadProgress) => void) => () => void
 
@@ -1876,6 +1878,10 @@ const electronAPI: ElectronAPI = {
 
   cancelRemoteDownload: (groupId: string) => {
     return ipcRenderer.invoke(EXPERT_IPC_CHANNELS.CANCEL_DOWNLOAD, groupId)
+  },
+
+  fetchServerExpertGroupCategories: () => {
+    return ipcRenderer.invoke(EXPERT_IPC_CHANNELS.FETCH_CATEGORIES)
   },
 
   onExpertDownloadProgress: (callback: (progress: RemoteDownloadProgress) => void) => {

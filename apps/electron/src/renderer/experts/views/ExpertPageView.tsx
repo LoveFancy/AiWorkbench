@@ -12,9 +12,10 @@ import {
   recentExpertGroupsAtom,
   recordRecentExpertGroupAtom,
 } from '@/experts/atoms/expert-follow'
-import { loadRemoteExpertDataAtom } from '@/experts/atoms/expert-remote'
+import { loadRemoteExpertDataAtom, expertCategoriesAtom } from '@/experts/atoms/expert-remote'
 import { ExpertSearchBar } from '@/experts/shared/ExpertSearchBar'
 import { ExpertFilterPills, type FilterTag } from '@/experts/shared/ExpertFilterPills'
+import { ExpertCategoryFilter } from '@/experts/shared/ExpertCategoryFilter'
 import { ExpertCardGrid } from '@/experts/shared/ExpertCardGrid'
 import { ExpertEmptyState } from '@/experts/shared/ExpertEmptyState'
 import { ExpertImportButton } from '@/experts/shared/ExpertImportDropdown'
@@ -38,9 +39,12 @@ export function ExpertPageView({ embedded = false }: ExpertPageViewProps): React
 
   const [query, setQuery] = React.useState('')
   const [filterTag, setFilterTag] = React.useState<FilterTag>('all')
+  const [category, setCategory] = React.useState('all')
   const [sceneFilter, setSceneFilter] = React.useState<Set<string> | null>(null)
   const [activeSceneId, setActiveSceneId] = React.useState<string | null>(null)
   const [refreshing, setRefreshing] = React.useState(false)
+
+  const categories = useAtomValue(expertCategoriesAtom)
 
   // 首次加载
   React.useEffect(() => {
@@ -63,16 +67,19 @@ export function ExpertPageView({ embedded = false }: ExpertPageViewProps): React
     }
   }, [loadGroups, loadRemote])
 
-  // 数据管道：筛选 → 场景 → 搜索
+  // 数据管道：筛选 → 分类 → 场景 → 搜索
   const displayGroups = React.useMemo(() => {
     let result = allGroups
     result = filterByTag(result, filterTag, followed, recent)
+    if (category !== 'all') {
+      result = result.filter(g => g.categories?.includes(category))
+    }
     if (sceneFilter) {
       result = result.filter(g => sceneFilter.has(g.id))
     }
     result = searchByName(result, query)
     return result
-  }, [allGroups, filterTag, query, followed, recent, sceneFilter])
+  }, [allGroups, filterTag, category, query, followed, recent, sceneFilter])
 
   const handleSummon = React.useCallback(async (group: AgentExpertGroupInfo) => {
     // 远程专家团需先下载
@@ -116,9 +123,9 @@ export function ExpertPageView({ embedded = false }: ExpertPageViewProps): React
   const emptyType: 'followed' | 'recent' | 'search' | 'all' = React.useMemo(() => {
     if (filterTag === 'followed') return 'followed'
     if (filterTag === 'recent') return 'recent'
-    if (query.trim() || sceneFilter) return 'search'
+    if (query.trim() || sceneFilter || category !== 'all') return 'search'
     return 'all'
-  }, [filterTag, query, sceneFilter])
+  }, [filterTag, query, sceneFilter, category])
 
   return (
     <div className="flex h-full flex-col bg-background">
@@ -150,6 +157,17 @@ export function ExpertPageView({ embedded = false }: ExpertPageViewProps): React
               }}
             />
           </div>
+
+          {/* 分类筛选 */}
+          {categories.length > 0 && (
+            <div className="mt-2">
+              <ExpertCategoryFilter
+                categories={categories}
+                value={category}
+                onChange={setCategory}
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -177,7 +195,7 @@ export function ExpertPageView({ embedded = false }: ExpertPageViewProps): React
             emptyState={
               <ExpertEmptyState
                 type={emptyType}
-                onClear={() => { setQuery(''); setFilterTag('all'); setSceneFilter(null); setActiveSceneId(null) }}
+                onClear={() => { setQuery(''); setFilterTag('all'); setCategory('all'); setSceneFilter(null); setActiveSceneId(null) }}
               />
             }
           />

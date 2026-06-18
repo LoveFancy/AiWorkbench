@@ -258,6 +258,7 @@ function mergeExpertGroups(
     const server = serverSummaries.find((s) => s.id === local.id)
     result.push({
       ...local,
+      categories: server?.categories ?? local.categories ?? [],
       status: server && server.version !== local.sourcePluginVersion
         ? ('remote_update_available' as const)
         : local.status,
@@ -280,6 +281,7 @@ function mergeExpertGroups(
       mcpServers: server.mcpServers,
       tags: server.tags,
       samplePrompts: server.samplePrompts,
+      categories: server.categories ?? [],
       // 兜底：若服务端未提供 expertType，根据 subagentCount 推断
       expertType: server.expertType || (server.subagentCount > 0 ? 'team' : 'agent'),
       sourcePluginId: '',

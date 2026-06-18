@@ -12,7 +12,7 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { httpGet } from '../../shared/hteip-client'
-import { getConfigDir, getExpertGroupsCachePath, getFeaturedScenesCachePath } from './config-paths'
+import { getConfigDir, getExpertGroupsCachePath, getFeaturedScenesCachePath, getExpertGroupCategoriesCachePath } from './config-paths'
 
 interface CacheEntry<T> {
   data: T
@@ -73,4 +73,22 @@ export async function fetchFeaturedScenes(): Promise<import('@proma/shared').Fea
   const scenes = res.data.data.scenes
   writeCache(cachePath, scenes)
   return scenes
+}
+
+export async function fetchServerExpertGroupCategories(): Promise<string[]> {
+  const cachePath = getExpertGroupCategoriesCachePath()
+  const cache = readCache<string[]>(cachePath)
+
+  const path = '/workmate/expert-groups/categories'
+  const res = await httpGet<{ code: number; data: { categories: string[] } }>(path)
+
+  if (!res.ok || !res.data || res.data.code !== 0) {
+    console.warn('[expert-remote] 获取分类列表失败: status=%d err=%s', res.status, res.error ?? res.data)
+    if (cache) return cache.data
+    throw new Error(res.error || '获取分类列表失败')
+  }
+
+  const categories = res.data.data.categories
+  writeCache(cachePath, categories)
+  return categories
 }
