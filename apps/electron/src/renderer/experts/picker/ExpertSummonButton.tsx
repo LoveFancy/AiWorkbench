@@ -17,7 +17,7 @@ import { useOpenSession } from '@/hooks/useOpenSession'
 import { ExpertPicker } from './ExpertPicker'
 import { ExpertSummoningOverlay } from '@/components/agent/ExpertSummoningOverlay'
 import { cn } from '@/lib/utils'
-import { DEFAULT_EXPERT_ENTRY_LABEL, getExpertSummonDisplayName } from './summon-label'
+import { getExpertSummonDisplayName } from './summon-label'
 
 interface ExpertSummonButtonProps {
   variant?: 'header' | 'composer'
@@ -59,7 +59,7 @@ export function ExpertSummonButton({ variant = 'header', sessionId }: ExpertSumm
     [sessionId, sessions],
   )
   const displayName = getExpertSummonDisplayName(currentSession, groups)
-  const isDefaultExpertEntry = displayName === DEFAULT_EXPERT_ENTRY_LABEL
+  const showComposerLabel = variant === 'composer' && displayName !== null
 
   React.useEffect(() => {
     if (currentSession?.expertGroupId && groups.length === 0) {
@@ -128,9 +128,9 @@ export function ExpertSummonButton({ variant = 'header', sessionId }: ExpertSumm
               'titlebar-no-drag',
               variant === 'composer'
                 ? cn(
-                  'h-8 gap-1.5 rounded-full text-[13px] font-medium text-foreground hover:bg-muted',
-                  isDefaultExpertEntry ? 'w-8 px-0' : 'px-2',
-                )
+                    'h-8 rounded-full text-[13px] font-medium text-foreground hover:bg-muted',
+                    showComposerLabel ? 'gap-1.5 px-2' : 'w-8 px-0',
+                  )
                 : 'h-7 gap-1.5 px-2 text-xs',
             )}
             onClick={() => setOpen(true)}
@@ -140,7 +140,7 @@ export function ExpertSummonButton({ variant = 'header', sessionId }: ExpertSumm
                 <span className="flex size-6 items-center justify-center rounded-full bg-primary/10 text-primary">
                   <Sparkles className="size-3.5" />
                 </span>
-                {!isDefaultExpertEntry && (
+                {showComposerLabel && (
                   <>
                     <span className="max-w-[112px] truncate">{displayName}</span>
                     <ChevronDown className="size-3.5 text-muted-foreground" />
