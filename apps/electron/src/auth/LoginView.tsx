@@ -10,11 +10,13 @@ export function LoginView({
   onClose,
   onQuit,
   allowSkip = true,
+  onSkip,
 }: {
   onLoginSuccess: () => void
   onClose?: () => void
   onQuit?: () => void
   allowSkip?: boolean
+  onSkip?: () => void
 }) {
   const [jobId, setJobId] = useState('')
   const [password, setPassword] = useState('')
@@ -58,8 +60,8 @@ export function LoginView({
   }
 
   const handleSkip = () => {
-    setAuth({ isLoggedIn: false })
-    onLoginSuccess()
+    setAuth({ isLoggedIn: false, loginSkipped: true })
+    ;(onSkip ?? onLoginSuccess)()
   }
 
   const handleClose = () => {
