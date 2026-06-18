@@ -60,6 +60,7 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
   const { workspaces, currentWorkspaceId, selectProject } = useProjectActions()
 
   const [tab, setTab] = React.useState<CapabilityTab>(initialTab)
+  const [skillView, setSkillView] = React.useState<'market' | 'installed'>('market')
   const [search, setSearch] = React.useState('')
   const [selectedSkillSlug, setSelectedSkillSlug] = React.useState<string | null>(null)
   const [mcpSheetOpen, setMcpSheetOpen] = React.useState(false)
@@ -248,6 +249,7 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
               <div className="py-20 text-center text-sm text-muted-foreground">加载中...</div>
             ) : tab === 'skills' ? (
               <SkillsTab
+                skillView={skillView}
                 skills={filteredSkills}
                 total={data.skills.length}
                 updateCount={updateCount}
@@ -260,6 +262,7 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
                 onOpen={setSelectedSkillSlug}
                 onToggle={data.toggleSkill}
                 onUpdate={data.updateSkill}
+                onSkillViewChange={setSkillView}
               />
             ) : (
               <McpTab
@@ -366,6 +369,7 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
 // ===== Skills Tab =====
 
 interface SkillsTabProps {
+  skillView: 'market' | 'installed'
   skills: SkillMeta[]
   total: number
   updateCount: number
@@ -378,24 +382,23 @@ interface SkillsTabProps {
   onOpen: (slug: string) => void
   onToggle: (slug: string, enabled: boolean) => void
   onUpdate: (slug: string) => void
+  onSkillViewChange: (view: 'market' | 'installed') => void
 }
 
-function SkillsTab({ skills, total, updateCount, updatingSkill, isBuiltin, workspaceSlug, query, installedSkillNames, onInstalled, onOpen, onToggle, onUpdate }: SkillsTabProps): React.ReactElement {
-  const [skillView, setSkillView] = React.useState<'market' | 'installed'>('market')
-
+function SkillsTab({ skillView, skills, total, updateCount, updatingSkill, isBuiltin, workspaceSlug, query, installedSkillNames, onInstalled, onOpen, onToggle, onUpdate, onSkillViewChange }: SkillsTabProps): React.ReactElement {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-center gap-8 border-b border-border/60">
         <SkillViewTab
           active={skillView === 'market'}
           label="技能市场"
-          onClick={() => setSkillView('market')}
+          onClick={() => onSkillViewChange('market')}
         />
         <SkillViewTab
           active={skillView === 'installed'}
           label="已安装"
           count={total}
-          onClick={() => setSkillView('installed')}
+          onClick={() => onSkillViewChange('installed')}
         />
       </div>
 
