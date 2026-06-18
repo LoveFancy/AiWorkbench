@@ -40,6 +40,7 @@ const MARKET_SOURCES: Array<{ value: MarketSource; label: string }> = [
   { value: 'skillhub', label: '华泰 SkillHub' },
   { value: 'plugins', label: '插件市场' },
 ]
+const SKILLHUB_PAGE_SIZE = 20
 
 export function SkillMarketPanel({ workspaceSlug, query, installedSkillNames, onInstalled }: SkillMarketPanelProps): React.ReactElement {
   const authState = useAtomValue(authStateAtom)
@@ -72,7 +73,14 @@ export function SkillMarketPanel({ workspaceSlug, query, installedSkillNames, on
     setLoading(true)
     try {
       const keyword = query.trim() || undefined
-      const list = await window.electronAPI.getHtSkillHubSkills(workspaceSlug, 1, keyword)
+      const list: SkillMarketItem[] = []
+      let page = 1
+      while (true) {
+        const pageItems = await window.electronAPI.getHtSkillHubSkills(workspaceSlug, page, keyword)
+        list.push(...pageItems)
+        if (pageItems.length < SKILLHUB_PAGE_SIZE) break
+        page += 1
+      }
       setSkills(list.filter((skill) => !installedSkillNames.has(skill.name)))
     } catch (error) {
       console.error('[技能市场] 加载失败:', error)
@@ -242,7 +250,7 @@ function SkillHubMarketContent({ authStateLoggedIn, authenticated, authLoading, 
         <div className="rounded-lg border border-dashed border-border/70 py-10 text-center text-sm text-muted-foreground">没有匹配的 SkillHub 技能</div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {skills.slice(0, 12).map((skill) => (
+          {skills.map((skill) => (
             <SkillMarketCard
               key={skill.name}
               skill={skill}

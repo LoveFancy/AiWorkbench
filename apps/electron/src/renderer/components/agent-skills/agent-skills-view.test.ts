@@ -4,6 +4,7 @@ import { join } from 'node:path'
 const source = await Bun.file(join(import.meta.dir, 'AgentSkillsView.tsx')).text()
 const skillCardSource = await Bun.file(join(import.meta.dir, 'SkillCard.tsx')).text()
 const skillMarketPanelSource = await Bun.file(join(import.meta.dir, 'SkillMarketPanel.tsx')).text()
+const skillMarketCardSource = await Bun.file(join(import.meta.dir, 'SkillMarketCard.tsx')).text()
 
 test('技能页提供技能市场和已安装二级切换', () => {
   expect(source).toContain('技能市场')
@@ -21,6 +22,23 @@ test('已安装区块区分插件和技能', () => {
   expect(source).toContain('InstalledCapabilityGrid')
   expect(source).toContain('PluginDetailSheet')
   expect(source).toContain('isBuiltin={(slug) => data.defaultSkillSlugs.has(slug)}')
+})
+
+test('技能市场不展示分类 Tab 且加载全部分页结果', () => {
+  expect(skillMarketPanelSource).not.toContain('MARKET_CATEGORIES')
+  expect(skillMarketPanelSource).not.toContain("'推荐'")
+  expect(skillMarketPanelSource).not.toContain('套件')
+  expect(skillMarketPanelSource).not.toContain('skills.slice(0, 12)')
+  expect(skillMarketPanelSource).toContain('SKILLHUB_PAGE_SIZE')
+  expect(skillMarketPanelSource).toContain('while (true)')
+  expect(skillMarketPanelSource).toContain('skills.map((skill)')
+})
+
+test('技能市场卡片样式对齐已安装 Skill 卡片', () => {
+  expect(skillMarketCardSource).toContain('min-h-[158px]')
+  expect(skillMarketCardSource).toContain('rounded-xl')
+  expect(skillMarketCardSource).toContain('line-clamp-2')
+  expect(skillMarketCardSource).not.toContain('SkillHub')
 })
 
 test('切换已安装 Skill 状态后保留当前技能二级 Tab', () => {
