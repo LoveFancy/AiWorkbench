@@ -382,6 +382,58 @@ bun install
 bun typecheck
 ```
 
+### 5. `bun install` 报 `ENOENT: failed linking dependency/workspace`（Windows）
+
+**原因**：Windows 默认不允许非管理员创建符号链接，导致 Bun 无法链接 workspace 内部包（`@proma/shared`、`@proma/electron` 等）。
+
+**解决**：开启 Windows 开发者模式。
+
+```powershell
+# 以管理员身份运行 PowerShell，执行：
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" /v AllowDevelopmentWithoutDevLicense /t REG_DWORD /d 1 /f
+```
+
+重启电脑后重新 `bun install`。
+
+> 验证：执行 `(Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" -Name AllowDevelopmentWithoutDevLicense).AllowDevelopmentWithoutDevLicense`，返回 `1` 表示已开启。
+
+### 6. `bun run build` 报 `rollup failed to resolve import "prosemirror-xxx"`（Windows）
+
+**原因**：`bun.lock` 由其他平台生成时，部分嵌套依赖在 Windows 上未被正确解析，导致 `prosemirror-state`、`prosemirror-model` 等 tiptap 的底层包缺失。
+
+**解决**：
+
+```bash
+cd d:\code\workmate\dev\AiWorkbench
+bun install
+```
+
+如果还是不行，手动安装缺失的包：
+
+```bash
+bun add -d prosemirror-state
+```
+
+> `-d` 表示安装到根 `devDependencies`，不会污染 `apps/electron/package.json`。
+
+### 7. `bun run dev` 报 `Electron failed to install correctly`
+
+**原因**：问题 5 导致 workspace 链接失败后，`electron` 包的 postinstall 脚本没有执行，Electron 二进制文件未下载。
+
+**解决**：先修复问题 5，然后执行：
+
+```bash
+cd d:\code\workmate\dev\AiWorkbench
+bun install
+```
+
+如果还不生效，删除 Electron 缓存后重装：
+
+```bash
+Remove-Item -Recurse -Force node_modules\.bun\electron@*
+bun install
+```
+
 ---
 
 ## 进一步阅读
