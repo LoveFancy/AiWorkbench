@@ -547,7 +547,7 @@ export function SkillHubPanel({ workspaceSlug, workspaceName, refreshKey, onInst
                                 size="icon"
                                 variant="ghost"
                                 className="h-8 w-8"
-                                onClick={() => void handleToggle(selectedSkill.name, selectedSkill.enabled !== false)}
+                                onClick={() => void handleToggle(selectedSkill.name, selectedSkill.enabled === false)}
                               >
                                 {selectedSkill.enabled === false ? <Power size={16} /> : <PowerOff size={16} />}
                               </Button>
