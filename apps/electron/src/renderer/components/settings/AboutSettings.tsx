@@ -54,7 +54,37 @@ function UpdateCard(): React.ReactElement | null {
     window.electronAPI.updater?.quitAndInstall()
   }
 
+  // 点击检查后强制最小展示时长，避免"检查中"一闪而过
+  const [checkStartedAt, setCheckStartedAt] = React.useState(0)
+  const [minCheckElapsed, setMinCheckElapsed] = React.useState(false)
+
+  React.useEffect(() => {
+    if (status.status === 'checking' || status.status === 'downloading') {
+      const now = Date.now()
+      if (!checkStartedAt) setCheckStartedAt(now)
+      setMinCheckElapsed(false)
+    } else if (checkStartedAt) {
+      const elapsed = Date.now() - checkStartedAt
+      const MIN_DISPLAY_MS = 800
+      if (elapsed < MIN_DISPLAY_MS) {
+        const timer = setTimeout(() => {
+          setCheckStartedAt(0)
+          setMinCheckElapsed(true)
+        }, MIN_DISPLAY_MS - elapsed)
+        return () => clearTimeout(timer)
+      } else {
+        setCheckStartedAt(0)
+        setMinCheckElapsed(true)
+      }
+    }
+  }, [status.status, checkStartedAt])
+
   const isChecking = status.status === 'checking' || status.status === 'downloading'
+    || (checkStartedAt > 0 && !minCheckElapsed)
+  // 最小展示期间，文字保持"正在检查..."，但使用的是实际结果状态
+  const effectiveStatus = (!minCheckElapsed && checkStartedAt > 0 && status.status !== 'checking' && status.status !== 'downloading')
+    ? ({ ...status, status: 'checking' } as typeof status)
+    : status
   const hasReleaseNotes = !!status.releaseNotes
 
   const formatBytes = (bytes: number): string => {
@@ -67,12 +97,12 @@ function UpdateCard(): React.ReactElement | null {
       <SettingsRow label="软件更新">
         <div className="flex items-center gap-3">
           <StatusText
-            status={status.status}
-            version={status.version}
-            error={status.error}
-            hint={status.hint}
-            progress={status.progress}
-            downloadUrl={status.downloadUrl}
+            status={effectiveStatus.status}
+            version={effectiveStatus.version}
+            error={effectiveStatus.error}
+            hint={effectiveStatus.hint}
+            progress={effectiveStatus.progress}
+            downloadUrl={effectiveStatus.downloadUrl}
           />
 
           {status.status === 'downloaded' ? (
@@ -83,7 +113,7 @@ function UpdateCard(): React.ReactElement | null {
               <RotateCw className="h-3.5 w-3.5" />
               {status.releaseType === 'ROLLBACK' ? '立即回退' : '立即重启更新'}
             </button>
-          ) : status.status === 'downloading' ? (
+          ) : effectiveStatus.status === 'downloading' ? (
             <span className="text-xs text-muted-foreground">{status.progress?.percent ?? 0}%</span>
           ) : (
             <button
