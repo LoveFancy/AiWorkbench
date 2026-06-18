@@ -6,7 +6,7 @@
  * 2. Node.js 运行时检测
  * 3. Bun 运行时检测
  * 4. Git 运行时检测
- * 5. Shell 环境检测（Windows - Git Bash / WSL）
+ * 5. Shell 环境检测（Windows - Git Bash）
  */
 
 import type { RuntimeStatus, RuntimeInitOptions, ShellEnvironmentStatus } from '@proma/shared'
@@ -15,7 +15,6 @@ import { detectNodeRuntime } from './node-detector'
 import { detectBunRuntime } from './bun-finder'
 import { detectGitRuntime, getGitRepoStatus } from './git-detector'
 import { detectGitBash } from './git-bash-detector'
-import { detectWsl } from './wsl-detector'
 
 /** 运行时状态缓存 */
 let runtimeStatusCache: RuntimeStatus | null = null
@@ -38,7 +37,6 @@ let isInitialized = false
  */
 export async function initializeRuntime(options: RuntimeInitOptions = {}): Promise<RuntimeStatus> {
   const startTime = Date.now()
-  console.log('[运行时初始化] 开始初始化运行时环境...')
 
   // 1. 加载 Shell 环境
   let envLoaded = false
@@ -90,29 +88,25 @@ export async function initializeRuntime(options: RuntimeInitOptions = {}): Promi
   if (process.platform === 'win32' && !options.skipShellDetection) {
     try {
       const gitBashStatus = await detectGitBash()
-      const wslStatus = await detectWsl()
 
-      // 推荐策略：优先 Git Bash > WSL 2 > WSL 1
-      let recommended: 'git-bash' | 'wsl' | null = null
-      if (gitBashStatus.available) {
-        recommended = 'git-bash'
-      } else if (wslStatus.available) {
-        recommended = 'wsl'
+      // WSL 功能已屏蔽，不再检测
+      const wslNotReady = {
+        available: false,
+        version: null,
+        defaultDistro: null,
+        distros: [],
+        error: 'WSL 功能已屏蔽',
       }
+
+      // 推荐策略：仅 Git Bash
+      const recommended: 'git-bash' | null = gitBashStatus.available ? 'git-bash' : null
 
       shellEnvironmentStatus = {
         gitBash: gitBashStatus,
-        wsl: wslStatus,
+        wsl: wslNotReady,
         recommended,
       }
 
-      console.log('[运行时初始化] Shell 环境检测完成:', {
-        gitBash: gitBashStatus.available ? `✅ ${gitBashStatus.version}` : `❌ ${gitBashStatus.error}`,
-        wsl: wslStatus.available
-          ? `✅ WSL ${wslStatus.version} (${wslStatus.defaultDistro})`
-          : `❌ ${wslStatus.error}`,
-        recommended: recommended || '⚠️ 无可用环境',
-      })
     } catch (error) {
       console.error('[运行时初始化] Shell 环境检测失败:', error)
     }
@@ -133,16 +127,16 @@ export async function initializeRuntime(options: RuntimeInitOptions = {}): Promi
   isInitialized = true
 
   const duration = Date.now() - startTime
-  console.log(`[运行时初始化] 初始化完成 (耗时 ${duration}ms)`)
-  console.log('[运行时初始化] 状态:', {
-    node: nodeStatus.available ? `✅ ${nodeStatus.version}` : `❌ ${nodeStatus.error}`,
-    bun: bunStatus.available ? `✅ ${bunStatus.version} (${bunStatus.source})` : `❌ ${bunStatus.error}`,
-    git: gitStatus.available ? `✅ ${gitStatus.version}` : `❌ ${gitStatus.error}`,
-    shell: shellEnvironmentStatus
-      ? `${shellEnvironmentStatus.recommended ? '✅' : '⚠️'} ${shellEnvironmentStatus.recommended || '无可用环境'}`
-      : '⏭️ 跳过（非 Windows）',
-    envLoaded: envLoaded ? '✅' : '⚠️ 未加载或不需要',
-  })
+  const shellSummary = shellEnvironmentStatus
+    ? `${shellEnvironmentStatus.recommended || 'none'}`
+    : 'skipped'
+  console.log(
+    `[运行时初始化] 完成 (${duration}ms) | ` +
+    `node=${nodeStatus.available ? nodeStatus.version : '✗'} ` +
+    `git=${gitStatus.available ? gitStatus.version : '✗'} ` +
+    `bun=${bunStatus.available ? bunStatus.version : '✗'} ` +
+    `shell=${shellSummary} env=${envLoaded ? 'ok' : 'skip'}`,
+  )
 
   return runtimeStatus
 }

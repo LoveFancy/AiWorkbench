@@ -1,3 +1,10 @@
+/**
+ * 泰为平台模型 — 类型定义
+ *
+ * 后端 /workmate/models 接口返回的模型数据结构。
+ * 后端字段名 supportVision 在 model-service.ts 中映射为 supportsMultimodal。
+ */
+
 /** 模型信息 */
 export interface ModelInfo {
   id: string

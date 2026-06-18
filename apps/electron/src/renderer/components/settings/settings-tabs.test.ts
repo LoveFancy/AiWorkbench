@@ -54,12 +54,12 @@ test('Agent 模式下插件管理入口可见', () => {
   expect(agentTabs.find((tab) => tab.id === 'plugins')?.label).toBe('插件管理')
 })
 
-test('Agent 模式下专家团入口可见', () => {
-  const generalTabs = getSettingsTabs('chat')
-  const agentTabs = getSettingsTabs('agent')
+test('Agent 模式下专家团入口已从设置中移除（移至侧边栏）', () => {
+  const generalTabIds = getSettingsTabs('chat').map((tab) => tab.id as string)
+  const agentTabIds = getSettingsTabs('agent').map((tab) => tab.id as string)
 
-  expect(generalTabs.some((tab) => tab.id === 'experts')).toBe(false)
-  expect(agentTabs.find((tab) => tab.id === 'experts')?.label).toBe('专家团')
+  expect(generalTabIds.includes('experts')).toBe(false)
+  expect(agentTabIds.includes('experts')).toBe(false)
 })
 
 test('隐藏非公开设置入口', () => {

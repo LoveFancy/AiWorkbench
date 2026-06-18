@@ -710,7 +710,7 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                     )}
                     </div>
                   {!sessionCollapsed && (
-                    <div className="mx-2 mb-1 flex flex-col" style={{ flex: workspaceCollapsed ? '1 1 auto' : `0 0 ${splitRatio * 100}%` }}>
+                    <div className="mx-2 mb-1 flex flex-col min-h-0" style={{ flex: workspaceCollapsed ? '1 1 auto' : `0 0 ${splitRatio * 100}%` }}>
                     <FileSearchBar
                       workspaceFilesPath={null}
                       sessionPath={sessionPath}
@@ -782,7 +782,7 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
               )}
 
               {/* === 工作区文件区域 === */}
-              <div className="flex flex-col mx-2 mb-2" style={{ flex: sessionCollapsed ? '1 1 auto' : workspaceCollapsed ? '0 0 auto' : `1 1 ${(1 - splitRatio) * 100}%` }}>
+              <div className="flex flex-col mx-2 mb-2 min-h-0" style={{ flex: sessionCollapsed ? '1 1 auto' : workspaceCollapsed ? '0 0 auto' : `1 1 ${(1 - splitRatio) * 100}%` }}>
                 <div className="flex items-center gap-1 px-2 h-[32px] flex-shrink-0 cursor-pointer" onClick={() => setWorkspaceCollapsed(!workspaceCollapsed)}>
                   {workspaceCollapsed ? <ChevronRight className="size-3 text-muted-foreground" /> : <ChevronDown className="size-3 text-muted-foreground" />}
                   <FolderHeart className="size-3 text-muted-foreground" />

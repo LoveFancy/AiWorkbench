@@ -11,13 +11,11 @@ import {
   Radio,
   BookOpen,
   Plug,
-  GraduationCap,
   Keyboard,
   Palette,
   Info,
   Wrench,
   Package,
-  UsersRound,
   TerminalSquare,
 } from 'lucide-react'
 import type { SettingsTab } from '@/atoms/settings-tab'
@@ -48,12 +46,6 @@ const PLUGINS_TAB: TabItem = {
   icon: <Package size={16} />,
 }
 
-const EXPERTS_TAB: TabItem = {
-  id: 'experts',
-  label: '专家团',
-  icon: <UsersRound size={16} />,
-}
-
 const TOOLS_TAB: TabItem = {
   id: 'tools',
   label: 'Chat 工具',
@@ -64,12 +56,6 @@ const SYSTEM_LOG_TAB: TabItem = {
   id: 'system-log',
   label: '系统日志',
   icon: <TerminalSquare size={16} />,
-}
-
-const TUTORIAL_TAB: TabItem = {
-  id: 'tutorial',
-  label: '使用教程',
-  icon: <GraduationCap size={16} />,
 }
 
 const SHORTCUTS_TAB: TabItem = {
@@ -86,6 +72,6 @@ const TAIL_TABS: TabItem[] = [
 
 export function getSettingsTabs(appMode: 'chat' | 'agent'): TabItem[] {
   return appMode === 'agent'
-    ? [...BASE_TABS, TOOLS_TAB, AGENT_TAB, PLUGINS_TAB, EXPERTS_TAB, TUTORIAL_TAB, SHORTCUTS_TAB, ...TAIL_TABS, SYSTEM_LOG_TAB]
-    : [...BASE_TABS, TOOLS_TAB, TUTORIAL_TAB, SHORTCUTS_TAB, ...TAIL_TABS, SYSTEM_LOG_TAB]
+    ? [...BASE_TABS, TOOLS_TAB, AGENT_TAB, PLUGINS_TAB,  SHORTCUTS_TAB, ...TAIL_TABS, SYSTEM_LOG_TAB]
+    : [...BASE_TABS, TOOLS_TAB, SHORTCUTS_TAB, ...TAIL_TABS, SYSTEM_LOG_TAB]
 }

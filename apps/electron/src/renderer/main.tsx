@@ -4,6 +4,13 @@
  * 挂载 React 应用，初始化主题系统。
  */
 
+// 启动耗时追踪（独立于主进程的时间线）
+const RENDERER_START_MS = Date.now()
+function rendererElapsed(label: string): void {
+  console.log(`[启动耗时-renderer] +${((Date.now() - RENDERER_START_MS) / 1000).toFixed(2)}s | ${label}`)
+}
+rendererElapsed('renderer main.tsx 开始执行')
+
 import React, { useEffect, useMemo, useRef } from 'react'
 import ReactDOM from 'react-dom/client'
 import { useSetAtom, useAtomValue, useStore } from 'jotai'
@@ -694,7 +701,7 @@ function TabStatePersistenceInitializer(): null {
         }
       }
 
-      console.log(`[TabRestore] 已恢复当前会话入口，历史标签 ${validTabs.length} 个已收敛到左侧列表`)
+
     }).catch((err) => console.error('[TabRestore] 恢复标签页失败:', err))
       .finally(() => { restoredRef.current = true })
   }, [store])
@@ -791,7 +798,7 @@ function ScratchPadPersistence(): null {
           store.set(activeTabIdAtom, SCRATCH_PAD_ID)
         }
 
-        console.log('[ScratchPad] 初始化完成，已加载内容:', !!loadedMd)
+
       } catch (err) {
         console.error('[ScratchPad] 初始化失败:', err)
       } finally {
@@ -888,6 +895,7 @@ if (isQuickTaskWindow) {
   })
 } else {
   // ===== 主窗口：完整渲染 =====
+  rendererElapsed('开始 ReactDOM.createRoot（主窗口）')
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       <ThemeInitializer />
@@ -912,4 +920,5 @@ if (isQuickTaskWindow) {
       <Toaster position="top-right" />
     </React.StrictMode>
   )
+  rendererElapsed('React 根组件 render() 调用完成（首屏渲染触发）')
 }

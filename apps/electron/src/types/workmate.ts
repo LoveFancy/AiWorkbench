@@ -8,7 +8,7 @@
 
 export type ObservabilityEventType =
   | 'user_login' | 'user_logout' | 'chat_question' | 'agent_question'
-  | 'error' | 'upgrade_check'
+  | 'error' | 'upgrade_check' | 'app_startup'
 
 // ===== 面包屑 =====
 
@@ -36,6 +36,7 @@ export interface ObservabilityEventItem {
   workspaceId?: string
   result?: 'success' | 'failure' | 'pending'
   responseDurationMs?: number
+  startupDurationMs?: number // app_startup 事件：启动耗时（毫秒）
   error?: { type: string; message: string; stack?: string; statusCode?: number; fingerprint?: string }
   breadcrumbs?: Breadcrumb[] // 事件发生前的用户操作路径（error 事件自动附加）
   /**
@@ -44,6 +45,8 @@ export interface ObservabilityEventItem {
    */
   tags?: Record<string, string>
   client: { appVersion: string; platform: string; osVersion: string }
+  /** 内部字段：重试次数（不上报给服务端），达到上限后丢弃 */
+  _retryCount?: number
 }
 
 /** 批量上报请求体，与 POST body 的 JSON 结构一致 */

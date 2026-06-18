@@ -27,7 +27,6 @@ export function startChatToolsWatcher(): void {
   const filePath = getChatToolsConfigPath()
 
   if (!existsSync(filePath)) {
-    console.log('[Chat 工具监听] 配置文件不存在，跳过:', filePath)
     return
   }
 

@@ -57,7 +57,7 @@ import { autoPreviewEnabledAtom, previewPanelOpenMapAtom, previewFileMapAtom, pr
 import type { NotificationSoundType } from '@/types/settings'
 import { toast } from 'sonner'
 import type { AgentStreamEvent, AgentStreamCompletePayload, AgentEvent, AgentStreamPayload, SDKAssistantMessage, SDKUserMessage, SDKSystemMessage, SDKContentBlock, SDKUserContentBlock, PromaEvent, AgentSessionMeta } from '@proma/shared'
-import { buildExternalAgentRunActivation } from '@/lib/external-agent-run'
+import { buildExternalAgentRunActivation, type ExternalAgentRunTab } from '@/lib/external-agent-run'
 import { getAgentCompletionMarkers } from '@/lib/agent-completion-presence'
 import { getPlanModeChangeFromToolName, updatePlanModeSessionSet } from '@/lib/agent-plan-mode'
 import { isHtmlPreviewPath } from '@/components/diff/html-preview-utils'
@@ -153,6 +153,8 @@ function payloadToLegacyEvents(payload: AgentStreamPayload): AgentEvent[] {
         return [{ type: 'permission_mode_changed', mode: evt.mode }]
       case 'run_resumed':
         return [{ type: 'run_resumed' }]
+      case 'model_switched':
+        return [{ type: 'model_switched', fromModel: evt.fromModel, toModel: evt.toModel }]
       case 'retry': {
         const events: AgentEvent[] = []
         if (evt.status === 'starting' && evt.attempt != null && evt.maxAttempts != null) {
@@ -378,7 +380,7 @@ export function useGlobalAgentListeners(): void {
     const activateExternalAgentRun = (event: Extract<PromaEvent, { type: 'external_run_started' }>): void => {
       const applyActivation = (sessions: AgentSessionMeta[]): void => {
         const activation = buildExternalAgentRunActivation({
-          tabs: store.get(tabsAtom),
+          tabs: store.get(tabsAtom).filter((t) => t.type !== 'manual') as ExternalAgentRunTab[],
           sessions,
           sessionId: event.sessionId,
           title: event.title,
@@ -574,20 +576,8 @@ export function useGlobalAgentListeners(): void {
     }).catch(console.error)
 
     // ===== 1. 流式事件 =====
-    // [FLASH-DEBUG] 事件频率计数器
-    let eventCount = 0
-    let lastLogTime = Date.now()
     const cleanupEvent = window.electronAPI.onAgentStreamEvent(
       (streamEvent: AgentStreamEvent) => {
-        // [FLASH-DEBUG] 每 2 秒输出一次事件频率
-        eventCount++
-        const now = Date.now()
-        if (now - lastLogTime >= 2000) {
-          console.log(`[FLASH-DEBUG] GlobalListener: ${eventCount} events in ${((now - lastLogTime) / 1000).toFixed(1)}s (${(eventCount / ((now - lastLogTime) / 1000)).toFixed(1)} evt/s)`)
-          eventCount = 0
-          lastLogTime = now
-        }
-
         unstable_batchedUpdates(() => {
         const { sessionId, payload } = streamEvent
 
@@ -882,6 +872,12 @@ export function useGlobalAgentListeners(): void {
               map.set(sessionId, { ...current, running: true })
               return map
             })
+          } else if (event.type === 'model_switched') {
+            // Auto Mode 模型切换通知
+            toast.warning(`模型已切换：${event.fromModel} → ${event.toModel}`, {
+              description: '自动切换候选池中的下一个可用模型',
+              duration: 6000,
+            })
           }
         }
         }) // unstable_batchedUpdates
@@ -891,7 +887,6 @@ export function useGlobalAgentListeners(): void {
     // ===== 2. 流式完成 =====
     const cleanupComplete = window.electronAPI.onAgentStreamComplete(
       (data: AgentStreamCompletePayload) => {
-        console.log(`[FLASH-DEBUG] STREAM_COMPLETE for session=${data.sessionId.slice(0, 8)}, stoppedByUser=${data.stoppedByUser}, resultSubtype=${data.resultSubtype}`)
         unstable_batchedUpdates(() => {
         // 后台任务等待态：turn 主体结束但仍有后台任务在飞行，UI 进入"空闲可输入"。
         // 不发"任务已完成"通知（任务并未真正完成）、不清后台任务列表、不重载消息——

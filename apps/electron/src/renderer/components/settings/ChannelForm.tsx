@@ -203,7 +203,11 @@ export function ChannelForm({ channel, onSaved, onAutoSaved, onAgentEligibilityC
   // 表单状态
   const [name, setName] = React.useState(channel?.name ?? '')
   const [provider, setProvider] = React.useState<ProviderType>(channel?.provider ?? 'anthropic')
-  const [baseUrl, setBaseUrl] = React.useState(channel?.baseUrl ?? PROVIDER_DEFAULT_URLS.anthropic)
+  const [baseUrl, setBaseUrl] = React.useState(
+    channel?.provider.startsWith('huatai-')
+      ? PROVIDER_DEFAULT_URLS[channel.provider]
+      : (channel?.baseUrl ?? PROVIDER_DEFAULT_URLS.anthropic)
+  )
   const [apiKey, setApiKey] = React.useState('')
   const [showApiKey, setShowApiKey] = React.useState(false)
   const [models, setModels] = React.useState<ChannelModel[]>(channel?.models ?? [])
@@ -334,6 +338,13 @@ export function ChannelForm({ channel, onSaved, onAutoSaved, onAgentEligibilityC
       }
     }
   }
+
+  // 华泰供应商强制锁定默认 Base URL，不可修改
+  React.useEffect(() => {
+    if (provider.startsWith('huatai-') && baseUrl !== PROVIDER_DEFAULT_URLS[provider]) {
+      setBaseUrl(PROVIDER_DEFAULT_URLS[provider])
+    }
+  }, [provider, baseUrl])
 
   /** 添加模型 */
   const handleAddModel = (): void => {
@@ -601,6 +612,7 @@ export function ChannelForm({ channel, onSaved, onAutoSaved, onAgentEligibilityC
             value={baseUrl}
             onChange={setBaseUrl}
             placeholder="https://api.example.com"
+            disabled={provider.startsWith('huatai-')}
             description={baseUrl.trim() ? `预览：${buildPreviewUrl(baseUrl, provider)}` : undefined}
           />
           {/* API Key + 测试连接同行 */}

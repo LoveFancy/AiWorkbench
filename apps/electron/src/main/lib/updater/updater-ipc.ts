@@ -15,8 +15,6 @@ import {
 
 /** 注册更新 IPC 处理器 */
 export function registerUpdaterIpc(): void {
-  console.log('[更新 IPC] 正在注册更新 IPC 处理器...')
-
   ipcMain.handle(
     UPDATER_IPC_CHANNELS.CHECK_FOR_UPDATES,
     (_event, opts?: { silent?: boolean }): void => {
@@ -38,6 +36,4 @@ export function registerUpdaterIpc(): void {
       quitAndInstall()
     }
   )
-
-  console.log('[更新 IPC] 更新 IPC 处理器注册完成')
 }

@@ -234,6 +234,10 @@ export interface AppSettings {
   eipGatewayBase?: string
   /** WorkMate Server 地址。开发环境默认 http://localhost:6173 */
   workmateServerUrl?: string
+  /** Auto Mode 是否启用（模型失败后自动切换候选模型） */
+  autoModeEnabled?: boolean
+  /** Auto Mode 候选模型 ID 列表 */
+  autoSwitchCandidateModels?: string[]
 }
 
 /** 主窗口大小、位置和最大化状态 */

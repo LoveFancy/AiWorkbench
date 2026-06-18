@@ -78,13 +78,11 @@ function registerOne(id: string): boolean {
   if (!callback) return false
 
   if (!shouldRegisterGlobalShortcut(id)) {
-    console.log(`[全局快捷键] 跳过注册: ${id} 未启用`)
     return false
   }
 
   const accelerator = getGlobalAccelerator(id)
   if (accelerator === null) {
-    console.log(`[全局快捷键] 跳过注册: ${id} 已被用户禁用`)
     return false
   }
   if (!accelerator) return false
@@ -93,7 +91,6 @@ function registerOne(id: string): boolean {
     const success = globalShortcut.register(accelerator, callback)
     if (success) {
       registeredAccelerators.set(accelerator, id)
-      console.log(`[全局快捷键] 注册成功: ${id} → ${accelerator}`)
     } else {
       console.warn(`[全局快捷键] 注册失败（可能被占用）: ${id} → ${accelerator}`)
     }

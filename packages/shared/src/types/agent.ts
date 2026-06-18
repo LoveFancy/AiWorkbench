@@ -513,6 +513,7 @@ export type AgentEvent =
   // 控制流
   | { type: 'complete'; stopReason?: string; usage?: AgentEventUsage }
   | { type: 'run_resumed' }
+  | { type: 'model_switched'; fromModel: string; toModel: string }
   | { type: 'error'; message: string }
   | { type: 'typed_error'; error: TypedError }
   // 重试机制
@@ -563,6 +564,7 @@ export type PromaEvent =
   | { type: 'title_updated'; title: string }
   | { type: 'external_run_started'; source: AgentExternalRunSource; sessionId: string; title?: string; workspaceId?: string; modelId?: string; startedAt: number }
   | { type: 'run_resumed'; sessionId: string }
+  | { type: 'model_switched'; fromModel: string; toModel: string }
 
 /** 外部入口触发 Agent 运行的来源 */
 export type AgentExternalRunSource = 'feishu' | 'dingtalk' | 'wechat' | 'bridge'
@@ -619,6 +621,8 @@ export interface AgentSessionMeta {
   permissionMode?: PromaPermissionMode
   /** 来源定时任务 ID（该会话由定时任务自动创建/复用时标记，用于侧栏显示钟表图标 + 跳转设置） */
   sourceAutomationId?: string
+  /** Auto Mode 下当前激活的模型 ID（跨轮记忆用） */
+  activeModelId?: string
   /** 创建时间戳 */
   createdAt: number
   /** 更新时间戳 */
@@ -854,7 +858,7 @@ export interface HtSkillHubInstallResult {
 
 // ===== Agent Plugins =====
 
-export type AgentPluginKind = 'builtin' | 'user'
+export type AgentPluginKind = 'builtin' | 'user' | 'remote'
 
 export type AgentPluginCapabilityType = 'skill' | 'command' | 'agent' | 'mcp' | 'expert-group'
 
@@ -882,6 +886,10 @@ export interface AgentPluginManifest {
   expertGroup?: string
   /** @deprecated 兼容旧插件；运行时只读取第一个专家团 ID。 */
   expertGroups?: string[]
+  /** 专家团类型，扫描阶段即可确定，无需加载 expert-groups/*.json。
+   *  'agent' = 单专家（无 SubAgent），'team' = 多专家团队（有 SubAgent）。
+   *  仅 expertGroup 存在时有意义。 */
+  expertType?: 'agent' | 'team'
 }
 
 export type AgentExpertGroupStatus =
@@ -892,6 +900,10 @@ export type AgentExpertGroupStatus =
   | 'missing_subagent'
   | 'missing_skill'
   | 'mcp_conflict'
+  | 'remote_not_downloaded'
+  | 'remote_downloading'
+  | 'remote_download_failed'
+  | 'remote_update_available'
 
 export interface AgentExpertGroupMainRole {
   name: string
@@ -921,6 +933,8 @@ export interface AgentExpertGroupManifest {
   tags?: string[]
   samplePrompts?: string[]
   toolsPolicy?: AgentExpertGroupToolsPolicy
+  /** 从 plugin.json 传递的专家类型，'agent' = 单专家，'team' = 多专家团队 */
+  expertType?: 'agent' | 'team'
 }
 
 export interface AgentExpertGroupInfo extends AgentExpertGroupManifest {
@@ -960,6 +974,8 @@ export interface AgentPluginCapability {
     level: AgentPluginIssueLevel
     message: string
   }
+  /** 从 plugin.json 传递的专家类型 */
+  expertType?: 'agent' | 'team'
 }
 
 export interface AgentPluginInfo {
@@ -990,6 +1006,57 @@ export interface AgentPluginMcpServerState {
   lastTestAt?: string
   lastTestSuccess?: boolean
   lastTestMessage?: string
+}
+
+// ===== 专家团服务端化 =====
+
+/** 服务端专家团列表项 —— 前端筛选/展示用的摘要信息 */
+export interface ServerExpertGroupSummary {
+  id: string
+  name: string
+  description: string
+  introduction: string
+  mainRoleName: string
+  expertType: 'agent' | 'team'
+  subagentCount: number
+  subagentLabels: Record<string, string>
+  tags: string[]
+  samplePrompts: string[]
+  builtinTools: string[]
+  skills: string[]
+  mcpServers: string[]
+  version: string
+  downloadUrl: string
+  downloadSize: number
+  sortWeight: number
+  publishedAt: string
+  updatedAt: string
+}
+
+export interface ServerExpertGroupListResponse {
+  items: ServerExpertGroupSummary[]
+  total: number
+}
+
+export interface FeaturedScene {
+  id: string
+  name: string
+  expertGroupIds: string[]
+  iconUrl?: string
+  sortOrder: number
+}
+
+export interface FeaturedScenesResponse {
+  scenes: FeaturedScene[]
+}
+
+export interface RemoteDownloadProgress {
+  groupId: string
+  status: 'downloading' | 'installing' | 'done' | 'error'
+  progress: number
+  downloadedBytes: number
+  totalBytes: number
+  error?: string
 }
 
 export interface AgentPluginsConfig {
@@ -1757,6 +1824,8 @@ export const AGENT_IPC_CHANNELS = {
   OPEN_FILE: 'agent:open-file',
   /** 在系统文件管理器中显示文件 */
   SHOW_IN_FOLDER: 'agent:show-in-folder',
+  /** 在系统文件管理器中打开插件目录 */
+  SHOW_PLUGIN_IN_FOLDER: 'agent:show-plugin-in-folder',
   /** 重命名文件/目录 */
   RENAME_FILE: 'agent:rename-file',
   /** 移动文件/目录到目标目录 */
@@ -1815,6 +1884,20 @@ export const AGENT_IPC_CHANNELS = {
   // 待处理请求恢复（渲染进程重载后查询主进程状态）
   /** 获取所有待处理的交互请求快照 */
   GET_PENDING_REQUESTS: 'agent:get-pending-requests',
+} as const
+
+/** 专家团服务端化 IPC 通道常量 */
+export const EXPERT_IPC_CHANNELS = {
+  /** 获取服务端专家团列表 */
+  FETCH_SERVER_EXPERT_GROUPS: 'expert:fetch-server-list',
+  /** 获取精选场景分类 */
+  FETCH_FEATURED_SCENES: 'expert:fetch-featured-scenes',
+  /** 下载服务端专家团插件包 */
+  DOWNLOAD_REMOTE_EXPERT: 'expert:download-remote',
+  /** 下载进度推送（主进程 → 渲染进程） */
+  DOWNLOAD_PROGRESS: 'expert:download-progress',
+  /** 取消下载 */
+  CANCEL_DOWNLOAD: 'expert:cancel-download',
 } as const
 
 /**

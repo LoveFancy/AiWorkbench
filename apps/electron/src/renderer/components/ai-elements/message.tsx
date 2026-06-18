@@ -749,7 +749,10 @@ function MessageAttachmentImage({ attachment, isSingle = false }: MessageAttachm
     window.electronAPI
       .readAttachment(attachment.localPath)
       .then((base64) => {
-        setImageSrc(`data:${attachment.mediaType};base64,${base64}`)
+        if (base64) {
+          setImageSrc(`data:${attachment.mediaType};base64,${base64}`)
+        }
+        // 文件不存在时 base64 为空字符串，保持 imageSrc 为 null，UI 显示占位
       })
       .catch((error) => {
         console.error('[MessageAttachmentImage] 读取附件失败:', error)

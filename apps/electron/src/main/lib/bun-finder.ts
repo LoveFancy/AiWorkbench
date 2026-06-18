@@ -179,8 +179,6 @@ export function validateBunExecutable(bunPath: string): string | null {
  * @returns Bun 运行时状态
  */
 export async function detectBunRuntime(): Promise<BunRuntimeStatus> {
-  console.log('[Bun 检测] 开始检测 Bun 运行时（可选组件）...')
-
   const candidates: Array<{
     getPath: () => string | null
     source: 'bundled' | 'system' | 'vendor'
@@ -210,7 +208,7 @@ export async function detectBunRuntime(): Promise<BunRuntimeStatus> {
     }
   }
 
-  console.log('[Bun 检测] 未找到 Bun（可选，不影响 Proma 核心功能）')
+  console.warn('[Bun 检测] 未找到（非必须）')
   return {
     available: false,
     path: null,
