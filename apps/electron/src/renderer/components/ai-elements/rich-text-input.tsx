@@ -13,7 +13,7 @@
  * - 自动扩高
  */
 
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { forwardRef, useState, useEffect, useRef, useMemo, useImperativeHandle } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -132,13 +132,18 @@ interface RichTextInputProps {
   className?: string
 }
 
+export interface RichTextInputRef {
+  openSlashSuggestion: () => void
+  insertSkillMention: (skill: { id: string; name: string }) => void
+}
+
 /**
  * 富文本输入组件
  * - 基于 TipTap 的 WYSIWYG 编辑器
  * - 支持 Markdown 快捷输入
  * - 无工具栏，纯净输入体验
  */
-export function RichTextInput({
+function RichTextInputInner({
   value,
   onChange,
   onSubmit,
@@ -162,7 +167,7 @@ export function RichTextInput({
   htmlValue,
   onHtmlChange,
   sendWithCmdEnter = false,
-}: RichTextInputProps): React.ReactElement {
+}: RichTextInputProps, ref: React.ForwardedRef<RichTextInputRef>): React.ReactElement {
   const [isExpanded, setIsExpanded] = useState(false)
   const inputIdRef = useRef(`rich-text-input-${Math.random().toString(36).slice(2)}`)
   // 手动折叠状态：用户主动折叠输入框
@@ -556,6 +561,32 @@ export function RichTextInput({
     },
   })
 
+  useImperativeHandle(ref, () => ({
+    openSlashSuggestion: () => {
+      if (!editor || disabled || !editor.isEditable) return
+      editor.chain().focus().insertContent('/').run()
+    },
+    insertSkillMention: (skill) => {
+      if (!editor || disabled || !editor.isEditable) return
+      const mentionType = editor.state.schema.nodes.mention
+      if (!mentionType) return
+
+      const mentionNode = mentionType.create({
+        id: skill.id,
+        label: skill.name,
+        mentionKind: 'skill',
+        mentionSuggestionChar: '/',
+      })
+      editor.view.focus()
+      const transaction = editor.state.tr
+        .replaceSelectionWith(mentionNode)
+        .insertText(' ', editor.state.selection.from + mentionNode.nodeSize)
+        .scrollIntoView()
+      editor.view.dispatch(transaction)
+      editor.view.dom.ownerDocument.defaultView?.getSelection?.()?.collapseToEnd?.()
+    },
+  }), [editor, disabled])
+
   // 卸载时取消未触发的 rAF 行数检查，避免泄漏 / 在卸载组件上 setState
   useEffect(() => {
     return () => {
@@ -835,3 +866,5 @@ export function RichTextInput({
     </div>
   )
 }
+
+export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>(RichTextInputInner)

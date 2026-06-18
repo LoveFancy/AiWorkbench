@@ -78,6 +78,8 @@ interface ModelSelectorProps {
   onModelSelect?: (option: ModelOption) => void
   /** 触发按钮是否显示「渠道 · 模型」（默认只显示模型名） */
   showChannelInTrigger?: boolean
+  /** 紧凑触发按钮，用于输入框工具栏 */
+  compactTrigger?: boolean
   /** Auto Mode 配置（不传则不显示 Auto Mode 区域） */
   autoModeConfig?: {
     enabled: boolean
@@ -94,6 +96,7 @@ export function ModelSelector({
   externalSelectedModel,
   onModelSelect,
   showChannelInTrigger = false,
+  compactTrigger = false,
   autoModeConfig,
 }: ModelSelectorProps = {}): React.ReactElement {
   const [conversationModel, setConversationModel] = useConversationModelOptional()
@@ -261,11 +264,16 @@ export function ModelSelector({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-foreground/70 hover:text-foreground hover:bg-accent border border-transparent hover:border-border/60 transition-all">
+      <PopoverTrigger
+        className={cn(
+          'flex items-center gap-1.5 border border-transparent text-foreground/70 transition-all hover:border-border/60 hover:bg-accent hover:text-foreground',
+          compactTrigger ? 'h-8 rounded-full px-2 text-[13px]' : 'rounded-md px-2.5 py-1.5 text-sm',
+        )}
+      >
         {autoModeConfig?.enabled ? (
           <>
             <Cpu className="size-4" />
-            <span className="max-w-[200px] truncate">Auto</span>
+            <span className={cn('truncate', compactTrigger ? 'max-w-[52px]' : 'max-w-[200px]')}>Auto</span>
           </>
         ) : (
           <>
@@ -273,12 +281,12 @@ export function ModelSelector({
               <img
                 src={getModelLogo(displayModelInfo.modelId, displayModelInfo.provider)}
                 alt={displayModelInfo.modelName}
-                className="size-[18px] rounded object-cover"
+                className={cn('rounded object-cover', compactTrigger ? 'size-4' : 'size-[18px]')}
               />
             ) : (
               <Cpu className="size-4" />
             )}
-            <span className="max-w-[200px] truncate">
+            <span className={cn('truncate', compactTrigger ? 'max-w-[96px]' : 'max-w-[200px]')}>
               {displayModelInfo
                 ? (showChannelInTrigger ? `${displayModelInfo.channelName} · ${displayModelInfo.modelName}` : displayModelInfo.modelName)
                 : '选择模型'}

@@ -48,10 +48,11 @@ test('系统日志入口在设置页导航中可见', () => {
   expect(agentTabs.at(-1)?.id).toBe('system-log')
 })
 
-test('Agent 模式下 Agent 配置入口文案正确', () => {
+test('Agent 模式下不显示 Agent 配置入口', () => {
   const agentTabs = getSettingsTabs('agent')
 
-  expect(agentTabs.find((tab) => tab.id === 'agent')?.label).toBe('Agent 配置')
+  expect(agentTabs.some((tab) => tab.id === 'agent')).toBe(false)
+  expect(agentTabs.some((tab) => tab.label === 'Agent 配置')).toBe(false)
 })
 
 test('Agent 模式下插件管理入口可见', () => {

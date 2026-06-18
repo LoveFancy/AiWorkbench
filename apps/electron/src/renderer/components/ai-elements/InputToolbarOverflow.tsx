@@ -46,7 +46,7 @@ interface InputToolbarOverflowProps {
 }
 
 const DEFAULT_GAP_PX = 6
-const DEFAULT_MORE_BUTTON_PX = 36
+const DEFAULT_MORE_BUTTON_PX = 32
 
 export function InputToolbarOverflow({
   items,
@@ -183,10 +183,11 @@ export function InputToolbarOverflow({
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="size-[36px] shrink-0 rounded-full text-foreground/60 hover:text-foreground"
+                    style={{ width: moreButtonPx, height: moreButtonPx }}
+                    className="shrink-0 rounded-full text-foreground/60 hover:text-foreground"
                     aria-label="更多工具"
                   >
-                    <MoreHorizontal className="size-5" />
+                    <MoreHorizontal className="size-4" />
                   </Button>
                 </PopoverTrigger>
               </TooltipTrigger>

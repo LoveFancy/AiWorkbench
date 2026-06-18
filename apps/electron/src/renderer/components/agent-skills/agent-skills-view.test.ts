@@ -33,13 +33,13 @@ test('技能页在导入旁边提供上传 Skill zip 包入口', () => {
   expect(source.indexOf('上传 Zip')).toBeLessThan(source.indexOf('<span>导入</span>'))
 })
 
-test('已安装 Skill 卡片支持彻底删除 Skill 内容', () => {
-  expect(source).toContain('onRequestDelete={setPendingDeleteSkill}')
-  expect(source).toContain('onRequestDelete: (skill: SkillMeta) => void')
-  expect(source).toContain('onRequestDelete={() => onRequestDelete(skill)}')
+test('已安装 Skill 只能在详情侧栏彻底删除', () => {
+  expect(source).toContain('onRequestDelete={() => selectedSkill && setPendingDeleteSkill(selectedSkill)}')
   expect(source).toContain('删除后会彻底移除该 Skill 目录和其中所有内容')
-  expect(skillCardSource).toContain('Trash2')
-  expect(skillCardSource).toContain('onRequestDelete')
-  expect(skillCardSource).toContain('删除')
-  expect(skillCardSource).not.toContain('{!isBuiltin && (')
+  expect(skillCardSource).not.toContain('Trash2')
+  expect(skillCardSource).not.toContain('onRequestDelete')
+})
+
+test('外部入口可指定打开技能 Tab', () => {
+  expect(source).toContain("React.useEffect(() => {\n    setTab(initialTab)\n  }, [initialTab])")
 })

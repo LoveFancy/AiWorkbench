@@ -10,7 +10,6 @@ import {
   Settings,
   Radio,
   BookOpen,
-  Plug,
   Keyboard,
   Palette,
   Info,
@@ -33,13 +32,6 @@ const BASE_TABS: TabItem[] = [
   { id: 'channels', label: '模型配置', icon: <Radio size={16} /> },
   { id: 'prompts', label: '提示词管理', icon: <BookOpen size={16} /> },
 ]
-
-/** Agent 模式专属 Tab */
-const AGENT_TAB: TabItem = {
-  id: 'agent',
-  label: 'Agent 配置',
-  icon: <Plug size={16} />,
-}
 
 const PLUGINS_TAB: TabItem = {
   id: 'plugins',
@@ -79,6 +71,6 @@ const TAIL_TABS: TabItem[] = [
 
 export function getSettingsTabs(appMode: 'chat' | 'agent'): TabItem[] {
   return appMode === 'agent'
-    ? [...BASE_TABS, TOOLS_TAB, BOTS_TAB, AGENT_TAB, PLUGINS_TAB,  SHORTCUTS_TAB, ...TAIL_TABS, SYSTEM_LOG_TAB]
+    ? [...BASE_TABS, TOOLS_TAB, BOTS_TAB, PLUGINS_TAB, SHORTCUTS_TAB, ...TAIL_TABS, SYSTEM_LOG_TAB]
     : [...BASE_TABS, TOOLS_TAB, BOTS_TAB, SHORTCUTS_TAB, ...TAIL_TABS, SYSTEM_LOG_TAB]
 }

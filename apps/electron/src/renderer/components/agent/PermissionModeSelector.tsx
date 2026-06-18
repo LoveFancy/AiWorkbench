@@ -95,9 +95,9 @@ export function PermissionModeSelector({ sessionId }: PermissionModeSelectorProp
             size="icon"
             aria-label={config.label}
             onClick={() => { cycleMode(); requestAnimationFrame(() => document.querySelector<HTMLElement>('.ProseMirror')?.focus()) }}
-            className="size-[36px] rounded-full text-foreground/60 hover:text-foreground"
+            className="size-8 rounded-full text-foreground/60 hover:text-foreground"
           >
-            <Icon className="size-5" />
+            <Icon className="size-4" />
           </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom" className="max-w-[200px]">

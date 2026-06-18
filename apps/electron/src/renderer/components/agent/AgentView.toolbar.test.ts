@@ -12,3 +12,12 @@ test('Agent 输入工具栏中专家团入口位于模型选择前面', () => {
   expect(modelIndex).toBeGreaterThanOrEqual(0)
   expect(expertIndex).toBeLessThan(modelIndex)
 })
+
+test('Agent 输入工具栏按 WorkBuddy 风格左右分组', () => {
+  expect(source).toContain('inputPrimaryToolbarItems')
+  expect(source).toContain('inputActionToolbarItems')
+  expect(source).toContain('items={inputPrimaryToolbarItems}')
+  expect(source).toContain('inputActionToolbarItems.map')
+  expect(source).toContain('compactTrigger')
+  expect(source).toContain('size-8 rounded-full')
+})

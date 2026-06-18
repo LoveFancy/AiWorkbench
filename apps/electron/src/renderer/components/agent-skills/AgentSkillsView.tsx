@@ -74,6 +74,10 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
   const [isInstallingSkillZip, setIsInstallingSkillZip] = React.useState(false)
   const [activeDefaultConnector, setActiveDefaultConnector] = React.useState<DefaultConnectorId | null>(null)
 
+  React.useEffect(() => {
+    setTab(initialTab)
+  }, [initialTab])
+
   const q = search.trim().toLowerCase()
 
   const filteredSkills = React.useMemo(() => {
@@ -144,7 +148,7 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
   }
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div className="flex h-full flex-col overflow-hidden bg-background">
       {/* 标题栏 + 工作区切换 */}
       {/* 不加 titlebar-drag-region：与 DropdownMenu 嵌套时 drag/no-drag 会让 Radix 拿不到
           pointerdown，下拉打不开。窗口拖拽由 AppShell 顶部 0–50px 的全局 drag 层兜底。
@@ -293,7 +297,6 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
                 onToggle={data.toggleSkill}
                 onUpdate={data.updateSkill}
                 onSkillViewChange={setSkillView}
-                onRequestDelete={setPendingDeleteSkill}
               />
             ) : (
               <McpTab
@@ -414,10 +417,9 @@ interface SkillsTabProps {
   onToggle: (slug: string, enabled: boolean) => void
   onUpdate: (slug: string) => void
   onSkillViewChange: (view: 'market' | 'installed') => void
-  onRequestDelete: (skill: SkillMeta) => void
 }
 
-function SkillsTab({ skillView, skills, total, updateCount, updatingSkill, isBuiltin, workspaceSlug, query, installedSkillNames, onInstalled, onOpen, onToggle, onUpdate, onSkillViewChange, onRequestDelete }: SkillsTabProps): React.ReactElement {
+function SkillsTab({ skillView, skills, total, updateCount, updatingSkill, isBuiltin, workspaceSlug, query, installedSkillNames, onInstalled, onOpen, onToggle, onUpdate, onSkillViewChange }: SkillsTabProps): React.ReactElement {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-center gap-8 border-b border-border/60">
@@ -453,7 +455,7 @@ function SkillsTab({ skillView, skills, total, updateCount, updatingSkill, isBui
           ) : skills.length === 0 ? (
             <EmptyState icon={<Search className="size-8 text-foreground/30" />} title="没有匹配的已安装技能" hint="试试更换搜索关键词。" />
           ) : (
-            <SkillSection skills={skills} isBuiltin={isBuiltin} updatingSkill={updatingSkill} onOpen={onOpen} onToggle={onToggle} onUpdate={onUpdate} onRequestDelete={onRequestDelete} />
+            <SkillSection skills={skills} isBuiltin={isBuiltin} updatingSkill={updatingSkill} onOpen={onOpen} onToggle={onToggle} onUpdate={onUpdate} />
           )}
         </div>
       )}
@@ -485,10 +487,9 @@ interface SkillSectionProps {
   onOpen: (slug: string) => void
   onToggle: (slug: string, enabled: boolean) => void
   onUpdate: (slug: string) => void
-  onRequestDelete: (skill: SkillMeta) => void
 }
 
-function SkillSection({ skills, isBuiltin, updatingSkill, onOpen, onToggle, onUpdate, onRequestDelete }: SkillSectionProps): React.ReactElement {
+function SkillSection({ skills, isBuiltin, updatingSkill, onOpen, onToggle, onUpdate }: SkillSectionProps): React.ReactElement {
   return (
     <div className="flex flex-col gap-3">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -501,7 +502,6 @@ function SkillSection({ skills, isBuiltin, updatingSkill, onOpen, onToggle, onUp
             onOpen={() => onOpen(skill.slug)}
             onToggle={(enabled) => onToggle(skill.slug, enabled)}
             onUpdate={() => onUpdate(skill.slug)}
-            onRequestDelete={() => onRequestDelete(skill)}
           />
         ))}
       </div>
