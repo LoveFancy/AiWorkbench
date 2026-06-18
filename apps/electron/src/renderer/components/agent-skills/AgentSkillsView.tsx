@@ -12,7 +12,7 @@
 import * as React from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { toast } from 'sonner'
-import { Blocks, ChevronDown, Search, Plus, FolderOpen, Check, Mail, ExternalLink, ArrowRight, Info, Bot } from 'lucide-react'
+import { Blocks, ChevronDown, Search, Plus, FolderOpen, Check, Mail, ExternalLink, ArrowRight, Info, Bot, Upload } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Button } from '@/components/ui/button'
@@ -71,6 +71,7 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
   const [pendingDeleteMcpName, setPendingDeleteMcpName] = React.useState<string | null>(null)
   const [isDeletingSkill, setIsDeletingSkill] = React.useState(false)
   const [isDeletingMcp, setIsDeletingMcp] = React.useState(false)
+  const [isInstallingSkillZip, setIsInstallingSkillZip] = React.useState(false)
   const [activeDefaultConnector, setActiveDefaultConnector] = React.useState<DefaultConnectorId | null>(null)
 
   const q = search.trim().toLowerCase()
@@ -108,6 +109,24 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
 
   const openSkillFolder = (slug: string): void => {
     if (data.skillsDir) window.electronAPI.openFile(`${data.skillsDir}/${slug}`)
+  }
+
+  const handleInstallSkillZip = async (): Promise<void> => {
+    if (isInstallingSkillZip) return
+    setIsInstallingSkillZip(true)
+    try {
+      const installed = await window.electronAPI.installSkillZip(data.workspaceSlug)
+      if (!installed) return
+      bumpCapabilities((v) => v + 1)
+      setSkillView('installed')
+      toast.success(`已上传 Skill：${installed.name}`)
+    } catch (error) {
+      console.error('[Agent 技能] 上传 Skill zip 包失败:', error)
+      const message = error instanceof Error ? error.message : '未知错误'
+      toast.error('上传 Skill zip 包失败', { description: message })
+    } finally {
+      setIsInstallingSkillZip(false)
+    }
   }
 
   if (!data.hasWorkspace) {
@@ -214,16 +233,27 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
           </div>
         )}
 
-        {/* Skills：从其他工作区导入 */}
+        {/* Skills：上传 zip 包或从其他工作区导入 */}
         {tab === 'skills' && (
-          <button
-            type="button"
-            onClick={() => setShowImport(true)}
-            className="flex h-8 items-center gap-1.5 rounded-lg border border-border/60 bg-content-area px-3 text-[13px] font-medium text-foreground/80 shadow-sm transition-colors hover:bg-foreground/[0.04]"
-          >
-            <Plus size={14} />
-            <span>导入</span>
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => void handleInstallSkillZip()}
+              disabled={isInstallingSkillZip}
+              className="flex h-8 items-center gap-1.5 rounded-lg border border-border/60 bg-content-area px-3 text-[13px] font-medium text-foreground/80 shadow-sm transition-colors hover:bg-foreground/[0.04] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Upload size={14} />
+              <span>{isInstallingSkillZip ? '上传中...' : '上传 Zip'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowImport(true)}
+              className="flex h-8 items-center gap-1.5 rounded-lg border border-border/60 bg-content-area px-3 text-[13px] font-medium text-foreground/80 shadow-sm transition-colors hover:bg-foreground/[0.04]"
+            >
+              <Plus size={14} />
+              <span>导入</span>
+            </button>
+          </>
         )}
 
         {/* 新增 MCP */}
@@ -263,6 +293,7 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
                 onToggle={data.toggleSkill}
                 onUpdate={data.updateSkill}
                 onSkillViewChange={setSkillView}
+                onRequestDelete={setPendingDeleteSkill}
               />
             ) : (
               <McpTab
@@ -299,7 +330,7 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
         open={pendingDeleteSkill !== null}
         onOpenChange={(open) => { if (!open) setPendingDeleteSkill(null) }}
         title={`确认删除 Skill「${pendingDeleteSkill?.name}」？`}
-        description="删除后将无法恢复，确定要卸载这个 Skill 吗？"
+        description="删除后会彻底移除该 Skill 目录和其中所有内容，且无法恢复。"
         confirmLabel="删除"
         loadingLabel="删除中..."
         loading={isDeletingSkill}
@@ -383,9 +414,10 @@ interface SkillsTabProps {
   onToggle: (slug: string, enabled: boolean) => void
   onUpdate: (slug: string) => void
   onSkillViewChange: (view: 'market' | 'installed') => void
+  onRequestDelete: (skill: SkillMeta) => void
 }
 
-function SkillsTab({ skillView, skills, total, updateCount, updatingSkill, isBuiltin, workspaceSlug, query, installedSkillNames, onInstalled, onOpen, onToggle, onUpdate, onSkillViewChange }: SkillsTabProps): React.ReactElement {
+function SkillsTab({ skillView, skills, total, updateCount, updatingSkill, isBuiltin, workspaceSlug, query, installedSkillNames, onInstalled, onOpen, onToggle, onUpdate, onSkillViewChange, onRequestDelete }: SkillsTabProps): React.ReactElement {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-center gap-8 border-b border-border/60">
@@ -421,7 +453,7 @@ function SkillsTab({ skillView, skills, total, updateCount, updatingSkill, isBui
           ) : skills.length === 0 ? (
             <EmptyState icon={<Search className="size-8 text-foreground/30" />} title="没有匹配的已安装技能" hint="试试更换搜索关键词。" />
           ) : (
-            <SkillSection skills={skills} isBuiltin={isBuiltin} updatingSkill={updatingSkill} onOpen={onOpen} onToggle={onToggle} onUpdate={onUpdate} />
+            <SkillSection skills={skills} isBuiltin={isBuiltin} updatingSkill={updatingSkill} onOpen={onOpen} onToggle={onToggle} onUpdate={onUpdate} onRequestDelete={onRequestDelete} />
           )}
         </div>
       )}
@@ -453,9 +485,10 @@ interface SkillSectionProps {
   onOpen: (slug: string) => void
   onToggle: (slug: string, enabled: boolean) => void
   onUpdate: (slug: string) => void
+  onRequestDelete: (skill: SkillMeta) => void
 }
 
-function SkillSection({ skills, isBuiltin, updatingSkill, onOpen, onToggle, onUpdate }: SkillSectionProps): React.ReactElement {
+function SkillSection({ skills, isBuiltin, updatingSkill, onOpen, onToggle, onUpdate, onRequestDelete }: SkillSectionProps): React.ReactElement {
   return (
     <div className="flex flex-col gap-3">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -468,6 +501,7 @@ function SkillSection({ skills, isBuiltin, updatingSkill, onOpen, onToggle, onUp
             onOpen={() => onOpen(skill.slug)}
             onToggle={(enabled) => onToggle(skill.slug, enabled)}
             onUpdate={() => onUpdate(skill.slug)}
+            onRequestDelete={() => onRequestDelete(skill)}
           />
         ))}
       </div>

@@ -84,7 +84,10 @@ export function IssueReportDialog(): React.ReactElement {
 
   const removeImage = (index: number) => {
     setImages((prev) => {
-      URL.revokeObjectURL(prev[index].previewUrl)
+      const image = prev[index]
+      if (image) {
+        URL.revokeObjectURL(image.previewUrl)
+      }
       return prev.filter((_, i) => i !== index)
     })
   }

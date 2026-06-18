@@ -5,7 +5,7 @@
  */
 
 import * as React from 'react'
-import { Sparkles, RefreshCw, ShieldCheck, ArrowDownToLine } from 'lucide-react'
+import { Sparkles, RefreshCw, ShieldCheck, ArrowDownToLine, Trash2 } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
@@ -18,9 +18,10 @@ interface SkillCardProps {
   onOpen: () => void
   onToggle: (enabled: boolean) => void
   onUpdate: () => void
+  onRequestDelete: () => void
 }
 
-export function SkillCard({ skill, isBuiltin, updating, onOpen, onToggle, onUpdate }: SkillCardProps): React.ReactElement {
+export function SkillCard({ skill, isBuiltin, updating, onOpen, onToggle, onUpdate, onRequestDelete }: SkillCardProps): React.ReactElement {
   return (
     <div
       role="button"
@@ -99,6 +100,21 @@ export function SkillCard({ skill, isBuiltin, updating, onOpen, onToggle, onUpda
         {!skill.hasUpdate && skill.importSource && (
           <ArrowDownToLine size={12} className="ml-auto text-muted-foreground/40" />
         )}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onRequestDelete() }}
+              className={cn(
+                'rounded p-1 text-muted-foreground/50 opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100',
+                !skill.hasUpdate && !skill.importSource && 'ml-auto',
+              )}
+            >
+              <Trash2 size={14} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top">删除</TooltipContent>
+        </Tooltip>
       </div>
     </div>
   )
