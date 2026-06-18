@@ -20,7 +20,7 @@ import { AutomationFormView } from '@/components/automation/AutomationFormView'
 import { AutomationsListView } from '@/components/automation/AutomationsListView'
 import { automationFormAtom } from '@/atoms/automation-atoms'
 import { activeViewAtom } from '@/atoms/active-view'
-import { ExpertPageView } from '@/experts/views/ExpertPageView'
+import { AgentSkillsView } from '@/components/agent-skills/AgentSkillsView'
 
 const MIN_CONVERSATION_WIDTH = 360
 const MIN_PREVIEW_WIDTH = 320
@@ -170,7 +170,9 @@ export function MainArea(): React.ReactElement {
                 <AutomationsListView />
               )
             ) : activeView === 'expert-all' ? (
-              <ExpertPageView />
+              <AgentSkillsView initialTab="experts" />
+            ) : activeView === 'agent-skills' ? (
+              <AgentSkillsView />
             ) : (
               <>
                 <TabBar />

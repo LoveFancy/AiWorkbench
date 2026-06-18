@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Star, Clock, CheckCircle, AlertTriangle, Bot, Users, Download } from 'lucide-react'
+import { Star, Clock, Bot, Users, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 /** 筛选标签类型：PILLS 数组仅控制展示哪些按钮 */
@@ -16,9 +16,7 @@ const PILLS: Array<{ tag: FilterTag; label: string; icon: typeof Bot }> = [
   { tag: 'recent', label: '最近使用', icon: Clock },
   { tag: 'expert', label: '专家', icon: Bot },
   { tag: 'team', label: '专家团', icon: Users },
-  { tag: 'available', label: '可用', icon: CheckCircle },
   { tag: 'not_downloaded', label: '未下载', icon: Download },
-  { tag: 'unavailable', label: '不可用', icon: AlertTriangle },
 ]
 
 export function ExpertFilterPills({ value, onChange, counts }: ExpertFilterPillsProps): React.ReactElement {

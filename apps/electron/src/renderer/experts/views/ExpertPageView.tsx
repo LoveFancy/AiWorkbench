@@ -20,8 +20,13 @@ import { ExpertEmptyState } from '@/experts/shared/ExpertEmptyState'
 import { ExpertImportButton } from '@/experts/shared/ExpertImportDropdown'
 import { ExpertFeaturedScenes } from '@/experts/shared/ExpertFeaturedScenes'
 import { filterByTag, searchByName } from '@/experts/utils/filter'
+import { cn } from '@/lib/utils'
 
-export function ExpertPageView(): React.ReactElement {
+interface ExpertPageViewProps {
+  embedded?: boolean
+}
+
+export function ExpertPageView({ embedded = false }: ExpertPageViewProps): React.ReactElement {
   const allGroups = useAtomValue(agentExpertGroupsAtom)
   const loadGroups = useSetAtom(loadAgentExpertGroupsAtom)
   const loadRemote = useSetAtom(loadRemoteExpertDataAtom)
@@ -118,41 +123,38 @@ export function ExpertPageView(): React.ReactElement {
   return (
     <div className="flex h-full flex-col bg-background">
       {/* 顶部控制栏 */}
-      <div className="flex-shrink-0 border-b px-6 pt-10 pb-4 titlebar-no-drag">
-        <div className="flex items-center justify-between gap-4">
-          <h2 className="text-lg font-semibold">专家/专家团</h2>
-          <div className="flex items-center gap-2">
-            <ExpertSearchBar value={query} onChange={setQuery} />
-            <Button variant="outline" size="icon" className="h-9 w-9" onClick={handleRefresh} disabled={refreshing} title="刷新专家团列表">
-              <RefreshCw className={`size-4 ${refreshing ? 'animate-spin' : ''}`} />
-            </Button>
-            <ExpertImportButton />
+      <div className={cn('flex-shrink-0 titlebar-no-drag', embedded ? 'pb-4' : 'border-b px-6 pt-10 pb-4')}>
+        <div className={cn(embedded && 'mx-auto w-full max-w-6xl px-8')}>
+          <div className="flex items-center justify-between gap-4">
+            {!embedded && <h2 className="text-lg font-semibold">专家/专家团</h2>}
+            <div className="flex items-center gap-2">
+              <ExpertSearchBar value={query} onChange={setQuery} />
+              <Button variant="outline" size="icon" className="h-9 w-9" onClick={handleRefresh} disabled={refreshing} title="刷新专家团列表">
+                <RefreshCw className={`size-4 ${refreshing ? 'animate-spin' : ''}`} />
+              </Button>
+              <ExpertImportButton />
+            </div>
           </div>
-        </div>
 
-        {/* 筛选按钮 */}
-        <div className="mt-3">
-          <ExpertFilterPills
-            value={filterTag}
-            onChange={setFilterTag}
-            counts={{
-              followed: Object.keys(followed).length,
-              expert: allGroups.filter((g) => g.expertType !== 'team').length,
-              team: allGroups.filter((g) => g.expertType === 'team' || (g.subagents && g.subagents.length > 0)).length,
-              available: allGroups.filter((g) => g.status === 'available').length,
-              not_downloaded: allGroups.filter((g) => g.sourcePluginKind === 'remote' && g.status !== 'available').length,
-              unavailable: allGroups.filter((g) => {
-                if (g.status === 'available') return false
-                return g.sourcePluginKind !== 'remote'
-              }).length,
-            }}
-          />
+          {/* 筛选按钮 */}
+          <div className="mt-3">
+            <ExpertFilterPills
+              value={filterTag}
+              onChange={setFilterTag}
+              counts={{
+                followed: Object.keys(followed).length,
+                expert: allGroups.filter((g) => g.expertType !== 'team').length,
+                team: allGroups.filter((g) => g.expertType === 'team' || (g.subagents && g.subagents.length > 0)).length,
+                not_downloaded: allGroups.filter((g) => g.sourcePluginKind === 'remote' && g.status !== 'available').length,
+              }}
+            />
+          </div>
         </div>
       </div>
 
       {/* 内容区 */}
       <ScrollArea className="flex-1">
-        <div className="p-6">
+        <div className={cn(embedded ? 'mx-auto w-full max-w-6xl px-8 pb-10' : 'p-6')}>
           {/* 精选场景 */}
           {filterTag === 'all' && !query.trim() && displayGroups.length > 0 && (
             <div className="mb-8">

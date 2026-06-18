@@ -17,6 +17,7 @@ import {
   Wrench,
   Package,
   TerminalSquare,
+  MessageCircle,
 } from 'lucide-react'
 import type { SettingsTab } from '@/atoms/settings-tab'
 
@@ -36,7 +37,7 @@ const BASE_TABS: TabItem[] = [
 /** Agent 模式专属 Tab */
 const AGENT_TAB: TabItem = {
   id: 'agent',
-  label: 'SKILL/MCP',
+  label: 'Agent 配置',
   icon: <Plug size={16} />,
 }
 
@@ -50,6 +51,12 @@ const TOOLS_TAB: TabItem = {
   id: 'tools',
   label: 'Chat 工具',
   icon: <Wrench size={16} />,
+}
+
+const BOTS_TAB: TabItem = {
+  id: 'bots',
+  label: '远程连接',
+  icon: <MessageCircle size={16} />,
 }
 
 const SYSTEM_LOG_TAB: TabItem = {
@@ -72,6 +79,6 @@ const TAIL_TABS: TabItem[] = [
 
 export function getSettingsTabs(appMode: 'chat' | 'agent'): TabItem[] {
   return appMode === 'agent'
-    ? [...BASE_TABS, TOOLS_TAB, AGENT_TAB, PLUGINS_TAB,  SHORTCUTS_TAB, ...TAIL_TABS, SYSTEM_LOG_TAB]
-    : [...BASE_TABS, TOOLS_TAB, SHORTCUTS_TAB, ...TAIL_TABS, SYSTEM_LOG_TAB]
+    ? [...BASE_TABS, TOOLS_TAB, BOTS_TAB, AGENT_TAB, PLUGINS_TAB,  SHORTCUTS_TAB, ...TAIL_TABS, SYSTEM_LOG_TAB]
+    : [...BASE_TABS, TOOLS_TAB, BOTS_TAB, SHORTCUTS_TAB, ...TAIL_TABS, SYSTEM_LOG_TAB]
 }

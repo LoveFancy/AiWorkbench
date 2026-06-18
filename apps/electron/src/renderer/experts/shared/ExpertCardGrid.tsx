@@ -18,7 +18,7 @@ export function ExpertCardGrid({ groups, emptyState, onSummon }: ExpertCardGridP
 
   return (
     <>
-      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))' }}>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {groups.map((group) => (
           <ExpertCard
             key={`${group.sourcePluginId}:${group.id}`}

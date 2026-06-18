@@ -9,9 +9,9 @@ test('外观设置在设置页导航中可见', () => {
   expect(agentTabs.some((tab) => tab.id === 'appearance')).toBe(true)
 })
 
-test('教程入口文案为使用教程', () => {
+test('教程入口不在公开设置页导航中显示', () => {
   const generalTabs = getSettingsTabs('chat')
-  expect(generalTabs.find((tab) => tab.id === 'tutorial')?.label).toBe('使用教程')
+  expect(generalTabs.some((tab) => tab.id === 'tutorial')).toBe(false)
 })
 
 test('关于更新入口在设置页导航中可见', () => {
@@ -30,6 +30,14 @@ test('Chat 工具入口在设置页导航中可见', () => {
   expect(agentTabs.find((tab) => tab.id === 'tools')?.label).toBe('Chat 工具')
 })
 
+test('远程连接入口在设置页导航中可见', () => {
+  const generalTabs = getSettingsTabs('chat')
+  const agentTabs = getSettingsTabs('agent')
+
+  expect(generalTabs.find((tab) => tab.id === 'bots')?.label).toBe('远程连接')
+  expect(agentTabs.find((tab) => tab.id === 'bots')?.label).toBe('远程连接')
+})
+
 test('系统日志入口在设置页导航中可见', () => {
   const generalTabs = getSettingsTabs('chat')
   const agentTabs = getSettingsTabs('agent')
@@ -40,10 +48,10 @@ test('系统日志入口在设置页导航中可见', () => {
   expect(agentTabs.at(-1)?.id).toBe('system-log')
 })
 
-test('Agent 模式下 Skill 和 MCP 配置入口文案正确', () => {
+test('Agent 模式下 Agent 配置入口文案正确', () => {
   const agentTabs = getSettingsTabs('agent')
 
-  expect(agentTabs.find((tab) => tab.id === 'agent')?.label).toBe('SKILL/MCP')
+  expect(agentTabs.find((tab) => tab.id === 'agent')?.label).toBe('Agent 配置')
 })
 
 test('Agent 模式下插件管理入口可见', () => {
@@ -63,7 +71,7 @@ test('Agent 模式下专家团入口已从设置中移除（移至侧边栏）',
 })
 
 test('隐藏非公开设置入口', () => {
-  const hiddenTabIds = ['voice-input', 'bots', 'migration', 'usage-log']
+  const hiddenTabIds = ['voice-input', 'migration', 'usage-log']
   const generalTabs = getSettingsTabs('chat')
   const agentTabs = getSettingsTabs('agent')
 
