@@ -30,8 +30,11 @@ function extractToc(markdown: string): TocItem[] {
   const items: TocItem[] = []
   let match: RegExpExecArray | null
   while ((match = headingRegex.exec(markdown)) !== null) {
-    const level = match[1].length
-    const text = match[2].trim()
+    const hashes = match[1]
+    const title = match[2]
+    if (!hashes || !title) continue
+    const level = hashes.length
+    const text = title.trim()
     const id = slugify(text)
     items.push({ id, text, level })
   }

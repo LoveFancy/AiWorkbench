@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import AdmZip from 'adm-zip'
@@ -6,6 +6,8 @@ import { describe, expect, test } from 'bun:test'
 import type { AgentPluginInfo, WorkspaceMcpConfig } from '@proma/shared'
 
 import {
+  activateDefaultEnabledSkillsForWorkspace,
+  deleteWorkspaceSkill,
   getDefaultSkillInitialEnabled,
   getWorkspaceCapabilitiesFromSources,
   installSkillZipToWorkspace,
@@ -71,10 +73,31 @@ describe('Agent 工作区能力聚合', () => {
 })
 
 describe('默认 Skill 初始启用状态', () => {
-  test('配置类 Skill 内置但默认不启用', () => {
+  test('华泰邮箱和 Python 安装 Skill 默认启用', () => {
     expect(getDefaultSkillInitialEnabled('feishu-lark-setup')).toBe(false)
-    expect(getDefaultSkillInitialEnabled('huatai-email-setup')).toBe(false)
+    expect(getDefaultSkillInitialEnabled('huatai-email-setup')).toBe(true)
+    expect(getDefaultSkillInitialEnabled('install-python')).toBe(true)
     expect(getDefaultSkillInitialEnabled('find-skills')).toBe(true)
+  })
+})
+
+describe('Agent 工作区索引迁移', () => {
+  test('v2 老工作区会自动启用华泰邮箱和 Python 安装 Skill', () => {
+    const fixture = createWorkspaceMigrationFixture()
+
+    try {
+      activateDefaultEnabledSkillsForWorkspace('default', {
+        activeDir: join(fixture.workspaceDir, 'skills'),
+        inactiveDir: join(fixture.workspaceDir, 'skills-inactive'),
+      })
+
+      expect(existsSync(join(fixture.workspaceDir, 'skills', 'huatai-email-setup', 'SKILL.md'))).toBe(true)
+      expect(existsSync(join(fixture.workspaceDir, 'skills', 'install-python', 'SKILL.md'))).toBe(true)
+      expect(existsSync(join(fixture.workspaceDir, 'skills-inactive', 'huatai-email-setup'))).toBe(false)
+      expect(existsSync(join(fixture.workspaceDir, 'skills-inactive', 'install-python'))).toBe(false)
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true })
+    }
   })
 })
 
@@ -134,6 +157,42 @@ describe('Agent 工作区 Skill zip 安装', () => {
   })
 })
 
+describe('Agent 工作区 Skill 删除', () => {
+  test('同时彻底删除启用和禁用目录中的同名 Skill 内容', () => {
+    const fixture = createSkillZipFixture()
+    mkdirSync(join(fixture.activeDir, 'my-skill'), { recursive: true })
+    mkdirSync(join(fixture.inactiveDir, 'my-skill'), { recursive: true })
+
+    try {
+      deleteWorkspaceSkill('default', 'my-skill', {
+        activeDir: fixture.activeDir,
+        inactiveDir: fixture.inactiveDir,
+      })
+
+      expect(existsSync(join(fixture.activeDir, 'my-skill'))).toBe(false)
+      expect(existsSync(join(fixture.inactiveDir, 'my-skill'))).toBe(false)
+    } finally {
+      cleanupFixture(fixture)
+    }
+  })
+
+  test('拒绝删除路径不安全的 Skill 名称', () => {
+    const fixture = createSkillZipFixture()
+    const outsideDir = join(fixture.root, 'escape')
+    mkdirSync(outsideDir, { recursive: true })
+
+    try {
+      expect(() => deleteWorkspaceSkill('default', '../escape', {
+        activeDir: fixture.activeDir,
+        inactiveDir: fixture.inactiveDir,
+      })).toThrow('Skill 名称包含不安全路径')
+      expect(existsSync(outsideDir)).toBe(true)
+    } finally {
+      cleanupFixture(fixture)
+    }
+  })
+})
+
 interface SkillZipFixture {
   root: string
   activeDir: string
@@ -168,4 +227,30 @@ function createSkillZipFixture(options: { includeTraversal?: boolean } = {}): Sk
 
 function cleanupFixture(fixture: SkillZipFixture): void {
   rmSync(fixture.root, { recursive: true, force: true })
+}
+
+interface WorkspaceMigrationFixture {
+  root: string
+  workspaceDir: string
+}
+
+function createWorkspaceMigrationFixture(): WorkspaceMigrationFixture {
+  const root = mkdtempSync(join(tmpdir(), 'proma-workspace-migration-test-'))
+  const workspaceDir = join(root, 'agent-workspaces', 'default')
+  const inactiveDir = join(workspaceDir, 'skills-inactive')
+  mkdirSync(inactiveDir, { recursive: true })
+
+  writeSkill(join(inactiveDir, 'huatai-email-setup'), 'huatai-email-setup')
+  writeSkill(join(inactiveDir, 'install-python'), 'install-python')
+
+  return { root, workspaceDir }
+}
+
+function writeSkill(skillDir: string, name: string): void {
+  mkdirSync(skillDir, { recursive: true })
+  writeFileSync(
+    join(skillDir, 'SKILL.md'),
+    `---\nname: ${name}\ndescription: 测试 Skill\nversion: "1.0.0"\n---\n\n# ${name}\n`,
+    'utf-8',
+  )
 }

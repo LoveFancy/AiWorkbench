@@ -30,7 +30,6 @@ import { ChannelSettings } from "./ChannelSettings";
 import { GeneralSettings } from "./GeneralSettings";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { AboutSettings } from "./AboutSettings";
-import { AgentSettings } from "./AgentSettings";
 import { PromptSettings } from "./PromptSettings";
 import { ToolSettings } from "./ToolSettings";
 import { UsageLogSettings } from "./UsageLogSettings";
@@ -50,8 +49,6 @@ function renderTabContent(tab: SettingsTab): React.ReactElement {
       return <ChannelSettings />;
     case "prompts":
       return <PromptSettings />;
-    case "agent":
-      return <AgentSettings />;
     case "tools":
       return <ToolSettings />;
     case "usage-log":

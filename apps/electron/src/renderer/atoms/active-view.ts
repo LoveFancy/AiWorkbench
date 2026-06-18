@@ -9,8 +9,12 @@
  */
 
 import { atom } from 'jotai'
+import type { CapabilityTab } from '@/components/agent-skills/capability-tabs'
 
 export type ActiveView = 'conversations' | 'automations' | 'expert-all' | 'agent-skills'
 
 /** 当前活跃视图（不持久化，每次启动默认显示对话） */
 export const activeViewAtom = atom<ActiveView>('conversations')
+
+/** 打开 Agent 技能视图时希望定位到的一级 Tab。 */
+export const agentSkillsInitialTabAtom = atom<CapabilityTab>('experts')

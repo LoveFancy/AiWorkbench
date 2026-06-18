@@ -12,7 +12,7 @@
 import * as React from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { toast } from 'sonner'
-import { Blocks, ChevronDown, Search, Plus, FolderOpen, Check, Mail, ExternalLink, ArrowRight, Info, Bot } from 'lucide-react'
+import { Blocks, ChevronDown, Search, Plus, FolderOpen, Check, Mail, ExternalLink, ArrowRight, Info, Bot, Upload } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Button } from '@/components/ui/button'
@@ -60,6 +60,7 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
   const { workspaces, currentWorkspaceId, selectProject } = useProjectActions()
 
   const [tab, setTab] = React.useState<CapabilityTab>(initialTab)
+  const [skillView, setSkillView] = React.useState<'market' | 'installed'>('market')
   const [search, setSearch] = React.useState('')
   const [selectedSkillSlug, setSelectedSkillSlug] = React.useState<string | null>(null)
   const [mcpSheetOpen, setMcpSheetOpen] = React.useState(false)
@@ -70,7 +71,12 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
   const [pendingDeleteMcpName, setPendingDeleteMcpName] = React.useState<string | null>(null)
   const [isDeletingSkill, setIsDeletingSkill] = React.useState(false)
   const [isDeletingMcp, setIsDeletingMcp] = React.useState(false)
+  const [isInstallingSkillZip, setIsInstallingSkillZip] = React.useState(false)
   const [activeDefaultConnector, setActiveDefaultConnector] = React.useState<DefaultConnectorId | null>(null)
+
+  React.useEffect(() => {
+    setTab(initialTab)
+  }, [initialTab])
 
   const q = search.trim().toLowerCase()
 
@@ -109,6 +115,24 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
     if (data.skillsDir) window.electronAPI.openFile(`${data.skillsDir}/${slug}`)
   }
 
+  const handleInstallSkillZip = async (): Promise<void> => {
+    if (isInstallingSkillZip) return
+    setIsInstallingSkillZip(true)
+    try {
+      const installed = await window.electronAPI.installSkillZip(data.workspaceSlug)
+      if (!installed) return
+      bumpCapabilities((v) => v + 1)
+      setSkillView('installed')
+      toast.success(`已上传 Skill：${installed.name}`)
+    } catch (error) {
+      console.error('[Agent 技能] 上传 Skill zip 包失败:', error)
+      const message = error instanceof Error ? error.message : '未知错误'
+      toast.error('上传 Skill zip 包失败', { description: message })
+    } finally {
+      setIsInstallingSkillZip(false)
+    }
+  }
+
   if (!data.hasWorkspace) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
@@ -124,7 +148,7 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
   }
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div className="flex h-full flex-col overflow-hidden bg-background">
       {/* 标题栏 + 工作区切换 */}
       {/* 不加 titlebar-drag-region：与 DropdownMenu 嵌套时 drag/no-drag 会让 Radix 拿不到
           pointerdown，下拉打不开。窗口拖拽由 AppShell 顶部 0–50px 的全局 drag 层兜底。
@@ -213,16 +237,27 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
           </div>
         )}
 
-        {/* Skills：从其他工作区导入 */}
+        {/* Skills：上传 zip 包或从其他工作区导入 */}
         {tab === 'skills' && (
-          <button
-            type="button"
-            onClick={() => setShowImport(true)}
-            className="flex h-8 items-center gap-1.5 rounded-lg border border-border/60 bg-content-area px-3 text-[13px] font-medium text-foreground/80 shadow-sm transition-colors hover:bg-foreground/[0.04]"
-          >
-            <Plus size={14} />
-            <span>导入</span>
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => void handleInstallSkillZip()}
+              disabled={isInstallingSkillZip}
+              className="flex h-8 items-center gap-1.5 rounded-lg border border-border/60 bg-content-area px-3 text-[13px] font-medium text-foreground/80 shadow-sm transition-colors hover:bg-foreground/[0.04] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Upload size={14} />
+              <span>{isInstallingSkillZip ? '上传中...' : '上传 Zip'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowImport(true)}
+              className="flex h-8 items-center gap-1.5 rounded-lg border border-border/60 bg-content-area px-3 text-[13px] font-medium text-foreground/80 shadow-sm transition-colors hover:bg-foreground/[0.04]"
+            >
+              <Plus size={14} />
+              <span>导入</span>
+            </button>
+          </>
         )}
 
         {/* 新增 MCP */}
@@ -248,6 +283,7 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
               <div className="py-20 text-center text-sm text-muted-foreground">加载中...</div>
             ) : tab === 'skills' ? (
               <SkillsTab
+                skillView={skillView}
                 skills={filteredSkills}
                 total={data.skills.length}
                 updateCount={updateCount}
@@ -260,6 +296,7 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
                 onOpen={setSelectedSkillSlug}
                 onToggle={data.toggleSkill}
                 onUpdate={data.updateSkill}
+                onSkillViewChange={setSkillView}
               />
             ) : (
               <McpTab
@@ -296,7 +333,7 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
         open={pendingDeleteSkill !== null}
         onOpenChange={(open) => { if (!open) setPendingDeleteSkill(null) }}
         title={`确认删除 Skill「${pendingDeleteSkill?.name}」？`}
-        description="删除后将无法恢复，确定要卸载这个 Skill 吗？"
+        description="删除后会彻底移除该 Skill 目录和其中所有内容，且无法恢复。"
         confirmLabel="删除"
         loadingLabel="删除中..."
         loading={isDeletingSkill}
@@ -366,6 +403,7 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
 // ===== Skills Tab =====
 
 interface SkillsTabProps {
+  skillView: 'market' | 'installed'
   skills: SkillMeta[]
   total: number
   updateCount: number
@@ -378,24 +416,23 @@ interface SkillsTabProps {
   onOpen: (slug: string) => void
   onToggle: (slug: string, enabled: boolean) => void
   onUpdate: (slug: string) => void
+  onSkillViewChange: (view: 'market' | 'installed') => void
 }
 
-function SkillsTab({ skills, total, updateCount, updatingSkill, isBuiltin, workspaceSlug, query, installedSkillNames, onInstalled, onOpen, onToggle, onUpdate }: SkillsTabProps): React.ReactElement {
-  const [skillView, setSkillView] = React.useState<'market' | 'installed'>('market')
-
+function SkillsTab({ skillView, skills, total, updateCount, updatingSkill, isBuiltin, workspaceSlug, query, installedSkillNames, onInstalled, onOpen, onToggle, onUpdate, onSkillViewChange }: SkillsTabProps): React.ReactElement {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-center gap-8 border-b border-border/60">
         <SkillViewTab
           active={skillView === 'market'}
           label="技能市场"
-          onClick={() => setSkillView('market')}
+          onClick={() => onSkillViewChange('market')}
         />
         <SkillViewTab
           active={skillView === 'installed'}
           label="已安装"
           count={total}
-          onClick={() => setSkillView('installed')}
+          onClick={() => onSkillViewChange('installed')}
         />
       </div>
 

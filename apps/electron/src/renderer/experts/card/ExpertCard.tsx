@@ -67,9 +67,12 @@ export function ExpertCard({ group, onOpen, onSummon, compact = false }: ExpertC
             ))}
           </div>
         </button>
-        <div className="pointer-events-none absolute right-4 top-4 flex items-center gap-2 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100">
+        <div className="absolute right-4 top-4 flex items-center gap-2">
           <button
-            className="flex size-9 shrink-0 items-center justify-center rounded-md bg-background/90 text-muted-foreground/45 shadow-sm transition-all duration-200 hover:bg-yellow-50 hover:text-yellow-500 active:scale-90 dark:hover:bg-yellow-500/10"
+            className={cn(
+              'flex size-9 shrink-0 items-center justify-center rounded-md bg-background/90 text-muted-foreground/45 shadow-sm transition-all duration-200 hover:bg-yellow-50 hover:text-yellow-500 active:scale-90 dark:hover:bg-yellow-500/10',
+              isFollowed ? 'opacity-100' : 'pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100',
+            )}
             onClick={handleToggleFollow}
             title={isFollowed ? '取消关注' : '关注'}
           >
@@ -84,7 +87,10 @@ export function ExpertCard({ group, onOpen, onSummon, compact = false }: ExpertC
           {onSummon && (
             <Button
               size="sm"
-              className={cn('h-9 px-4 shadow-sm', compact && 'h-8 px-3')}
+              className={cn(
+                'pointer-events-none h-9 px-4 opacity-0 shadow-sm transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100',
+                compact && 'h-8 px-3',
+              )}
               disabled={group.status !== 'available' && group.status !== 'remote_not_downloaded' && group.status !== 'remote_downloading'}
               onClick={() => onSummon(group)}
             >

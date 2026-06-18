@@ -31,14 +31,20 @@ interface AgentWorkspacesIndex {
   workspaces: AgentWorkspace[]
 }
 
-const INDEX_VERSION = 2
+const INDEX_VERSION = 3
 
-const DEFAULT_INACTIVE_SKILL_SLUGS = new Set(['feishu-lark-setup', 'huatai-email-setup'])
+const DEFAULT_INACTIVE_SKILL_SLUGS = new Set(['feishu-lark-setup'])
+const DEFAULT_SKILLS_TO_ENABLE_ON_MIGRATION = ['huatai-email-setup', 'install-python'] as const
 
 interface InstallSkillZipOptions {
   activeDir?: string
   inactiveDir?: string
   tempRoot?: string
+}
+
+interface WorkspaceSkillDirs {
+  activeDir?: string
+  inactiveDir?: string
 }
 
 export function getDefaultSkillInitialEnabled(skillSlug: string): boolean {
@@ -69,6 +75,11 @@ function migrateIndex(index: AgentWorkspacesIndex): void {
     activateSkillCreatorInAllWorkspaces(index)
   }
 
+  // v2 → v3: 华泰邮箱和 Python 安装 Skill 改为默认启用
+  if (oldVersion < 3) {
+    activateDefaultEnabledSkillsInAllWorkspaces(index)
+  }
+
   index.version = INDEX_VERSION
   writeIndex(index)
   console.log(`[Agent 工作区] 索引已迁移: v${oldVersion} → v${INDEX_VERSION}`)
@@ -93,6 +104,35 @@ function activateSkillCreatorInAllWorkspaces(index: AgentWorkspacesIndex): void 
       console.log(`[Agent 工作区] 已为 ${workspace.slug} 启用 skill-creator`)
     } catch (err) {
       console.warn(`[Agent 工作区] 启用 skill-creator 失败 (${workspace.slug}):`, err)
+    }
+  }
+}
+
+/** v2→v3 迁移：将现在默认启用的内置 Skill 从 inactive 移到 active */
+function activateDefaultEnabledSkillsInAllWorkspaces(index: AgentWorkspacesIndex): void {
+  for (const workspace of index.workspaces) {
+    activateDefaultEnabledSkillsForWorkspace(workspace.slug)
+  }
+}
+
+export function activateDefaultEnabledSkillsForWorkspace(workspaceSlug: string, dirs: WorkspaceSkillDirs = {}): void {
+  const activeDir = dirs.activeDir ?? getWorkspaceSkillsDir(workspaceSlug)
+  const inactiveDir = dirs.inactiveDir ?? getInactiveSkillsDir(workspaceSlug)
+
+  for (const skillSlug of DEFAULT_SKILLS_TO_ENABLE_ON_MIGRATION) {
+    const inactivePath = join(inactiveDir, skillSlug)
+    const activePath = join(activeDir, skillSlug)
+
+    if (existsSync(activePath) || !existsSync(inactivePath)) continue
+
+    try {
+      if (!existsSync(activeDir)) {
+        mkdirSync(activeDir, { recursive: true })
+      }
+      renameSync(inactivePath, activePath)
+      console.log(`[Agent 工作区] 已默认启用 ${skillSlug}: ${workspaceSlug}`)
+    } catch (err) {
+      console.warn(`[Agent 工作区] 默认启用 ${skillSlug} 失败 (${workspaceSlug}):`, err)
     }
   }
 }
@@ -637,16 +677,31 @@ export function getWorkspaceCapabilities(workspaceSlug: string): WorkspaceCapabi
   })
 }
 
-export function deleteWorkspaceSkill(workspaceSlug: string, skillSlug: string): void {
-  const skillsDir = getWorkspaceSkillsDir(workspaceSlug)
-  const skillPath = join(skillsDir, skillSlug)
+interface DeleteWorkspaceSkillOptions {
+  activeDir?: string
+  inactiveDir?: string
+}
 
-  if (!existsSync(skillPath)) {
-    throw new Error(`Skill 不存在: ${skillSlug}`)
+export function deleteWorkspaceSkill(workspaceSlug: string, skillSlug: string, options: DeleteWorkspaceSkillOptions = {}): void {
+  const normalizedSkillSlug = normalizeSkillSlug(skillSlug)
+  const activeDir = options.activeDir ?? getWorkspaceSkillsDir(workspaceSlug)
+  const inactiveDir = options.inactiveDir ?? getInactiveSkillsDir(workspaceSlug)
+  const activePath = join(activeDir, normalizedSkillSlug)
+  const inactivePath = join(inactiveDir, normalizedSkillSlug)
+  const activeExists = existsSync(activePath)
+  const inactiveExists = existsSync(inactivePath)
+
+  if (!activeExists && !inactiveExists) {
+    throw new Error(`Skill 不存在: ${normalizedSkillSlug}`)
   }
 
-  rmSync(skillPath, { recursive: true, force: true })
-  console.log(`[Agent 工作区] 已删除 Skill: ${workspaceSlug}/${skillSlug}`)
+  if (activeExists) {
+    rmSync(activePath, { recursive: true, force: true })
+  }
+  if (inactiveExists) {
+    rmSync(inactivePath, { recursive: true, force: true })
+  }
+  console.log(`[Agent 工作区] 已删除 Skill: ${workspaceSlug}/${normalizedSkillSlug}`)
 }
 
 /** 扫描指定目录下的 Skills，供 getWorkspaceSkills 和 getAllWorkspaceSkills 复用 */
