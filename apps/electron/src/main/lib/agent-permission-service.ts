@@ -23,6 +23,7 @@ import {
   isDangerousCommand,
   hasDangerousStructure,
 } from '@proma/shared'
+import { guardToolUseBeforePermission, type RunToolGuardContext } from './agent-tool-read-guard'
 
 /** SDK PermissionBehavior */
 type PermissionBehavior = 'allow' | 'deny'
@@ -122,6 +123,7 @@ export class AgentPermissionService {
     sendToRenderer: (request: PermissionRequest) => void,
     askUserHandler?: (sessionId: string, input: Record<string, unknown>, signal: AbortSignal, sendToRenderer: (request: AskUserRequest) => void) => Promise<PermissionResult>,
     sendAskUserToRenderer?: (request: AskUserRequest) => void,
+    guardContext?: RunToolGuardContext,
   ): (toolName: string, input: Record<string, unknown>, options: CanUseToolOptions) => Promise<PermissionResult> {
     return async (toolName, input, options) => {
       // AskUserQuestion 拦截：委托给交互式问答服务
@@ -134,6 +136,12 @@ export class AgentPermissionService {
       // Worker（子代理）的工具调用自动批准，避免 UI 等待导致超时死锁
       if (options.agentID) {
         return allow()
+      }
+
+      // READ / base64 二进制读取守卫：优先于白名单和只读工具自动放行。
+      if (guardContext) {
+        const guardFailure = guardToolUseBeforePermission(toolName, input, guardContext)
+        if (guardFailure) return guardFailure
       }
 
       // 会话白名单检查（用户之前选择了"始终允许"）

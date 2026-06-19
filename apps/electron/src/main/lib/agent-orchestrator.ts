@@ -41,6 +41,7 @@ import {
   resolveAutoModeConfig,
   resolveInitialModel,
   findChannelForModel,
+  filterCandidatePoolByCapabilities,
 } from './agent-auto-model-switcher'
 import {
   MAX_AUTO_RETRIES,
@@ -86,6 +87,7 @@ import { getMemoryConfig } from './memory-service'
 import { validateToolInput } from './agent-tool-input-validator'
 import { estimateTokenCount, WRITE_CONTENT_TOKEN_THRESHOLD } from './agent-tool-token-estimator'
 import { resolveExpertGroupRuntime } from './agent-expert-group-manager'
+import { detectAgentReadableFileKind, guardToolUseBeforePermission, type RunToolGuardContext } from './agent-tool-read-guard'
 
 // ===== 类型定义 =====
 
@@ -104,6 +106,15 @@ export interface SessionCallbacks {
   onTitleUpdated: (title: string) => void
   /** 用户消息已持久化，外部入口可据此通知前端切到实时会话 */
   onRunStarted?: (opts: { startedAt: number }) => void
+}
+
+function isImageAttachment(input: { filename: string; mediaType?: string; path?: string }): boolean {
+  const target = input.path || input.filename
+  return detectAgentReadableFileKind(target, input.mediaType) === 'raster_image'
+}
+
+function getChannelModelSupportsMultimodal(channel: ReturnType<typeof getChannelById>, modelId: string): boolean {
+  return channel?.models.find((model) => model.id === modelId)?.supportsMultimodal === true
 }
 
 
@@ -162,7 +173,7 @@ export class AgentOrchestrator {
    * 通过 EventBus 分发 AgentEvent，通过 callbacks 发送控制信号。
    */
   async sendMessage(input: AgentSendInput, callbacks: SessionCallbacks): Promise<void> {
-    const { sessionId, userMessage, channelId, modelId, workspaceId, additionalDirectories, customMcpServers, permissionModeOverride, mentionedSkills, mentionedMcpServers, mentionedSessionIds, automationContext } = input
+    const { sessionId, userMessage, channelId, modelId, workspaceId, additionalDirectories, attachments, customMcpServers, permissionModeOverride, mentionedSkills, mentionedMcpServers, mentionedSessionIds, automationContext } = input
     const stderrChunks: string[] = []
 
     // 0. 并发保护
@@ -337,6 +348,8 @@ export class AgentOrchestrator {
     // 4. 读取已有的 SDK session ID（用于 resume）
     const sessionMeta = getAgentSessionMeta(sessionId)
     let existingSdkSessionId = sessionMeta?.sdkSessionId
+    const runHasImageInput = (attachments ?? []).some(isImageAttachment)
+    const runRequiresVision = runHasImageInput || sessionMeta?.requiresVisionContext === true
 
     // 4.1 检测回退后的 resume 截断点（快照回退功能）
     let rewindResumeAt: string | undefined
@@ -370,7 +383,40 @@ export class AgentOrchestrator {
 
     // Auto Mode 配置解析与初始模型确定
     const autoModeConfig = await resolveAutoModeConfig()
-    const { activeModelId, state: autoModeState } = resolveInitialModel(sessionId, modelId, autoModeConfig)
+    if (autoModeConfig.enabled && runRequiresVision) {
+      const multimodalPool = filterCandidatePoolByCapabilities(autoModeConfig.candidatePool, { requiresMultimodal: true })
+      const availableMultimodalPool = multimodalPool.filter((candidate) => autoModeConfig.availableModelIds.has(candidate.modelId))
+      if (availableMultimodalPool.length === 0) {
+        reportPreflightError({
+          code: 'model_not_support_multimodal',
+          title: 'Auto Mode 缺少多模态模型',
+          message: '当前会话需要多模态模型，但 Auto Mode 候选池中没有可用的多模态模型。请在设置中加入支持图片理解的候选模型。',
+          actions: [
+            { key: 's', label: '打开 Agent 设置', action: 'open_agent_settings' },
+          ],
+          canRetry: false,
+        })
+        return
+      }
+    }
+    if (!autoModeConfig.enabled && runRequiresVision && !getChannelModelSupportsMultimodal(channel, modelId || DEFAULT_MODEL_ID)) {
+      reportPreflightError({
+        code: 'model_not_support_multimodal',
+        title: '当前模型不支持图片理解',
+        message: '当前会话包含图片上下文，请切换到支持多模态的模型，或新建会话处理纯文本任务。',
+        actions: [
+          { key: 's', label: '切换模型', action: 'open_agent_settings' },
+        ],
+        canRetry: false,
+      })
+      return
+    }
+    const { activeModelId, state: autoModeState } = resolveInitialModel(
+      sessionId,
+      modelId,
+      autoModeConfig,
+      { requiresMultimodal: runRequiresVision },
+    )
 
     if (autoModeConfig.enabled && activeModelId !== modelId) {
       console.log(`[Auto Mode] 初始模型切换: ${modelId || DEFAULT_MODEL_ID} -> ${activeModelId}`)
@@ -594,6 +640,28 @@ export class AgentOrchestrator {
       const getPermissionMode = (): PromaPermissionMode =>
         this.sessionPermissionModes.get(sessionId) ?? initialPermissionMode
 
+      const canAutoSwitchToMultimodal = (): boolean => {
+        if (!autoModeConfig.enabled) return false
+        return autoModeConfig.candidatePool.some((candidate) =>
+          candidate.supportsMultimodal === true &&
+          autoModeConfig.availableModelIds.has(candidate.modelId) &&
+          !autoModeState.triedModelIds.has(candidate.modelId),
+        )
+      }
+
+      const runToolGuardContext: RunToolGuardContext = {
+        supportsMultimodal: getChannelModelSupportsMultimodal(channel, resolvedModel),
+        autoModeEnabled: autoModeConfig.enabled,
+        runHasImageInput,
+        sessionRequiresVisionContext: sessionMeta?.requiresVisionContext === true,
+        cwd: agentCwd,
+        canAutoSwitchToMultimodal,
+      }
+
+      const refreshRunToolGuardModelCapability = (): void => {
+        runToolGuardContext.supportsMultimodal = getChannelModelSupportsMultimodal(channel, resolvedModel)
+      }
+
       // ExitPlanMode 拦截器：plan 模式下走 UI 审批流程
       const handleExitPlanMode = (toolInput: Record<string, unknown>, signal: AbortSignal): Promise<ExitPlanPermissionResult> => {
         return exitPlanService.handleExitPlanMode(
@@ -616,6 +684,7 @@ export class AgentOrchestrator {
         (request: AskUserRequest) => {
           this.eventBus.emit(sessionId, { kind: 'proma_event', event: { type: 'ask_user_request', request } })
         },
+        runToolGuardContext,
       )
 
       /**
@@ -683,6 +752,13 @@ export class AgentOrchestrator {
         if (validationFailure) {
           console.warn(`[Agent 工具验证] 参数缺失: tool=${toolName}, mode=${currentMode}`)
           return validationFailure
+        }
+
+        const readGuardFailure = guardToolUseBeforePermission(toolName, input, runToolGuardContext)
+        if (readGuardFailure) {
+          const reason = readGuardFailure.behavior === 'deny' ? readGuardFailure.message : 'allow'
+          console.warn(`[Agent 工具守卫] 拒绝错误读取通道: tool=${toolName}, mode=${currentMode}, reason=${reason}`)
+          return readGuardFailure
         }
 
         // ── Write 大文件 token 截断防护 ──
@@ -944,6 +1020,7 @@ export class AgentOrchestrator {
           autoModeConfig.candidatePool,
           excludeSet,
           autoModeConfig.availableModelIds,
+          { requiresMultimodal: runRequiresVision },
         )
         if (nextCandidate) {
           const nextModel = nextCandidate.modelId
@@ -964,6 +1041,7 @@ export class AgentOrchestrator {
             queryOptions.resumeSessionId = undefined
           }
           await switchChannelForModel(nextModel, nextCandidate.channelId)
+          refreshRunToolGuardModelCapability()
           skipNextRetryDelay = true
           return true
         }
@@ -1091,6 +1169,9 @@ export class AgentOrchestrator {
 
             if (autoModeConfig.enabled && autoModeState.activeModelId) {
               try { updateAgentSessionMeta(sessionId, { activeModelId: autoModeState.activeModelId } as Partial<AgentSessionMeta>) } catch { /* ignore */ }
+            }
+            if (runHasImageInput && sessionMeta?.requiresVisionContext !== true) {
+              try { updateAgentSessionMeta(sessionId, { requiresVisionContext: true }) } catch { /* ignore */ }
             }
 
             if (initialPermissionMode === 'plan' && planModeEntered && this.activeSessions.has(sessionId)) {

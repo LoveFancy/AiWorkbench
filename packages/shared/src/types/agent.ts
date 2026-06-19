@@ -365,6 +365,7 @@ export type ErrorCode =
   | 'mcp_unreachable'
   | 'billing_error'
   | 'model_no_tool_support'
+  | 'model_not_support_multimodal'
   | 'invalid_model'
   | 'data_policy_error'
   | 'invalid_request'
@@ -623,6 +624,8 @@ export interface AgentSessionMeta {
   sourceAutomationId?: string
   /** Auto Mode 下当前激活的模型 ID（跨轮记忆用） */
   activeModelId?: string
+  /** 会话历史是否已经包含图片上下文；为 true 时 Auto Mode 只能切换到多模态模型 */
+  requiresVisionContext?: boolean
   /** 创建时间戳 */
   createdAt: number
   /** 更新时间戳 */
@@ -1166,6 +1169,8 @@ export interface AgentSendInput {
   workspaceId?: string
   /** 附加的外部目录（绝对路径，传递给 SDK additionalDirectories） */
   additionalDirectories?: string[]
+  /** 本轮附件轻量元数据，用于后端判断 Auto Mode 是否需要视觉能力 */
+  attachments?: Array<{ filename: string; mediaType?: string; path?: string }>
   /** 动态注入的 MCP 服务器（仅在本次会话中生效，如飞书群聊工具） */
   customMcpServers?: Record<string, Record<string, unknown>>
   /** 强制覆盖权限模式（飞书等无 UI 交互场景下强制 'bypassPermissions'） */

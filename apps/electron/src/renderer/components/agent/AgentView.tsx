@@ -1407,6 +1407,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
 
     // 1. 如果有 pending 文件，先保存到 session 目录
     let fileReferences = ''
+    let attachmentMetadata: AgentSendInput['attachments'] | undefined
     if (pendingFilesSnapshot.length > 0) {
       const workspace = workspaces.find((w) => w.id === currentWorkspaceId)
       if (!workspace) {
@@ -1504,6 +1505,14 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
 
       const refs = allRefs.map((f) => `- ${f.filename}: ${f.targetPath}`).join('\n')
       fileReferences += `<attached_files>\n${refs}\n</attached_files>\n\n`
+      attachmentMetadata = allRefs.map((ref) => {
+        const pending = pendingFilesSnapshot.find((file) => file.filename === ref.filename)
+        return {
+          filename: ref.filename,
+          path: ref.targetPath,
+          mediaType: pending?.mediaType,
+        }
+      })
 
       // 清理
       for (const f of pendingFilesSnapshot) {
@@ -1590,6 +1599,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       workspaceId: currentWorkspaceId || undefined,
       startedAt: streamStartedAt,
       permissionModeOverride: permissionMode,
+      ...(attachmentMetadata && attachmentMetadata.length > 0 && { attachments: attachmentMetadata }),
       ...(additionalDirectoriesForRun.size > 0 && { additionalDirectories: Array.from(additionalDirectoriesForRun) }),
       // 解析用户消息中的 Skill/MCP/会话引用，传递结构化元数据给后端
       ...(() => {
