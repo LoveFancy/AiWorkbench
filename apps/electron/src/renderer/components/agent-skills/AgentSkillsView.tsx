@@ -12,7 +12,7 @@
 import * as React from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { toast } from 'sonner'
-import { Blocks, ChevronDown, Search, Plus, FolderOpen, Check, Mail, ExternalLink, ArrowRight, Info, Bot, Upload } from 'lucide-react'
+import { Blocks, ChevronDown, Search, Plus, FolderOpen, Check, Mail, ExternalLink, ArrowRight, Info, Bot, Upload, RefreshCw, Package } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Button } from '@/components/ui/button'
@@ -20,6 +20,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
 import {
@@ -28,15 +29,19 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { agentExpertGroupsAtom, workspaceCapabilitiesVersionAtom } from '@/atoms/agent-atoms'
+import { agentExpertGroupsAtom, loadAgentExpertGroupsAtom, workspaceCapabilitiesVersionAtom } from '@/atoms/agent-atoms'
+import { loadRemoteExpertDataAtom } from '@/experts/atoms/expert-remote'
 import { useProjectActions } from '@/hooks/useProjectActions'
 import { ExpertPageView } from '@/experts/views/ExpertPageView'
-import type { McpServerEntry, SkillMeta } from '@proma/shared'
+import { ExpertImportButton } from '@/experts/shared/ExpertImportDropdown'
+import { ExpertFilterPills, type FilterTag } from '@/experts/shared/ExpertFilterPills'
+import type { AgentPluginInfo, McpServerEntry, SkillMeta } from '@proma/shared'
 import { getCapabilityTabs, type CapabilityTab } from './capability-tabs'
 import { useAgentSkillsData } from './useAgentSkillsData'
 import { SkillCard } from './SkillCard'
 import { McpCard } from './McpCard'
 import { SkillDetailSheet } from './SkillDetailSheet'
+import { PluginDetailSheet } from './PluginDetailSheet'
 import { McpDetailSheet } from './McpDetailSheet'
 import { ImportSkillDialog } from './ImportSkillDialog'
 import { SkillMarketPanel } from './SkillMarketPanel'
@@ -56,27 +61,55 @@ interface AgentSkillsViewProps {
 export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps): React.ReactElement {
   const data = useAgentSkillsData()
   const expertGroups = useAtomValue(agentExpertGroupsAtom)
+  const loadExpertGroups = useSetAtom(loadAgentExpertGroupsAtom)
+  const loadRemoteExpertData = useSetAtom(loadRemoteExpertDataAtom)
   const bumpCapabilities = useSetAtom(workspaceCapabilitiesVersionAtom)
   const { workspaces, currentWorkspaceId, selectProject } = useProjectActions()
 
   const [tab, setTab] = React.useState<CapabilityTab>(initialTab)
   const [skillView, setSkillView] = React.useState<'market' | 'installed'>('market')
   const [search, setSearch] = React.useState('')
+  const [expertFilterTag, setExpertFilterTag] = React.useState<FilterTag>('all')
   const [selectedSkillSlug, setSelectedSkillSlug] = React.useState<string | null>(null)
   const [mcpSheetOpen, setMcpSheetOpen] = React.useState(false)
   const [editingMcp, setEditingMcp] = React.useState<{ name: string; entry: McpServerEntry } | null>(null)
   const [showImport, setShowImport] = React.useState(false)
+  const [showSkillAddDialog, setShowSkillAddDialog] = React.useState(false)
   const [wsPopoverOpen, setWsPopoverOpen] = React.useState(false)
   const [pendingDeleteSkill, setPendingDeleteSkill] = React.useState<SkillMeta | null>(null)
+  const [installedPlugins, setInstalledPlugins] = React.useState<AgentPluginInfo[]>([])
+  const [pluginLoading, setPluginLoading] = React.useState(false)
+  const [selectedPluginId, setSelectedPluginId] = React.useState<string | null>(null)
+  const [togglingPlugin, setTogglingPlugin] = React.useState<string | null>(null)
+  const [uninstallingPlugin, setUninstallingPlugin] = React.useState<string | null>(null)
   const [pendingDeleteMcpName, setPendingDeleteMcpName] = React.useState<string | null>(null)
   const [isDeletingSkill, setIsDeletingSkill] = React.useState(false)
   const [isDeletingMcp, setIsDeletingMcp] = React.useState(false)
   const [isInstallingSkillZip, setIsInstallingSkillZip] = React.useState(false)
+  const [isRefreshingExperts, setIsRefreshingExperts] = React.useState(false)
   const [activeDefaultConnector, setActiveDefaultConnector] = React.useState<DefaultConnectorId | null>(null)
 
   React.useEffect(() => {
     setTab(initialTab)
   }, [initialTab])
+
+  const loadInstalledPlugins = React.useCallback(async (): Promise<void> => {
+    setPluginLoading(true)
+    try {
+      const plugins = await window.electronAPI.listAgentPlugins()
+      setInstalledPlugins(plugins.filter((plugin) => plugin.capabilities.length > 0))
+    } catch (error) {
+      console.error('[Agent 技能] 加载插件失败:', error)
+      toast.error('加载已安装插件失败', { description: error instanceof Error ? error.message : '未知错误' })
+    } finally {
+      setPluginLoading(false)
+    }
+  }, [])
+
+  React.useEffect(() => {
+    if (tab !== 'skills') return
+    void loadInstalledPlugins()
+  }, [data.skills.length, loadInstalledPlugins, tab])
 
   const q = search.trim().toLowerCase()
 
@@ -88,6 +121,34 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
       (s.description ?? '').toLowerCase().includes(q),
     )
   }, [data.skills, q])
+
+  const filteredInstalledPlugins = React.useMemo(() => {
+    if (!q) return installedPlugins
+    return installedPlugins.filter((plugin) =>
+      [
+        plugin.name,
+        plugin.description,
+        plugin.author,
+        plugin.version,
+        plugin.sourceMarketplaceId,
+        ...plugin.keywords,
+        ...plugin.capabilities.map((capability) => `${capability.name} ${capability.description ?? ''}`),
+      ].filter(Boolean).join(' ').toLowerCase().includes(q),
+    )
+  }, [installedPlugins, q])
+
+  const pluginSkillNames = React.useMemo(() => {
+    return new Set(installedPlugins.flatMap((plugin) =>
+      plugin.capabilities
+        .filter((capability) => capability.type === 'skill')
+        .map((capability) => capability.name),
+    ))
+  }, [installedPlugins])
+
+  const standaloneFilteredSkills = React.useMemo(
+    () => filteredSkills.filter((skill) => !pluginSkillNames.has(skill.slug) && !pluginSkillNames.has(skill.name)),
+    [filteredSkills, pluginSkillNames],
+  )
 
   const updateCount = data.skills.filter((s) => s.hasUpdate).length
   const installedSkillNames = React.useMemo(() => new Set(data.skills.map((skill) => skill.name)), [data.skills])
@@ -110,6 +171,7 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
 
   const selectedSkill = data.skills.find((s) => s.slug === selectedSkillSlug) ?? null
   const selectedIsBuiltin = selectedSkill ? data.defaultSkillSlugs.has(selectedSkill.slug) : false
+  const selectedPlugin = installedPlugins.find((plugin) => plugin.id === selectedPluginId) ?? null
 
   const openSkillFolder = (slug: string): void => {
     if (data.skillsDir) window.electronAPI.openFile(`${data.skillsDir}/${slug}`)
@@ -122,6 +184,7 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
       const installed = await window.electronAPI.installSkillZip(data.workspaceSlug)
       if (!installed) return
       bumpCapabilities((v) => v + 1)
+      await loadInstalledPlugins()
       setSkillView('installed')
       toast.success(`已上传 Skill：${installed.name}`)
     } catch (error) {
@@ -130,6 +193,61 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
       toast.error('上传 Skill zip 包失败', { description: message })
     } finally {
       setIsInstallingSkillZip(false)
+    }
+  }
+
+  const handleRefreshExperts = async (): Promise<void> => {
+    if (isRefreshingExperts) return
+    setIsRefreshingExperts(true)
+    try {
+      await Promise.all([loadExpertGroups(), loadRemoteExpertData()])
+      toast.success('专家团列表已刷新')
+    } catch (error) {
+      console.error('[Agent 技能] 刷新专家团失败:', error)
+      toast.error('刷新专家团失败')
+    } finally {
+      setIsRefreshingExperts(false)
+    }
+  }
+
+  const handleRefreshCurrentTab = async (): Promise<void> => {
+    if (tab === 'experts') {
+      await handleRefreshExperts()
+      return
+    }
+    bumpCapabilities((v) => v + 1)
+    if (tab === 'skills') void loadInstalledPlugins()
+    toast.success(tab === 'skills' ? '技能列表已刷新' : '连接器列表已刷新')
+  }
+
+  const handleTogglePlugin = async (plugin: AgentPluginInfo, enabled: boolean): Promise<void> => {
+    if (togglingPlugin) return
+    setTogglingPlugin(plugin.id)
+    try {
+      await window.electronAPI.setAgentPluginEnabled(plugin.id, enabled)
+      await loadInstalledPlugins()
+      bumpCapabilities((v) => v + 1)
+      toast.success(enabled ? '插件已启用' : '插件已禁用')
+    } catch (error) {
+      toast.error('更新插件状态失败', { description: error instanceof Error ? error.message : '未知错误' })
+    } finally {
+      setTogglingPlugin(null)
+    }
+  }
+
+  const handleUninstallPlugin = async (plugin: AgentPluginInfo): Promise<void> => {
+    if (uninstallingPlugin) return
+    setUninstallingPlugin(plugin.id)
+    try {
+      await window.electronAPI.uninstallAgentPlugin(plugin.id)
+      setSelectedPluginId(null)
+      await loadInstalledPlugins()
+      bumpCapabilities((v) => v + 1)
+      toast.success('插件已卸载')
+    } catch (error) {
+      toast.error('卸载插件失败', { description: error instanceof Error ? error.message : '未知错误' })
+    } finally {
+      setUninstallingPlugin(null)
     }
   }
 
@@ -207,7 +325,7 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
               tab === 'experts' ? 'translate-x-0' : tab === 'skills' ? 'translate-x-[100%]' : 'translate-x-[200%]',
             )}
           />
-          {capabilityTabs.map(({ value, label, count }) => (
+          {capabilityTabs.map(({ value, label }) => (
             <button
               key={value}
               onClick={() => setTab(value)}
@@ -217,47 +335,53 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
               )}
             >
               {label}
-              <span className="text-[11px] tabular-nums text-muted-foreground">{count}</span>
             </button>
           ))}
         </div>
 
         {/* 搜索框 */}
-        {tab === 'experts' ? (
-          <div className="flex-1" />
-        ) : (
-          <div className="flex h-8 flex-1 items-center gap-2 rounded-lg border border-border/60 bg-content-area px-3 transition-colors focus-within:border-primary/40">
-            <Search size={14} className="shrink-0 text-foreground/40" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={tab === 'skills' ? '搜索技能...' : '搜索连接器...'}
-              className="w-full bg-transparent text-[13px] text-foreground placeholder:text-foreground/35 focus:outline-none"
-            />
-          </div>
+        <div className="flex h-8 flex-1 items-center gap-2 rounded-lg border border-border/60 bg-content-area px-3 transition-colors focus-within:border-primary/40">
+          <Search size={14} className="shrink-0 text-foreground/40" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={tab === 'experts' ? '搜索专家、角色、技能...' : tab === 'skills' ? '搜索技能...' : '搜索连接器...'}
+            className="w-full bg-transparent text-[13px] text-foreground placeholder:text-foreground/35 focus:outline-none"
+          />
+        </div>
+
+        {tab === 'experts' && (
+          <ExpertFilterPills
+            value={expertFilterTag}
+            onChange={setExpertFilterTag}
+            counts={{}}
+          />
         )}
 
-        {/* Skills：上传 zip 包或从其他工作区导入 */}
+        {/* 统一刷新 */}
+        <button
+          type="button"
+          onClick={() => void handleRefreshCurrentTab()}
+          disabled={tab === 'experts' && isRefreshingExperts}
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-border/60 bg-content-area text-foreground/80 shadow-sm transition-colors hover:bg-foreground/[0.04] disabled:cursor-not-allowed disabled:opacity-60"
+          title={tab === 'experts' ? '刷新专家' : tab === 'skills' ? '刷新技能' : '刷新连接器'}
+        >
+          <RefreshCw size={14} className={tab === 'experts' && isRefreshingExperts ? 'animate-spin' : undefined} />
+        </button>
+
+        {/* Experts：添加专家 */}
+        {tab === 'experts' && <ExpertImportButton label="添加专家" />}
+
+        {/* Skills：添加 Skill */}
         {tab === 'skills' && (
-          <>
-            <button
-              type="button"
-              onClick={() => void handleInstallSkillZip()}
-              disabled={isInstallingSkillZip}
-              className="flex h-8 items-center gap-1.5 rounded-lg border border-border/60 bg-content-area px-3 text-[13px] font-medium text-foreground/80 shadow-sm transition-colors hover:bg-foreground/[0.04] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Upload size={14} />
-              <span>{isInstallingSkillZip ? '上传中...' : '上传 Zip'}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowImport(true)}
-              className="flex h-8 items-center gap-1.5 rounded-lg border border-border/60 bg-content-area px-3 text-[13px] font-medium text-foreground/80 shadow-sm transition-colors hover:bg-foreground/[0.04]"
-            >
-              <Plus size={14} />
-              <span>导入</span>
-            </button>
-          </>
+          <button
+            type="button"
+            onClick={() => setShowSkillAddDialog(true)}
+            className="flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-[13px] font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+          >
+            <Plus size={14} />
+            <span>添加技能</span>
+          </button>
         )}
 
         {/* 新增 MCP */}
@@ -276,7 +400,7 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
       {/* 内容 */}
       <div className={cn('min-h-0 flex-1', tab === 'experts' ? 'overflow-hidden' : 'overflow-y-auto scrollbar-thin')}>
         {tab === 'experts' ? (
-          <ExpertPageView embedded />
+          <ExpertPageView embedded query={search} filterTag={expertFilterTag} onFilterTagChange={setExpertFilterTag} />
         ) : (
           <div className="mx-auto w-full max-w-6xl px-8 pb-10">
             {data.loading ? (
@@ -284,16 +408,23 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
             ) : tab === 'skills' ? (
               <SkillsTab
                 skillView={skillView}
-                skills={filteredSkills}
+                skills={standaloneFilteredSkills}
                 total={data.skills.length}
+                installedPlugins={filteredInstalledPlugins}
+                pluginTotal={installedPlugins.length}
+                pluginLoading={pluginLoading}
                 updateCount={updateCount}
                 updatingSkill={data.updatingSkill}
                 isBuiltin={(slug) => data.defaultSkillSlugs.has(slug)}
                 workspaceSlug={data.workspaceSlug}
                 query={search}
                 installedSkillNames={installedSkillNames}
-                onInstalled={() => bumpCapabilities((v) => v + 1)}
+                onInstalled={async () => {
+                  bumpCapabilities((v) => v + 1)
+                  await loadInstalledPlugins()
+                }}
                 onOpen={setSelectedSkillSlug}
+                onOpenPlugin={setSelectedPluginId}
                 onToggle={data.toggleSkill}
                 onUpdate={data.updateSkill}
                 onSkillViewChange={setSkillView}
@@ -326,6 +457,18 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
         onRequestDelete={() => selectedSkill && setPendingDeleteSkill(selectedSkill)}
         onOpenFolder={() => selectedSkill && openSkillFolder(selectedSkill.slug)}
         onChanged={() => bumpCapabilities((v) => v + 1)}
+      />
+
+      <PluginDetailSheet
+        mode="installed"
+        plugin={selectedPlugin}
+        sourceLabel={selectedPlugin ? getInstalledPluginSourceLabel(selectedPlugin) : undefined}
+        toggling={selectedPlugin ? togglingPlugin === selectedPlugin.id : false}
+        uninstalling={selectedPlugin ? uninstallingPlugin === selectedPlugin.id : false}
+        onOpenChange={(open) => { if (!open) setSelectedPluginId(null) }}
+        onToggle={(plugin, enabled) => void handleTogglePlugin(plugin, enabled)}
+        onUninstall={(plugin) => void handleUninstallPlugin(plugin)}
+        onOpenFolder={(plugin) => { void window.electronAPI.openFile(plugin.path) }}
       />
 
       {/* Skill 删除确认 */}
@@ -382,6 +525,46 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
         onImported={() => bumpCapabilities((v) => v + 1)}
       />
 
+      <Dialog open={showSkillAddDialog} onOpenChange={setShowSkillAddDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>添加技能</DialogTitle>
+            <DialogDescription>选择添加方式。</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setShowSkillAddDialog(false)
+                void handleInstallSkillZip()
+              }}
+              disabled={isInstallingSkillZip}
+              className="flex items-start gap-3 rounded-lg border border-border/60 bg-content-area p-4 text-left transition-colors hover:bg-foreground/[0.04] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Upload size={18} className="mt-0.5 text-foreground/70" />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-foreground">{isInstallingSkillZip ? '上传中...' : '上传 Zip'}</span>
+                <span className="mt-1 block text-xs text-muted-foreground">从本地 zip 包安装 Skill。</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowSkillAddDialog(false)
+                setShowImport(true)
+              }}
+              className="flex items-start gap-3 rounded-lg border border-border/60 bg-content-area p-4 text-left transition-colors hover:bg-foreground/[0.04]"
+            >
+              <Plus size={18} className="mt-0.5 text-foreground/70" />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-foreground">从其他工作区导入</span>
+                <span className="mt-1 block text-xs text-muted-foreground">选择其他工作区已有 Skill 导入当前工作区。</span>
+              </span>
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <HuataiEmailConnectorDialog
         open={activeDefaultConnector === 'personal-email'}
         workspaceSlug={data.workspaceSlug}
@@ -406,6 +589,9 @@ interface SkillsTabProps {
   skillView: 'market' | 'installed'
   skills: SkillMeta[]
   total: number
+  installedPlugins: AgentPluginInfo[]
+  pluginTotal: number
+  pluginLoading: boolean
   updateCount: number
   updatingSkill: string | null
   isBuiltin: (slug: string) => boolean
@@ -414,12 +600,13 @@ interface SkillsTabProps {
   installedSkillNames: Set<string>
   onInstalled: () => void
   onOpen: (slug: string) => void
+  onOpenPlugin: (pluginId: string) => void
   onToggle: (slug: string, enabled: boolean) => void
   onUpdate: (slug: string) => void
   onSkillViewChange: (view: 'market' | 'installed') => void
 }
 
-function SkillsTab({ skillView, skills, total, updateCount, updatingSkill, isBuiltin, workspaceSlug, query, installedSkillNames, onInstalled, onOpen, onToggle, onUpdate, onSkillViewChange }: SkillsTabProps): React.ReactElement {
+function SkillsTab({ skillView, skills, total, installedPlugins, pluginTotal, pluginLoading, updateCount, updatingSkill, isBuiltin, workspaceSlug, query, installedSkillNames, onInstalled, onOpen, onOpenPlugin, onToggle, onUpdate, onSkillViewChange }: SkillsTabProps): React.ReactElement {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-center gap-8 border-b border-border/60">
@@ -431,7 +618,6 @@ function SkillsTab({ skillView, skills, total, updateCount, updatingSkill, isBui
         <SkillViewTab
           active={skillView === 'installed'}
           label="已安装"
-          count={total}
           onClick={() => onSkillViewChange('installed')}
         />
       </div>
@@ -450,12 +636,23 @@ function SkillsTab({ skillView, skills, total, updateCount, updatingSkill, isBui
               有 {updateCount} 个技能可更新到来源最新版本
             </div>
           )}
-          {total === 0 ? (
+          {pluginLoading ? (
+            <div className="py-12 text-center text-sm text-muted-foreground">加载中...</div>
+          ) : total === 0 && pluginTotal === 0 ? (
             <EmptyState icon={<Blocks className="size-8 text-foreground/30" />} title="暂无已安装技能" hint="可以从技能市场安装，或从其他工作区导入。" />
-          ) : skills.length === 0 ? (
+          ) : skills.length === 0 && installedPlugins.length === 0 ? (
             <EmptyState icon={<Search className="size-8 text-foreground/30" />} title="没有匹配的已安装技能" hint="试试更换搜索关键词。" />
           ) : (
-            <SkillSection skills={skills} isBuiltin={isBuiltin} updatingSkill={updatingSkill} onOpen={onOpen} onToggle={onToggle} onUpdate={onUpdate} />
+            <InstalledCapabilityGrid
+              plugins={installedPlugins}
+              skills={skills}
+              isBuiltin={isBuiltin}
+              updatingSkill={updatingSkill}
+              onOpenPlugin={onOpenPlugin}
+              onOpenSkill={onOpen}
+              onToggleSkill={onToggle}
+              onUpdateSkill={onUpdate}
+            />
           )}
         </div>
       )}
@@ -463,7 +660,115 @@ function SkillsTab({ skillView, skills, total, updateCount, updatingSkill, isBui
   )
 }
 
-function SkillViewTab({ active, label, count, onClick }: { active: boolean; label: string; count?: number; onClick: () => void }): React.ReactElement {
+function InstalledCapabilityGrid({
+  plugins,
+  skills,
+  isBuiltin,
+  updatingSkill,
+  onOpenPlugin,
+  onOpenSkill,
+  onToggleSkill,
+  onUpdateSkill,
+}: {
+  plugins: AgentPluginInfo[]
+  skills: SkillMeta[]
+  isBuiltin: (slug: string) => boolean
+  updatingSkill: string | null
+  onOpenPlugin: (pluginId: string) => void
+  onOpenSkill: (slug: string) => void
+  onToggleSkill: (slug: string, enabled: boolean) => void
+  onUpdateSkill: (slug: string) => void
+}): React.ReactElement {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {plugins.map((plugin) => (
+        <InstalledPluginCard key={plugin.id} plugin={plugin} onOpen={() => onOpenPlugin(plugin.id)} />
+      ))}
+      {skills.map((skill) => (
+        <SkillCard
+          key={skill.slug}
+          skill={skill}
+          isBuiltin={isBuiltin(skill.slug)}
+          updating={updatingSkill === skill.slug}
+          onOpen={() => onOpenSkill(skill.slug)}
+          onToggle={(enabled) => onToggleSkill(skill.slug, enabled)}
+          onUpdate={() => onUpdateSkill(skill.slug)}
+        />
+      ))}
+    </div>
+  )
+}
+
+function InstalledPluginCard({ plugin, onOpen }: { plugin: AgentPluginInfo; onOpen: () => void }): React.ReactElement {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onOpen()
+        }
+      }}
+      className={cn(
+        'group relative flex h-full cursor-pointer flex-col gap-3 rounded-xl border border-border/60 bg-content-area p-4 text-left transition-all',
+        'hover:border-border hover:shadow-sm focus:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+        !plugin.enabled && 'opacity-55',
+      )}
+    >
+      <div className="flex items-start gap-3">
+        <div className="rounded-xl bg-violet-500/10 p-2 text-violet-500 shadow-sm shrink-0">
+          <Package size={18} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-sm font-medium text-foreground">{plugin.name}</span>
+            <span className="shrink-0 rounded-md bg-violet-500/10 px-1.5 py-0.5 text-[11px] font-medium text-violet-600 dark:text-violet-300">套件</span>
+          </div>
+          <div className="mt-0.5 truncate text-xs text-muted-foreground">{getInstalledPluginSourceLabel(plugin)}</div>
+        </div>
+      </div>
+      <p className="line-clamp-2 min-h-[40px] text-[13px] leading-6 text-muted-foreground">
+        {plugin.description ?? '暂无描述'}
+      </p>
+      <div className="mt-auto flex items-center gap-2">
+        <span className="truncate rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+          {summarizePluginCapabilities(plugin)}
+        </span>
+        <span className={cn(
+          'ml-auto rounded-md px-1.5 py-0.5 text-[11px] font-medium',
+          plugin.enabled ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' : 'bg-muted text-muted-foreground',
+        )}
+        >
+          {plugin.enabled ? '已启用' : '已禁用'}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+function getInstalledPluginSourceLabel(plugin: AgentPluginInfo): string {
+  if (plugin.kind === 'builtin') return 'PROMA 内置'
+  if (plugin.sourceMarketplaceId) return `市场 (${plugin.sourceMarketplaceId})`
+  return '本地插件'
+}
+
+function summarizePluginCapabilities(plugin: AgentPluginInfo): string {
+  const counts = plugin.capabilities.reduce<Record<string, number>>((acc, capability) => {
+    acc[capability.type] = (acc[capability.type] ?? 0) + 1
+    return acc
+  }, {})
+  return [
+    counts.skill ? `${counts.skill} Skills` : null,
+    counts.agent ? `${counts.agent} Agents` : null,
+    counts['expert-group'] ? `${counts['expert-group']} 专家团` : null,
+    counts.mcp ? `${counts.mcp} MCP` : null,
+    counts.command ? `${counts.command} Commands` : null,
+  ].filter(Boolean).join(' · ') || '暂无能力'
+}
+
+function SkillViewTab({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }): React.ReactElement {
   return (
     <button
       type="button"
@@ -474,7 +779,6 @@ function SkillViewTab({ active, label, count, onClick }: { active: boolean; labe
       )}
     >
       <span>{label}</span>
-      {count !== undefined && <span className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{count}</span>}
       {active && <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-foreground" />}
     </button>
   )

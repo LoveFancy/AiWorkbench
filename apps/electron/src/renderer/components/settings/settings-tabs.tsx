@@ -14,7 +14,6 @@ import {
   Palette,
   Info,
   Wrench,
-  Package,
   TerminalSquare,
   MessageCircle,
 } from 'lucide-react'
@@ -33,15 +32,9 @@ const BASE_TABS: TabItem[] = [
   { id: 'prompts', label: '提示词管理', icon: <BookOpen size={16} /> },
 ]
 
-const PLUGINS_TAB: TabItem = {
-  id: 'plugins',
-  label: '插件管理',
-  icon: <Package size={16} />,
-}
-
 const TOOLS_TAB: TabItem = {
   id: 'tools',
-  label: 'Chat 工具',
+  label: '内置工具',
   icon: <Wrench size={16} />,
 }
 
@@ -71,6 +64,6 @@ const TAIL_TABS: TabItem[] = [
 
 export function getSettingsTabs(appMode: 'chat' | 'agent'): TabItem[] {
   return appMode === 'agent'
-    ? [...BASE_TABS, TOOLS_TAB, BOTS_TAB, PLUGINS_TAB, SHORTCUTS_TAB, ...TAIL_TABS, SYSTEM_LOG_TAB]
+    ? [...BASE_TABS, TOOLS_TAB, BOTS_TAB, SHORTCUTS_TAB, ...TAIL_TABS, SYSTEM_LOG_TAB]
     : [...BASE_TABS, TOOLS_TAB, BOTS_TAB, SHORTCUTS_TAB, ...TAIL_TABS, SYSTEM_LOG_TAB]
 }

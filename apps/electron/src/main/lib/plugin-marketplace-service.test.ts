@@ -5,6 +5,7 @@ import { join } from 'node:path'
 
 import {
   addPluginMarketplace,
+  getMarketplacePluginDetail,
   installMarketplacePlugin,
   listPluginMarketplaces,
   refreshPluginMarketplace,
@@ -378,6 +379,117 @@ describe('插件市场服务', () => {
       })
 
       expect(cloneCalls).toEqual(['https://github.com/org/plugins'])
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('GitHub 市场支持仓库根目录插件路径', async () => {
+    const temp = tempRoot()
+    try {
+      const sourceRepo = join(temp.root, 'remote-source')
+      mkdirSync(join(sourceRepo, '.claude-plugin'), { recursive: true })
+      writeFileSync(
+        join(sourceRepo, '.claude-plugin', 'plugin.json'),
+        JSON.stringify({ name: 'baoyu-skills', version: '1.0.0' }),
+        'utf-8',
+      )
+      const marketplacesPath = join(temp.root, 'plugin-marketplaces.json')
+      const cacheDir = join(temp.root, 'cache')
+      const userPluginsDir = join(temp.root, 'user-plugins')
+      const pluginsConfigPath = join(temp.root, 'plugins.json')
+      const servicePaths = { marketplacesPath, cacheDir, userPluginsDir, pluginsConfigPath }
+      const cloneCalls: string[] = []
+
+      addPluginMarketplace({
+        id: 'github-market',
+        name: 'GitHub 插件市场',
+        source: 'https://github.com/org/baoyu-skills',
+        type: 'github',
+      }, servicePaths)
+      mkdirSync(join(cacheDir, 'github-market'), { recursive: true })
+      writeFileSync(
+        join(cacheDir, 'github-market', 'manifest.json'),
+        JSON.stringify({
+          plugins: [{ name: 'baoyu-skills', source: './', version: '1.0.0' }],
+        }),
+        'utf-8',
+      )
+
+      await installMarketplacePlugin({
+        marketplaceId: 'github-market',
+        pluginName: 'baoyu-skills',
+        enable: true,
+      }, {
+        ...servicePaths,
+        cloneRepo: async (source, target) => {
+          cloneCalls.push(source)
+          mkdirSync(target, { recursive: true })
+          return undefined
+        },
+        copyClonedFixture: sourceRepo,
+      })
+
+      expect(cloneCalls).toEqual(['https://github.com/org/baoyu-skills'])
+      expect(existsSync(join(userPluginsDir, 'github-market', 'baoyu-skills', '.claude-plugin', 'plugin.json'))).toBe(true)
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('市场详情对已安装插件返回本地发现能力', async () => {
+    const temp = tempRoot()
+    try {
+      const sourceRepo = join(temp.root, 'remote-source')
+      mkdirSync(join(sourceRepo, '.claude-plugin'), { recursive: true })
+      mkdirSync(join(sourceRepo, 'skills', 'baoyu-article-illustrator'), { recursive: true })
+      writeFileSync(
+        join(sourceRepo, '.claude-plugin', 'plugin.json'),
+        JSON.stringify({ name: 'baoyu-skills', version: '1.0.0' }),
+        'utf-8',
+      )
+      writeFileSync(
+        join(sourceRepo, 'skills', 'baoyu-article-illustrator', 'SKILL.md'),
+        '# Baoyu Article Illustrator\n\nAnalyzes article structure.',
+        'utf-8',
+      )
+      const marketplacesPath = join(temp.root, 'plugin-marketplaces.json')
+      const cacheDir = join(temp.root, 'cache')
+      const userPluginsDir = join(temp.root, 'user-plugins')
+      const pluginsConfigPath = join(temp.root, 'plugins.json')
+      const servicePaths = { marketplacesPath, cacheDir, userPluginsDir, pluginsConfigPath }
+
+      addPluginMarketplace({
+        id: 'github-market',
+        name: 'GitHub 插件市场',
+        source: 'https://github.com/org/baoyu-skills',
+        type: 'github',
+      }, servicePaths)
+      mkdirSync(join(cacheDir, 'github-market'), { recursive: true })
+      writeFileSync(
+        join(cacheDir, 'github-market', 'manifest.json'),
+        JSON.stringify({
+          plugins: [{ name: 'baoyu-skills', source: './', version: '1.0.0' }],
+        }),
+        'utf-8',
+      )
+
+      await installMarketplacePlugin({
+        marketplaceId: 'github-market',
+        pluginName: 'baoyu-skills',
+        enable: true,
+      }, {
+        ...servicePaths,
+        cloneRepo: async (_source, target) => {
+          mkdirSync(target, { recursive: true })
+          return undefined
+        },
+        copyClonedFixture: sourceRepo,
+      })
+
+      const detail = await getMarketplacePluginDetail('github-market', 'baoyu-skills', servicePaths)
+      expect(detail.capabilities?.map((capability) => `${capability.type}:${capability.name}`)).toEqual(['skill:baoyu-article-illustrator'])
+      expect(detail.manifest?.version).toBe('1.0.0')
     } finally {
       temp.cleanup()
     }

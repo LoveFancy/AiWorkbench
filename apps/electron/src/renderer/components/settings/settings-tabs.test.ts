@@ -22,12 +22,12 @@ test('关于更新入口在设置页导航中可见', () => {
   expect(agentTabs.find((tab) => tab.id === 'about')?.label).toBe('关于 / 更新')
 })
 
-test('Chat 工具入口在设置页导航中可见', () => {
+test('内置工具入口在设置页导航中可见', () => {
   const generalTabs = getSettingsTabs('chat')
   const agentTabs = getSettingsTabs('agent')
 
-  expect(generalTabs.find((tab) => tab.id === 'tools')?.label).toBe('Chat 工具')
-  expect(agentTabs.find((tab) => tab.id === 'tools')?.label).toBe('Chat 工具')
+  expect(generalTabs.find((tab) => tab.id === 'tools')?.label).toBe('内置工具')
+  expect(agentTabs.find((tab) => tab.id === 'tools')?.label).toBe('内置工具')
 })
 
 test('远程连接入口在设置页导航中可见', () => {
@@ -55,12 +55,13 @@ test('Agent 模式下不显示 Agent 配置入口', () => {
   expect(agentTabs.some((tab) => tab.label === 'Agent 配置')).toBe(false)
 })
 
-test('Agent 模式下插件管理入口可见', () => {
+test('配置页不显示插件管理入口', () => {
   const generalTabs = getSettingsTabs('chat')
   const agentTabs = getSettingsTabs('agent')
 
   expect(generalTabs.some((tab) => tab.id === 'plugins')).toBe(false)
-  expect(agentTabs.find((tab) => tab.id === 'plugins')?.label).toBe('插件管理')
+  expect(agentTabs.some((tab) => tab.id === 'plugins')).toBe(false)
+  expect(agentTabs.some((tab) => tab.label === '插件管理')).toBe(false)
 })
 
 test('Agent 模式下专家团入口已从设置中移除（移至侧边栏）', () => {

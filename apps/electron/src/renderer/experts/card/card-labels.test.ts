@@ -46,7 +46,10 @@ test('专家卡片操作按钮默认隐藏并在 hover 时显示', () => {
 })
 
 test('专家卡片已收藏后星标常驻显示', () => {
-  expect(expertCardSource).toContain("isFollowed ? 'opacity-100' : 'pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100'")
+  expect(expertCardSource).toContain('size-[26px]')
+  expect(expertCardSource).toContain('rounded-bl-lg rounded-tr-xl')
+  expect(expertCardSource).toContain("isFollowed && 'text-yellow-500'")
+  expect(expertCardSource).toContain("isFollowed && 'fill-yellow-500 text-yellow-500'")
 })
 
 test('专家卡片不展示底部能力统计和插件目录', () => {

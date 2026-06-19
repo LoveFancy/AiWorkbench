@@ -17,7 +17,7 @@ import { useOpenSession } from '@/hooks/useOpenSession'
 import { ExpertPicker } from './ExpertPicker'
 import { ExpertSummoningOverlay } from '@/components/agent/ExpertSummoningOverlay'
 import { cn } from '@/lib/utils'
-import { getExpertSummonDisplayName } from './summon-label'
+import { DEFAULT_EXPERT_ENTRY_LABEL, getExpertSummonDisplayName } from './summon-label'
 
 interface ExpertSummonButtonProps {
   variant?: 'header' | 'composer'
@@ -59,6 +59,7 @@ export function ExpertSummonButton({ variant = 'header', sessionId }: ExpertSumm
     [sessionId, sessions],
   )
   const displayName = getExpertSummonDisplayName(currentSession, groups)
+  const isDefaultExpertEntry = displayName === DEFAULT_EXPERT_ENTRY_LABEL
 
   React.useEffect(() => {
     if (currentSession?.expertGroupId && groups.length === 0) {
@@ -126,7 +127,10 @@ export function ExpertSummonButton({ variant = 'header', sessionId }: ExpertSumm
             className={cn(
               'titlebar-no-drag',
               variant === 'composer'
-                ? 'h-8 gap-1.5 rounded-full px-2 text-[13px] font-medium text-foreground hover:bg-muted'
+                ? cn(
+                  'h-8 gap-1.5 rounded-full text-[13px] font-medium text-foreground hover:bg-muted',
+                  isDefaultExpertEntry ? 'w-8 px-0' : 'px-2',
+                )
                 : 'h-7 gap-1.5 px-2 text-xs',
             )}
             onClick={() => setOpen(true)}
@@ -136,8 +140,12 @@ export function ExpertSummonButton({ variant = 'header', sessionId }: ExpertSumm
                 <span className="flex size-6 items-center justify-center rounded-full bg-primary/10 text-primary">
                   <Sparkles className="size-3.5" />
                 </span>
-                <span className="max-w-[112px] truncate">{displayName}</span>
-                <ChevronDown className="size-3.5 text-muted-foreground" />
+                {!isDefaultExpertEntry && (
+                  <>
+                    <span className="max-w-[112px] truncate">{displayName}</span>
+                    <ChevronDown className="size-3.5 text-muted-foreground" />
+                  </>
+                )}
               </>
             ) : (
               <>

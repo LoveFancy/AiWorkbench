@@ -24,9 +24,12 @@ import { cn } from '@/lib/utils'
 
 interface ExpertPageViewProps {
   embedded?: boolean
+  query?: string
+  filterTag?: FilterTag
+  onFilterTagChange?: (tag: FilterTag) => void
 }
 
-export function ExpertPageView({ embedded = false }: ExpertPageViewProps): React.ReactElement {
+export function ExpertPageView({ embedded = false, query: externalQuery, filterTag: externalFilterTag, onFilterTagChange }: ExpertPageViewProps): React.ReactElement {
   const allGroups = useAtomValue(agentExpertGroupsAtom)
   const loadGroups = useSetAtom(loadAgentExpertGroupsAtom)
   const loadRemote = useSetAtom(loadRemoteExpertDataAtom)
@@ -37,7 +40,7 @@ export function ExpertPageView({ embedded = false }: ExpertPageViewProps): React
   const recordRecent = useSetAtom(recordRecentExpertGroupAtom)
 
   const [query, setQuery] = React.useState('')
-  const [filterTag, setFilterTag] = React.useState<FilterTag>('all')
+  const [internalFilterTag, setInternalFilterTag] = React.useState<FilterTag>('all')
   const [sceneFilter, setSceneFilter] = React.useState<Set<string> | null>(null)
   const [activeSceneId, setActiveSceneId] = React.useState<string | null>(null)
   const [refreshing, setRefreshing] = React.useState(false)
@@ -64,15 +67,19 @@ export function ExpertPageView({ embedded = false }: ExpertPageViewProps): React
   }, [loadGroups, loadRemote])
 
   // 数据管道：筛选 → 场景 → 搜索
+  const activeQuery = embedded ? (externalQuery ?? '') : query
+  const filterTag = externalFilterTag ?? internalFilterTag
+  const setFilterTag = onFilterTagChange ?? setInternalFilterTag
+
   const displayGroups = React.useMemo(() => {
     let result = allGroups
     result = filterByTag(result, filterTag, followed, recent)
     if (sceneFilter) {
       result = result.filter(g => sceneFilter.has(g.id))
     }
-    result = searchByName(result, query)
+    result = searchByName(result, activeQuery)
     return result
-  }, [allGroups, filterTag, query, followed, recent, sceneFilter])
+  }, [allGroups, filterTag, activeQuery, followed, recent, sceneFilter])
 
   const handleSummon = React.useCallback(async (group: AgentExpertGroupInfo) => {
     // 远程专家团需先下载
@@ -116,39 +123,42 @@ export function ExpertPageView({ embedded = false }: ExpertPageViewProps): React
   const emptyType: 'followed' | 'recent' | 'search' | 'all' = React.useMemo(() => {
     if (filterTag === 'followed') return 'followed'
     if (filterTag === 'recent') return 'recent'
-    if (query.trim() || sceneFilter) return 'search'
+    if (activeQuery.trim() || sceneFilter) return 'search'
     return 'all'
-  }, [filterTag, query, sceneFilter])
+  }, [filterTag, activeQuery, sceneFilter])
 
   return (
     <div className="flex h-full flex-col bg-background">
       {/* 顶部控制栏 */}
       <div className={cn('flex-shrink-0 titlebar-no-drag', embedded ? 'pb-4' : 'border-b px-6 pt-10 pb-4')}>
         <div className={cn(embedded && 'mx-auto w-full max-w-6xl px-8')}>
-          <div className="flex items-center justify-between gap-4">
-            {!embedded && <h2 className="text-lg font-semibold">专家/专家团</h2>}
-            <div className="flex items-center gap-2">
-              <ExpertSearchBar value={query} onChange={setQuery} />
-              <Button variant="outline" size="icon" className="h-9 w-9" onClick={handleRefresh} disabled={refreshing} title="刷新专家团列表">
-                <RefreshCw className={`size-4 ${refreshing ? 'animate-spin' : ''}`} />
-              </Button>
-              <ExpertImportButton />
+          {!embedded && (
+            <div className="flex items-center justify-between gap-4">
+              <h2 className="text-lg font-semibold">专家/专家团</h2>
+              <div className="flex items-center gap-2">
+                <ExpertSearchBar value={query} onChange={setQuery} />
+                <Button variant="outline" size="icon" className="h-9 w-9" onClick={handleRefresh} disabled={refreshing} title="刷新专家团列表">
+                  <RefreshCw className={`size-4 ${refreshing ? 'animate-spin' : ''}`} />
+                </Button>
+                <ExpertImportButton />
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* 筛选按钮 */}
-          <div className="mt-3">
-            <ExpertFilterPills
-              value={filterTag}
-              onChange={setFilterTag}
-              counts={{
-                followed: Object.keys(followed).length,
-                expert: allGroups.filter((g) => g.expertType !== 'team').length,
-                team: allGroups.filter((g) => g.expertType === 'team' || (g.subagents && g.subagents.length > 0)).length,
-                not_downloaded: allGroups.filter((g) => g.sourcePluginKind === 'remote' && g.status !== 'available').length,
-              }}
-            />
-          </div>
+          {!embedded && (
+            <div className="mt-3">
+              <ExpertFilterPills
+                value={filterTag}
+                onChange={setFilterTag}
+                counts={{
+                  followed: Object.keys(followed).length,
+                  expert: allGroups.filter((g) => g.expertType !== 'team').length,
+                  team: allGroups.filter((g) => g.expertType === 'team' || (g.subagents && g.subagents.length > 0)).length,
+                  not_downloaded: allGroups.filter((g) => g.sourcePluginKind === 'remote' && g.status !== 'available').length,
+                }}
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -156,7 +166,7 @@ export function ExpertPageView({ embedded = false }: ExpertPageViewProps): React
       <ScrollArea className="flex-1">
         <div className={cn(embedded ? 'mx-auto w-full max-w-6xl px-8 pb-10' : 'p-6')}>
           {/* 精选场景 */}
-          {filterTag === 'all' && !query.trim() && displayGroups.length > 0 && (
+          {filterTag === 'all' && !activeQuery.trim() && displayGroups.length > 0 && (
             <div className="mb-8">
               <ExpertFeaturedScenes
                 allGroups={allGroups}

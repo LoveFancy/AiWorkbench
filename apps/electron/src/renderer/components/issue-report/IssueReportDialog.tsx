@@ -7,7 +7,7 @@
 
 import * as React from 'react'
 import { useAtom } from 'jotai'
-import { X, Bug, Loader2, Plus, Trash2 } from 'lucide-react'
+import { X, Headset, Loader2, Plus, Trash2 } from 'lucide-react'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
@@ -136,7 +136,7 @@ export function IssueReportDialog(): React.ReactElement {
           {/* Header */}
           <div className="flex items-center justify-between px-5 h-12 border-b border-border/50">
             <h2 className="text-sm font-medium flex items-center gap-2">
-              <Bug size={16} />
+              <Headset size={16} />
               问题反馈
             </h2>
             <button

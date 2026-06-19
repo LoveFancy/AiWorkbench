@@ -23,7 +23,7 @@ import {
   getPluginsConfigPath,
   getUserPluginsDir,
 } from './config-paths'
-import { readPluginsConfig, writePluginsConfig } from './plugin-registry-service'
+import { listInstalledPlugins, readPluginsConfig, writePluginsConfig } from './plugin-registry-service'
 
 interface PluginMarketplacePaths {
   marketplacesPath?: string
@@ -136,9 +136,11 @@ function removeBranchSegments(segments: string[], branch: string): string[] {
 }
 
 function normalizeRelativePluginPath(source: string): string {
-  const normalized = source.replace(/^\.?\//, '').replace(/^\/+/, '')
+  const trimmed = source.trim()
+  if (trimmed === '.' || trimmed === './') return ''
+  const normalized = trimmed.replace(/^\.?\//, '').replace(/^\/+/, '')
   const segments = normalized.split('/').filter(Boolean)
-  if (segments.length === 0 || segments.some((segment) => segment === '.' || segment === '..')) {
+  if (segments.some((segment) => segment === '.' || segment === '..')) {
     throw new Error(`不支持的插件相对路径: ${source}`)
   }
   return joinUrlSegments(...segments)
@@ -637,13 +639,34 @@ export async function getMarketplacePluginDetail(marketplaceId: string, pluginNa
   const source = resolvePluginSource(marketplace, plugin.source)
   let manifest: AgentPluginManifest | undefined
   let readme: string | undefined
+  let capabilities = undefined as AgentPluginMarketplaceDetail['capabilities']
+  const localPluginId = installedPluginId(marketplace.id, plugin.name)
+  const installedPlugin = listInstalledPlugins({
+    builtinDir: join(resolved.cacheDir, '.builtin-empty'),
+    userDir: resolved.userPluginsDir,
+    configPath: resolved.pluginsConfigPath,
+  }).find((item) => item.id === localPluginId)
   if (isAbsolute(source) && existsSync(source)) {
     const manifestPath = join(source, '.claude-plugin', 'plugin.json')
     if (existsSync(manifestPath)) manifest = readJson(manifestPath) as AgentPluginManifest
     const readmePath = join(source, 'README.md')
     if (existsSync(readmePath)) readme = readFileSync(readmePath, 'utf-8')
   }
-  const localPluginId = installedPluginId(marketplace.id, plugin.name)
+  if (installedPlugin) {
+    manifest = {
+      name: installedPlugin.name,
+      version: installedPlugin.version,
+      ...(installedPlugin.description && { description: installedPlugin.description }),
+      ...(installedPlugin.author && { author: { name: installedPlugin.author } }),
+      ...(installedPlugin.homepage && { homepage: installedPlugin.homepage }),
+      ...(installedPlugin.repository && { repository: installedPlugin.repository }),
+      ...(installedPlugin.license && { license: installedPlugin.license }),
+      ...(installedPlugin.keywords.length > 0 && { keywords: installedPlugin.keywords }),
+    }
+    capabilities = installedPlugin.capabilities
+    const installedReadmePath = join(installedPlugin.path, 'README.md')
+    if (!readme && existsSync(installedReadmePath)) readme = readFileSync(installedReadmePath, 'utf-8')
+  }
   const pluginConfig = readPluginsConfig({ configPath: resolved.pluginsConfigPath })
   return {
     marketplaceId: marketplace.id,
@@ -656,6 +679,7 @@ export async function getMarketplacePluginDetail(marketplaceId: string, pluginNa
     enabled: pluginConfig.plugins[localPluginId]?.enabled,
     localPluginId,
     ...(manifest && { manifest }),
+    ...(capabilities && { capabilities }),
     ...(readme && { readme }),
   }
 }

@@ -1,6 +1,6 @@
 import type { AgentExpertGroupInfo, AgentSessionMeta } from '@proma/shared'
 
-const DEFAULT_EXPERT_ENTRY_LABEL = 'WorkMate专家'
+export const DEFAULT_EXPERT_ENTRY_LABEL = 'WorkMate专家'
 
 export function getExpertSummonDisplayName(
   session: AgentSessionMeta | undefined,

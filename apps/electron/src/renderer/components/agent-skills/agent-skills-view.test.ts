@@ -3,6 +3,7 @@ import { join } from 'node:path'
 
 const source = await Bun.file(join(import.meta.dir, 'AgentSkillsView.tsx')).text()
 const skillCardSource = await Bun.file(join(import.meta.dir, 'SkillCard.tsx')).text()
+const skillMarketPanelSource = await Bun.file(join(import.meta.dir, 'SkillMarketPanel.tsx')).text()
 
 test('技能页提供技能市场和已安装二级切换', () => {
   expect(source).toContain('技能市场')
@@ -15,8 +16,10 @@ test('技能市场使用小卡片和详情抽屉', () => {
   expect(source).toContain('<SkillMarketPanel')
 })
 
-test('已安装区块展示所有本地技能，包含内置技能', () => {
-  expect(source).toContain('skills={filteredSkills}')
+test('已安装区块区分插件和技能', () => {
+  expect(source).toContain('skills={standaloneFilteredSkills}')
+  expect(source).toContain('InstalledCapabilityGrid')
+  expect(source).toContain('PluginDetailSheet')
   expect(source).toContain('isBuiltin={(slug) => data.defaultSkillSlugs.has(slug)}')
 })
 
@@ -26,11 +29,13 @@ test('切换已安装 Skill 状态后保留当前技能二级 Tab', () => {
   expect(source).not.toContain("function SkillsTab({ skills, total, updateCount, updatingSkill, isBuiltin, workspaceSlug, query, installedSkillNames, onInstalled, onOpen, onToggle, onUpdate }: SkillsTabProps): React.ReactElement {\n  const [skillView, setSkillView] = React.useState<'market' | 'installed'>('market')")
 })
 
-test('技能页在导入旁边提供上传 Skill zip 包入口', () => {
+test('技能页通过添加弹窗提供上传 zip 和跨工作区导入入口', () => {
   expect(source).toContain('handleInstallSkillZip')
   expect(source).toContain('window.electronAPI.installSkillZip(data.workspaceSlug)')
+  expect(source).toContain('showSkillAddDialog')
+  expect(source).toContain('添加技能')
   expect(source).toContain('上传 Zip')
-  expect(source.indexOf('上传 Zip')).toBeLessThan(source.indexOf('<span>导入</span>'))
+  expect(source).toContain('从其他工作区导入')
 })
 
 test('已安装 Skill 只能在详情侧栏彻底删除', () => {
@@ -42,4 +47,17 @@ test('已安装 Skill 只能在详情侧栏彻底删除', () => {
 
 test('外部入口可指定打开技能 Tab', () => {
   expect(source).toContain("React.useEffect(() => {\n    setTab(initialTab)\n  }, [initialTab])")
+})
+
+test('技能市场区分华泰 SkillHub 和插件市场，不再展示推荐分类', () => {
+  expect(skillMarketPanelSource).toContain("label: '华泰 SkillHub'")
+  expect(skillMarketPanelSource).toContain("label: '插件市场'")
+  expect(skillMarketPanelSource).toContain('PluginMarketContent')
+  expect(skillMarketPanelSource).toContain('添加市场')
+  expect(skillMarketPanelSource).toContain('MoreHorizontal')
+  expect(skillMarketPanelSource).toContain('removeAgentPluginMarketplace')
+  expect(skillMarketPanelSource).toContain('getAgentPluginMarketplaceDetail')
+  expect(skillMarketPanelSource).toContain('<PluginDetailSheet')
+  expect(skillMarketPanelSource).not.toContain("'推荐'")
+  expect(skillMarketPanelSource).not.toContain('MARKET_CATEGORIES')
 })
