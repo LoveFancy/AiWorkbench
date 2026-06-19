@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { cn } from '@/lib/utils'
 import { fileToBase64, formatFileNames } from '@/lib/file-utils'
 import { MAX_ATTACHMENT_SIZE } from '@proma/shared'
+import { FILE_TREE_DRAG_MIME } from './FileBrowser'
 
 interface FileDropZoneProps {
   workspaceSlug: string
@@ -28,6 +29,10 @@ export function FileDropZone({ workspaceSlug, sessionId, target = 'session', onF
   const [isUploading, setIsUploading] = React.useState(false)
 
   const isWorkspace = target === 'workspace'
+
+  const isFileTreeDrag = React.useCallback((e: React.DragEvent): boolean => {
+    return Array.from(e.dataTransfer.types).includes(FILE_TREE_DRAG_MIME)
+  }, [])
 
   const saveFiles = React.useCallback(async (files: globalThis.File[]): Promise<void> => {
     if (files.length === 0) return
@@ -103,6 +108,10 @@ export function FileDropZone({ workspaceSlug, sessionId, target = 'session', onF
   }, [workspaceSlug, sessionId, isWorkspace, onFilesUploaded, onFilesAttached])
 
   const handleDrop = React.useCallback(async (e: React.DragEvent, side: 'left' | 'right'): Promise<void> => {
+    if (isFileTreeDrag(e)) {
+      setIsDragOver(null)
+      return
+    }
     e.preventDefault()
     e.stopPropagation()
     setIsDragOver(null)
@@ -173,15 +182,23 @@ export function FileDropZone({ workspaceSlug, sessionId, target = 'session', onF
         toast.warning('无法识别文件夹，请使用按钮选择')
       }
     }
-  }, [saveFiles, onFoldersDropped, onFilesAttached, isUploading])
+  }, [saveFiles, onFoldersDropped, onFilesAttached, isUploading, isFileTreeDrag])
 
   const handleDragOver = React.useCallback((e: React.DragEvent, side: 'left' | 'right'): void => {
+    if (isFileTreeDrag(e)) {
+      setIsDragOver(null)
+      return
+    }
     e.preventDefault()
     e.stopPropagation()
     setIsDragOver(side)
-  }, [])
+  }, [isFileTreeDrag])
 
   const handleDragLeave = React.useCallback((e: React.DragEvent): void => {
+    if (isFileTreeDrag(e)) {
+      setIsDragOver(null)
+      return
+    }
     e.preventDefault()
     e.stopPropagation()
     // 如果光标仍在同级容器内（切换到兄弟 zone），不清空 state；
@@ -190,7 +207,7 @@ export function FileDropZone({ workspaceSlug, sessionId, target = 'session', onF
     const container = (e.currentTarget as HTMLElement).parentElement
     if (related && container && container.contains(related)) return
     setIsDragOver(null)
-  }, [])
+  }, [isFileTreeDrag])
 
   const handleSelectFiles = React.useCallback(async (): Promise<void> => {
     try {

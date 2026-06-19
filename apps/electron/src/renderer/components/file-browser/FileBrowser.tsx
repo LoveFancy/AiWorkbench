@@ -58,6 +58,12 @@ import {
 } from './tree-row-layout'
 import { formatManagedPath, type ManagedPathRoots } from '@/lib/managed-path-display'
 
+export const FILE_TREE_DRAG_MIME = 'application/x-proma-file-tree-entry'
+
+type FileTreeDragPayload = {
+  paths: string[]
+}
+
 /** 计算目标路径相对 rootPath 的祖先目录集合（不含 rootPath 自身、含目标的所有上级） */
 export function computeRevealAncestors(rootPath: string, targetPath: string): Set<string> {
   const ancestors = new Set<string>()
@@ -87,6 +93,40 @@ export function isPathUnderRoot(rootPath: string, targetPath: string): boolean {
   return targetPath.startsWith(root + '/') || targetPath.startsWith(root + '\\')
 }
 
+function normalizeFsPath(filePath: string): string {
+  return filePath.replace(/[/\\]+$/, '')
+}
+
+function getParentPath(filePath: string): string {
+  const normalized = normalizeFsPath(filePath)
+  const index = Math.max(normalized.lastIndexOf('/'), normalized.lastIndexOf('\\'))
+  return index > 0 ? normalized.slice(0, index) : normalized
+}
+
+function isSameOrChildPath(parentPath: string, childPath: string): boolean {
+  const parent = normalizeFsPath(parentPath)
+  const child = normalizeFsPath(childPath)
+  return child === parent || child.startsWith(parent + '/') || child.startsWith(parent + '\\')
+}
+
+function readFileTreeDragPayload(event: React.DragEvent): FileTreeDragPayload | null {
+  const raw = event.dataTransfer.getData(FILE_TREE_DRAG_MIME)
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as Partial<FileTreeDragPayload>
+    const paths = Array.isArray(parsed.paths)
+      ? parsed.paths.filter((path): path is string => typeof path === 'string' && path.length > 0)
+      : []
+    return paths.length > 0 ? { paths } : null
+  } catch {
+    return null
+  }
+}
+
+function eventHasFileTreeDrag(event: React.DragEvent): boolean {
+  return Array.from(event.dataTransfer.types).includes(FILE_TREE_DRAG_MIME)
+}
+
 interface FileBrowserProps {
   rootPath: string
   /** 隐藏内置顶部工具栏（面包屑 + 按钮），由外部自行渲染 */
@@ -107,9 +147,16 @@ interface FileBrowserProps {
   onSelectedDirectoryChange?: (dirPath: string | null) => void
   /** 在指定目录下新建文件或文件夹 */
   onCreateEntry?: (parentDir: string, type: 'directory' | 'file') => void
+  /** 右键菜单快捷转移到固定目录 */
+  transferTarget?: {
+    label: string
+    targetDir: string | null
+  }
+  /** 文件通过拖拽或菜单移动成功后通知外部刷新其它文件树 */
+  onFilesMoved?: () => void
 }
 
-export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displayRoots, clearSelectionSignal = 0, onAddToChat, onFilePreview, onSelectedDirectoryChange, onCreateEntry }: FileBrowserProps): React.ReactElement {
+export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displayRoots, clearSelectionSignal = 0, onAddToChat, onFilePreview, onSelectedDirectoryChange, onCreateEntry, transferTarget, onFilesMoved }: FileBrowserProps): React.ReactElement {
   const [entries, setEntries] = React.useState<FileEntry[]>([])
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
@@ -308,13 +355,58 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
         await window.electronAPI.moveFile(entry.path, result.path)
       }
       setSelectedPaths(new Set())
+      onFilesMoved?.()
       await loadRoot()
     } catch (err) {
       console.error('[FileBrowser] 移动失败:', err)
     } finally {
       setMoving(false)
     }
-  }, [selectedPaths, loadRoot])
+  }, [selectedPaths, loadRoot, onFilesMoved])
+
+  const movePathsToDirectory = React.useCallback(async (paths: string[], targetDir: string): Promise<void> => {
+    const uniquePaths = Array.from(new Set(paths))
+    const movablePaths = uniquePaths.filter((path) => {
+      if (normalizeFsPath(getParentPath(path)) === normalizeFsPath(targetDir)) return false
+      if (isSameOrChildPath(path, targetDir)) return false
+      return true
+    })
+    if (movablePaths.length === 0) return
+
+    setMoving(true)
+    try {
+      for (const path of movablePaths) {
+        await window.electronAPI.moveFile(path, targetDir)
+      }
+      setSelectedPaths(new Set())
+      onSelectedDirectoryChange?.(null)
+      onFilesMoved?.()
+      await loadRoot()
+    } catch (err) {
+      console.error('[FileBrowser] 拖拽移动失败:', err)
+    } finally {
+      setMoving(false)
+    }
+  }, [loadRoot, onFilesMoved, onSelectedDirectoryChange])
+
+  const handleTransfer = React.useCallback(async (entry: FileEntry, targetDir: string): Promise<void> => {
+    const paths = selectedPaths.has(entry.path) ? Array.from(selectedPaths) : [entry.path]
+    await movePathsToDirectory(paths, targetDir)
+  }, [movePathsToDirectory, selectedPaths])
+
+  const handleRootDragOver = React.useCallback((event: React.DragEvent): void => {
+    if (!eventHasFileTreeDrag(event)) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+  }, [])
+
+  const handleRootDrop = React.useCallback((event: React.DragEvent): void => {
+    const payload = readFileTreeDragPayload(event)
+    if (!payload) return
+    event.preventDefault()
+    event.stopPropagation()
+    void movePathsToDirectory(payload.paths, rootPath)
+  }, [movePathsToDirectory, rootPath])
 
   const breadcrumb = React.useMemo(() => {
     if (displayRoots) return formatManagedPath(rootPath, displayRoots)
@@ -359,13 +451,21 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
           onAddToChat={onAddToChat}
           onFilePreview={onFilePreview}
           onCreateEntry={onCreateEntry}
+          transferTarget={transferTarget}
+          onTransfer={handleTransfer}
+          onMovePathsToDirectory={movePathsToDirectory}
         />
       ))}
     </div>
   )
 
   return (
-    <div className={cn('flex flex-col', embedded ? 'min-h-0' : 'h-full')} onClickCapture={handleRootClickCapture}>
+    <div
+      className={cn('flex flex-col', embedded ? 'min-h-0' : 'h-full')}
+      onClickCapture={handleRootClickCapture}
+      onDragOver={handleRootDragOver}
+      onDrop={handleRootDrop}
+    >
       {/* 顶部工具栏（可由外部接管） */}
       {!hideToolbar && (
         <div className="flex items-center gap-1 px-3 pr-10 h-[48px] border-b flex-shrink-0">
@@ -464,6 +564,12 @@ interface FileTreeItemProps {
   onAddToChat?: (entry: FileEntry) => void
   onFilePreview?: (filePath: string) => void
   onCreateEntry?: (parentDir: string, type: 'directory' | 'file') => void
+  transferTarget?: {
+    label: string
+    targetDir: string | null
+  }
+  onTransfer: (entry: FileEntry, targetDir: string) => Promise<void>
+  onMovePathsToDirectory: (paths: string[], targetDir: string) => Promise<void>
 }
 
 function FileTreeItem({
@@ -491,11 +597,15 @@ function FileTreeItem({
   onAddToChat,
   onFilePreview,
   onCreateEntry,
+  transferTarget,
+  onTransfer,
+  onMovePathsToDirectory,
 }: FileTreeItemProps): React.ReactElement {
   const [expanded, setExpanded] = React.useState(false)
   const [children, setChildren] = React.useState<FileEntry[]>([])
   const [childrenLoaded, setChildrenLoaded] = React.useState(false)
   const [flash, setFlash] = React.useState(false)
+  const [isDropTarget, setIsDropTarget] = React.useState(false)
   const rowRef = React.useRef<HTMLDivElement>(null)
 
   // 当 refreshVersion 变化时，已展开的文件夹自动重新加载子项
@@ -614,6 +724,52 @@ function FileTreeItem({
     } else {
       onFilePreview?.(entry.path)
     }
+  }
+
+  const handleDragStart = (event: React.DragEvent): void => {
+    if (isRenaming) {
+      event.preventDefault()
+      return
+    }
+    const paths = isSelected ? Array.from(selectedPaths) : [entry.path]
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData(FILE_TREE_DRAG_MIME, JSON.stringify({ paths }))
+    event.dataTransfer.setData('text/plain', paths.join('\n'))
+  }
+
+  const handleDragEnd = (): void => {
+    setIsDropTarget(false)
+  }
+
+  const handleDragOver = (event: React.DragEvent): void => {
+    if (!entry.isDirectory || !eventHasFileTreeDrag(event)) return
+    const payload = readFileTreeDragPayload(event)
+    if (!payload) return
+    const canDrop = payload.paths.some((path) => {
+      if (normalizeFsPath(getParentPath(path)) === normalizeFsPath(entry.path)) return false
+      return !isSameOrChildPath(path, entry.path)
+    })
+    if (!canDrop) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.dataTransfer.dropEffect = 'move'
+    setIsDropTarget(true)
+  }
+
+  const handleDragLeave = (event: React.DragEvent): void => {
+    const related = event.relatedTarget as Node | null
+    if (related && rowRef.current?.contains(related)) return
+    setIsDropTarget(false)
+  }
+
+  const handleDrop = (event: React.DragEvent): void => {
+    if (!entry.isDirectory) return
+    const payload = readFileTreeDragPayload(event)
+    if (!payload) return
+    event.preventDefault()
+    event.stopPropagation()
+    setIsDropTarget(false)
+    void onMovePathsToDirectory(payload.paths, entry.path)
   }
 
   /** 删除后刷新子目录 */
@@ -764,6 +920,19 @@ function FileTreeItem({
         <FolderInput />
         {menuSelectedCount > 1 ? `移动选中 (${menuSelectedCount})` : '移动到...'}
       </ContextMenuItem>
+      {transferTarget && (
+        <ContextMenuItem
+          className="text-xs py-1 [&>svg]:size-3.5"
+          disabled={moving || !transferTarget.targetDir}
+          onSelect={() => {
+            if (!transferTarget.targetDir) return
+            void onTransfer(entry, transferTarget.targetDir)
+          }}
+        >
+          <FolderInput />
+          {menuSelectedCount > 1 ? `${transferTarget.label} (${menuSelectedCount})` : transferTarget.label}
+        </ContextMenuItem>
+      )}
       {menuSelectedCount === 1 && (
         <ContextMenuItem
           className="text-xs py-1 [&>svg]:size-3.5"
@@ -802,6 +971,7 @@ function FileTreeItem({
                   ? 'hover:bg-accent'
                   : 'hover:bg-accent/50',
               flash && 'file-browser-row-flash',
+              isDropTarget && 'ring-1 ring-primary/50 bg-primary/10',
             )}
             style={{
               paddingLeft,
@@ -809,6 +979,12 @@ function FileTreeItem({
               zIndex: isSticky ? stickyZIndex : undefined,
             }}
             onClick={handleClick}
+            draggable={!isRenaming}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
             onContextMenu={(event) => {
               if (!isSelected) onSelect(entry, event)
             }}
@@ -915,6 +1091,9 @@ function FileTreeItem({
               onAddToChat={onAddToChat}
               onFilePreview={onFilePreview}
               onCreateEntry={onCreateEntry}
+              transferTarget={transferTarget}
+              onTransfer={onTransfer}
+              onMovePathsToDirectory={onMovePathsToDirectory}
             />
           ))}
         </div>

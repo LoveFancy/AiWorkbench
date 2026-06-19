@@ -757,6 +757,8 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                           onFilePreview={handleFilePreview}
                           onSelectedDirectoryChange={setSessionCreateDir}
                           onCreateEntry={(parentDir, type) => openCreateDialog({ parentDir, type, scope: 'session' })}
+                          transferTarget={{ label: '转移到工作区', targetDir: workspaceFilesPath }}
+                          onFilesMoved={handleFilesUploaded}
                         />
                       </>
                       <FileDropZone
@@ -898,6 +900,8 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                           onFilePreview={handleFilePreview}
                           onSelectedDirectoryChange={setWorkspaceCreateDir}
                           onCreateEntry={(parentDir, type) => openCreateDialog({ parentDir, type, scope: 'workspace' })}
+                          transferTarget={{ label: '转移到当前会话', targetDir: sessionPath }}
+                          onFilesMoved={handleFilesUploaded}
                         />
                       </>
                     )}
