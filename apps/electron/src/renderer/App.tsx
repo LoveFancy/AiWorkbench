@@ -10,7 +10,6 @@ import { IssueReportDialog } from './components/issue-report'
 import { LoginView } from '@/auth/renderer'
 import { loginDialogOpenAtom, authStateAtom, resolveLoginPresentation } from '@/auth/renderer'
 import { conversationsAtom, channelsAtom } from './atoms/chat-atoms'
-import { agentChannelIdsAtom } from './atoms/agent-atoms'
 import { environmentCheckDialogOpenAtom } from './atoms/environment'
 import { tabsAtom, activeTabIdAtom, openTab } from './atoms/tab-atoms'
 import { platformModelsAtom, platformApiKeyAtom } from '@/platform-models/renderer'
@@ -215,7 +214,7 @@ function GlobalEnvironmentCheckDialog(): React.ReactElement {
  *
  * 职责：
  * 1. 登录后自动拉取平台模型
- * 2. 将结果同步为虚拟渠道 __platform__ 到 channelsAtom / agentChannelIds
+ * 2. 将结果同步为虚拟渠道 __platform__ 到 channelsAtom
  * 3. 监听 channels 变化，抵抗 ModelSelector.listChannels() 的覆盖写入
  * 4. 退出登录后清除
  */
@@ -225,7 +224,6 @@ function PlatformChannelSync(): React.ReactElement {
   const [platformApiKey, setPlatformApiKey] = useAtom(platformApiKeyAtom)
   const channels = useAtomValue(channelsAtom)
   const setGlobalChannels = useSetAtom(channelsAtom)
-  const [, setAgentChannelIds] = useAtom(agentChannelIdsAtom)
   const hasFetchedRef = React.useRef(false)
   const restoringRef = React.useRef(false)
 
@@ -262,7 +260,6 @@ function PlatformChannelSync(): React.ReactElement {
       if (hasPlatform) {
         restoringRef.current = true
         setGlobalChannels((prev) => prev.filter((c) => c.id !== '__platform__'))
-        setAgentChannelIds((ids) => ids.filter((id) => id !== '__platform__'))
       }
       return
     }
@@ -289,11 +286,7 @@ function PlatformChannelSync(): React.ReactElement {
       const others = prev.filter((c) => c.id !== '__platform__')
       return [platformChannel, ...others]
     })
-    setAgentChannelIds((ids) => {
-      if (ids.includes('__platform__')) return ids
-      return [...ids, '__platform__']
-    })
-  }, [platformModels, platformApiKey, channels, setGlobalChannels, setAgentChannelIds])
+  }, [platformModels, platformApiKey, channels, setGlobalChannels])
 
   return <></>
 }

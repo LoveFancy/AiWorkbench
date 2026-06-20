@@ -1,3 +1,4 @@
+import { isAgentCompatibleProvider } from '@proma/shared'
 import type { Channel } from '@proma/shared'
 import type { SelectedModel } from '../atoms/chat-atoms'
 
@@ -28,6 +29,17 @@ function findFirstUsableModel(channels: Channel[]): SelectedModel | null {
   return null
 }
 
+export function isAgentUsableChannel(channel: Channel): boolean {
+  if (!channel.enabled) return false
+  if (!hasConfiguredApiKey(channel)) return false
+  if (!isAgentCompatibleProvider(channel.provider)) return false
+  return channel.models.some((model) => model.enabled)
+}
+
+export function getAgentAvailableChannelIds(channels: Channel[]): string[] {
+  return channels.filter(isAgentUsableChannel).map((channel) => channel.id)
+}
+
 export function hasUsableChatModel(channels: Channel[]): boolean {
   return findFirstUsableModel(channels) !== null
 }
@@ -42,16 +54,15 @@ export function resolveSelectedModel(
 
 export function resolveAgentSelectedModel(
   channels: Channel[],
-  agentChannelIds: string[],
   current: SelectedModel | null,
 ): SelectedModel | null {
-  const selectableChannelIds = new Set(agentChannelIds)
+  const selectableChannelIds = new Set(getAgentAvailableChannelIds(channels))
   if (current && selectableChannelIds.has(current.channelId) && isUsableModel(channels, current)) {
     return current
   }
 
   const promaOfficial = channels.find((channel) => channel.id === 'proma-official')
-  if (promaOfficial?.enabled && hasConfiguredApiKey(promaOfficial)) {
+  if (promaOfficial && isAgentUsableChannel(promaOfficial)) {
     const model = promaOfficial.models.find((item) => item.enabled)
     if (model) {
       return {

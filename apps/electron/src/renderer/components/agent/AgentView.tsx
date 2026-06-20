@@ -50,7 +50,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { cn } from '@/lib/utils'
-import { hasConfiguredApiKey } from '@/lib/model-selection'
+import { getAgentAvailableChannelIds } from '@/lib/model-selection'
 import { getActiveAccelerator, getAcceleratorDisplay } from '@/lib/shortcut-registry'
 import { registerShortcut } from '@/lib/shortcut-registry'
 import { previewPanelOpenMapAtom, previewFileMapAtom, autoPreviewEnabledAtom, PREVIEW_KIND, quotedSelectionMapAtom, currentQuotedSelectionAtom } from '@/atoms/preview-atoms'
@@ -59,7 +59,6 @@ import {
   agentSessionStreamingStateAtomFamily,
   agentChannelIdAtom,
   agentModelIdAtom,
-  agentChannelIdsAtom,
   agentSessionChannelMapAtom,
   agentSessionModelMapAtom,
   currentAgentWorkspaceIdAtom,
@@ -343,8 +342,6 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
   const [defaultModelId, setDefaultModelId] = useAtom(agentModelIdAtom)
   const agentChannelId = sessionChannelMap.get(sessionId) ?? defaultChannelId
   const agentModelId = sessionModelMap.get(sessionId) ?? defaultModelId
-  const agentChannelIds = useAtomValue(agentChannelIdsAtom)
-  const setAgentChannelIds = useSetAtom(agentChannelIdsAtom)
   const [agentThinking, setAgentThinking] = useAtom(agentThinkingAtom)
   const setSettingsOpen = useSetAtom(settingsOpenAtom)
   const setActiveView = useSetAtom(activeViewAtom)
@@ -486,17 +483,15 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
     [globalChannels, agentChannelId, agentModelId],
   )
 
-  // 检查 Agent 渠道列表中是否存在可用的模型（渠道 enabled + 模型 enabled）
+  const availableAgentChannelIds = React.useMemo(
+    () => getAgentAvailableChannelIds(globalChannels),
+    [globalChannels],
+  )
+
+  // 检查是否存在可用的 Agent 模型（Anthropic 兼容渠道 + API Key + 已启用模型）
   const hasAvailableModel = React.useMemo(() => {
-    // Proma 官方渠道（商业版）：只要 enabled 且有可用模型，直接视为可用
-    const promaOfficial = globalChannels.find((c) => c.id === 'proma-official')
-    if (promaOfficial?.enabled && hasConfiguredApiKey(promaOfficial) && promaOfficial.models.some((m) => m.enabled)) return true
-    // 其他渠道：需在 agentChannelIds 白名单中
-    if (!agentChannelIds || agentChannelIds.length === 0) return false
-    return globalChannels.some(
-      (c) => c.enabled && hasConfiguredApiKey(c) && agentChannelIds.includes(c.id) && c.models.some((m) => m.enabled),
-    )
-  }, [globalChannels, agentChannelIds])
+    return availableAgentChannelIds.length > 0
+  }, [availableAgentChannelIds])
   React.useEffect(() => {
     if (!agentChannelId || agentModelId) return
 
@@ -1276,14 +1271,6 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       return map
     })
 
-    // 自动将选中的渠道加入 Agent 可用渠道白名单
-    const updatedChannelIds = agentChannelIds.includes(option.channelId)
-      ? agentChannelIds
-      : [...agentChannelIds, option.channelId]
-    if (updatedChannelIds !== agentChannelIds) {
-      setAgentChannelIds(updatedChannelIds)
-    }
-
     // 同时更新全局默认值（新会话继承）
     setDefaultChannelId(option.channelId)
     setDefaultModelId(option.modelId)
@@ -1292,9 +1279,9 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
     window.electronAPI.updateSettings({
       agentChannelId: option.channelId,
       agentModelId: option.modelId,
-      agentChannelIds: updatedChannelIds,
+      agentChannelIds: availableAgentChannelIds,
     }).catch(console.error)
-  }, [sessionId, setSessionChannelMap, setSessionModelMap, setDefaultChannelId, setDefaultModelId, agentChannelIds, setAgentChannelIds])
+  }, [sessionId, setSessionChannelMap, setSessionModelMap, setDefaultChannelId, setDefaultModelId, availableAgentChannelIds])
 
   /** 构建 externalSelectedModel 给 ModelSelector */
   const externalSelectedModel = React.useMemo(() => {
@@ -1951,7 +1938,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       key: 'model',
       node: (
         <ModelSelector
-          filterChannelIds={agentChannelIds}
+          filterChannelIds={availableAgentChannelIds}
           externalSelectedModel={externalSelectedModel}
           onModelSelect={handleModelSelect}
           autoModeConfig={autoMode.autoModeConfig}
@@ -1977,7 +1964,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       ),
     },
   ], [
-    agentChannelIds,
+    availableAgentChannelIds,
     agentChannelId,
     hasAvailableModel,
     workspaceSkills,
@@ -2182,7 +2169,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
             {(!agentChannelId || !hasAvailableModel) && (
               <div className="flex items-center gap-2 px-4 py-2 text-sm text-amber-600 dark:text-amber-400">
                 <Settings size={14} />
-                <span>{!agentChannelId ? '请在设置 → 模型设置中选择 Agent 供应商' : '暂无可用模型，请在设置 → 模型设置中配置 API Key 并启用 Agent 模型'}</span>
+                <span>{!agentChannelId ? '请在设置 → 模型配置中配置并启用 Anthropic 兼容模型' : '暂无可用模型，请在设置 → 模型配置中配置 API Key 并启用 Agent 模型'}</span>
                 <button
                   type="button"
                   className="text-xs underline underline-offset-2 hover:text-foreground transition-colors"
@@ -2256,8 +2243,8 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
                     ? '输入消息... (⌘/Ctrl+Enter 发送，Enter 换行，@ 引用文件，/ 命令或 Skill，# 调用 MCP，& 引用会话)'
                     : '输入消息... (Enter 发送，Shift+Enter 换行，@ 引用文件，/ 命令或 Skill，# 调用 MCP，& 引用会话)'
                   : !agentChannelId
-                    ? '请先在设置 → 模型设置中选择 Agent 供应商'
-                    : '请先在设置 → 模型设置中配置 API Key 并启用 Agent 模型'
+                    ? '请先在设置 → 模型配置中配置并启用 Anthropic 兼容模型'
+                    : '请先在设置 → 模型配置中配置 API Key 并启用 Agent 模型'
               }
               disabled={!agentChannelId || !hasAvailableModel}
               autoFocusTrigger={sessionId}
