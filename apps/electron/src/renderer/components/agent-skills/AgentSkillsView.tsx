@@ -749,7 +749,7 @@ function InstalledPluginCard({ plugin, onOpen }: { plugin: AgentPluginInfo; onOp
 }
 
 function getInstalledPluginSourceLabel(plugin: AgentPluginInfo): string {
-  if (plugin.kind === 'builtin') return 'PROMA 内置'
+  if (plugin.kind === 'builtin') return 'WorkMate 内置'
   if (plugin.sourceMarketplaceId) return `市场 (${plugin.sourceMarketplaceId})`
   return '本地插件'
 }
@@ -760,11 +760,11 @@ function summarizePluginCapabilities(plugin: AgentPluginInfo): string {
     return acc
   }, {})
   return [
-    counts.skill ? `${counts.skill} Skills` : null,
-    counts.agent ? `${counts.agent} Agents` : null,
+    counts.skill ? `${counts.skill} 个技能` : null,
+    counts.agent ? `${counts.agent} 个智能体` : null,
     counts['expert-group'] ? `${counts['expert-group']} 专家团` : null,
-    counts.mcp ? `${counts.mcp} MCP` : null,
-    counts.command ? `${counts.command} Commands` : null,
+    counts.mcp ? `${counts.mcp} 个 MCP` : null,
+    counts.command ? `${counts.command} 个命令` : null,
   ].filter(Boolean).join(' · ') || '暂无能力'
 }
 

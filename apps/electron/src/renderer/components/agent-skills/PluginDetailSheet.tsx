@@ -62,7 +62,7 @@ export function PluginDetailSheet({
         <SheetTitle className="sr-only">插件详情</SheetTitle>
         {plugin && (
           <>
-            <div className="shrink-0 border-b border-border/60 px-5 py-5">
+            <div className="shrink-0 border-b border-border/60 px-5 py-4">
               <div className="flex items-center gap-3">
                 <Button variant="ghost" size="icon" className="size-8 shrink-0" type="button" onClick={() => onOpenChange(false)}>
                   {mode === 'installed' ? <ArrowLeft size={18} /> : <X size={16} />}
@@ -70,30 +70,31 @@ export function PluginDetailSheet({
                 <h3 className="text-lg font-medium text-foreground">插件详情</h3>
               </div>
 
-              <div className="mt-4 flex items-start gap-3">
-                <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-violet-500/10 text-violet-500">
-                  <Package size={21} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <h3 className="truncate text-lg font-semibold text-foreground">{name}</h3>
-                    {version && (
-                      <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-                        v{version}
-                      </span>
-                    )}
+              <div className="mt-4 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-violet-500/10 text-violet-500">
+                    <Package size={23} />
                   </div>
-                  <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{description}</p>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <span className="rounded-md bg-violet-500/10 px-2 py-0.5 text-[11px] font-medium text-violet-600 dark:text-violet-300">套件</span>
-                    {sourceLabel && <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">来源 {sourceLabel}</span>}
-                    {installed && <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-300">已安装</span>}
-                    {enabled !== null && <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{enabled ? '已启用' : '已禁用'}</span>}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <h3 className="truncate text-xl font-semibold leading-7 text-foreground">{name}</h3>
+                      {version && (
+                        <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                          v{version}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 line-clamp-2 max-w-3xl text-sm leading-5 text-muted-foreground">{description}</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span className="rounded-md bg-violet-500/10 px-2 py-0.5 text-[11px] font-medium text-violet-600 dark:text-violet-300">套件</span>
+                      {sourceLabel && <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">来源 {sourceLabel}</span>}
+                      {installed && <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-300">已安装</span>}
+                      {enabled !== null && <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{enabled ? '已启用' : '已禁用'}</span>}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="mt-4 flex items-center gap-2">
+              <div className="flex shrink-0 flex-wrap items-center gap-2 xl:justify-end">
                 {mode === 'market' && isMarketplaceDetail(plugin) && onInstall && (
                   <Button size="sm" disabled={installing} onClick={() => onInstall(plugin)}>
                     {installing ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
@@ -102,7 +103,7 @@ export function PluginDetailSheet({
                 )}
                 {mode === 'installed' && isInstalledPlugin(plugin) && (
                   <>
-                    <div className="mr-auto flex items-center gap-2">
+                    <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-background/60 px-2.5 py-1.5">
                       <Switch
                         checked={plugin.enabled}
                         disabled={toggling}
@@ -150,6 +151,7 @@ export function PluginDetailSheet({
                 )}
               </div>
             </div>
+            </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin">
               {loading ? (
@@ -159,14 +161,14 @@ export function PluginDetailSheet({
                 </div>
               ) : (
                 <div className="flex flex-col gap-4 p-5">
-                  <div className="rounded-xl border border-border/60 bg-content-area p-3">
-                    <div className="grid gap-x-5 gap-y-2 sm:grid-cols-2">
+                  <div className="rounded-xl border border-border/60 bg-content-area p-4">
+                    <div className="grid gap-x-8 gap-y-3 md:grid-cols-2">
                       <CompactDetailField label="名称" value={name} />
                       <CompactDetailField label="版本" value={version || '未知'} />
                       <CompactDetailField label="作者" value={author || '未知'} />
-                      <CompactDetailField label="来源" value={sourceLabel || '未知'} className="sm:col-span-2" />
+                      <CompactDetailField label="来源" value={sourceLabel || '未知'} />
                     </div>
-                    <div className="mt-3 border-t border-border/50 pt-3">
+                    <div className="mt-4 border-t border-border/50 pt-4">
                       <div className="mb-2 text-xs font-medium text-muted-foreground">能力数量</div>
                       {capabilitySummary.length === 0 ? (
                         <div className="text-sm text-muted-foreground">暂无能力</div>
@@ -186,8 +188,13 @@ export function PluginDetailSheet({
                     </div>
                   </div>
 
-                  <section className="space-y-3">
-                    <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">组件能力</h4>
+                  <section className="space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">组件能力</h4>
+                      {capabilities.length > 0 && (
+                        <span className="text-xs text-muted-foreground">{capabilities.length} 项</span>
+                      )}
+                    </div>
                     {capabilities.length === 0 ? (
                       <div className="rounded-lg border border-dashed border-border/70 py-8 text-center text-sm text-muted-foreground">暂无可发现能力</div>
                     ) : (
@@ -277,11 +284,11 @@ function CompactDetailField({ label, value, className }: { label: string; value:
 function capabilityLabel(type: AgentPluginCapability['type']): string {
   switch (type) {
     case 'skill':
-      return 'Skills'
+      return '技能'
     case 'command':
-      return 'Commands'
+      return '命令'
     case 'agent':
-      return 'Agents'
+      return '智能体'
     case 'mcp':
       return 'MCP'
     case 'expert-group':
@@ -302,11 +309,11 @@ function groupCapabilities(capabilities: AgentPluginCapability[]): Record<AgentP
 function summarizeCapabilities(capabilities: AgentPluginCapability[]): string {
   const grouped = groupCapabilities(capabilities)
   return [
-    grouped.skill.length > 0 ? `${grouped.skill.length} Skills` : null,
-    grouped.agent.length > 0 ? `${grouped.agent.length} Agents` : null,
+    grouped.skill.length > 0 ? `${grouped.skill.length} 个技能` : null,
+    grouped.agent.length > 0 ? `${grouped.agent.length} 个智能体` : null,
     grouped['expert-group'].length > 0 ? `${grouped['expert-group'].length} 专家团` : null,
-    grouped.mcp.length > 0 ? `${grouped.mcp.length} MCP` : null,
-    grouped.command.length > 0 ? `${grouped.command.length} Commands` : null,
+    grouped.mcp.length > 0 ? `${grouped.mcp.length} 个 MCP` : null,
+    grouped.command.length > 0 ? `${grouped.command.length} 个命令` : null,
   ].filter(Boolean).join(' · ') || '暂无能力'
 }
 
