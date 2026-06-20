@@ -3525,7 +3525,9 @@ export function registerIpcHandlers(): void {
       const safePath = resolve(filePath)
       const safeTarget = resolve(targetDir)
       const options = normalizeFileAccessOptions(access)
-      if (!isPathAllowed(safePath, options) || !isPathAllowed(safeTarget, options)) {
+      const workspacesRoot = resolve(getAgentWorkspacesDir())
+      const sourceAllowed = isPathAllowed(safePath, options) || safePath.startsWith(workspacesRoot)
+      if (!sourceAllowed || !isPathAllowed(safeTarget, options)) {
         throw new Error('访问路径不在允许范围内')
       }
       const newPath = join(safeTarget, basename(safePath))

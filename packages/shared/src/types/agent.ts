@@ -1384,6 +1384,8 @@ export interface AgentSaveFilesInput {
   workspaceSlug: string
   sessionId: string
   files: Array<{ filename: string; data: string }>
+  /** 可选目标目录；必须位于该 session 工作目录内，默认保存到 session 根目录 */
+  targetDir?: string
 }
 
 /** Agent 已保存文件信息 */
@@ -1396,6 +1398,8 @@ export interface AgentSavedFile {
 export interface AgentSaveWorkspaceFilesInput {
   workspaceSlug: string
   files: Array<{ filename: string; data: string }>
+  /** 可选目标目录；必须位于 workspace-files 内，默认保存到工作区文件根目录 */
+  targetDir?: string
 }
 
 /** 附加/分离目录的输入参数 */
