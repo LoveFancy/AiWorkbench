@@ -75,6 +75,12 @@ export function getSkillHubAuthPath(): string {
 /** 提前刷新阈值：距离过期不足 5 分钟时主动刷新 */
 const REFRESH_THRESHOLD_MS = 5 * 60 * 1000
 
+function shouldUseMockSkillHub(): boolean {
+  if (process.env.WORKMATE_SKILLHUB_MOCK === '1') return true
+  if (process.env.WORKMATE_SKILLHUB_MOCK === '0') return false
+  return process.env.NODE_ENV !== 'production'
+}
+
 // ===== 内部类型 =====
 
 interface SkillHubAuthFile {
@@ -207,6 +213,10 @@ export async function exchangeToken(): Promise<string> {
  *   3. EIPGW-TOKEN 也过期 → 抛异常
  */
 export async function getValidSkillHubToken(): Promise<string> {
+  if (shouldUseMockSkillHub()) {
+    return 'mock-skillhub-token'
+  }
+
   // 已有有效 token 直接返回（不走锁）
   const cached = getCachedValidToken()
   if (cached) {
@@ -231,6 +241,14 @@ export function getSkillHubAuthStatus(): {
   expiresAt?: number
   remainingSeconds?: number
 } {
+  if (shouldUseMockSkillHub()) {
+    return {
+      authenticated: true,
+      expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+      remainingSeconds: 24 * 60 * 60,
+    }
+  }
+
   const file = readAuthFile()
   if (!file) return { authenticated: false }
 
