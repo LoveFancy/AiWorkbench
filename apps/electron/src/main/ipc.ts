@@ -2455,6 +2455,14 @@ export function registerIpcHandlers(): void {
   )
 
   ipcMain.handle(
+    EXPERT_IPC_CHANNELS.FETCH_CATEGORIES,
+    async (): Promise<string[]> => {
+      const { fetchServerExpertGroupCategories } = await import('./lib/expert-remote-service')
+      return fetchServerExpertGroupCategories()
+    }
+  )
+
+  ipcMain.handle(
     EXPERT_IPC_CHANNELS.DOWNLOAD_REMOTE_EXPERT,
     async (_, groupId: string): Promise<AgentPluginInfo> => {
       const { downloadAndInstallRemoteExpert } = await import('./lib/expert-download-service')

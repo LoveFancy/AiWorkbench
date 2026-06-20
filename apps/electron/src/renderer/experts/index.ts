@@ -21,7 +21,11 @@ export { filterByTag, searchByName } from './utils/filter'
 export { ExpertSearchBar } from './shared/ExpertSearchBar'
 export { ExpertFilterPills } from './shared/ExpertFilterPills'
 export type { FilterTag } from './shared/ExpertFilterPills'
+export { ExpertCategoryFilter } from './shared/ExpertCategoryFilter'
 export { ExpertCardGrid } from './shared/ExpertCardGrid'
 export { ExpertEmptyState } from './shared/ExpertEmptyState'
 export { ExpertImportButton } from './shared/ExpertImportDropdown'
 export { ExpertFeaturedScenes } from './shared/ExpertFeaturedScenes'
+
+// Remote expert data
+export { expertCategoriesAtom } from './atoms/expert-remote'

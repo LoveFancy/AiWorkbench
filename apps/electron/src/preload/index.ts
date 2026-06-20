@@ -35,6 +35,10 @@ import type {
   StreamCompleteEvent,
   StreamErrorEvent,
   StreamToolActivityEvent,
+  StreamRetryEvent,
+  StreamRetryAttemptEvent,
+  StreamRetryClearedEvent,
+  StreamRetryFailedEvent,
   AttachmentSaveInput,
   AttachmentSaveResult,
   FileDialogResult,
@@ -496,6 +500,15 @@ export interface ElectronAPI {
   /** 订阅流式工具活动事件 */
   onStreamToolActivity: (callback: (event: StreamToolActivityEvent) => void) => () => void
 
+  /** 订阅 Chat 重试开始事件 */
+  onStreamRetrying: (callback: (event: StreamRetryEvent) => void) => () => void
+  /** 订阅 Chat 重试尝试记录事件 */
+  onStreamRetryAttempt: (callback: (event: StreamRetryAttemptEvent) => void) => () => void
+  /** 订阅 Chat 重试清除事件 */
+  onStreamRetryCleared: (callback: (event: StreamRetryClearedEvent) => void) => () => void
+  /** 订阅 Chat 重试失败事件 */
+  onStreamRetryFailed: (callback: (event: StreamRetryFailedEvent) => void) => () => void
+
   // ===== Agent 会话管理相关 =====
 
   /** 获取 Agent 会话列表 */
@@ -617,6 +630,8 @@ export interface ElectronAPI {
   downloadRemoteExpert: (groupId: string) => Promise<AgentPluginInfo>
   /** 取消远程专家团下载 */
   cancelRemoteDownload: (groupId: string) => Promise<void>
+  /** 获取服务端专家团分类列表 */
+  fetchServerExpertGroupCategories: () => Promise<string[]>
   /** 订阅下载进度事件（返回清理函数） */
   onExpertDownloadProgress: (callback: (progress: RemoteDownloadProgress) => void) => () => void
 
@@ -1638,6 +1653,31 @@ const electronAPI: ElectronAPI = {
     return () => { ipcRenderer.removeListener(CHAT_IPC_CHANNELS.STREAM_TOOL_ACTIVITY, listener) }
   },
 
+  // Chat 重试事件
+  onStreamRetrying: (callback: (event: StreamRetryEvent) => void) => {
+    const listener = (_: unknown, event: StreamRetryEvent): void => callback(event)
+    ipcRenderer.on(CHAT_IPC_CHANNELS.STREAM_RETRYING, listener)
+    return () => { ipcRenderer.removeListener(CHAT_IPC_CHANNELS.STREAM_RETRYING, listener) }
+  },
+
+  onStreamRetryAttempt: (callback: (event: StreamRetryAttemptEvent) => void) => {
+    const listener = (_: unknown, event: StreamRetryAttemptEvent): void => callback(event)
+    ipcRenderer.on(CHAT_IPC_CHANNELS.STREAM_RETRY_ATTEMPT, listener)
+    return () => { ipcRenderer.removeListener(CHAT_IPC_CHANNELS.STREAM_RETRY_ATTEMPT, listener) }
+  },
+
+  onStreamRetryCleared: (callback: (event: StreamRetryClearedEvent) => void) => {
+    const listener = (_: unknown, event: StreamRetryClearedEvent): void => callback(event)
+    ipcRenderer.on(CHAT_IPC_CHANNELS.STREAM_RETRY_CLEARED, listener)
+    return () => { ipcRenderer.removeListener(CHAT_IPC_CHANNELS.STREAM_RETRY_CLEARED, listener) }
+  },
+
+  onStreamRetryFailed: (callback: (event: StreamRetryFailedEvent) => void) => {
+    const listener = (_: unknown, event: StreamRetryFailedEvent): void => callback(event)
+    ipcRenderer.on(CHAT_IPC_CHANNELS.STREAM_RETRY_FAILED, listener)
+    return () => { ipcRenderer.removeListener(CHAT_IPC_CHANNELS.STREAM_RETRY_FAILED, listener) }
+  },
+
   // Agent 会话管理
   listAgentSessions: () => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.LIST_SESSIONS)
@@ -1838,6 +1878,10 @@ const electronAPI: ElectronAPI = {
 
   cancelRemoteDownload: (groupId: string) => {
     return ipcRenderer.invoke(EXPERT_IPC_CHANNELS.CANCEL_DOWNLOAD, groupId)
+  },
+
+  fetchServerExpertGroupCategories: () => {
+    return ipcRenderer.invoke(EXPERT_IPC_CHANNELS.FETCH_CATEGORIES)
   },
 
   onExpertDownloadProgress: (callback: (progress: RemoteDownloadProgress) => void) => {

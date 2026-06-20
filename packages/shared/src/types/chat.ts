@@ -301,6 +301,71 @@ export interface StreamToolActivityEvent {
   activity: ChatToolActivity
 }
 
+/**
+ * Chat 重试尝试信息
+ *
+ * 用于 Chat 模式的重试状态追踪和 UI 展示。
+ * 与 Agent 模式的 RetryAttempt 共享 reason / errorMessage 等字段语义。
+ */
+export interface ChatRetryAttempt {
+  /** 第几次尝试 (1-based) */
+  attempt: number
+  /** 最大尝试次数 */
+  maxAttempts: number
+  /** 时间戳 */
+  timestamp: number
+  /** 等待延迟（秒） */
+  delaySeconds: number
+  /** 失败原因简述 */
+  reason: string
+  /** 失败详情 */
+  errorMessage: string
+}
+
+/**
+ * Chat 流式重试事件 — 通知前端开始重试等待
+ */
+export interface StreamRetryEvent {
+  /** 对话 ID */
+  conversationId: string
+  /** 第几次尝试 */
+  attempt: number
+  /** 最大尝试次数 */
+  maxAttempts: number
+  /** 等待延迟（秒） */
+  delaySeconds: number
+  /** 失败原因 */
+  reason: string
+}
+
+/**
+ * Chat 流式重试尝试记录事件 — 通知前端记录单次尝试详情
+ */
+export interface StreamRetryAttemptEvent {
+  /** 对话 ID */
+  conversationId: string
+  /** 尝试详情 */
+  attempt: ChatRetryAttempt
+}
+
+/**
+ * Chat 流式重试成功事件 — 通知前端清除重试状态
+ */
+export interface StreamRetryClearedEvent {
+  /** 对话 ID */
+  conversationId: string
+}
+
+/**
+ * Chat 流式重试失败事件 — 所有重试已耗尽
+ */
+export interface StreamRetryFailedEvent {
+  /** 对话 ID */
+  conversationId: string
+  /** 最后一次尝试信息 */
+  finalAttempt: ChatRetryAttempt
+}
+
 // ===== 模型选项 =====
 
 /**
@@ -417,4 +482,14 @@ export const CHAT_IPC_CHANNELS = {
   STREAM_ERROR: 'chat:stream:error',
   /** 工具活动事件（记忆工具调用/结果指示） */
   STREAM_TOOL_ACTIVITY: 'chat:stream:tool-activity',
+
+  // 重试机制
+  /** 重试开始通知（包含倒计时） */
+  STREAM_RETRYING: 'chat:stream:retrying',
+  /** 重试尝试记录 */
+  STREAM_RETRY_ATTEMPT: 'chat:stream:retry-attempt',
+  /** 重试成功，清除状态 */
+  STREAM_RETRY_CLEARED: 'chat:stream:retry-cleared',
+  /** 重试全部失败 */
+  STREAM_RETRY_FAILED: 'chat:stream:retry-failed',
 } as const

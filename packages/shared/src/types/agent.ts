@@ -938,6 +938,8 @@ export interface AgentExpertGroupManifest {
   toolsPolicy?: AgentExpertGroupToolsPolicy
   /** 从 plugin.json 传递的专家类型，'agent' = 单专家，'team' = 多专家团队 */
   expertType?: 'agent' | 'team'
+  /** 多分类标签 */
+  categories?: string[]
 }
 
 export interface AgentExpertGroupInfo extends AgentExpertGroupManifest {
@@ -1034,6 +1036,8 @@ export interface ServerExpertGroupSummary {
   sortWeight: number
   publishedAt: string
   updatedAt: string
+  /** 多分类标签 */
+  categories: string[]
 }
 
 export interface ServerExpertGroupListResponse {
@@ -1907,6 +1911,8 @@ export const EXPERT_IPC_CHANNELS = {
   DOWNLOAD_PROGRESS: 'expert:download-progress',
   /** 取消下载 */
   CANCEL_DOWNLOAD: 'expert:cancel-download',
+  /** 获取服务端专家团分类列表 */
+  FETCH_CATEGORIES: 'expert:fetch-categories',
 } as const
 
 /**

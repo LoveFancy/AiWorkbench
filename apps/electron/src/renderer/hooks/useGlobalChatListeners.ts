@@ -15,15 +15,21 @@ import {
   conversationsAtom,
   chatMessageRefreshAtom,
   pendingAgentRecommendationAtom,
+  chatRetryingAtom,
 } from '@/atoms/chat-atoms'
 import { tabsAtom, updateTabTitle } from '@/atoms/tab-atoms'
-import type { ConversationStreamState } from '@/atoms/chat-atoms'
+import type { ConversationStreamState, ChatRetryingState } from '@/atoms/chat-atoms'
 import type {
   StreamChunkEvent,
   StreamReasoningEvent,
   StreamCompleteEvent,
   StreamErrorEvent,
   StreamToolActivityEvent,
+  StreamRetryEvent,
+  StreamRetryAttemptEvent,
+  StreamRetryClearedEvent,
+  StreamRetryFailedEvent,
+  ChatRetryAttempt,
   GenerateTitleInput,
 } from '@proma/shared'
 
@@ -199,12 +205,112 @@ export function useGlobalChatListeners(): void {
       }
     )
 
+    // ===== 6. Chat 重试开始 =====
+    const cleanupRetrying = window.electronAPI.onStreamRetrying(
+      (event: StreamRetryEvent) => {
+        // 清除上一次尝试残留的流式内容，防止新旧内容叠加
+        store.set(streamingStatesAtom, (prev) => {
+          if (!prev.has(event.conversationId)) return prev
+          const map = new Map(prev)
+          map.delete(event.conversationId)
+          return map
+        })
+        // 清除上一次的错误信息
+        store.set(chatStreamErrorsAtom, (prev) => {
+          if (!prev.has(event.conversationId)) return prev
+          const map = new Map(prev)
+          map.delete(event.conversationId)
+          return map
+        })
+
+        store.set(chatRetryingAtom, (prev) => {
+          const map = new Map(prev)
+          const current = map.get(event.conversationId)
+          const prevHistory = current?.history ?? []
+
+          // 将上一次失败记录为 history 条目
+          const prevAttemptRecord: ChatRetryAttempt = {
+            attempt: event.attempt - 1,
+            maxAttempts: event.maxAttempts,
+            timestamp: Date.now(),
+            delaySeconds: event.delaySeconds,
+            reason: event.reason,
+            errorMessage: event.reason,
+          }
+
+          map.set(event.conversationId, {
+            currentAttempt: event.attempt,
+            maxAttempts: event.maxAttempts,
+            delaySeconds: event.delaySeconds,
+            reason: event.reason,
+            lastRetryStartedAt: Date.now(),
+            history: event.attempt > 1 ? [...prevHistory, prevAttemptRecord] : prevHistory,
+            failed: false,
+          })
+          return map
+        })
+      }
+    )
+
+    // ===== 7. Chat 重试尝试记录 =====
+    const cleanupRetryAttempt = window.electronAPI.onStreamRetryAttempt(
+      (event: StreamRetryAttemptEvent) => {
+        store.set(chatRetryingAtom, (prev) => {
+          const map = new Map(prev)
+          const current = map.get(event.conversationId)
+          if (current) {
+            map.set(event.conversationId, {
+              ...current,
+              history: [...current.history, event.attempt],
+            })
+          }
+          return map
+        })
+      }
+    )
+
+    // ===== 8. Chat 重试清除 =====
+    const cleanupRetryCleared = window.electronAPI.onStreamRetryCleared(
+      (event: StreamRetryClearedEvent) => {
+        store.set(chatRetryingAtom, (prev) => {
+          if (!prev.has(event.conversationId)) return prev
+          const map = new Map(prev)
+          map.delete(event.conversationId)
+          return map
+        })
+      }
+    )
+
+    // ===== 9. Chat 重试失败 =====
+    const cleanupRetryFailed = window.electronAPI.onStreamRetryFailed(
+      (event: StreamRetryFailedEvent) => {
+        store.set(chatRetryingAtom, (prev) => {
+          const map = new Map(prev)
+          const current = map.get(event.conversationId)
+          const history = current?.history ?? []
+          map.set(event.conversationId, {
+            currentAttempt: event.finalAttempt.attempt,
+            maxAttempts: event.finalAttempt.maxAttempts,
+            delaySeconds: 0,
+            reason: event.finalAttempt.reason,
+            history: [...history, event.finalAttempt],
+            failed: true,
+          })
+          return map
+        })
+      }
+    )
+
     return () => {
       cleanupChunk()
       cleanupReasoning()
       cleanupComplete()
       cleanupError()
       cleanupToolActivity()
+      cleanupRetrying()
+      cleanupRetryAttempt()
+      cleanupRetryCleared()
+      cleanupRetryFailed()
     }
   }, [store]) // store 引用稳定，effect 只执行一次
 }
