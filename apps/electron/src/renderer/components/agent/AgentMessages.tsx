@@ -7,7 +7,7 @@
 
 import * as React from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
-import { Bot, ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { RetryingNotice as RetryingNoticeBase } from '@/components/ai-elements/retrying-notice'
 import { WelcomeEmptyState } from '@/components/welcome/WelcomeEmptyState'
 import {
@@ -26,7 +26,8 @@ import type { MinimapItem } from '@/components/ai-elements/scroll-minimap'
 import { StickyUserMessage } from '@/components/ai-elements/sticky-user-message'
 import { useSmoothStream } from '@proma/ui'
 import { formatMessageTime } from '@/components/chat/ChatMessageItem'
-import { getModelLogo, resolveModelDisplayName } from '@/lib/model-logo'
+import workmateLogo from '../../../../resources/icon.png'
+import { resolveModelDisplayName } from '@/lib/model-logo'
 import { userProfileAtom } from '@/atoms/user-profile'
 import { tabMinimapCacheAtom } from '@/atoms/tab-atoms'
 import { channelsAtom } from '@/atoms/chat-atoms'
@@ -118,20 +119,24 @@ function EmptyState(): React.ReactElement {
   return <WelcomeEmptyState />
 }
 
-function AssistantLogo({ model }: { model?: string }): React.ReactElement {
-  if (model) {
-    return (
-      <img
-        src={getModelLogo(model)}
-        alt={model}
-        className="size-[35px] rounded-[25%] object-cover"
-      />
-    )
-  }
+const WORKMATE_DISPLAY_NAME = 'WorkMate'
+
+function WorkMateLogo(): React.ReactElement {
   return (
-    <div className="size-[35px] rounded-[25%] bg-primary/10 flex items-center justify-center">
-      <Bot size={18} className="text-primary" />
-    </div>
+    <img
+      src={workmateLogo}
+      alt={WORKMATE_DISPLAY_NAME}
+      className="size-[35px] rounded-[25%] object-cover"
+    />
+  )
+}
+
+function ModelBadge({ model }: { model?: string }): React.ReactElement | null {
+  if (!model) return null
+  return (
+    <span className="mb-px inline-flex max-w-[260px] items-center self-end truncate rounded-md bg-muted/50 px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
+      {model}
+    </span>
   )
 }
 
@@ -588,10 +593,12 @@ export function AgentMessages({ sessionId, sessionModelId, messagesLoaded, persi
             {!hasLiveAssistantContent && !suppressAgentRunning && (streaming || smoothContent || retrying) && (
               <Message from="assistant">
                 <MessageHeader
-                  model={agentStreamingModel}
+                  model={WORKMATE_DISPLAY_NAME}
                   time={formatMessageTime(Date.now())}
-                  logo={<AssistantLogo model={agentStreamingModel} />}
-                />
+                  logo={<WorkMateLogo />}
+                >
+                  <ModelBadge model={agentStreamingModel} />
+                </MessageHeader>
                 <MessageContent>
                   {retrying && <RetryingNotice retrying={retrying} />}
                   {smoothContent ? (

@@ -9,7 +9,7 @@ import { execSync } from 'node:child_process'
 import { join, resolve, sep } from 'node:path'
 import { getInactiveSkillsDir, getWorkspaceSkillsDir } from './config-paths'
 import { getAllWorkspaceSkills } from './agent-workspace-manager'
-import { getValidSkillHubToken, getSkillHubApiBase } from './skillhub-auth-service'
+import { getValidSkillHubToken, getSkillHubApiBase, shouldUseMockSkillHub } from './skillhub-auth-service'
 import { getToken } from '../../auth/auth-service'
 
 export interface HtSkillHubSkill {
@@ -309,12 +309,6 @@ const MOCK_SKILLHUB_SKILLS: SkillMetadataRaw[] = [
     ].join('\n'),
   },
 ]
-
-function shouldUseMockSkillHub(): boolean {
-  if (process.env.WORKMATE_SKILLHUB_MOCK === '1') return true
-  if (process.env.WORKMATE_SKILLHUB_MOCK === '0') return false
-  return process.env.NODE_ENV !== 'production'
-}
 
 function filterMockSkillHubSkills(query: SkillListQuery = {}): SkillMetadataRaw[] {
   const keyword = query.keyword?.trim().toLowerCase()

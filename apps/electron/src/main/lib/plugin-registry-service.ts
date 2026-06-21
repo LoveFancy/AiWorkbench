@@ -17,6 +17,7 @@ import type {
   AgentPluginsConfig,
   McpServerEntry,
 } from '@proma/shared'
+import { classifyPlugin, isExpertGroupPlugin, shouldLoadInGeneralRuntime } from '@proma/shared'
 import {
   getDefaultPluginsDir,
   getPluginsConfigPath,
@@ -378,10 +379,6 @@ function hasConfiguredMcpEnv(plugin: AgentPluginInfo, config: AgentPluginsConfig
     .some((capability) => Object.keys(config.mcpServers[capability.mcpServerId ?? '']?.env ?? {}).length > 0)
 }
 
-function isExpertGroupPlugin(plugin: AgentPluginInfo): boolean {
-  return plugin.capabilities.some((capability) => capability.type === 'expert-group')
-}
-
 function writeRuntimeMcpOverlay(plugin: AgentPluginInfo, targetDir: string, config: AgentPluginsConfig): void {
   const entries = readPluginMcpEntries(plugin.path)
   const mcpServers: Record<string, Record<string, unknown>> = {}
@@ -467,6 +464,7 @@ function pluginInfoFromPath(kind: 'builtin' | 'user', pluginPath: string, plugin
     ...(state?.installedAt && { installedAt: state.installedAt }),
     ...(state?.updatedAt && { updatedAt: state.updatedAt }),
     ...(state?.sourceMarketplaceId && { sourceMarketplaceId: state.sourceMarketplaceId }),
+    category: classifyPlugin(capabilities),
     capabilities,
     issues: [...issues, ...capabilityIssues],
   }
@@ -638,7 +636,7 @@ export function buildPluginRuntimePaths(paths?: BuildPluginRuntimePathsOptions):
   const config = readPluginsConfig({ configPath: resolved.configPath })
   return listInstalledPlugins(resolved)
     .filter((plugin) => plugin.enabled && plugin.issues.every((issue) => issue.level !== 'error'))
-    .filter((plugin) => paths?.includeExpertGroupPlugins || !isExpertGroupPlugin(plugin))
+    .filter((plugin) => paths?.includeExpertGroupPlugins || shouldLoadInGeneralRuntime(plugin))
     .map((plugin) => {
       const runtimeDir = hasConfiguredMcpEnv(plugin, config) ? resolveRuntimeDir(resolved) : ''
       return { type: 'local' as const, path: runtimePluginPath(plugin, config, runtimeDir) }

@@ -7,7 +7,14 @@ import type { HtSkillHubSkill } from './skillhub-service.ts'
 import { clearConfigRootOverride, resolveConfigDir } from './config-root-service.ts'
 import { getAgentWorkspacePath, getWorkspaceSkillsDir } from './config-paths.ts'
 
+let electronAppIsPackaged = false
+
 mock.module('electron', () => ({
+  app: {
+    get isPackaged() {
+      return electronAppIsPackaged
+    },
+  },
   safeStorage: {
     isEncryptionAvailable: () => false,
   },
@@ -49,6 +56,7 @@ describe('华泰 SkillHub 服务', () => {
   afterEach(() => {
     clearConfigRootOverride()
     delete process.env.WORKMATE_SKILLHUB_MOCK
+    electronAppIsPackaged = false
   })
 
   test('HtSkillHubSkill 类型结构正确', () => {
@@ -122,5 +130,20 @@ describe('华泰 SkillHub 服务', () => {
 
     const detail = await fetchSkillHubDetail('prd-writer')
     expect(detail.readme).toContain('逐章节确认模式')
+  })
+
+  test('打包环境缺少 NODE_ENV 时不启用 SkillHub mock', async () => {
+    const previousNodeEnv = process.env.NODE_ENV
+    electronAppIsPackaged = true
+    delete process.env.NODE_ENV
+
+    try {
+      const { shouldUseMockSkillHub } = await import('./skillhub-auth-service.ts')
+
+      expect(shouldUseMockSkillHub()).toBe(false)
+    } finally {
+      if (previousNodeEnv === undefined) delete process.env.NODE_ENV
+      else process.env.NODE_ENV = previousNodeEnv
+    }
   })
 })

@@ -22,7 +22,7 @@ import Markdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
-import { ChevronDown, ChevronUp, Paperclip, FileText, Sparkles, Server, Download, MessageSquareText } from 'lucide-react'
+import { ChevronDown, ChevronUp, Paperclip, FileText, Sparkles, Download, MessageSquareText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { shouldInspectMermaidCodeBlock, shouldRenderMermaidCodeBlock } from '@/lib/mermaid-detection'
 import { normalizeLatexDelimiters } from '@/lib/normalize-latex'
@@ -277,12 +277,11 @@ function walkMdastText(
 
 // ----- MentionChip 组件 -----
 
-type MentionType = 'file' | 'skill' | 'mcp' | 'session'
+type MentionType = 'file' | 'skill' | 'session'
 
 const MENTION_STYLES: Record<MentionType, { icon: typeof FileText; className: string }> = {
   file: { icon: FileText, className: 'bg-primary/10 text-primary' },
   skill: { icon: Sparkles, className: 'bg-[hsl(270_60%_60%/0.15)] text-[hsl(270_60%_50%)]' },
-  mcp: { icon: Server, className: 'bg-[hsl(160_60%_45%/0.15)] text-[hsl(160_60%_35%)]' },
   session: { icon: MessageSquareText, className: 'bg-[hsl(200_80%_50%/0.14)] text-[hsl(200_80%_40%)]' },
 }
 
@@ -317,14 +316,14 @@ function MentionChip({ type, value }: { type: MentionType; value: string }): Rea
   )
 }
 
-// ----- remarkMentions：将 @file: /skill: #mcp: &session: 转为 mention:// link 节点 -----
+// ----- remarkMentions：将 @file: /skill: &session: 转为 mention:// link 节点 -----
 
 export function remarkMentions() {
   return (tree: MdastParent) => {
     walkMdastText(tree, (node, index, parent) => {
       const text = node.value
       // 每次调用创建独立正则实例，避免 /g 状态在并发 remark pipeline 间互相干扰
-      const mentionPattern = /@file:(\S+)|\/skill:(\S+)|#mcp:(\S+)|&session:(\S+)/g
+      const mentionPattern = /@file:(\S+)|\/skill:(\S+)|&session:(\S+)/g
       if (!mentionPattern.test(text)) return
       mentionPattern.lastIndex = 0
 
@@ -336,8 +335,8 @@ export function remarkMentions() {
         if (m.index > lastIdx) {
           parts.push({ type: 'text', value: text.slice(lastIdx, m.index) })
         }
-        const mType: MentionType = m[1] ? 'file' : m[2] ? 'skill' : m[3] ? 'mcp' : 'session'
-        const mValue = m[1] ?? m[2] ?? m[3] ?? m[4] ?? ''
+        const mType: MentionType = m[1] ? 'file' : m[2] ? 'skill' : 'session'
+        const mValue = m[1] ?? m[2] ?? m[3] ?? ''
         // 新版 htmlToMarkdown 已 encodeURIComponent，旧消息是原始路径
         const alreadyEncoded = /%[0-9A-Fa-f]{2}/.test(mValue)
         const safeValue = alreadyEncoded ? mValue : encodeURIComponent(mValue)
@@ -420,7 +419,7 @@ function mentionUrlTransform(url: string): string {
 // ===== Memo'd Markdown 子组件（稳定引用，避免 react-markdown 每帧重建组件映射） =====
 
 /** mention:// URL 匹配 */
-const MENTION_URL_RE = /^mention:\/\/(file|skill|mcp|session)\/(.+)$/
+const MENTION_URL_RE = /^mention:\/\/(file|skill|session)\/(.+)$/
 
 /** 外部链接 / mention chip 渲染器 */
 const MarkdownLink = React.memo(function MarkdownLink({

@@ -1,7 +1,7 @@
 /**
- * DingTalkSettings - 钉钉集成设置页（多 Bot 版本）
+ * DingTalkSettings - 钉钉集成设置页（多机器人版本）
  *
- * 支持多个钉钉 Bot 的配置管理、连接状态、创建引导。
+ * 支持多个钉钉机器人的配置管理、连接状态、创建引导。
  * 保存配置后自动启动 Stream 连接。
  */
 
@@ -98,7 +98,7 @@ export function DingTalkSettings(): React.ReactElement {
       })
       setBots((prev) => [...prev, saved])
     } catch {
-      toast.error('创建 Bot 失败')
+      toast.error('创建机器人失败')
     }
   }, [bots.length])
 
@@ -112,21 +112,21 @@ export function DingTalkSettings(): React.ReactElement {
 
   return (
     <div className="space-y-8">
-      {/* Bot 列表 */}
+      {/* 机器人列表 */}
       <SettingsSection
-        title="钉钉 Bot 列表"
-        description="管理多个钉钉机器人，每个 Bot 可绑定不同的工作区和模型"
+        title="钉钉机器人列表"
+        description="管理多个钉钉机器人，每个机器人可绑定不同的工作区和模型"
         action={
           <Button size="sm" variant="outline" onClick={handleAddBot}>
             <Plus size={14} className="mr-1.5" />
-            添加 Bot
+            添加机器人
           </Button>
         }
       >
         {bots.length === 0 ? (
           <SettingsCard divided={false}>
             <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-              还没有配置钉钉 Bot。点击「添加 Bot」开始。
+              还没有配置钉钉机器人。点击「添加机器人」开始。
             </div>
           </SettingsCard>
         ) : (
@@ -259,7 +259,7 @@ function BotConfigCard({ bot, state, onSaved, onRemoved }: BotConfigCardProps): 
         clientId: clientId.trim(),
         clientSecret: clientSecret || '',
       })
-      toast.success(`Bot "${name}" 已保存`)
+      toast.success(`机器人"${name}" 已保存`)
       onSaved()
     } catch {
       toast.error('保存配置失败')
@@ -283,11 +283,11 @@ function BotConfigCard({ bot, state, onSaved, onRemoved }: BotConfigCardProps): 
   const handleToggle = React.useCallback(async () => {
     if (isConnected) {
       await window.electronAPI.stopDingTalkBot(bot.id)
-      toast.success(`Bot "${bot.name}" 已停止`)
+      toast.success(`机器人"${bot.name}" 已停止`)
     } else {
       try {
         await window.electronAPI.startDingTalkBot(bot.id)
-        toast.success(`Bot "${bot.name}" 启动中...`)
+        toast.success(`机器人"${bot.name}" 启动中...`)
       } catch (err) {
         toast.error(err instanceof Error ? err.message : '启动失败')
       }
@@ -297,7 +297,7 @@ function BotConfigCard({ bot, state, onSaved, onRemoved }: BotConfigCardProps): 
   const handleRemove = React.useCallback(async () => {
     try {
       await window.electronAPI.removeDingTalkBot(bot.id)
-      toast.success(`Bot "${bot.name}" 已删除`)
+      toast.success(`机器人"${bot.name}" 已删除`)
       onRemoved()
     } catch {
       toast.error('删除失败')
@@ -314,7 +314,7 @@ function BotConfigCard({ bot, state, onSaved, onRemoved }: BotConfigCardProps): 
       >
         <div className="flex items-center gap-3">
           <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusConfig.color}`} />
-          <span className="font-medium text-sm">{bot.name || '未命名 Bot'}</span>
+          <span className="font-medium text-sm">{bot.name || '未命名机器人'}</span>
           <span className="text-xs text-muted-foreground">{bot.clientId ? bot.clientId.slice(0, 12) + '...' : '未配置'}</span>
         </div>
         <div className="flex items-center gap-2">
@@ -338,7 +338,7 @@ function BotConfigCard({ bot, state, onSaved, onRemoved }: BotConfigCardProps): 
       {expanded && (
         <div className="px-4 pb-4 space-y-4 border-t border-border pt-4">
           <SettingsInput
-            label="Bot 名称"
+            label="机器人名称"
             value={name}
             onChange={setName}
             placeholder="如：研发助手"
@@ -376,7 +376,7 @@ function BotConfigCard({ bot, state, onSaved, onRemoved }: BotConfigCardProps): 
                 <AlertDialogHeader>
                   <AlertDialogTitle>确认删除</AlertDialogTitle>
                   <AlertDialogDescription>
-                    删除 Bot &quot;{bot.name}&quot; 将同时断开连接。此操作不可撤销。
+                    删除机器人&quot;{bot.name}&quot; 将同时断开连接。此操作不可撤销。
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>

@@ -219,7 +219,9 @@ function buildAgentMinimapItems(messages: SDKMessage[], userAvatar?: string): Ta
           ? '正在压缩上下文...'
           : system.subtype === 'permission_denied'
             ? '自动审批已拒绝操作'
-            : ''
+            : system.subtype === 'model_switched'
+              ? '模型已切换'
+              : ''
       if (preview) {
         items.push({
           id: `${system.subtype ?? 'system'}-${items.length}`,

@@ -58,6 +58,8 @@ import type {
   GetTaskOutputResult,
   StopTaskInput,
   WorkspaceMcpConfig,
+  InitializeDefaultConnectorInput,
+  InitializeDefaultConnectorResult,
   AgentSlashCommand,
   SkillMeta,
   WorkspaceCapabilities,
@@ -2055,6 +2057,15 @@ export function registerIpcHandlers(): void {
         success: result.valid,
         message: result.valid ? '连接成功' : (result.reason || '连接失败'),
       }
+    }
+  )
+
+  // 初始化内置连接器
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.INITIALIZE_DEFAULT_CONNECTOR,
+    async (_, workspaceSlug: string, input: InitializeDefaultConnectorInput): Promise<InitializeDefaultConnectorResult> => {
+      const { initializeDefaultConnector } = await import('./lib/default-connector-initializer')
+      return initializeDefaultConnector(workspaceSlug, input)
     }
   )
 

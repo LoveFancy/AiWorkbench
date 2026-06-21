@@ -161,6 +161,10 @@ export interface SingleRunResult {
   shouldRetryFromError?: boolean
   /** 恢复类型（仅 shouldRetryFromError 为 true 时有意义） */
   recoveryType?: 'session_not_found' | 'thinking_signature' | 'api_failure'
+  /** 可重试错误的用户可见原因，用于 UI 展示 */
+  retryReason?: string
+  /** 可重试错误的分类型，用于重试策略决策 */
+  retryCategory?: import('./error-classifier').ErrorCategory
   /** 不可重试错误时，附带统一的分类结果（display + category + raw 信息） */
   fatalError?: ClassifyResult
 }
@@ -300,6 +304,8 @@ export async function sdkRunSingleAttempt(
               kind: 'error_break',
               shouldRetryFromError: true,
               recoveryType: 'api_failure',
+              retryReason: typedError.message,
+              retryCategory: 'api_retryable',
             }
           }
 
@@ -307,6 +313,17 @@ export async function sdkRunSingleAttempt(
           deps.persistMessages(ctx.sessionId, ctx.accumulatedMessages, Date.now() - queryStartedAt)
 
           const fatalError = classifyFromTypedError(typedError, detailedMessage, extractApiError(ctx.stderrChunks.join('')))
+          if (fatalError.category === 'api_retryable') {
+            ctx.accumulatedMessages.length = 0
+            ctx.stderrChunks.length = 0
+            return {
+              kind: 'error_break',
+              shouldRetryFromError: true,
+              recoveryType: 'api_failure',
+              retryReason: fatalError.display.errorContent,
+              retryCategory: fatalError.category,
+            }
+          }
           return { kind: 'error_break', shouldRetryFromError: false, fatalError }
         }
       }
@@ -327,7 +344,7 @@ export async function sdkRunSingleAttempt(
         }
       } else if (msg.type === 'system') {
         const sysMsg = msg as SDKSystemMessage
-        if (sysMsg.subtype === 'compact_boundary' || sysMsg.subtype === 'permission_denied') {
+        if (sysMsg.subtype === 'compact_boundary' || sysMsg.subtype === 'permission_denied' || sysMsg.subtype === 'model_switched') {
           ctx.accumulatedMessages.push(msg)
         }
       }
@@ -398,6 +415,8 @@ export async function sdkRunSingleAttempt(
         kind: 'error_break',
         shouldRetryFromError: true,
         recoveryType: 'api_failure',
+        retryReason: classified.display.errorContent,
+        retryCategory: classified.category,
       }
     }
 

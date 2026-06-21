@@ -17,3 +17,11 @@ export {
   formatThinkingSignatureError,
   normalizeThinkingSignatureError,
 } from './thinking-signature-error'
+export {
+  classifyPlugin,
+  isExpertGroupPlugin,
+  isGeneralPlugin,
+  isVisibleInSkillsView,
+  shouldLoadInGeneralRuntime,
+  shouldLoadInExpertRuntime,
+} from './plugin-utils'

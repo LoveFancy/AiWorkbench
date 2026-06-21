@@ -25,6 +25,7 @@ import {
 import { listInstalledPlugins } from './plugin-registry-service'
 import type { AgentPluginInfo } from '@proma/shared'
 import type { AgentWorkspace, WorkspaceMcpConfig, SkillMeta, SkillImportSource, OtherWorkspaceSkillsGroup, WorkspaceCapabilities, SkillFileNode, SkillFileContent } from '@proma/shared'
+import { isGeneralPlugin } from '@proma/shared'
 
 interface AgentWorkspacesIndex {
   version: number
@@ -588,7 +589,7 @@ export function getWorkspaceSkills(workspaceSlug: string): SkillMeta[] {
 
 /** 解析 SKILL.md 的 YAML frontmatter，支持单行值、block scalar（`|` / `>`）和多行缩进 */
 function parseSkillFrontmatter(content: string, slug: string, enabled: boolean): SkillMeta {
-  const meta: SkillMeta = { slug, name: slug, enabled }
+  const meta: SkillMeta = { slug, name: slug, enabled, sourceKind: 'workspace' }
 
   const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---/)
   if (!fmMatch) return meta
@@ -648,7 +649,21 @@ function pluginSkillMeta(capability: AgentPluginInfo['capabilities'][number]): S
     name: capability.name,
     ...(capability.description && { description: capability.description }),
     enabled: capability.enabled,
+    sourceKind: 'plugin',
+    sourcePluginId: capability.sourcePluginId,
+    sourcePluginName: capability.sourceLabel,
   }
+}
+
+function skillSourcePriority(skill: SkillMeta): number {
+  if (skill.sourceKind === 'plugin') return 2
+  return 1
+}
+
+function shouldReplaceSkill(current: SkillMeta, next: SkillMeta): boolean {
+  if (!current.enabled && next.enabled) return true
+  if (current.enabled !== next.enabled) return false
+  return skillSourcePriority(next) > skillSourcePriority(current)
 }
 
 function mergeSkillsBySlug(skills: SkillMeta[]): SkillMeta[] {
@@ -659,7 +674,7 @@ function mergeSkillsBySlug(skills: SkillMeta[]): SkillMeta[] {
       continue
     }
     const current = result.get(skill.slug)
-    if (current && !current.enabled && skill.enabled) {
+    if (current && shouldReplaceSkill(current, skill)) {
       result.set(skill.slug, skill)
     }
   }
@@ -673,7 +688,7 @@ export function getWorkspaceCapabilitiesFromSources(input: {
   plugins: AgentPluginInfo[]
 }): WorkspaceCapabilities {
   const pluginSkills = input.plugins
-    .filter((plugin) => plugin.enabled && plugin.issues.every((issue) => issue.level !== 'error'))
+    .filter((plugin) => plugin.enabled && isGeneralPlugin(plugin) && plugin.issues.every((issue) => issue.level !== 'error'))
     .flatMap((plugin) => plugin.capabilities.filter((capability) => capability.type === 'skill' && capability.enabled).map(pluginSkillMeta))
   const skills = mergeSkillsBySlug([...input.workspaceSkills, ...pluginSkills])
 
@@ -745,6 +760,7 @@ function scanSkillsInDir(dir: string, enabled: boolean): SkillMeta[] {
         const importSource = readSkillImportSource(join(dir, entry.name))
         if (importSource) {
           meta.importSource = importSource
+          meta.sourceKind = 'import'
           const sourceSkillDir = resolveSkillDir(importSource.sourceWorkspaceSlug, entry.name)
           if (sourceSkillDir) {
             const currentSourceVersion = parseSkillVersion(sourceSkillDir)
@@ -975,6 +991,7 @@ export function importSkillFromWorkspace(
   const content = readFileSync(join(targetPath, 'SKILL.md'), 'utf-8')
   const meta = parseSkillFrontmatter(content, skillSlug, true)
   meta.importSource = importSource
+  meta.sourceKind = 'import'
   return meta
 }
 
@@ -1042,6 +1059,7 @@ export function updateSkillFromSource(
   const content = readFileSync(join(targetPath, 'SKILL.md'), 'utf-8')
   const meta = parseSkillFrontmatter(content, skillSlug, enabled)
   meta.importSource = updatedSource
+  meta.sourceKind = 'import'
   meta.hasUpdate = false
 
   console.log(`[Agent 工作区] 已从源更新 Skill: ${targetSlug}/${skillSlug}`)

@@ -16,12 +16,18 @@ import { searchMemory, addMemory, formatSearchResult } from '../memos-client'
 /**
  * 构建工作区 MCP 服务器配置
  */
-export function buildMcpServers(workspaceSlug: string | undefined): Record<string, Record<string, unknown>> {
+export function buildMcpServers(
+  workspaceSlug: string | undefined,
+  selectedMcpServers: readonly string[] = [],
+): Record<string, Record<string, unknown>> {
   const mcpServers: Record<string, Record<string, unknown>> = {}
   if (!workspaceSlug) return mcpServers
+  if (selectedMcpServers.length === 0) return mcpServers
 
+  const selectedNames = new Set(selectedMcpServers)
   const mcpConfig = getWorkspaceMcpConfig(workspaceSlug)
   for (const [name, entry] of Object.entries(mcpConfig.servers ?? {})) {
+    if (!selectedNames.has(name)) continue
     if (!entry.enabled) continue
     if (name === 'memos-cloud') continue
 

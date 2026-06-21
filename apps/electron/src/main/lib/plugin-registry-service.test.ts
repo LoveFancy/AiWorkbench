@@ -96,6 +96,7 @@ describe('插件注册表服务', () => {
         'user:market/frontend-design',
       ])
       expect(plugins.every((plugin) => plugin.enabled)).toBe(true)
+      expect(plugins.every((plugin) => plugin.category === 'general')).toBe(true)
       expect(plugins[0]?.capabilities.map((capability) => capability.type).sort()).toEqual(['agent', 'command', 'mcp', 'skill'])
       expect(plugins[1]?.sourceMarketplaceId).toBe('market')
     } finally {
@@ -114,6 +115,7 @@ describe('插件注册表服务', () => {
       const plugins = listInstalledPlugins({ builtinDir, userDir, configPath })
       const expertCapabilities = plugins[0]?.capabilities.filter((capability) => capability.type === 'expert-group')
 
+      expect(plugins[0]?.category).toBe('expert-group')
       expect(expertCapabilities).toEqual([
         {
           type: 'expert-group',
@@ -201,6 +203,29 @@ describe('插件注册表服务', () => {
 
       const paths = buildPluginRuntimePaths({ builtinDir, userDir, configPath })
 
+      expect(paths).toEqual([{ type: 'local', path: normalPluginPath }])
+      expect(paths.some((plugin) => plugin.path === expertPluginPath)).toBe(false)
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('同一市场下普通插件和专家团插件按插件目录独立分类并加载', () => {
+    const temp = tempRoot()
+    try {
+      const builtinDir = join(temp.root, 'default-plugins')
+      const userDir = join(temp.root, 'user-plugins')
+      const configPath = join(temp.root, 'plugins.json')
+      const normalPluginPath = createPlugin(join(userDir, 'ht-market'), 'normal-tools')
+      const expertPluginPath = createExpertPlugin(join(userDir, 'ht-market'), 'product-expert-team', '产品专家团')
+
+      const plugins = listInstalledPlugins({ builtinDir, userDir, configPath })
+      const normal = plugins.find((plugin) => plugin.id === 'user:ht-market/normal-tools')
+      const expert = plugins.find((plugin) => plugin.id === 'user:ht-market/product-expert-team')
+      const paths = buildPluginRuntimePaths({ builtinDir, userDir, configPath })
+
+      expect(normal?.category).toBe('general')
+      expect(expert?.category).toBe('expert-group')
       expect(paths).toEqual([{ type: 'local', path: normalPluginPath }])
       expect(paths.some((plugin) => plugin.path === expertPluginPath)).toBe(false)
     } finally {

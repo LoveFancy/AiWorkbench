@@ -5,7 +5,7 @@
  *
  * 功能：
  * - StarterKit + Placeholder + Underline + Link + CodeBlockLowlight
- * - 可选 Mention 扩展（@ 引用文件、/ 触发 Skill、# 触发 MCP、& 引用会话）
+ * - 可选 Mention 扩展（@ 引用文件、/ 触发 Skill、& 引用会话）
  * - htmlToMarkdown 转换
  * - IME composition 处理
  * - Enter 提交 / Shift+Enter 换行
@@ -27,7 +27,7 @@ import { cn } from '@/lib/utils'
 import { lowlight } from '@/lib/lowlight'
 import { htmlToMarkdown } from '@/lib/markdown-rich-text'
 import { createFileMentionSuggestion } from '@/components/file-browser/file-mention-suggestion'
-import { createSkillMentionSuggestion, createMcpMentionSuggestion, createSessionMentionSuggestion } from '@/components/agent/mention-suggestions'
+import { createSkillMentionSuggestion, createSessionMentionSuggestion } from '@/components/agent/mention-suggestions'
 import type { FileIndexEntry } from '@proma/shared'
 import {
   VOICE_DICTATION_INSERT_EVENT,
@@ -107,13 +107,13 @@ interface RichTextInputProps {
   autoFocusTrigger?: string | null
   /** 是否支持手动折叠（内容较长时显示折叠按钮） */
   collapsible?: boolean
-  /** 是否启用 Mention 功能（@ 文件、/ Skill、# MCP、& 会话） */
+  /** 是否启用 Mention 功能（@ 文件、/ Skill、& 会话） */
   enableMentions?: boolean
   /** 工作区根路径（启用 @ 引用文件功能时需要） */
   workspacePath?: string | null
   /** 工作区 ID（启用 & 引用 Agent 会话功能时需要） */
   workspaceId?: string | null
-  /** 工作区 slug（启用 / Skill 和 # MCP 功能时需要） */
+  /** 工作区 slug（启用 / Skill 功能时需要） */
   workspaceSlug?: string | null
   /** 当前 Agent 会话 ID（启用 & 引用 Agent 会话功能时用于排除自身） */
   sessionId?: string | null
@@ -216,7 +216,7 @@ function RichTextInputInner({
   // 会话级附加目录路径引用（给 Suggestion 使用，标记为 session）
   const sessionAttachedDirsRef = useRef<string[]>(sessionAttachedDirs)
   sessionAttachedDirsRef.current = sessionAttachedDirs
-  // 工作区 slug 引用（给 Skill/MCP Suggestion 使用）
+  // 工作区 slug 引用（给 Skill Suggestion 使用）
   const workspaceSlugRef = useRef<string | null>(workspaceSlug ?? null)
   workspaceSlugRef.current = workspaceSlug ?? null
   const allowFileMentionRef = useRef<typeof allowFileMention>(allowFileMention)
@@ -241,12 +241,6 @@ function RichTextInputInner({
   // Skill Suggestion 配置（/ 触发）
   const skillSuggestion = useMemo(
     () => createSkillMentionSuggestion(workspaceSlugRef, mentionActiveRef, mentionItemCountRef),
-    [],
-  )
-
-  // MCP Suggestion 配置（# 触发）
-  const mcpSuggestion = useMemo(
-    () => createMcpMentionSuggestion(workspaceSlugRef, mentionActiveRef, mentionItemCountRef),
     [],
   )
 
@@ -285,7 +279,7 @@ function RichTextInputInner({
         emptyEditorClass: 'is-editor-empty',
       }),
       // Mention 扩展：启用时注册，路径/slug 后续通过 ref 异步更新
-      // @ 引用文件、/ 触发 Skill、# 触发 MCP
+      // @ 引用文件、/ 触发 Skill、& 引用会话
       ...(hasMentionSupport ? [
         Mention.extend({
           addAttributes() {
@@ -349,7 +343,6 @@ function RichTextInputInner({
           suggestions: [
             mentionSuggestion,
             skillSuggestion,
-            mcpSuggestion,
             sessionSuggestion,
           ],
         }),

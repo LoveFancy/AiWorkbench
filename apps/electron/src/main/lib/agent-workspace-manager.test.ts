@@ -13,7 +13,7 @@ import {
   installSkillZipToWorkspace,
 } from './agent-workspace-manager.ts'
 
-function pluginWithSkill(id: string, skillName: string, enabled = true): AgentPluginInfo {
+function pluginWithSkill(id: string, skillName: string, enabled = true, category: AgentPluginInfo['category'] = 'general'): AgentPluginInfo {
   return {
     id,
     kind: 'user',
@@ -22,6 +22,7 @@ function pluginWithSkill(id: string, skillName: string, enabled = true): AgentPl
     keywords: [],
     path: `/tmp/${id}`,
     enabled,
+    category,
     capabilities: [
       {
         type: 'skill',
@@ -34,6 +35,22 @@ function pluginWithSkill(id: string, skillName: string, enabled = true): AgentPl
       },
     ],
     issues: [],
+  }
+}
+
+function pluginWithSkills(id: string, skillNames: string[], category: AgentPluginInfo['category'] = 'general'): AgentPluginInfo {
+  const base = pluginWithSkill(id, skillNames[0] ?? 'demo', true, category)
+  return {
+    ...base,
+    capabilities: skillNames.map((skillName) => ({
+      type: 'skill',
+      name: skillName,
+      sourcePluginId: id,
+      sourceLabel: id,
+      relativePath: `skills/${skillName}`,
+      description: `${skillName} 描述`,
+      enabled: true,
+    })),
   }
 }
 
@@ -51,7 +68,51 @@ describe('Agent 工作区能力聚合', () => {
       name: 'claude-api',
       description: 'claude-api 描述',
       enabled: true,
+      sourceKind: 'plugin',
+      sourcePluginId: 'user:ecc/claude-api',
+      sourcePluginName: 'user:ecc/claude-api',
     })
+  })
+
+  test('普通插件中的多个 Skill 会分别生成可独立调用的 SkillMeta', () => {
+    const capabilities = getWorkspaceCapabilitiesFromSources({
+      workspaceSlug: 'default',
+      mcpConfig: { servers: {} } satisfies WorkspaceMcpConfig,
+      workspaceSkills: [],
+      plugins: [pluginWithSkills('user:ecc/dev-tools', ['code-review', 'write-tests'])],
+    })
+
+    expect(capabilities.skills).toEqual([
+      {
+        slug: 'code-review',
+        name: 'code-review',
+        description: 'code-review 描述',
+        enabled: true,
+        sourceKind: 'plugin',
+        sourcePluginId: 'user:ecc/dev-tools',
+        sourcePluginName: 'user:ecc/dev-tools',
+      },
+      {
+        slug: 'write-tests',
+        name: 'write-tests',
+        description: 'write-tests 描述',
+        enabled: true,
+        sourceKind: 'plugin',
+        sourcePluginId: 'user:ecc/dev-tools',
+        sourcePluginName: 'user:ecc/dev-tools',
+      },
+    ])
+  })
+
+  test('专家团插件携带的 Skill 不进入普通工作区能力', () => {
+    const capabilities = getWorkspaceCapabilitiesFromSources({
+      workspaceSlug: 'default',
+      mcpConfig: { servers: {} } satisfies WorkspaceMcpConfig,
+      workspaceSkills: [],
+      plugins: [pluginWithSkills('user:ecc/product-team', ['private-prd-skill'], 'expert-group')],
+    })
+
+    expect(capabilities.skills).toEqual([])
   })
 
   test('忽略已禁用或有错误的插件 Skill', () => {
@@ -118,6 +179,7 @@ describe('Agent 工作区 Skill zip 安装', () => {
         name: '我的 Skill',
         description: '测试上传安装',
         enabled: true,
+        sourceKind: 'workspace',
       })
       expect(existsSync(installedSkillMd)).toBe(true)
       expect(readFileSync(installedSkillMd, 'utf-8')).toContain('description: 测试上传安装')

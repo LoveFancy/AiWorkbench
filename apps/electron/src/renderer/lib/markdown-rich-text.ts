@@ -450,7 +450,6 @@ export function htmlToMarkdown(html: string): string {
           const commandText = el.getAttribute('data-command-text')
           if (commandText) return commandText
           if (suggestionChar === '/') return `/skill:${dataId}`
-          if (suggestionChar === '#') return `#mcp:${dataId}`
           if (suggestionChar === '&') return `&session:${dataId}`
           return `@file:${dataId}`
         }
