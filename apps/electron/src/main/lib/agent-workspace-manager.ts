@@ -35,6 +35,7 @@ const INDEX_VERSION = 3
 
 const DEFAULT_INACTIVE_SKILL_SLUGS = new Set(['feishu-lark-setup'])
 const DEFAULT_SKILLS_TO_ENABLE_ON_MIGRATION = ['huatai-email-setup', 'install-python'] as const
+const REMOVED_DEFAULT_SKILL_SLUGS = ['proma-coach'] as const
 
 interface InstallSkillZipOptions {
   activeDir?: string
@@ -407,6 +408,8 @@ export function upgradeDefaultSkillsInWorkspaces(): void {
     const activeDir = getWorkspaceSkillsDir(workspace.slug)
     const inactiveDir = getInactiveSkillsDir(workspace.slug)
 
+    removeDeletedDefaultSkillsFromWorkspace(workspace.slug, activeDir, inactiveDir)
+
     for (const [slug, info] of defaultSkills) {
       const activePath = join(activeDir, slug)
       const inactivePath = join(inactiveDir, slug)
@@ -452,6 +455,22 @@ export function upgradeDefaultSkillsInWorkspaces(): void {
         console.log(`[Agent 工作区] 已注入新默认 Skill: ${workspace.slug}/${slug} → ${enabledByDefault ? 'active' : 'inactive'}`)
       } catch (err) {
         console.warn(`[Agent 工作区] 注入默认 Skill 失败 (${workspace.slug}/${slug}):`, err)
+      }
+    }
+  }
+}
+
+function removeDeletedDefaultSkillsFromWorkspace(workspaceSlug: string, activeDir: string, inactiveDir: string): void {
+  for (const slug of REMOVED_DEFAULT_SKILL_SLUGS) {
+    for (const [state, dir] of [['active', activeDir], ['inactive', inactiveDir]] as const) {
+      const target = join(dir, slug)
+      if (!existsSync(target)) continue
+
+      try {
+        rmSync(target, { recursive: true, force: true })
+        console.log(`[Agent 工作区] 已移除废弃默认 Skill: ${workspaceSlug}/${slug} (${state})`)
+      } catch (err) {
+        console.warn(`[Agent 工作区] 移除废弃默认 Skill 失败 (${workspaceSlug}/${slug}, ${state})，跳过:`, err)
       }
     }
   }

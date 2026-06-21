@@ -1425,6 +1425,8 @@ function AttachedDirTree({ dirPath, onDetach, selectedPaths, onSelect, refreshVe
   const [isDropTarget, setIsDropTarget] = React.useState(false)
   const rowRef = React.useRef<HTMLDivElement>(null)
   const dropExpandTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const autoExpandedByDragRef = React.useRef(false)
+  const autoCollapseTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const dirName = dirPath.split('/').filter(Boolean).pop() || dirPath
 
@@ -1434,7 +1436,27 @@ function AttachedDirTree({ dirPath, onDetach, selectedPaths, onSelect, refreshVe
     dropExpandTimerRef.current = null
   }, [])
 
-  React.useEffect(() => () => clearDropExpandTimer(), [clearDropExpandTimer])
+  const clearAutoCollapseTimer = React.useCallback((): void => {
+    if (!autoCollapseTimerRef.current) return
+    clearTimeout(autoCollapseTimerRef.current)
+    autoCollapseTimerRef.current = null
+  }, [])
+
+  const scheduleAutoCollapse = React.useCallback((): void => {
+    if (!autoExpandedByDragRef.current) return
+    clearAutoCollapseTimer()
+    autoCollapseTimerRef.current = setTimeout(() => {
+      autoCollapseTimerRef.current = null
+      if (!autoExpandedByDragRef.current) return
+      setExpanded(false)
+      autoExpandedByDragRef.current = false
+    }, 320)
+  }, [clearAutoCollapseTimer])
+
+  React.useEffect(() => () => {
+    clearDropExpandTimer()
+    clearAutoCollapseTimer()
+  }, [clearDropExpandTimer, clearAutoCollapseTimer])
 
   // 计算从 dirPath 到 revealTarget 之间的祖先目录集合（用于子项决定是否自动展开）
   const revealAncestors = React.useMemo(
@@ -1522,9 +1544,11 @@ function AttachedDirTree({ dirPath, onDetach, selectedPaths, onSelect, refreshVe
     event.dataTransfer.dropEffect = 'move'
     onDirectoryDropTargetActive?.()
     setIsDropTarget(true)
+    clearAutoCollapseTimer()
     if (!expanded && !dropExpandTimerRef.current) {
       dropExpandTimerRef.current = setTimeout(() => {
         dropExpandTimerRef.current = null
+        autoExpandedByDragRef.current = true
         void expandDir()
       }, 450)
     }
@@ -1535,6 +1559,7 @@ function AttachedDirTree({ dirPath, onDetach, selectedPaths, onSelect, refreshVe
     if (related && rowRef.current?.contains(related)) return
     clearDropExpandTimer()
     setIsDropTarget(false)
+    scheduleAutoCollapse()
   }
 
   const handleDrop = (event: React.DragEvent): void => {
@@ -1543,7 +1568,9 @@ function AttachedDirTree({ dirPath, onDetach, selectedPaths, onSelect, refreshVe
     event.preventDefault()
     event.stopPropagation()
     clearDropExpandTimer()
+    clearAutoCollapseTimer()
     setIsDropTarget(false)
+    autoExpandedByDragRef.current = false
     void (async () => {
       await expandDir()
       for (const path of Array.from(new Set(payload.paths))) {
@@ -1662,6 +1689,8 @@ function AttachedDirItem({ entry, depth, selectedPaths, onSelect, refreshVersion
   const [currentPath, setCurrentPath] = React.useState(entry.path)
   const rowRef = React.useRef<HTMLDivElement>(null)
   const dropExpandTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const autoExpandedByDragRef = React.useRef(false)
+  const autoCollapseTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const isSelected = selectedPaths.has(currentPath)
 
@@ -1671,7 +1700,27 @@ function AttachedDirItem({ entry, depth, selectedPaths, onSelect, refreshVersion
     dropExpandTimerRef.current = null
   }, [])
 
-  React.useEffect(() => () => clearDropExpandTimer(), [clearDropExpandTimer])
+  const clearAutoCollapseTimer = React.useCallback((): void => {
+    if (!autoCollapseTimerRef.current) return
+    clearTimeout(autoCollapseTimerRef.current)
+    autoCollapseTimerRef.current = null
+  }, [])
+
+  const scheduleAutoCollapse = React.useCallback((): void => {
+    if (!autoExpandedByDragRef.current) return
+    clearAutoCollapseTimer()
+    autoCollapseTimerRef.current = setTimeout(() => {
+      autoCollapseTimerRef.current = null
+      if (!autoExpandedByDragRef.current) return
+      setExpanded(false)
+      autoExpandedByDragRef.current = false
+    }, 320)
+  }, [clearAutoCollapseTimer])
+
+  React.useEffect(() => () => {
+    clearDropExpandTimer()
+    clearAutoCollapseTimer()
+  }, [clearDropExpandTimer, clearAutoCollapseTimer])
 
   // 当 refreshVersion 变化时，已展开的文件夹自动重新加载子项
   React.useEffect(() => {
@@ -1836,9 +1885,11 @@ function AttachedDirItem({ entry, depth, selectedPaths, onSelect, refreshVersion
     event.dataTransfer.dropEffect = 'move'
     onDirectoryDropTargetActive?.()
     setIsDropTarget(true)
+    clearAutoCollapseTimer()
     if (!expanded && !dropExpandTimerRef.current) {
       dropExpandTimerRef.current = setTimeout(() => {
         dropExpandTimerRef.current = null
+        autoExpandedByDragRef.current = true
         void expandDir()
       }, 450)
     }
@@ -1849,6 +1900,7 @@ function AttachedDirItem({ entry, depth, selectedPaths, onSelect, refreshVersion
     if (related && rowRef.current?.contains(related)) return
     clearDropExpandTimer()
     setIsDropTarget(false)
+    scheduleAutoCollapse()
   }
 
   const handleDrop = (event: React.DragEvent): void => {
@@ -1858,7 +1910,9 @@ function AttachedDirItem({ entry, depth, selectedPaths, onSelect, refreshVersion
     event.preventDefault()
     event.stopPropagation()
     clearDropExpandTimer()
+    clearAutoCollapseTimer()
     setIsDropTarget(false)
+    autoExpandedByDragRef.current = false
     void (async () => {
       await expandDir()
       for (const path of Array.from(new Set(payload.paths))) {

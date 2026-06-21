@@ -631,6 +631,8 @@ function FileTreeItem({
   const [isDropTarget, setIsDropTarget] = React.useState(false)
   const rowRef = React.useRef<HTMLDivElement>(null)
   const dropExpandTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const autoExpandedByDragRef = React.useRef(false)
+  const autoCollapseTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const clearDropExpandTimer = React.useCallback((): void => {
     if (!dropExpandTimerRef.current) return
@@ -638,7 +640,27 @@ function FileTreeItem({
     dropExpandTimerRef.current = null
   }, [])
 
-  React.useEffect(() => () => clearDropExpandTimer(), [clearDropExpandTimer])
+  const clearAutoCollapseTimer = React.useCallback((): void => {
+    if (!autoCollapseTimerRef.current) return
+    clearTimeout(autoCollapseTimerRef.current)
+    autoCollapseTimerRef.current = null
+  }, [])
+
+  const scheduleAutoCollapse = React.useCallback((): void => {
+    if (!autoExpandedByDragRef.current) return
+    clearAutoCollapseTimer()
+    autoCollapseTimerRef.current = setTimeout(() => {
+      autoCollapseTimerRef.current = null
+      if (!autoExpandedByDragRef.current) return
+      setExpanded(false)
+      autoExpandedByDragRef.current = false
+    }, 320)
+  }, [clearAutoCollapseTimer])
+
+  React.useEffect(() => () => {
+    clearDropExpandTimer()
+    clearAutoCollapseTimer()
+  }, [clearDropExpandTimer, clearAutoCollapseTimer])
 
   // 当 refreshVersion 变化时，已展开的文件夹自动重新加载子项
   React.useEffect(() => {
@@ -791,6 +813,8 @@ function FileTreeItem({
 
   const handleDragEnd = (): void => {
     clearDropExpandTimer()
+    clearAutoCollapseTimer()
+    autoExpandedByDragRef.current = false
     setIsDropTarget(false)
   }
 
@@ -802,9 +826,11 @@ function FileTreeItem({
       event.dataTransfer.dropEffect = 'copy'
       onDirectoryDropTargetActive?.()
       setIsDropTarget(true)
+      clearAutoCollapseTimer()
       if (!expanded && !dropExpandTimerRef.current) {
         dropExpandTimerRef.current = setTimeout(() => {
           dropExpandTimerRef.current = null
+          autoExpandedByDragRef.current = true
           void expandDir()
         }, 450)
       }
@@ -823,9 +849,11 @@ function FileTreeItem({
     event.dataTransfer.dropEffect = 'move'
     onDirectoryDropTargetActive?.()
     setIsDropTarget(true)
+    clearAutoCollapseTimer()
     if (!expanded && !dropExpandTimerRef.current) {
       dropExpandTimerRef.current = setTimeout(() => {
         dropExpandTimerRef.current = null
+        autoExpandedByDragRef.current = true
         void expandDir()
       }, 450)
     }
@@ -837,6 +865,7 @@ function FileTreeItem({
     if (!related && isPointerInsideElement(event, rowRef.current)) return
     clearDropExpandTimer()
     setIsDropTarget(false)
+    scheduleAutoCollapse()
   }
 
   const handleDrop = (event: React.DragEvent): void => {
@@ -845,7 +874,9 @@ function FileTreeItem({
       event.preventDefault()
       event.stopPropagation()
       clearDropExpandTimer()
+      clearAutoCollapseTimer()
       setIsDropTarget(false)
+      autoExpandedByDragRef.current = false
       const files = Array.from(event.dataTransfer.files)
       void (async () => {
         await expandDir()
@@ -865,7 +896,9 @@ function FileTreeItem({
     event.preventDefault()
     event.stopPropagation()
     clearDropExpandTimer()
+    clearAutoCollapseTimer()
     setIsDropTarget(false)
+    autoExpandedByDragRef.current = false
     void (async () => {
       await expandDir()
       await onMovePathsToDirectory(payload.paths, entry.path)
