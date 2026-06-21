@@ -186,16 +186,14 @@ export function ExpertPageView({ embedded = false, query: externalQuery, filterT
         <div className={cn(embedded ? 'mx-auto w-full max-w-6xl px-8 pb-10' : 'p-6')}>
           {/* 精选场景 */}
           {filterTag === 'all' && !activeQuery.trim() && displayGroups.length > 0 && (
-            <div className="mb-8">
-              <ExpertFeaturedScenes
-                allGroups={allGroups}
-                activeScene={activeSceneId}
-                onSceneClick={(sceneId, ids) => {
-                  setActiveSceneId(sceneId)
-                  setSceneFilter(ids ? new Set(ids) : null)
-                }}
-              />
-            </div>
+            <ExpertFeaturedScenes
+              allGroups={allGroups}
+              activeScene={activeSceneId}
+              onSceneClick={(sceneId, ids) => {
+                setActiveSceneId(sceneId)
+                setSceneFilter(ids ? new Set(ids) : null)
+              }}
+            />
           )}
 
           {/* 卡片网格 */}

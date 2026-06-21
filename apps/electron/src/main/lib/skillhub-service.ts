@@ -14,8 +14,13 @@ import { getToken } from '../../auth/auth-service'
 
 export interface HtSkillHubSkill {
   name: string
+  displayName?: string
   description: string
   version?: string
+  category?: string
+  tags?: string[]
+  author?: string
+  downloadCount?: number
   installed?: boolean
   files: string[]
 }
