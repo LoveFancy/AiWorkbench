@@ -48,8 +48,8 @@ test('有匹配 group 时显示 group.name', () => {
   expect(getExpertSummonDisplayName(session, groups)).toBe('架构决策专家团')
 })
 
-test('输入框专家入口默认只展示图标，有名称时才展示文字', () => {
-  expect(expertSummonButtonSource).toContain('const showComposerLabel = variant ===')
-  expect(expertSummonButtonSource).toContain('showComposerLabel ?')
-  expect(expertSummonButtonSource).toContain('{showComposerLabel &&')
+test('输入框专家入口默认展示专家文字，有名称时展示具体专家团名称', () => {
+  expect(expertSummonButtonSource).toContain("displayName ?? '专家'")
+  expect(expertSummonButtonSource).toContain('max-w-[112px] truncate')
+  expect(expertSummonButtonSource).not.toContain('showComposerLabel')
 })

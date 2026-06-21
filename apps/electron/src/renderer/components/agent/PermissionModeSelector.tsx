@@ -11,17 +11,12 @@ import { useAtom, useAtomValue, useSetAtom } from 'jotai'
 import { Zap, Compass, Map as MapIcon, ChevronDown } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { agentPermissionModeMapAtom, agentDefaultPermissionModeAtom, sessionPersistedPermissionModeAtom, sessionExistsAtom, agentPlanModeSessionsAtom } from '@/atoms/agent-atoms'
 import type { PromaPermissionMode } from '@proma/shared'
 import { isPromaPermissionMode, PROMA_PERMISSION_MODE_CONFIG, PROMA_PERMISSION_MODE_ORDER } from '@proma/shared'
 import { updatePlanModeSessionSet } from '@/lib/agent-plan-mode'
+import { cn } from '@/lib/utils'
 
 const MODE_ICONS: Record<PromaPermissionMode, React.ComponentType<{ className?: string }>> = {
   auto: Compass,
@@ -34,6 +29,7 @@ interface PermissionModeSelectorProps {
 }
 
 export function PermissionModeSelector({ sessionId }: PermissionModeSelectorProps): React.ReactElement | null {
+  const [open, setOpen] = React.useState(false)
   const [modeMap, setModeMap] = useAtom(agentPermissionModeMapAtom)
   const setPlanModeSessions = useSetAtom(agentPlanModeSessionsAtom)
   const defaultMode = useAtomValue(agentDefaultPermissionModeAtom)
@@ -89,29 +85,33 @@ export function PermissionModeSelector({ sessionId }: PermissionModeSelectorProp
   const handleModeChange = React.useCallback((value: string): void => {
     if (!isPromaPermissionMode(value)) return
     void selectMode(value)
+    setOpen(false)
     requestAnimationFrame(() => document.querySelector<HTMLElement>('.ProseMirror')?.focus())
-  }, [selectMode])
+  }, [selectMode, setOpen])
 
   const config = PROMA_PERMISSION_MODE_CONFIG[mode]
   const Icon = MODE_ICONS[mode]
 
   return (
     <TooltipProvider delayDuration={300}>
-      <DropdownMenu>
-        <Tooltip>
+      <Popover open={open} onOpenChange={setOpen}>
+        <Tooltip open={open ? false : undefined}>
           <TooltipTrigger asChild>
-            <DropdownMenuTrigger asChild>
+            <PopoverTrigger asChild>
               <Button
                 type="button"
                 variant="ghost"
                 aria-label={`权限模式：${config.label}`}
-                className="h-8 shrink-0 rounded-full px-2.5 text-[13px] font-medium text-foreground/70 hover:text-foreground"
+                className={cn(
+                  'h-8 shrink-0 rounded-full px-2.5 text-[13px] font-medium text-foreground/70 hover:text-foreground',
+                  open && 'bg-muted text-foreground',
+                )}
               >
                 <Icon className="size-4" />
                 <span>{config.label}</span>
                 <ChevronDown className="size-3.5" />
               </Button>
-            </DropdownMenuTrigger>
+            </PopoverTrigger>
           </TooltipTrigger>
           <TooltipContent side="top" className="max-w-[220px]">
             <p className="font-medium">{config.label}</p>
@@ -120,19 +120,26 @@ export function PermissionModeSelector({ sessionId }: PermissionModeSelectorProp
           </TooltipContent>
         </Tooltip>
 
-        <DropdownMenuContent side="top" align="center" sideOffset={10} className="w-64 p-1.5">
-          <DropdownMenuRadioGroup value={mode} onValueChange={handleModeChange}>
+        <PopoverContent side="top" align="center" sideOffset={10} className="w-64 p-1.5">
+          <div role="radiogroup" aria-label="权限模式" className="space-y-1">
             {PROMA_PERMISSION_MODE_ORDER.map((permissionMode) => {
               const itemConfig = PROMA_PERMISSION_MODE_CONFIG[permissionMode]
               const ItemIcon = MODE_ICONS[permissionMode]
+              const selected = permissionMode === mode
 
               return (
-                <DropdownMenuRadioItem
+                <button
                   key={permissionMode}
-                  value={permissionMode}
-                  className="items-start gap-2 rounded-md py-2 pl-8 pr-2"
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  className={cn(
+                    'flex w-full items-start gap-2 rounded-md px-2 py-2 text-left transition-colors hover:bg-accent',
+                    selected && 'bg-primary/8 text-foreground',
+                  )}
+                  onClick={() => handleModeChange(permissionMode)}
                 >
-                  <ItemIcon className="mt-0.5 size-4 text-muted-foreground" />
+                  <ItemIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                   <span className="min-w-0 flex-1">
                     <span className="block text-[13px] font-medium leading-5 text-foreground">
                       {itemConfig.label}
@@ -141,12 +148,13 @@ export function PermissionModeSelector({ sessionId }: PermissionModeSelectorProp
                       {itemConfig.description}
                     </span>
                   </span>
-                </DropdownMenuRadioItem>
+                  <span className={cn('mt-1 size-2 rounded-full', selected ? 'bg-primary' : 'bg-transparent')} />
+                </button>
               )
             })}
-          </DropdownMenuRadioGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
+          </div>
+        </PopoverContent>
+      </Popover>
     </TooltipProvider>
   )
 }
