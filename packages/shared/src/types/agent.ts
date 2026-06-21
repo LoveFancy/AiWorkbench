@@ -1843,6 +1843,8 @@ export const AGENT_IPC_CHANNELS = {
   RENAME_FILE: 'agent:rename-file',
   /** 移动文件/目录到目标目录 */
   MOVE_FILE: 'agent:move-file',
+  /** 复制文件/目录到目标目录 */
+  COPY_FILE: 'agent:copy-file',
   /** 列出附加目录内容（无工作区路径限制） */
   LIST_ATTACHED_DIRECTORY: 'agent:list-attached-directory',
   /** 在文件管理器中显示附加目录文件（无工作区路径限制） */

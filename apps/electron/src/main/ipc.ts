@@ -3382,6 +3382,62 @@ export function registerIpcHandlers(): void {
     }
   )
 
+  // 复制文件/目录到目标目录
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.COPY_FILE,
+    async (_, sourcePath: string, targetDir: string): Promise<string> => {
+      const fs = await import('node:fs')
+      const fsPromises = (await import('node:fs/promises'))
+      const { resolve, basename, join, extname, relative, isAbsolute } = await import('node:path')
+
+      const safePath = resolve(sourcePath)
+      const safeTarget = resolve(targetDir)
+      const workspacesRoot = resolve(getAgentWorkspacesDir())
+
+      const isInsideWorkspaces = (candidate: string): boolean => {
+        const rel = relative(workspacesRoot, candidate)
+        return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+      }
+
+      if (!isInsideWorkspaces(safePath) || !isInsideWorkspaces(safeTarget)) {
+        throw new Error('访问路径超出 Agent 工作区范围')
+      }
+
+      const sourceStat = await fsPromises.stat(safePath)
+
+      // 防止复制目录到自身或子目录
+      if (sourceStat.isDirectory()) {
+        const rel = relative(safePath, safeTarget)
+        if (rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))) {
+          throw new Error('不能复制目录到自身或子目录')
+        }
+      }
+
+      const name = basename(safePath)
+      let destPath = join(safeTarget, name)
+
+      // 同名冲突处理
+      if (fs.existsSync(destPath)) {
+        const ext = extname(name)
+        const nameWithoutExt = ext ? name.slice(0, -ext.length) : name
+        let counter = 1
+        while (fs.existsSync(destPath)) {
+          destPath = join(safeTarget, `${nameWithoutExt} (${counter})${ext}`)
+          counter++
+        }
+      }
+
+      if (sourceStat.isDirectory()) {
+        await fsPromises.cp(safePath, destPath, { recursive: true })
+      } else {
+        await fsPromises.copyFile(safePath, destPath)
+      }
+
+      console.log(`[Agent 文件] 已复制: ${safePath} → ${destPath}`)
+      return destPath
+    }
+  )
+
   // 列出附加目录内容
   ipcMain.handle(
     AGENT_IPC_CHANNELS.LIST_ATTACHED_DIRECTORY,

@@ -930,6 +930,9 @@ export interface ElectronAPI {
   /** 移动文件/目录到目标目录 */
   moveFile: (filePath: string, targetDir: string) => Promise<void>
 
+  /** 复制文件/目录到目标目录（返回新文件路径） */
+  copyFile: (sourcePath: string, targetDir: string) => Promise<string>
+
   /** 列出附加目录内容 */
   listAttachedDirectory: (dirPath: string, access?: import('@proma/shared').FileAccessOptions) => Promise<FileEntry[]>
 
@@ -2292,6 +2295,10 @@ const electronAPI: ElectronAPI = {
 
   moveFile: (filePath: string, targetDir: string) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.MOVE_FILE, filePath, targetDir)
+  },
+
+  copyFile: (sourcePath: string, targetDir: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.COPY_FILE, sourcePath, targetDir)
   },
 
   listAttachedDirectory: (dirPath: string, access?: import('@proma/shared').FileAccessOptions) => {
