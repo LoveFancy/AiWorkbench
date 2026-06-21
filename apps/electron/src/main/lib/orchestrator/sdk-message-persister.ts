@@ -28,7 +28,7 @@ export function persistSDKMessages(
         m.type === 'user' ||
         m.type === 'result' ||
         (m.type === 'system' &&
-          ['compact_boundary', 'permission_denied'].includes(
+          ['compact_boundary', 'permission_denied', 'model_switched'].includes(
             (m as import('@proma/shared').SDKSystemMessage).subtype ?? '',
           )),
     )

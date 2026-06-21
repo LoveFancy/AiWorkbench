@@ -23,3 +23,35 @@ describe('通用设置数据目录', () => {
     expect(mainIpcSource).toContain('app.exit(0)')
   })
 })
+
+describe('通用设置头像选择器', () => {
+  test('Emoji 头像选择器提供固定滚动区域和滚轮兜底处理', () => {
+    expect(generalSettingsSource).toContain('emojiPickerScrollRef')
+    expect(generalSettingsSource).toContain('getEmojiPickerScrollElement')
+    expect(generalSettingsSource).toContain("querySelector('em-emoji-picker')")
+    expect(generalSettingsSource).toContain("shadowRoot?.querySelector('.scroll')")
+    expect(generalSettingsSource).toContain('handleEmojiPickerWheel')
+    expect(generalSettingsSource).toContain('onWheel={handleEmojiPickerWheel}')
+    expect(generalSettingsSource).toContain('max-h-[420px] overflow-y-auto overscroll-contain')
+  })
+})
+
+describe('通用设置用户档案登录态同步', () => {
+  test('已登录时展示不可编辑工号，不落到默认用户名', () => {
+    expect(generalSettingsSource).toContain('authStateAtom')
+    expect(generalSettingsSource).toContain('profileDisplayName')
+    expect(generalSettingsSource).toContain('authState.jobId?.trim()')
+    expect(generalSettingsSource).toContain('const canEditProfileName = !authState.isLoggedIn')
+    expect(generalSettingsSource).toContain('canEditProfileName && isEditingName')
+    expect(generalSettingsSource).toContain('!canEditProfileName ? (')
+    expect(generalSettingsSource).toContain('{profileDisplayName}')
+    expect(generalSettingsSource).toContain('工号 {authState.jobId}')
+  })
+})
+
+describe('通用设置快捷导航锚点', () => {
+  test('跳转到区块时预留 sticky 导航高度，避免标题被遮挡', () => {
+    expect(generalSettingsSource).toContain('GENERAL_SETTINGS_ANCHOR_CLASS')
+    expect(generalSettingsSource).toContain('scroll-mt-14')
+  })
+})

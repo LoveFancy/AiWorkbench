@@ -24,9 +24,10 @@ test('专家团卡片展示专家团唯一 ID，而不是来源插件名', () =>
   expect(getExpertGroupIdentifierLabel(group)).toBe('architecture-decision-team')
 })
 
-test('专家卡片展示名称和主角色', () => {
-  expect(expertCardSource).toContain('{group.name}')
+test('专家卡片标题展示专家团名称，主角色只作为辅助信息', () => {
+  expect(expertCardSource).toContain('<h3 className="truncate text-sm font-medium text-foreground">{group.name}</h3>')
   expect(expertCardSource).toContain('主角色：{group.mainRole.name')
+  expect(expertCardSource).not.toContain('<h3 className="truncate text-sm font-medium text-foreground">{group.mainRole.name')
 })
 
 test('专家卡片不展示可用或不可用状态', () => {

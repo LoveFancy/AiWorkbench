@@ -9,6 +9,7 @@ import type {
   AgentQueryInput,
   AgentProviderAdapter,
   SDKUserMessageInput,
+  AgentUserContentBlock,
   TypedError,
   ErrorCode,
   ThinkingConfig,
@@ -34,6 +35,28 @@ type SDKQuery = ReturnType<typeof import('@anthropic-ai/claude-agent-sdk').query
 
 /** SDK 用户消息类型 */
 type SDKUserMessage = import('@anthropic-ai/claude-agent-sdk').SDKUserMessage
+
+const SUPPORTED_PROMPT_IMAGE_MEDIA_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
+
+/** 校验传给 SDK 的首条用户消息内容，避免非法图片块在 SDK 内部变成难定位的运行时错误 */
+export function isValidAgentPromptContent(input: unknown): input is string | AgentUserContentBlock[] {
+  if (typeof input === 'string') return true
+  if (!Array.isArray(input) || input.length === 0) return false
+
+  return input.every((block) => {
+    if (!block || typeof block !== 'object') return false
+    const record = block as Record<string, unknown>
+    if (record.type === 'text') return typeof record.text === 'string'
+    if (record.type !== 'image') return false
+
+    const source = record.source
+    if (!source || typeof source !== 'object') return false
+    const sourceRecord = source as Record<string, unknown>
+    return sourceRecord.type === 'base64' &&
+      typeof sourceRecord.data === 'string' &&
+      SUPPORTED_PROMPT_IMAGE_MEDIA_TYPES.has(String(sourceRecord.media_type))
+  })
+}
 
 // ============================================================================
 // 长生命周期消息通道
@@ -735,6 +758,9 @@ export class ClaudeAgentAdapter implements AgentProviderAdapter {
    */
   async *query(input: AgentQueryInput): AsyncIterable<SDKMessage> {
     const options = input as ClaudeAgentQueryOptions
+    const _diagAdapterStart = Date.now()
+    const _diagA = (tag: string) => console.log(`[DIAG][Claude 适配器] [${tag}] sessionId=${options.sessionId}, elapsed=${Date.now() - _diagAdapterStart}ms, ts=${Date.now()}`)
+    _diagA('query() 入口')
 
     // 创建 AbortController
     const controller = new AbortController()
@@ -758,7 +784,9 @@ export class ClaudeAgentAdapter implements AgentProviderAdapter {
 
     try {
       // 动态导入 SDK
+      _diagA('开始动态导入 SDK (await import)')
       const sdk = await import('@anthropic-ai/claude-agent-sdk')
+      _diagA('SDK 动态导入完成')
 
       // armIdleTimer 闭包引用下方创建的 channel，故定义在 try 内（channel 在作用域内）。
       const armIdleTimer = (): void => {
@@ -862,6 +890,7 @@ export class ClaudeAgentAdapter implements AgentProviderAdapter {
         // 注意：一旦提供 spawnClaudeCodeProcess，SDK 会完全绕过 spawnLocalProcess，
         // 因此 options.stderr 回调需要在这里手动转发，否则 extractApiError / 重试判断全部失效
         spawnClaudeCodeProcess: (spawnOpts: import('@anthropic-ai/claude-agent-sdk').SpawnOptions) => {
+          _diagA(`spawnClaudeCodeProcess 被调用: command=${spawnOpts.command}, args=[${spawnOpts.args?.slice(0, 5).join(', ')}...], cwd=${spawnOpts.cwd}`)
           const child = spawnChild(spawnOpts.command, spawnOpts.args, {
             cwd: spawnOpts.cwd,
             env: spawnOpts.env,
@@ -880,6 +909,7 @@ export class ClaudeAgentAdapter implements AgentProviderAdapter {
             child.stderr?.resume()
           }
           if (child.pid) {
+            _diagA(`子进程已启动: pid=${child.pid}`)
             pidMap.set(options.sessionId, child.pid)
             child.once('exit', () => {
               // 仅当当前记录就是这个 pid 时才清理，防止并发会话误删
@@ -892,11 +922,16 @@ export class ClaudeAgentAdapter implements AgentProviderAdapter {
         },
       } as import('@anthropic-ai/claude-agent-sdk').Options
 
+      _diagA('sdkOptions 构建完成, 即将创建 messageChannel')
       // 使用持久化消息通道：在查询期间保持 generator 活跃以支持工具权限注入，
       // 收到 result 后调用 channel.close() 让 SDK 自然关闭 stdin 并退出子进程。
       const channel = createMessageChannel(controller.signal)
+      _diagA('messageChannel 已创建')
 
       // 将初始 prompt 入队
+      if (!isValidAgentPromptContent(options.prompt)) {
+        throw new Error('[Claude 适配器] Agent 首条用户消息内容格式非法，无法发送给 SDK')
+      }
       channel.enqueue({
         type: 'user' as const,
         session_id: options.sessionId,
@@ -906,15 +941,18 @@ export class ClaudeAgentAdapter implements AgentProviderAdapter {
         },
         parent_tool_use_id: null,
       } as import('@anthropic-ai/claude-agent-sdk').SDKUserMessage)
+      _diagA('初始 prompt 已入队, 即将调用 sdk.query()')
 
       const queryIterator = sdk.query({
         prompt: channel.generator,
         options: sdkOptions,
       })
+      _diagA('sdk.query() 已返回 iterator')
 
       // 保存 Query 和 Channel 引用，供后续消息注入使用
       activeQueries.set(options.sessionId, queryIterator)
       activeChannels.set(options.sessionId, channel)
+      _diagA('activeQueries/activeChannels 已设置')
 
       // 通知 Query 已就绪，解除 sendQueuedMessage 的等待
       const resolveReady = queryReadyResolvers.get(options.sessionId)
@@ -922,8 +960,14 @@ export class ClaudeAgentAdapter implements AgentProviderAdapter {
         resolveReady()
         queryReadyResolvers.delete(options.sessionId)
       }
+      _diagA('queryReady 已 resolve, 即将进入 for-await 循环')
 
+      let _diagFirstMsg = true
       for await (const sdkMessage of queryIterator) {
+        if (_diagFirstMsg) {
+          _diagA(`收到第一条 SDK 消息: type=${(sdkMessage as Record<string, unknown>).type}, subtype=${(sdkMessage as Record<string, unknown>).subtype}`)
+          _diagFirstMsg = false
+        }
         if (controller.signal.aborted) break
 
         const msg = sdkMessage as Record<string, unknown>
@@ -999,6 +1043,7 @@ export class ClaudeAgentAdapter implements AgentProviderAdapter {
     } finally {
       // 注意：pidMap 的清理由 child.on('exit') 触发，不在这里清除
       // 原因：finally 可能先于子进程真正退出执行，此时仍需保留 PID 以便 abort/dispose 兜底
+      _diagA('query() finally 块执行, 清理资源')
       clearIdleTimer()
       activeControllers.delete(options.sessionId)
       activeQueries.delete(options.sessionId)

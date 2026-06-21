@@ -17,6 +17,7 @@ import type {
   AgentPluginsConfig,
   McpServerEntry,
 } from '@proma/shared'
+import { classifyPlugin, shouldLoadInGeneralRuntime } from '@proma/shared'
 import {
   getDefaultPluginsDir,
   getPluginsConfigPath,
@@ -30,6 +31,10 @@ interface PluginRegistryPaths {
   userDir?: string
   configPath?: string
   runtimeDir?: string
+}
+
+interface BuildPluginRuntimePathsOptions extends PluginRegistryPaths {
+  includeExpertGroupPlugins?: boolean
 }
 
 interface PluginRuntimePath {
@@ -459,6 +464,7 @@ function pluginInfoFromPath(kind: 'builtin' | 'user', pluginPath: string, plugin
     ...(state?.installedAt && { installedAt: state.installedAt }),
     ...(state?.updatedAt && { updatedAt: state.updatedAt }),
     ...(state?.sourceMarketplaceId && { sourceMarketplaceId: state.sourceMarketplaceId }),
+    category: classifyPlugin(capabilities),
     capabilities,
     issues: [...issues, ...capabilityIssues],
   }
@@ -625,11 +631,12 @@ export async function testPluginMcpServer(serverId: string, paths?: PluginRegist
   return { success, message }
 }
 
-export function buildPluginRuntimePaths(paths?: PluginRegistryPaths): PluginRuntimePath[] {
+export function buildPluginRuntimePaths(paths?: BuildPluginRuntimePathsOptions): PluginRuntimePath[] {
   const resolved = registryPaths(paths)
   const config = readPluginsConfig({ configPath: resolved.configPath })
   return listInstalledPlugins(resolved)
     .filter((plugin) => plugin.enabled && plugin.issues.every((issue) => issue.level !== 'error'))
+    .filter((plugin) => paths?.includeExpertGroupPlugins || shouldLoadInGeneralRuntime(plugin))
     .map((plugin) => {
       const runtimeDir = hasConfiguredMcpEnv(plugin, config) ? resolveRuntimeDir(resolved) : ''
       return { type: 'local' as const, path: runtimePluginPath(plugin, config, runtimeDir) }

@@ -253,7 +253,7 @@ export interface SDKResultMessage {
   session_id?: string
 }
 
-/** SDK system 消息（init / compact_boundary / permission_denied / task_started / task_progress / task_notification） */
+/** SDK system 消息（init / compact_boundary / permission_denied / task_started / task_progress / task_notification / model_switched） */
 export interface SDKSystemMessage {
   type: 'system'
   subtype?: string
@@ -274,6 +274,9 @@ export interface SDKSystemMessage {
   message?: string
   decision_reason_type?: string
   decision_reason?: string
+  /** model_switched 相关字段 */
+  from_model?: string
+  to_model?: string
   usage?: { total_tokens?: number; tool_uses?: number; duration_ms?: number }
   [key: string]: unknown
 }
@@ -771,6 +774,31 @@ export interface WorkspaceMcpConfig {
   servers: Record<string, McpServerEntry>
 }
 
+export type DefaultConnectorId = 'personal-email' | 'feishu-cli' | 'hiagent-taiwei'
+
+export type DefaultConnectorInitStepId = 'check-python' | 'check-package' | 'install-package' | 'write-config' | 'self-check'
+
+export interface DefaultConnectorInitStep {
+  id: DefaultConnectorInitStepId
+  label: string
+  status: 'pending' | 'running' | 'success' | 'error' | 'skipped'
+  message?: string
+}
+
+export interface InitializeDefaultConnectorInput {
+  connectorId: DefaultConnectorId
+  emailAddress?: string
+  password?: string
+}
+
+export interface InitializeDefaultConnectorResult {
+  connectorId: DefaultConnectorId
+  serverName: string
+  success: boolean
+  steps: DefaultConnectorInitStep[]
+  message: string
+}
+
 // ===== Skill 元数据 =====
 
 /** 从其他工作区导入的 Skill 来源元数据 */
@@ -780,6 +808,8 @@ export interface SkillImportSource {
   importedAt: string        // ISO 8601
   sourceVersion: string     // 导入时源 Skill 的 version，无则 '0.0.0'
 }
+
+export type SkillSourceKind = 'plugin' | 'workspace' | 'import'
 
 /** 工作区 Skill 元数据 */
 export interface SkillMeta {
@@ -791,6 +821,12 @@ export interface SkillMeta {
   icon?: string
   version?: string
   enabled: boolean
+  /** Skill 来源类型 */
+  sourceKind: SkillSourceKind
+  /** 普通插件提供的 Skill 所属插件 ID */
+  sourcePluginId?: string
+  /** 普通插件提供的 Skill 所属插件展示名 */
+  sourcePluginName?: string
   /** 如果此 Skill 是从其他工作区导入的，则携带来源信息 */
   importSource?: SkillImportSource
   /** 是否有可用更新（源 Skill 版本 > importSource.sourceVersion） */
@@ -864,6 +900,10 @@ export interface HtSkillHubInstallResult {
 export type AgentPluginKind = 'builtin' | 'user' | 'remote'
 
 export type AgentPluginCapabilityType = 'skill' | 'command' | 'agent' | 'mcp' | 'expert-group'
+
+export type PluginCategory = 'expert-group' | 'general'
+
+export const EXPERT_GROUP_CAPABILITY_TYPE = 'expert-group'
 
 export type AgentPluginIssueLevel = 'warning' | 'error'
 
@@ -999,6 +1039,7 @@ export interface AgentPluginInfo {
   installedAt?: string
   updatedAt?: string
   sourceMarketplaceId?: string
+  category: PluginCategory
   capabilities: AgentPluginCapability[]
   issues: Array<{
     level: AgentPluginIssueLevel
@@ -1181,8 +1222,6 @@ export interface AgentSendInput {
   permissionModeOverride?: PromaPermissionMode
   /** 用户通过 /skill:xxx 引用的 Skill slug 列表 */
   mentionedSkills?: string[]
-  /** 用户通过 #mcp:xxx 引用的 MCP 服务器名称列表 */
-  mentionedMcpServers?: string[]
   /** 用户通过会话引用 mention 指定的 Agent 会话 ID 列表 */
   mentionedSessionIds?: string[]
   /** 渲染进程生成的流式开始时间戳，主进程原样回传到 STREAM_COMPLETE，确保竞态保护比较的是同一个值 */
@@ -1191,6 +1230,8 @@ export interface AgentSendInput {
   triggeredBy?: 'user' | 'automation'
   /** 定时任务执行上下文（注入到系统提示词，用户不可见） */
   automationContext?: string
+  /** 当前会话选择注入的 MCP 服务器名称列表 */
+  selectedMcpServers?: string[]
 }
 
 // ===== Agent 队列消息 =====
@@ -1693,6 +1734,8 @@ export const AGENT_IPC_CHANNELS = {
   SAVE_MCP_CONFIG: 'agent:save-mcp-config',
   /** 测试 MCP 服务器连接 */
   TEST_MCP_SERVER: 'agent:test-mcp-server',
+  /** 初始化内置连接器 */
+  INITIALIZE_DEFAULT_CONNECTOR: 'agent:initialize-default-connector',
   /** 获取工作区 Skill 列表 */
   GET_SKILLS: 'agent:get-skills',
   /** 获取工作区 Skills 目录绝对路径 */

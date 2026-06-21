@@ -1,0 +1,19 @@
+{
+  "name": "数据分析专家",
+  "version": "1.0.0",
+  "description": "从 WorkBuddy Data 插件转换的 WorkMate 内置专家，支持 SQL、数据探索、统计分析、可视化、仪表盘和分析验证。",
+  "author": {
+    "name": "WorkBuddy Import"
+  },
+  "license": "MIT",
+  "keywords": [
+    "expert-group",
+    "数据分析",
+    "SQL",
+    "可视化",
+    "统计分析",
+    "仪表盘"
+  ],
+  "expertGroup": "data-analysis-expert",
+  "expertType": "agent"
+}

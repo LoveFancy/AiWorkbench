@@ -2,7 +2,7 @@
  * FeishuSettings - 飞书集成设置页
  *
  * 双 Tab 布局：
- * - Bot 配置：飞书应用凭证、连接状态、默认配置、创建引导、命令说明
+ * - 机器人配置：飞书应用凭证、连接状态、默认配置、创建引导、命令说明
  * - 绑定管理：查看/管理所有活跃的飞书聊天绑定（群聊/单聊的工作区/会话分配）
  */
 
@@ -52,7 +52,7 @@ import type { FeishuTestResult, FeishuChatBinding, FeishuBotConfig, FeishuBotBri
 type FeishuTab = 'config' | 'bindings'
 
 const TAB_OPTIONS: Array<{ value: FeishuTab; label: string }> = [
-  { value: 'config', label: 'Bot 配置' },
+  { value: 'config', label: '机器人配置' },
   { value: 'bindings', label: '绑定管理' },
 ]
 
@@ -102,8 +102,8 @@ const FEISHU_SCOPES_JSON = JSON.stringify({
  */
 const FEISHU_TUTORIAL_VIDEO = {
   url: '',
-  title: '飞书 Bot 配置视频教程',
-  description: '跟着视频一步步配，3 分钟内完成飞书 Bot 接入',
+  title: '飞书机器人配置视频教程',
+  description: '跟着视频一步步配，3 分钟内完成飞书机器人接入',
 } as const
 
 // ===== 视频教程组件 =====
@@ -295,19 +295,19 @@ function PermissionsStep(): React.ReactElement {
             <div><span className="text-foreground/70">im:message:send_as_bot</span> — 以机器人身份发送消息</div>
             <div><span className="text-foreground/70">im:message.p2p_msg:readonly</span> — 接收用户发给机器人的单聊消息</div>
             <div><span className="text-foreground/70">im:message.group_at_msg:readonly</span> — 接收群聊中 @机器人 的消息</div>
-            <div><span className="text-foreground/70">im:message.group_msg</span> — 接收群聊所有用户消息（配合 im:chat 实现仅你和 Bot 的群免 @ 续聊、群聊上下文）</div>
-            <div><span className="text-foreground/70">im:message.reactions:write_only</span> — 为消息添加状态表情（如⌨️/✅），让用户感知 Bot 正在处理 / 已完成</div>
-            <div><span className="text-foreground/70">im:chat</span> — 创建群 + 读取/更新群基础信息（群名、简介、真人数量等；免 @ 续聊靠它判断群里只有你和 Bot）</div>
+            <div><span className="text-foreground/70">im:message.group_msg</span> — 接收群聊所有用户消息（配合 im:chat 实现仅你和机器人的群免 @ 续聊、群聊上下文）</div>
+            <div><span className="text-foreground/70">im:message.reactions:write_only</span> — 为消息添加状态表情（如⌨️/✅），让用户感知机器人正在处理 / 已完成</div>
+            <div><span className="text-foreground/70">im:chat</span> — 创建群 + 读取/更新群基础信息（群名、简介、真人数量等；免 @ 续聊靠它判断群里只有你和机器人）</div>
             <div><span className="text-foreground/70">im:chat.members:read</span> — 获取群成员列表（支持 @某人）</div>
-            <div><span className="text-foreground/70">im:chat.members:write_only</span> — 添加 / 移除群成员（Bot 主动拉人入群）</div>
+            <div><span className="text-foreground/70">im:chat.members:write_only</span> — 添加 / 移除群成员（机器人主动拉人入群）</div>
             <div><span className="text-foreground/70">im:chat.managers:write_only</span> — 指定 / 移除群管理员</div>
             <div><span className="text-foreground/70">im:chat.announcement:write_only</span> — 更新群公告（把任务进度挂到公告里）</div>
             <div><span className="text-foreground/70">im:chat.tabs:write_only</span> — 操作群会话标签页</div>
             <div><span className="text-foreground/70">im:chat.top_notice:write_only</span> — 设置群置顶消息</div>
             <div><span className="text-foreground/70">im:resource</span> — 获取消息中的资源文件（图片、文档等）</div>
             <div><span className="text-foreground/70">contact:contact.base:readonly</span> — 获取用户基本信息（群聊发送者名称）</div>
-            <div><span className="text-foreground/70">drive:drive</span> — 云文档评论 @Bot 时读取与回复（支持文档协作场景）</div>
-            <div><span className="text-foreground/70">wiki:wiki</span> — 解析知识库链接的真实文档（@Bot 在 wiki 文档评论时使用）</div>
+            <div><span className="text-foreground/70">drive:drive</span> — 云文档评论 @机器人 时读取与回复（支持文档协作场景）</div>
+            <div><span className="text-foreground/70">wiki:wiki</span> — 解析知识库链接的真实文档（@机器人 在 wiki 文档评论时使用）</div>
           </div>
         )}
       </div>
@@ -325,7 +325,7 @@ npm install -g @larksuite/cli
 2. 将 SKILL 配置到本工作区（默认配置本工作区，但请提醒用户是否需要额外安装到全局，会使得预置上下文增加，造成不必要的Token消耗）
 npx skills add https://github.com/larksuite/cli -y -g
 
-3. 初始化 CLI 配置（创建一个全新的飞书 CLI 应用，与 Proma 飞书 Bot 互不影响）
+3. 初始化 CLI 配置（创建一个全新的飞书 CLI 应用，与 Proma 飞书机器人互不影响）
 lark-cli config init --new
 
 4. 一键申请全部领域的所有权限（文档/表格/日历/任务/邮件/通讯录/会议/审批/OKR/Wiki/多维表格/幻灯片/考勤/项目板等都包含在内）
@@ -356,7 +356,7 @@ function FeishuCliSection(): React.ReactElement {
     >
       <SettingsCard divided={false}>
         <div className="px-4 py-4 space-y-2 text-sm text-muted-foreground">
-          <p className="text-xs">复制配置提示词，并前往飞书Bot日常绑定的<strong>工作区</strong>，创建新的 WorkMate Agent 对话并发送即可让 WorkMate 协助完成配置。</p>
+          <p className="text-xs">复制配置提示词，并前往飞书机器人日常绑定的<strong>工作区</strong>，创建新的 WorkMate Agent 对话并发送即可让 WorkMate 协助完成配置。</p>
           <button
             type="button"
             className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
@@ -372,7 +372,7 @@ function FeishuCliSection(): React.ReactElement {
               <div className="pl-3 text-foreground/60">npm install -g @larksuite/cli</div>
               <div className="pt-1"><span className="text-foreground/70 font-semibold">步骤 2</span> — 将 SKILL 配置到本工作区（默认本工作区；如需全局会增加 Token 消耗）</div>
               <div className="pl-3 text-foreground/60">npx skills add https://github.com/larksuite/cli -y -g</div>
-              <div className="pt-1"><span className="text-foreground/70 font-semibold">步骤 3</span> — 初始化 CLI（新建独立 CLI 应用，不影响 Proma 飞书 Bot）</div>
+              <div className="pt-1"><span className="text-foreground/70 font-semibold">步骤 3</span> — 初始化 CLI（新建独立 CLI 应用，不影响 Proma 飞书机器人）</div>
               <div className="pl-3 text-foreground/60">lark-cli config init --new</div>
               <div className="pt-1"><span className="text-foreground/70 font-semibold">步骤 4</span> — 一键申请全部领域权限（文档/表格/日历/任务/邮件/通讯录/会议等）</div>
               <div className="pl-3 text-foreground/60">lark-cli auth login --domain all</div>
@@ -749,10 +749,10 @@ function RegisterFeishuDialog({ open, onOpenChange, onSuccess }: RegisterFeishuD
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <QrCode size={18} className="text-primary" />
-            扫码创建飞书 Bot
+            扫码创建飞书机器人
           </DialogTitle>
           <DialogDescription>
-            飞书后端将自动创建一个 PersonalAgent 应用，扫码完成后 Proma 会自动保存凭证并启动 Bot，整个过程无需手动复制 App ID / Secret。
+            飞书后端将自动创建一个 PersonalAgent 应用，扫码完成后 Proma 会自动保存凭证并启动机器人，整个过程无需手动复制 App ID / Secret。
           </DialogDescription>
         </DialogHeader>
 
@@ -804,7 +804,7 @@ function RegisterFeishuDialog({ open, onOpenChange, onSuccess }: RegisterFeishuD
               <div className="flex flex-col items-center gap-2 text-sm">
                 <CheckCircle2 size={32} className="text-green-600" />
                 <span className="text-foreground font-medium">应用创建成功</span>
-                <span className="text-xs text-muted-foreground">已自动保存配置，正在启动 Bot…</span>
+                <span className="text-xs text-muted-foreground">已自动保存配置，正在启动机器人…</span>
               </div>
 
               {/* 推荐：补全飞书 CLI 获得完整生态体验 */}
@@ -906,7 +906,7 @@ function SessionMirrorSection({ bots }: { bots: FeishuBotConfig[] }): React.Reac
   return (
     <SettingsSection
       title="同步到飞书"
-      description="开启后，每个新的 WorkMate 伴行会话会创建一个仅包含你和指定 Bot 的飞书群，并把输出同步到群内卡片，同时默认阻止电脑自动休眠，方便你脱离电脑在飞书上继续完成工作。"
+      description="开启后，每个新的 WorkMate 伴行会话会创建一个仅包含你和指定机器人的飞书群，并把输出同步到群内卡片，同时默认阻止电脑自动休眠，方便你脱离电脑在飞书上继续完成工作。"
     >
       <SettingsCard divided={false}>
         <div className="px-4 py-4 space-y-4">
@@ -924,14 +924,14 @@ function SessionMirrorSection({ bots }: { bots: FeishuBotConfig[] }): React.Reac
           </div>
 
           <div className="grid gap-3 md:grid-cols-[180px_1fr] md:items-center">
-            <div className="text-sm font-medium text-foreground">同步 Bot</div>
+            <div className="text-sm font-medium text-foreground">同步机器人</div>
             <Select
               value={settings.botId ?? ''}
               onValueChange={handleBotChange}
               disabled={enabledBots.length === 0}
             >
               <SelectTrigger className="h-9">
-                <SelectValue placeholder={enabledBots.length === 0 ? '先启用一个 Bot' : '选择同步 Bot'} />
+                <SelectValue placeholder={enabledBots.length === 0 ? '先启用一个机器人' : '选择同步机器人'} />
               </SelectTrigger>
               <SelectContent>
                 {enabledBots.map((bot) => (
@@ -944,16 +944,16 @@ function SessionMirrorSection({ bots }: { bots: FeishuBotConfig[] }): React.Reac
           <div className="flex items-start gap-2 rounded-lg bg-blue-500/10 px-3 py-3 text-xs text-blue-700 dark:text-blue-300">
             <MessageSquare size={15} className="mt-0.5 flex-shrink-0" />
             <div className="leading-relaxed">
-              实时同步模式下，一个 WorkMate 伴行会话对应一个飞书群。即使配置了多个 Bot，也只会使用这里选中的 Bot，避免同一会话被多个 Bot 重复建群或拆散上下文。
+              实时同步模式下，一个 WorkMate 伴行会话对应一个飞书群。即使配置了多个机器人，也只会使用这里选中的机器人，避免同一会话被多个机器人重复建群或拆散上下文。
             </div>
           </div>
 
           <div className="flex items-start gap-2 rounded-lg bg-amber-500/10 px-3 py-3 text-xs text-amber-800 dark:text-amber-300">
             <AlertTriangle size={15} className="mt-0.5 flex-shrink-0" />
             <div className="space-y-1 leading-relaxed">
-              <div className="font-medium text-amber-900 dark:text-amber-200">想在仅你和 Bot 的群里不 @Bot 也能继续发送消息，需要额外申请两个权限。</div>
+              <div className="font-medium text-amber-900 dark:text-amber-200">想在仅你和机器人的群里不 @机器人 也能继续发送消息，需要额外申请两个权限。</div>
               <div>
-                请在飞书开放平台为同步 Bot 申请并发布以下权限：
+                请在飞书开放平台为同步机器人申请并发布以下权限：
               </div>
               <div className="flex flex-col gap-1 pl-1">
                 <div>
@@ -962,11 +962,11 @@ function SessionMirrorSection({ bots }: { bots: FeishuBotConfig[] }): React.Reac
                 </div>
                 <div>
                   <code className="rounded bg-amber-500/15 px-1 py-0.5 text-[11px] text-amber-900 dark:text-amber-100">im:chat</code>
-                  {' '}— 读取群基础信息以判断群里只有你和 Bot（缺少时无法识别 2 人群，仍需 @Bot）
+                  {' '}— 读取群基础信息以判断群里只有你和机器人（缺少时无法识别 2 人群，仍需 @机器人）
                 </div>
               </div>
               <div>
-                两者都审核通过并发布后才会生效；任一缺失或审核未过时，仍需要在群里 @Bot 才能触发 Agent。一键复制的权限配置里已包含这两项，单独手动添加时请勿遗漏。
+                两者都审核通过并发布后才会生效；任一缺失或审核未过时，仍需要在群里 @机器人 才能触发 Agent。一键复制的权限配置里已包含这两项，单独手动添加时请勿遗漏。
               </div>
             </div>
           </div>
@@ -975,7 +975,7 @@ function SessionMirrorSection({ bots }: { bots: FeishuBotConfig[] }): React.Reac
             <div className="flex items-start gap-2 rounded-lg bg-amber-500/10 px-3 py-3 text-xs text-amber-800 dark:text-amber-300">
               <AlertTriangle size={15} className="mt-0.5 flex-shrink-0" />
               <div className="leading-relaxed">
-                当前同步 Bot 还没有绑定记录。请先在飞书里向「{selectedBot?.name ?? '该 Bot'}」发送一条消息，WorkMate 记录你的 open_id 后才能自动为新会话建群。
+                当前同步机器人还没有绑定记录。请先在飞书里向「{selectedBot?.name ?? '该机器人'}」发送一条消息，WorkMate 记录你的 open_id 后才能自动为新会话建群。
               </div>
             </div>
           )}
@@ -1033,7 +1033,7 @@ function BotConfigCard({ bot, state, onSaved, onRemoved }: BotConfigCardProps): 
         defaultChannelId: bot.defaultChannelId,
         defaultModelId: bot.defaultModelId,
       })
-      toast.success(`Bot "${name}" 已保存`)
+      toast.success(`机器人"${name}" 已保存`)
       onSaved()
     } catch {
       toast.error('保存配置失败')
@@ -1067,7 +1067,7 @@ function BotConfigCard({ bot, state, onSaved, onRemoved }: BotConfigCardProps): 
   const handleToggle = React.useCallback(async () => {
     if (isConnected) {
       await window.electronAPI.stopFeishuBot(bot.id)
-      toast.success(`Bot "${bot.name}" 已停止`)
+      toast.success(`机器人"${bot.name}" 已停止`)
       await refreshBotStates()
     } else {
       // 启动是异步的（10-15秒），不阻塞等待完成
@@ -1089,7 +1089,7 @@ function BotConfigCard({ bot, state, onSaved, onRemoved }: BotConfigCardProps): 
             if (!botState || botState.status !== 'connecting') {
               clearInterval(poll)
               if (botState?.status === 'connected') {
-                toast.success(`Bot "${bot.name}" 已连接`)
+                toast.success(`机器人"${bot.name}" 已连接`)
               }
             }
           }
@@ -1105,7 +1105,7 @@ function BotConfigCard({ bot, state, onSaved, onRemoved }: BotConfigCardProps): 
   const handleRemove = React.useCallback(async () => {
     try {
       await window.electronAPI.removeFeishuBot(bot.id)
-      toast.success(`Bot "${bot.name}" 已删除`)
+      toast.success(`机器人"${bot.name}" 已删除`)
       onRemoved()
     } catch {
       toast.error('删除失败')
@@ -1124,7 +1124,7 @@ function BotConfigCard({ bot, state, onSaved, onRemoved }: BotConfigCardProps): 
       >
         <div className="flex items-center gap-3">
           <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusConfig.color}`} />
-          <span className="font-medium text-sm">{bot.name || '未命名 Bot'}</span>
+          <span className="font-medium text-sm">{bot.name || '未命名机器人'}</span>
           <span className="text-xs text-muted-foreground">{bot.appId ? bot.appId.slice(0, 12) + '...' : '未配置'}</span>
         </div>
         <div className="flex items-center gap-2">
@@ -1148,7 +1148,7 @@ function BotConfigCard({ bot, state, onSaved, onRemoved }: BotConfigCardProps): 
       {expanded && (
         <div className="px-4 pb-4 space-y-4 border-t border-border pt-4">
           <SettingsInput
-            label="Bot 名称"
+            label="机器人名称"
             value={name}
             onChange={setName}
             placeholder="如：研发助手"
@@ -1186,7 +1186,7 @@ function BotConfigCard({ bot, state, onSaved, onRemoved }: BotConfigCardProps): 
                 <AlertDialogHeader>
                   <AlertDialogTitle>确认删除</AlertDialogTitle>
                   <AlertDialogDescription>
-                    删除 Bot "{bot.name}" 将同时断开连接并清除所有绑定。此操作不可撤销。
+                    删除机器人"{bot.name}" 将同时断开连接并清除所有绑定。此操作不可撤销。
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -1280,7 +1280,7 @@ function FeishuConfigTab(): React.ReactElement {
       })
       setBots((prev) => [...prev, saved])
     } catch {
-      toast.error('创建 Bot 失败')
+      toast.error('创建机器人失败')
     }
   }, [bots.length])
 
@@ -1299,7 +1299,7 @@ function FeishuConfigTab(): React.ReactElement {
         defaultModelId: undefined,
       })
       setBots((prev) => [...prev, saved])
-      toast.success(`Bot "${saved.name}" 已创建`)
+      toast.success(`机器人"${saved.name}" 已创建`)
       // 自动启动 Bot（不阻塞 UI）
       window.electronAPI.startFeishuBot(saved.id).catch((err: unknown) => {
         toast.error(err instanceof Error ? err.message : '自动启动失败，请手动启动')
@@ -1328,10 +1328,10 @@ function FeishuConfigTab(): React.ReactElement {
         onSuccess={handleRegisterSuccess}
       />
 
-      {/* Bot 列表 */}
+      {/* 机器人列表 */}
       <SettingsSection
-        title="飞书 Bot 列表"
-        description="管理多个飞书机器人，每个 Bot 可绑定不同的工作区和模型"
+        title="飞书机器人列表"
+        description="管理多个飞书机器人，每个机器人可绑定不同的工作区和模型"
         action={
           <div className="flex items-center gap-2">
             <Button size="sm" onClick={() => setRegisterOpen(true)}>
@@ -1348,7 +1348,7 @@ function FeishuConfigTab(): React.ReactElement {
         {bots.length === 0 ? (
           <SettingsCard divided={false}>
             <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-              还没有配置飞书 Bot。点击「扫码创建」一键接入，或「手动添加」用已有 App ID。
+              还没有配置飞书机器人。点击「扫码创建」一键接入，或「手动添加」用已有 App ID。
             </div>
           </SettingsCard>
         ) : (
@@ -1368,9 +1368,9 @@ function FeishuConfigTab(): React.ReactElement {
 
       <SessionMirrorSection bots={bots} />
 
-      {/* 手动创建飞书 Bot 引导 */}
+      {/* 手动创建飞书机器人引导 */}
       <SettingsSection
-        title="手动创建飞书 Bot"
+        title="手动创建飞书机器人"
         description="首次使用？按以下步骤在飞书开放平台创建机器人应用"
       >
         <SettingsCard divided={false}>

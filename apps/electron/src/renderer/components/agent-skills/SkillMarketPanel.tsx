@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Loader2, LogIn, MoreHorizontal, Plus, RefreshCw } from 'lucide-react'
+import { Info, Loader2, LogIn, MoreHorizontal, Plus, RefreshCw } from 'lucide-react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { toast } from 'sonner'
 import type { AgentPluginMarketplace, AgentPluginMarketplaceDetail, AgentPluginMarketplacePlugin } from '@proma/shared'
@@ -18,6 +18,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { authStateAtom, loginDialogOpenAtom } from '@/auth/renderer'
 import { settingsOpenAtom } from '@/atoms/settings-tab'
@@ -36,9 +37,17 @@ interface SkillMarketPanelProps {
 }
 
 type MarketSource = 'skillhub' | 'plugins'
-const MARKET_SOURCES: Array<{ value: MarketSource; label: string }> = [
-  { value: 'skillhub', label: '华泰 SkillHub' },
-  { value: 'plugins', label: '插件市场' },
+const MARKET_SOURCES: Array<{ value: MarketSource; label: string; description: string }> = [
+  {
+    value: 'skillhub',
+    label: '华泰 SkillHub',
+    description: '公司内部维护的 Skill 能力库，适合安装经过团队沉淀和权限认证的工作流技能。',
+  },
+  {
+    value: 'plugins',
+    label: '插件市场',
+    description: 'Claude Code 插件生态入口，适合安装包含 Skills、Commands、Agents 或 MCP 的插件包。',
+  },
 ]
 const SKILLHUB_PAGE_SIZE = 20
 
@@ -150,17 +159,24 @@ export function SkillMarketPanel({ workspaceSlug, query, installedSkillNames, on
       <div className="flex flex-col gap-4">
         <div className="flex items-center gap-2">
           {MARKET_SOURCES.map((item) => (
-            <button
-              key={item.value}
-              type="button"
-              onClick={() => setSource(item.value)}
-              className={cn(
-                'h-8 rounded-md px-3 text-xs font-medium transition-colors',
-                source === item.value ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {item.label}
-            </button>
+            <Tooltip key={item.value}>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => setSource(item.value)}
+                  className={cn(
+                    'flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors',
+                    source === item.value ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  <span>{item.label}</span>
+                  <Info size={13} className="text-muted-foreground" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-[280px] text-xs leading-5">
+                {item.description}
+              </TooltipContent>
+            </Tooltip>
           ))}
         </div>
 

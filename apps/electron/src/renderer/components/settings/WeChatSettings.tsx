@@ -233,7 +233,7 @@ export function WeChatSettings(): React.ReactElement {
               </div>
               <p className="pl-7 text-muted-foreground">
                 点击上方「扫码登录」，用微信扫描二维码。
-                这会将你的微信账号作为 Bot 接入 WorkMate。
+                这会将你的微信账号作为机器人接入 WorkMate。
               </p>
             </div>
 
@@ -272,7 +272,7 @@ export function WeChatSettings(): React.ReactElement {
                 iLink Bot API
                 <ExternalLink className="size-2.5" />
               </button>
-              ，这是微信官方提供的 Bot 接口。
+              ，这是微信官方提供的机器人接口。
               会话凭证使用系统级加密存储。
             </div>
           </div>
