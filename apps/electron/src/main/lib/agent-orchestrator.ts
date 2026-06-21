@@ -186,9 +186,6 @@ export class AgentOrchestrator {
    * 通过 EventBus 分发 AgentEvent，通过 callbacks 发送控制信号。
    */
   async sendMessage(input: AgentSendInput, callbacks: SessionCallbacks): Promise<void> {
-<<<<<<< HEAD
-    const { sessionId, userMessage, channelId, modelId, workspaceId, additionalDirectories, attachments, customMcpServers, permissionModeOverride, mentionedSkills, mentionedMcpServers, mentionedSessionIds, automationContext } = input
-
     const _diagStart = Date.now()
     const _diag = (tag: string) => console.log(`[DIAG][Agent 编排] [${tag}] sessionId=${input.sessionId}, elapsed=${Date.now() - _diagStart}ms, ts=${Date.now()}`)
     _diag('sendMessage 入口')
@@ -202,9 +199,7 @@ export class AgentOrchestrator {
         console.log(`[DIAG][Agent 编排] Event Loop 延迟: ${elDelay}ms (正常)`)
       }
     })
-=======
     const { sessionId, userMessage, channelId, modelId, workspaceId, additionalDirectories, attachments, customMcpServers, permissionModeOverride, mentionedSkills, mentionedSessionIds, automationContext, selectedMcpServers } = input
->>>>>>> a7ec6f7d6bc5f390c15f6a31b2d442aca120e95f
     const stderrChunks: string[] = []
 
     // 0. 并发保护
@@ -589,13 +584,9 @@ export class AgentOrchestrator {
       }
 
       // 10. 构建 MCP 服务器配置 + 记忆工具 + 生图工具 + 自定义工具
-<<<<<<< HEAD
       _diag('开始构建 MCP 服务器配置')
-      const mcpServers = buildMcpServers(workspaceSlug)
-      _diag('buildMcpServers 完成, 开始 injectMemoryTools (await)')
-=======
       const mcpServers = buildMcpServers(workspaceSlug, selectedMcpServers)
->>>>>>> a7ec6f7d6bc5f390c15f6a31b2d442aca120e95f
+       _diag('buildMcpServers 完成, 开始 injectMemoryTools (await)')
       await injectMemoryTools(sdk, mcpServers)
       _diag('injectMemoryTools 完成, 开始 injectNanoBananaTools (await)')
       await injectNanoBananaTools(sdk, mcpServers, sessionId, agentCwd)
