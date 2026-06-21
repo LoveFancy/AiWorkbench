@@ -87,7 +87,8 @@ describe('系统根提示词', () => {
 
     expect(prompt).toContain('## 多模态与文档读取规则')
     expect(prompt).toContain('如果当前模型不支持多模态图片理解，不要尝试读取、解析或描述图片内容')
-    expect(prompt).toContain('saas-kimi-k25、saas-qwen35-397b、local-qwen36-27b、saas-glm-51、saas-kimi-k26')
+    expect(prompt).toContain('请用户切换到支持多模态图片理解的模型')
+    expect(prompt).not.toContain('saas-glm-51')
     expect(prompt).toContain('docx、pdf、pptx、xlsx')
     expect(prompt).toContain('必须优先通过对应 Skill 读取或转换')
   })

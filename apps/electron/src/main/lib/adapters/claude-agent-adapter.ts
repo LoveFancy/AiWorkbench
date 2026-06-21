@@ -25,6 +25,7 @@ import {
   isThinkingSignatureError as matchesThinkingSignatureError,
 } from '@proma/shared'
 import type { CanUseToolOptions, PermissionResult } from '../agent-permission-service'
+import { buildPreToolUseMultimodalGuardOutput } from '../agent-tool-multimodal-guard'
 import { TRANSIENT_NETWORK_PATTERN } from '../error-patterns'
 import { spawn as spawnChild, execFileSync } from 'node:child_process'
 
@@ -152,6 +153,8 @@ export interface ClaudeAgentQueryOptions extends AgentQueryInput {
   onModelResolved?: (model: string) => void
   /** 上下文窗口缓存回调 */
   onContextWindow?: (contextWindow: number) => void
+  /** 根据当前模型判断是否支持多模态，供 PreToolUse 拦截文件读取 */
+  getModelSupportsMultimodal?: (modelId: string | undefined) => boolean
 
   // ===== SDK 0.2.52 ~ 0.2.63 新增选项 =====
 
@@ -823,6 +826,26 @@ export class ClaudeAgentAdapter implements AgentProviderAdapter {
         // 在 result 消息发到 host 之前完成，故 result 处理时 backgroundTasksPending 已是最新。
         // 仅观察、绝不返回 decision:'block'（那会强制模型继续输出）。
         hooks: {
+          PreToolUse: [{
+            hooks: [async (input: unknown) => {
+              const hookInput = input as {
+                tool_name?: unknown
+                tool_input?: unknown
+              }
+              const toolName = typeof hookInput.tool_name === 'string' ? hookInput.tool_name : ''
+              const toolInput = hookInput.tool_input && typeof hookInput.tool_input === 'object'
+                ? hookInput.tool_input as Record<string, unknown>
+                : {}
+              const supportsMultimodal = options.getModelSupportsMultimodal?.(options.model) ?? true
+              const blocked = buildPreToolUseMultimodalGuardOutput({
+                toolName,
+                input: toolInput,
+                supportsMultimodal,
+              })
+              if (blocked) return blocked
+              return { continue: true }
+            }],
+          }],
           Stop: [{
             hooks: [async (input: unknown) => {
               const bt = (input as { background_tasks?: unknown[] }).background_tasks

@@ -662,6 +662,13 @@ export class AgentOrchestrator {
         runToolGuardContext.supportsMultimodal = getChannelModelSupportsMultimodal(channel, resolvedModel)
       }
 
+      const getModelSupportsMultimodal = (targetModelId: string | undefined): boolean => {
+        if (!targetModelId) return false
+        const activeChannel = getChannelById(currentChannelId) ?? channel
+        const activeModel = activeChannel?.models.find((item) => item.id === targetModelId)
+        return activeModel?.supportsMultimodal === true
+      }
+
       // ExitPlanMode 拦截器：plan 模式下走 UI 审批流程
       const handleExitPlanMode = (toolInput: Record<string, unknown>, signal: AbortSignal): Promise<ExitPlanPermissionResult> => {
         return exitPlanService.handleExitPlanMode(
@@ -977,8 +984,8 @@ export class AgentOrchestrator {
           // 通知渲染进程更新流式状态中的模型信息
           this.eventBus.emit(sessionId, { kind: 'proma_event', event: { type: 'model_resolved', model } })
         },
-       
-          }
+        getModelSupportsMultimodal,
+      }
 
       console.log(`[Agent 编排] 开始通过 Adapter 遍历事件流...`)
 

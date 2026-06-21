@@ -6,7 +6,7 @@
 
 import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { spawn } from 'node:child_process'
-import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import type {
   AgentPluginInstallInput,
   AgentPluginInstallResult,
@@ -46,6 +46,9 @@ interface AddMarketplaceInput {
 interface MarketManifestPlugin {
   name: string
   source: string
+  sourceKind?: 'git-subdir'
+  sourceUrl?: string
+  sourcePath?: string
   description?: string
   version?: string
   strict?: boolean
@@ -182,6 +185,22 @@ function readJson(path: string): unknown {
   return JSON.parse(readFileSync(path, 'utf-8')) as unknown
 }
 
+function normalizeManifestPluginSource(value: unknown): Pick<MarketManifestPlugin, 'source' | 'sourceKind' | 'sourceUrl' | 'sourcePath'> | null {
+  if (typeof value === 'string' && value.trim()) {
+    return { source: value }
+  }
+  if (!isRecord(value)) return null
+  if (value.source !== 'git-subdir') return null
+  if (typeof value.url !== 'string' || !value.url.trim()) return null
+  if (typeof value.path !== 'string' || !value.path.trim()) return null
+  return {
+    source: `${value.url}#${value.path}`,
+    sourceKind: 'git-subdir',
+    sourceUrl: value.url,
+    sourcePath: value.path,
+  }
+}
+
 function normalizeManifest(raw: unknown): MarketManifest {
   if (!isRecord(raw) || !Array.isArray(raw.plugins)) {
     throw new Error('插件市场 manifest 缺少 plugins 数组')
@@ -191,16 +210,32 @@ function normalizeManifest(raw: unknown): MarketManifest {
     ...(typeof raw.name === 'string' && { name: raw.name }),
     plugins: raw.plugins
       .filter(isRecord)
-      .map((item) => ({
-        name: typeof item.name === 'string' ? item.name : '',
-        source: typeof item.source === 'string' ? item.source : '',
-        ...(typeof item.description === 'string' && { description: item.description }),
-        ...(typeof item.version === 'string' && { version: item.version }),
-        ...(typeof item.strict === 'boolean' && { strict: item.strict }),
-        ...(Array.isArray(item.skills) && { skills: item.skills.filter((skill): skill is string => typeof skill === 'string' && skill.trim().length > 0) }),
-      }))
+      .map((item) => {
+        const source = normalizeManifestPluginSource(item.source)
+        const cachedGitSubdirSource = item.sourceKind === 'git-subdir'
+          && typeof item.sourceUrl === 'string'
+          && typeof item.sourcePath === 'string'
+          ? { sourceKind: 'git-subdir' as const, sourceUrl: item.sourceUrl, sourcePath: item.sourcePath }
+          : {}
+        return {
+          name: typeof item.name === 'string' ? item.name : '',
+          ...(source ?? { source: '' }),
+          ...cachedGitSubdirSource,
+          ...(typeof item.description === 'string' && { description: item.description }),
+          ...(typeof item.version === 'string' && { version: item.version }),
+          ...(typeof item.strict === 'boolean' && { strict: item.strict }),
+          ...(Array.isArray(item.skills) && { skills: item.skills.filter((skill): skill is string => typeof skill === 'string' && skill.trim().length > 0) }),
+        }
+      })
       .filter((item) => item.name && item.source),
   }
+}
+
+function resolveLocalMarketplaceManifestPath(sourcePath: string): string {
+  if (!existsSync(sourcePath) || sourcePath.endsWith('.json')) return sourcePath
+  const claudeMarketplacePath = join(sourcePath, '.claude-plugin', 'marketplace.json')
+  if (existsSync(claudeMarketplacePath)) return claudeMarketplacePath
+  return join(sourcePath, 'marketplace.json')
 }
 
 function parseMarketplaceType(value: unknown): AgentPluginMarketplaceType {
@@ -326,10 +361,7 @@ export function removePluginMarketplace(id: string, input?: PluginMarketplacePat
 async function readMarketplaceManifest(marketplace: AgentPluginMarketplace): Promise<MarketManifest> {
   if (marketplace.type === 'local') {
     const sourcePath = resolve(marketplace.source)
-    const manifestPath = existsSync(sourcePath) && !sourcePath.endsWith('.json')
-      ? join(sourcePath, 'marketplace.json')
-      : sourcePath
-    return normalizeManifest(readJson(manifestPath))
+    return normalizeManifest(readJson(resolveLocalMarketplaceManifestPath(sourcePath)))
   }
 
   const url = resolveMarketplaceManifestUrl(marketplace)
@@ -473,7 +505,28 @@ function resolvePluginSource(marketplace: AgentPluginMarketplace, source: string
   return resolve(base, source)
 }
 
-function resolvePluginInstallSource(marketplace: AgentPluginMarketplace, source: string): PluginInstallSource {
+function resolveLocalPluginBase(marketplaceSource: string): string {
+  const sourcePath = resolve(marketplaceSource)
+  if (existsSync(sourcePath) && !sourcePath.endsWith('.json')) return sourcePath
+  const manifestDir = dirname(sourcePath)
+  return manifestDir.endsWith(`${sep}.claude-plugin`) ? dirname(manifestDir) : manifestDir
+}
+
+function resolvePluginInstallSource(marketplace: AgentPluginMarketplace, plugin: MarketManifestPlugin): PluginInstallSource {
+  if (plugin.sourceKind === 'git-subdir') {
+    if (marketplace.type === 'local') {
+      return {
+        localSource: resolve(resolveLocalPluginBase(marketplace.source), plugin.sourcePath ?? ''),
+        subPath: '',
+      }
+    }
+    return {
+      cloneSource: plugin.sourceUrl,
+      subPath: plugin.sourcePath ?? '',
+    }
+  }
+
+  const source = plugin.source
   if (isAbsolute(source) && existsSync(source)) {
     return { localSource: source, subPath: '' }
   }
@@ -497,10 +550,7 @@ function resolvePluginInstallSource(marketplace: AgentPluginMarketplace, source:
     return { cloneSource: new URL(source, marketplace.source).toString(), subPath: '' }
   }
 
-  const base = existsSync(marketplace.source) && marketplace.source.endsWith('.json')
-    ? dirname(resolve(marketplace.source))
-    : resolve(marketplace.source)
-  return { localSource: resolve(base, source), subPath: '' }
+  return { localSource: resolve(resolveLocalPluginBase(marketplace.source), source), subPath: '' }
 }
 
 function copyOrMoveAtomically(sourceDir: string, targetDir: string, overwrite: boolean): 'installed' | 'overwritten' {
@@ -689,7 +739,7 @@ export async function installMarketplacePlugin(input: AgentPluginInstallInput, p
   const marketplaceId = slugSafe(input.marketplaceId, '插件市场 ID')
   const pluginName = slugSafe(input.pluginName, '插件名称')
   const { marketplace, plugin } = findMarketplacePlugin(marketplaceId, pluginName, resolved)
-  const source = resolvePluginInstallSource(marketplace, plugin.source)
+  const source = resolvePluginInstallSource(marketplace, plugin)
   const prepared = await preparePluginSource(source, pluginName, resolved)
 
   const targetDir = join(resolved.userPluginsDir, marketplaceId, pluginName)

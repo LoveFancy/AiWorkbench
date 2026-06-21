@@ -91,6 +91,188 @@ describe('插件市场服务', () => {
     }
   })
 
+  test('刷新本地仓库目录时读取 .claude-plugin/marketplace.json', async () => {
+    const temp = tempRoot()
+    try {
+      const repoDir = join(temp.root, 'ppt-master')
+      mkdirSync(join(repoDir, '.claude-plugin'), { recursive: true })
+      mkdirSync(join(repoDir, 'skills', '.claude-plugin'), { recursive: true })
+      mkdirSync(join(repoDir, 'skills', 'ppt-master'), { recursive: true })
+      writeFileSync(
+        join(repoDir, '.claude-plugin', 'marketplace.json'),
+        JSON.stringify({
+          name: 'ppt-master',
+          plugins: [
+            {
+              name: 'ppt-master',
+              source: {
+                source: 'git-subdir',
+                url: 'https://github.com/hugohe3/ppt-master.git',
+                path: 'skills',
+              },
+              description: 'PPT Master skill',
+            },
+          ],
+        }),
+        'utf-8',
+      )
+      writeFileSync(
+        join(repoDir, 'skills', '.claude-plugin', 'plugin.json'),
+        JSON.stringify({ name: 'ppt-master', version: '2.7.0' }),
+        'utf-8',
+      )
+      writeFileSync(join(repoDir, 'skills', 'ppt-master', 'SKILL.md'), '# PPT Master', 'utf-8')
+      const marketplacesPath = join(temp.root, 'plugin-marketplaces.json')
+      const cacheDir = join(temp.root, 'cache')
+      const userPluginsDir = join(temp.root, 'user-plugins')
+      const pluginsConfigPath = join(temp.root, 'plugins.json')
+      const servicePaths = { marketplacesPath, cacheDir, userPluginsDir, pluginsConfigPath }
+
+      addPluginMarketplace({
+        id: 'ppt-master',
+        name: 'ppt-master',
+        source: repoDir,
+        type: 'local',
+      }, servicePaths)
+
+      await refreshPluginMarketplace('ppt-master', servicePaths)
+      const results = await searchMarketplacePlugins('ppt', servicePaths)
+
+      expect(results).toHaveLength(1)
+      expect(results[0]?.name).toBe('ppt-master')
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('安装 git-subdir 来源的市场插件', async () => {
+    const temp = tempRoot()
+    try {
+      const sourceRepo = join(temp.root, 'remote-source')
+      const sourcePlugin = join(sourceRepo, 'skills')
+      mkdirSync(join(sourcePlugin, '.claude-plugin'), { recursive: true })
+      mkdirSync(join(sourcePlugin, 'ppt-master'), { recursive: true })
+      writeFileSync(
+        join(sourcePlugin, '.claude-plugin', 'plugin.json'),
+        JSON.stringify({ name: 'ppt-master', version: '2.7.0' }),
+        'utf-8',
+      )
+      writeFileSync(join(sourcePlugin, 'ppt-master', 'SKILL.md'), '# PPT Master', 'utf-8')
+      const marketplacesPath = join(temp.root, 'plugin-marketplaces.json')
+      const cacheDir = join(temp.root, 'cache')
+      const userPluginsDir = join(temp.root, 'user-plugins')
+      const pluginsConfigPath = join(temp.root, 'plugins.json')
+      const servicePaths = { marketplacesPath, cacheDir, userPluginsDir, pluginsConfigPath }
+      const cloneCalls: string[] = []
+
+      addPluginMarketplace({
+        id: 'ppt-master',
+        name: 'ppt-master',
+        source: 'https://example.com/marketplace.json',
+        type: 'raw',
+      }, servicePaths)
+      mkdirSync(join(cacheDir, 'ppt-master'), { recursive: true })
+      writeFileSync(
+        join(cacheDir, 'ppt-master', 'manifest.json'),
+        JSON.stringify({
+          plugins: [
+            {
+              name: 'ppt-master',
+              source: {
+                source: 'git-subdir',
+                url: 'https://github.com/hugohe3/ppt-master.git',
+                path: 'skills',
+              },
+              version: '2.7.0',
+            },
+          ],
+        }),
+        'utf-8',
+      )
+
+      await installMarketplacePlugin({
+        marketplaceId: 'ppt-master',
+        pluginName: 'ppt-master',
+        enable: true,
+      }, {
+        ...servicePaths,
+        cloneRepo: async (source, target) => {
+          cloneCalls.push(source)
+          mkdirSync(target, { recursive: true })
+          return undefined
+        },
+        copyClonedFixture: sourceRepo,
+      })
+
+      expect(cloneCalls).toEqual(['https://github.com/hugohe3/ppt-master.git'])
+      expect(existsSync(join(userPluginsDir, 'ppt-master', 'ppt-master', '.claude-plugin', 'plugin.json'))).toBe(true)
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('本地仓库目录的 git-subdir 插件从本地子目录安装', async () => {
+    const temp = tempRoot()
+    try {
+      const repoDir = join(temp.root, 'ppt-master')
+      const sourcePlugin = join(repoDir, 'skills')
+      mkdirSync(join(repoDir, '.claude-plugin'), { recursive: true })
+      mkdirSync(join(sourcePlugin, '.claude-plugin'), { recursive: true })
+      mkdirSync(join(sourcePlugin, 'ppt-master'), { recursive: true })
+      writeFileSync(
+        join(repoDir, '.claude-plugin', 'marketplace.json'),
+        JSON.stringify({
+          name: 'ppt-master',
+          plugins: [
+            {
+              name: 'ppt-master',
+              source: {
+                source: 'git-subdir',
+                url: 'https://github.com/hugohe3/ppt-master.git',
+                path: 'skills',
+              },
+            },
+          ],
+        }),
+        'utf-8',
+      )
+      writeFileSync(
+        join(sourcePlugin, '.claude-plugin', 'plugin.json'),
+        JSON.stringify({ name: 'ppt-master', version: '2.7.0' }),
+        'utf-8',
+      )
+      writeFileSync(join(sourcePlugin, 'ppt-master', 'SKILL.md'), '# PPT Master', 'utf-8')
+      const marketplacesPath = join(temp.root, 'plugin-marketplaces.json')
+      const cacheDir = join(temp.root, 'cache')
+      const userPluginsDir = join(temp.root, 'user-plugins')
+      const pluginsConfigPath = join(temp.root, 'plugins.json')
+      const servicePaths = { marketplacesPath, cacheDir, userPluginsDir, pluginsConfigPath }
+
+      addPluginMarketplace({
+        id: 'ppt-master',
+        name: 'ppt-master',
+        source: repoDir,
+        type: 'local',
+      }, servicePaths)
+      await refreshPluginMarketplace('ppt-master', servicePaths)
+
+      await installMarketplacePlugin({
+        marketplaceId: 'ppt-master',
+        pluginName: 'ppt-master',
+        enable: true,
+      }, {
+        ...servicePaths,
+        cloneRepo: async () => {
+          throw new Error('本地仓库市场不应 clone 远端')
+        },
+      })
+
+      expect(existsSync(join(userPluginsDir, 'ppt-master', 'ppt-master', '.claude-plugin', 'plugin.json'))).toBe(true)
+    } finally {
+      temp.cleanup()
+    }
+  })
+
   test('安装市场插件到 user-plugins 并写入启用状态', async () => {
     const temp = tempRoot()
     try {

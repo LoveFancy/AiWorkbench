@@ -32,8 +32,9 @@ describe('渠道默认配置', () => {
       'saas-kimi-k26',
       'saas-qwen35-397b',
       'local-qwen3-vl-30b',
-      'saas-glm-51',
     ])
+    const glm51 = PROVIDER_DEFAULT_MODELS['huatai-anthropic']?.find((model) => model.id === 'saas-glm-51')
+    expect(glm51?.supportsMultimodal).toBe(false)
   })
 
   test('默认渠道不再包含华泰 OpenAI 格式', () => {
