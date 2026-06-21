@@ -356,6 +356,9 @@ export const agentPendingPromptAtom = atom<AgentPendingPrompt | null>(null)
  */
 export const agentSessionPendingFilesAtom = atom<Map<string, AgentPendingFile[]>>(new Map())
 
+/** 当前会话选择注入的 MCP 连接器 Map — sessionId → MCP server name 集合 */
+export const agentSelectedMcpServersAtom = atom<Map<string, string[]>>(new Map())
+
 /**
  * 单个 session 的 pending files 派生 atom（读写）— 按 sessionId 切片
  * read：返回当前 session 的数组（空数组兜底）

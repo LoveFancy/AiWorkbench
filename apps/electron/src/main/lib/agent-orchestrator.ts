@@ -67,6 +67,7 @@ import {
   logStderr,
 } from './orchestrator/error-presenter'
 import { buildSdkEnv } from './orchestrator/sdk-env'
+import { buildAgentUserContent } from './orchestrator/agent-user-content'
 import {
   buildMcpServers,
   injectMemoryTools,
@@ -77,6 +78,7 @@ import { generateTitle, autoGenerateTitle } from './orchestrator/title-generator
 import { persistSDKMessages } from './orchestrator/sdk-message-persister'
 import { prepareResumeFallbackRecovery, prepareSessionNotFoundRecovery } from './orchestrator/resume-recovery'
 import { rewindSession as rewindSessionImpl } from './orchestrator/rewind'
+import { getRetryLimitForCategory } from './orchestrator/retry-policy'
 import { buildSystemPrompt, buildDynamicContext, buildAgentsForSession } from './agent-prompt-builder'
 import { permissionService } from './agent-permission-service'
 import type { PermissionResult, CanUseToolOptions } from './agent-permission-service'
@@ -115,6 +117,17 @@ function isImageAttachment(input: { filename: string; mediaType?: string; path?:
 
 function getChannelModelSupportsMultimodal(channel: ReturnType<typeof getChannelById>, modelId: string): boolean {
   return channel?.models.find((model) => model.id === modelId)?.supportsMultimodal === true
+}
+
+function buildModelSwitchedSystemMessage(fromModel: string, toModel: string): SDKMessage {
+  return {
+    type: 'system',
+    subtype: 'model_switched',
+    from_model: fromModel,
+    to_model: toModel,
+    _createdAt: Date.now(),
+    uuid: randomUUID(),
+  } as unknown as SDKMessage
 }
 
 
@@ -173,6 +186,7 @@ export class AgentOrchestrator {
    * 通过 EventBus 分发 AgentEvent，通过 callbacks 发送控制信号。
    */
   async sendMessage(input: AgentSendInput, callbacks: SessionCallbacks): Promise<void> {
+<<<<<<< HEAD
     const { sessionId, userMessage, channelId, modelId, workspaceId, additionalDirectories, attachments, customMcpServers, permissionModeOverride, mentionedSkills, mentionedMcpServers, mentionedSessionIds, automationContext } = input
 
     const _diagStart = Date.now()
@@ -188,6 +202,9 @@ export class AgentOrchestrator {
         console.log(`[DIAG][Agent 编排] Event Loop 延迟: ${elDelay}ms (正常)`)
       }
     })
+=======
+    const { sessionId, userMessage, channelId, modelId, workspaceId, additionalDirectories, attachments, customMcpServers, permissionModeOverride, mentionedSkills, mentionedSessionIds, automationContext, selectedMcpServers } = input
+>>>>>>> a7ec6f7d6bc5f390c15f6a31b2d442aca120e95f
     const stderrChunks: string[] = []
 
     // 0. 并发保护
@@ -441,6 +458,9 @@ export class AgentOrchestrator {
 
     if (autoModeConfig.enabled && activeModelId !== modelId) {
       console.log(`[Auto Mode] 初始模型切换: ${modelId || DEFAULT_MODEL_ID} -> ${activeModelId}`)
+      const initialSwitchMessage = buildModelSwitchedSystemMessage('Auto', activeModelId)
+      accumulatedMessages.push(initialSwitchMessage)
+      this.eventBus.emit(sessionId, { kind: 'sdk_message', message: initialSwitchMessage })
       const candidateRef = autoModeConfig.candidatePool.find((c) => c.modelId === activeModelId)
       const chInfo = findChannelForModel(activeModelId, candidateRef?.channelId)
       if (chInfo && chInfo.channelId !== currentChannelId) {
@@ -569,9 +589,13 @@ export class AgentOrchestrator {
       }
 
       // 10. 构建 MCP 服务器配置 + 记忆工具 + 生图工具 + 自定义工具
+<<<<<<< HEAD
       _diag('开始构建 MCP 服务器配置')
       const mcpServers = buildMcpServers(workspaceSlug)
       _diag('buildMcpServers 完成, 开始 injectMemoryTools (await)')
+=======
+      const mcpServers = buildMcpServers(workspaceSlug, selectedMcpServers)
+>>>>>>> a7ec6f7d6bc5f390c15f6a31b2d442aca120e95f
       await injectMemoryTools(sdk, mcpServers)
       _diag('injectMemoryTools 完成, 开始 injectNanoBananaTools (await)')
       await injectNanoBananaTools(sdk, mcpServers, sessionId, agentCwd)
@@ -618,7 +642,7 @@ export class AgentOrchestrator {
         enrichedMessage = `${referencedSessionsBlock}\n\n${enrichedMessage}`
         console.log(`[Agent 编排] 注入 referenced_sessions: ${mentionedSessionIds?.length ?? 0} sessions`)
       }
-      if (mentionedSkills?.length || mentionedMcpServers?.length) {
+      if (mentionedSkills?.length) {
         const toolLines: string[] = ['用户在消息中明确引用了以下工具，请在本次回复中主动调用：']
         for (const slug of mentionedSkills ?? []) {
           const qualifiedName = workspaceSlug
@@ -626,11 +650,8 @@ export class AgentOrchestrator {
             : slug
           toolLines.push(`- Skill: ${qualifiedName}（请立即调用此 Skill）`)
         }
-        for (const name of mentionedMcpServers ?? []) {
-          toolLines.push(`- MCP 服务器: ${name}（请使用此 MCP 服务器的工具来完成任务）`)
-        }
         enrichedMessage = `<mentioned_tools>\n${toolLines.join('\n')}\n</mentioned_tools>\n\n${userMessage}`
-        console.log(`[Agent 编排] 注入 mentioned_tools: ${mentionedSkills?.length ?? 0} skills, ${mentionedMcpServers?.length ?? 0} MCP`)
+        console.log(`[Agent 编排] 注入 mentioned_tools: ${mentionedSkills?.length ?? 0} skills`)
       }
 
       const contextualMessage = `${dynamicCtx}\n\n${enrichedMessage}`
@@ -642,6 +663,12 @@ export class AgentOrchestrator {
         : existingSdkSessionId
           ? contextualMessage
           : buildContextPrompt(sessionId, contextualMessage, { agentCwd })
+      const sdkPromptContent = runHasImageInput
+        ? await buildAgentUserContent({ userMessage: finalPrompt, attachments })
+        : undefined
+      if (sdkPromptContent?.warnings.length) {
+        console.warn(`[Agent 编排] 图片输入处理警告: ${sdkPromptContent.warnings.join('; ')}`)
+      }
 
       if (existingSdkSessionId) {
         console.log(`[Agent 编排] 使用 resume 模式，SDK session ID: ${existingSdkSessionId}`)
@@ -687,6 +714,7 @@ export class AgentOrchestrator {
 
       const runToolGuardContext: RunToolGuardContext = {
         supportsMultimodal: getChannelModelSupportsMultimodal(channel, resolvedModel),
+        imagesProvidedAsMultimodal: (sdkPromptContent?.imageCount ?? 0) > 0,
         autoModeEnabled: autoModeConfig.enabled,
         runHasImageInput,
         sessionRequiresVisionContext: sessionMeta?.requiresVisionContext === true,
@@ -920,7 +948,7 @@ export class AgentOrchestrator {
         : undefined
       const queryOptions: ClaudeAgentQueryOptions = {
         sessionId,
-        prompt: finalPrompt,
+        prompt: sdkPromptContent?.imageCount ? sdkPromptContent.content : finalPrompt,
         model: resolvedModel,
         cwd: agentCwd,
         sdkCliPath: cliPath,
@@ -1028,6 +1056,7 @@ export class AgentOrchestrator {
 
       // 14. 遍历 Adapter 产出的 AgentEvent 流（含自动重试）
       let lastRetryableError: string | undefined
+      let lastRetryableCategory: import('./orchestrator/error-classifier').ErrorCategory | undefined
       let retryDelayElapsedMs = 0
       let retryAttemptsScheduled = 0
       let retrySucceeded = false
@@ -1069,6 +1098,9 @@ export class AgentOrchestrator {
         if (nextCandidate) {
           const nextModel = nextCandidate.modelId
           console.log(`[Auto Mode] 切换模型: ${autoModeState.activeModelId} -> ${nextModel}${nextCandidate.channelId ? ` (渠道: ${nextCandidate.channelId})` : ''}`)
+          const switchMessage = buildModelSwitchedSystemMessage(autoModeState.activeModelId, nextModel)
+          accumulatedMessages.push(switchMessage)
+          this.eventBus.emit(sessionId, { kind: 'sdk_message', message: switchMessage })
           this.eventBus.emit(sessionId, {
             kind: 'proma_event',
             event: { type: 'model_switched', fromModel: autoModeState.activeModelId, toModel: nextModel },
@@ -1095,7 +1127,7 @@ export class AgentOrchestrator {
       }
 
       const canAutoRetry = (attempt: number): boolean =>
-        attempt <= MAX_AUTO_RETRIES && retryDelayElapsedMs < MAX_AUTO_RETRY_WAIT_MS
+        attempt <= getRetryLimitForCategory(lastRetryableCategory) && retryDelayElapsedMs < MAX_AUTO_RETRY_WAIT_MS
 
       /** 捕获到的 SDK session ID（用于 resume / recovery） */
       let capturedSdkSessionId = existingSdkSessionId
@@ -1114,6 +1146,11 @@ export class AgentOrchestrator {
             skipNextRetryDelay = false
           } else {
             const retryAttempt = Math.max(1, attempt - 1 - invisibleRecoveryAttempts)
+            const retryLimit = getRetryLimitForCategory(lastRetryableCategory)
+            if (retryAttempt > retryLimit) {
+              console.log(`[Agent 编排] 已达到当前错误的自动重试上限 (${retryLimit})，停止重试`)
+              break
+            }
             const delayMs = getRetryDelayMs(retryAttempt, retryDelayElapsedMs)
             if (delayMs <= 0) {
               console.log(`[Agent 编排] 自动重试等待预算已耗尽 (${MAX_AUTO_RETRY_WAIT_MS}ms)，停止重试`)
@@ -1132,7 +1169,7 @@ export class AgentOrchestrator {
 
             this.eventBus.emit(sessionId, {
               kind: 'proma_event',
-              event: { type: 'retry', status: 'starting', attempt: retryAttempt, maxAttempts: MAX_AUTO_RETRIES, delaySeconds: delaySec, reason: lastRetryableError ?? '未知错误' },
+              event: { type: 'retry', status: 'starting', attempt: retryAttempt, maxAttempts: retryLimit, delaySeconds: delaySec, reason: lastRetryableError ?? '未知错误' },
             })
             this.eventBus.emit(sessionId, {
               kind: 'proma_event',
@@ -1208,6 +1245,7 @@ export class AgentOrchestrator {
 
             if (!wasStoppedByUser && retryAttemptsScheduled > 0) {
               lastRetryableError = undefined
+            lastRetryableCategory = undefined
               this.eventBus.emit(sessionId, { kind: 'proma_event', event: { type: 'retry', status: 'cleared' } })
             }
 
@@ -1242,11 +1280,17 @@ export class AgentOrchestrator {
 
           // error_break — 模式特定处理
           if (result.shouldRetryFromError) {
+            if (result.retryReason) {
+              lastRetryableError = result.retryReason
+              lastRetryableCategory = result.retryCategory
+            }
+
             // Session 不存在恢复
             if (result.recoveryType === 'session_not_found' && existingSdkSessionId) {
               existingSdkSessionId = undefined
               capturedSdkSessionId = undefined
               lastRetryableError = prepareSessionNotFoundRecovery(sessionId, queryOptions, contextualMessage, agentCwd, accumulatedMessages, queryStartedAt)
+              lastRetryableCategory = 'session_not_found'
               stderrChunks.length = 0
               continue
             }
@@ -1264,6 +1308,7 @@ export class AgentOrchestrator {
                 '检测到 thinking signature 不兼容，清除 sdkSessionId 并切换到上下文回填模式',
                 '思考签名不兼容，切换到上下文回填模式',
               )
+              lastRetryableCategory = 'thinking_signature'
               stderrChunks.length = 0
               continue
             }
@@ -1274,6 +1319,7 @@ export class AgentOrchestrator {
               console.log(`[Auto Mode] 模型失败计数: ${autoModeState.activeModelId} -> ${autoModeState.sameModelAttempts}/${MAX_SAME_MODEL_RETRIES} (attempt ${attempt})`)
               if (!await trySwitchAutoModeModel()) {
                 lastRetryableError = `Auto Mode 候选池已耗尽，已尝试模型: ${[...autoModeState.triedModelIds].join(', ')}`
+                lastRetryableCategory = undefined
                 break
               }
             }

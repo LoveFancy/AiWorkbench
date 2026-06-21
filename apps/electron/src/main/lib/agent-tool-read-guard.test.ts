@@ -42,6 +42,20 @@ describe('agent-tool-read-guard', () => {
     expect(result && 'message' in result ? result.message : '').toContain('当前模型不支持多模态图片理解')
   })
 
+  test('支持多模态时拒绝 Read 图片并提示直接使用视觉输入', () => {
+    const dir = tempDir()
+    const filePath = join(dir, 'image.png')
+    writeFileSync(filePath, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+
+    const result = guardToolUseBeforePermission('Read', { file_path: filePath }, context({
+      supportsMultimodal: true,
+      imagesProvidedAsMultimodal: true,
+    }))
+
+    expect(result?.behavior).toBe('deny')
+    expect(result && 'message' in result ? result.message : '').toContain('图片已通过多模态输入提供给模型')
+  })
+
   test('允许 Read SVG 源码', () => {
     const dir = tempDir()
     const filePath = join(dir, 'icon.svg')

@@ -1,5 +1,8 @@
-## name: transfer-buddy-experts 
-description: 将 WorkBuddy 专家团转换为 WorkMate 专家团。当用户想要导入、转换、迁移 WorkBuddy 的专家团到 WorkMate 时使用。也适用于用户说"把 WorkBuddy 专家转过来"、"导入 WorkBuddy 专家团"、"转换专家团格式"、"迁移专家"等场景。支持单 Agent 和团队模式，自动处理 SubAgent 拆分、Rules 融入、Skills 映射等。 version: "1.3.0"
+---
+name: transfer-buddy-experts
+description: "将 WorkBuddy 专家团转换为 WorkMate 专家团。当用户想要导入、转换、迁移 WorkBuddy 的专家团到 WorkMate 时使用。也适用于用户说“把 WorkBuddy 专家转过来”、“导入 WorkBuddy 专家团”、“转换专家团格式”、“迁移专家”等场景。支持单 Agent 和团队模式，自动处理 SubAgent 拆分、Rules 融入、Skills 映射等。"
+version: "1.3.1"
+---
 
 # Transfer Buddy Experts
 

@@ -12,7 +12,7 @@
  */
 
 import * as React from 'react'
-import { Bot, Loader2, AlertTriangle, FileText, FileImage, Download, Split, Undo2, RotateCw, Plus, Minimize2, Wrench, Settings, ExternalLink, Quote, Clock } from 'lucide-react'
+import { Loader2, AlertTriangle, FileText, FileImage, Download, Split, Undo2, RotateCw, Plus, Minimize2, Wrench, Settings, ExternalLink, Quote, Clock, ArrowRightLeft, Info } from 'lucide-react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { cn } from '@/lib/utils'
 import { ImageLightbox } from '@/components/ui/image-lightbox'
@@ -37,7 +37,8 @@ import { CopyButton } from '@/components/chat/CopyButton'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { formatMessageTime } from '@/components/chat/ChatMessageItem'
-import { getModelLogo, resolveModelDisplayName } from '@/lib/model-logo'
+import workmateLogo from '../../../../resources/icon.png'
+import { resolveModelDisplayName } from '@/lib/model-logo'
 import { userProfileAtom } from '@/atoms/user-profile'
 import { channelsAtom } from '@/atoms/chat-atoms'
 import { agentProcessGroupsKeepExpandedAtom } from '@/atoms/agent-atoms'
@@ -149,6 +150,29 @@ export function CompactingIndicator(): React.ReactElement {
   )
 }
 
+function ModelSwitchedDivider({ message }: { message: SDKSystemMessage }): React.ReactElement {
+  const channels = useAtomValue(channelsAtom)
+  const formatModelName = (model: unknown): string => {
+    if (typeof model !== 'string' || !model) return '未知模型'
+    if (model === 'Auto') return 'Auto'
+    return resolveModelDisplayName(model, channels)
+  }
+  const fromModel = formatModelName(message.from_model)
+  const toModel = formatModelName(message.to_model)
+
+  return (
+    <div className="flex items-center gap-3 my-4 px-1">
+      <div className="flex-1 h-px bg-border/40" />
+      <span className="shrink-0 inline-flex items-center gap-1.5 text-[11px] text-muted-foreground/70 px-2 py-0.5 rounded-full border border-border/30 bg-muted/20">
+        <ArrowRightLeft className="size-3" />
+        模型已从 {fromModel} 更改为 {toModel}
+        <Info className="size-3 text-muted-foreground/50" />
+      </span>
+      <div className="flex-1 h-px bg-border/40" />
+    </div>
+  )
+}
+
 // ===== 辅助：从 SDKMessage 提取元数据 =====
 
 interface MessageMeta {
@@ -238,20 +262,24 @@ function isUserInputMessage(message: SDKUserMessage): boolean {
 
 // ===== 助手头像 =====
 
-function AssistantLogo({ model }: { model?: string }): React.ReactElement {
-  if (model) {
-    return (
-      <img
-        src={getModelLogo(model)}
-        alt={model}
-        className="size-[35px] rounded-[25%] object-cover"
-      />
-    )
-  }
+const WORKMATE_DISPLAY_NAME = 'WorkMate'
+
+function WorkMateLogo(): React.ReactElement {
   return (
-    <div className="size-[35px] rounded-[25%] bg-primary/10 flex items-center justify-center">
-      <Bot size={18} className="text-primary" />
-    </div>
+    <img
+      src={workmateLogo}
+      alt={WORKMATE_DISPLAY_NAME}
+      className="size-[35px] rounded-[25%] object-cover"
+    />
+  )
+}
+
+function ModelBadge({ model }: { model?: string }): React.ReactElement | null {
+  if (!model) return null
+  return (
+    <span className="mb-px inline-flex max-w-[260px] items-center self-end truncate rounded-md bg-muted/50 px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
+      {model}
+    </span>
   )
 }
 
@@ -343,9 +371,9 @@ export function groupIntoTurns(messages: SDKMessage[], sessionModelId?: string):
       }
     } else if (msg.type === 'system') {
       const sysMsg = msg as SDKSystemMessage
-      // 仅需要独立渲染的 system 消息才中断 turn（compact_boundary / compacting / permission_denied）
+      // 仅需要独立渲染的 system 消息才中断 turn（compact_boundary / compacting / permission_denied / model_switched）
       // 其他 system 消息（如 init、task_started、task_progress）归入当前 turn，不中断分组
-      if (sysMsg.subtype === 'compact_boundary' || sysMsg.subtype === 'compacting' || sysMsg.subtype === 'permission_denied') {
+      if (sysMsg.subtype === 'compact_boundary' || sysMsg.subtype === 'compacting' || sysMsg.subtype === 'permission_denied' || sysMsg.subtype === 'model_switched') {
         flushTurn()
         groups.push({ type: 'system', message: sysMsg })
       } else if (currentTurn) {
@@ -402,7 +430,7 @@ function mergeAdjacentSameModelTurns(groups: MessageGroup[]): MessageGroup[] {
     for (let i = result.length - 1; i >= 0; i--) {
       const prev = result[i]!
       if (prev.type === 'user') break // 真正的用户输入阻断合并
-      if (prev.type === 'system' && ['compact_boundary', 'permission_denied'].includes((prev.message as SDKSystemMessage).subtype ?? '')) break
+      if (prev.type === 'system' && ['compact_boundary', 'permission_denied', 'model_switched'].includes((prev.message as SDKSystemMessage).subtype ?? '')) break
       if (prev.type === 'assistant-turn') {
         if (prev.model === group.model) {
           mergeTargetIdx = i
@@ -578,6 +606,7 @@ export function AssistantTurnRenderer({ turn, allMessages, historicalTaskSubject
 
   // 从 turnMessages 中提取 result 消息的耗时和用量
   const { durationMs, usage } = extractTurnUsage(turn.turnMessages)
+  const displayedModel = turn.model ? resolveModelDisplayName(turn.model, channels) : undefined
 
   // 只在用户点击停止时显示中断徽章。
   // aborted_streaming / aborted_tools 是流式追加消息时的软中断，语义是继续补充信息。
@@ -685,10 +714,12 @@ export function AssistantTurnRenderer({ turn, allMessages, historicalTaskSubject
   return (
     <Message from="assistant">
       <MessageHeader
-        model={turn.model ? resolveModelDisplayName(turn.model, channels) : undefined}
+        model={WORKMATE_DISPLAY_NAME}
         time={turn.createdAt ? formatMessageTime(turn.createdAt) : undefined}
-        logo={<AssistantLogo model={turn.model} />}
-      />
+        logo={<WorkMateLogo />}
+      >
+        <ModelBadge model={displayedModel} />
+      </MessageHeader>
       <MessageContent>
         <div className={cn('space-y-2')}>
           {renderItems.map((item, itemIndex) => {
@@ -797,6 +828,7 @@ export function SDKMessageRenderer({
 
     const model = aMsg._channelModelId || aMsg.message?.model || sessionModelId
     const meta = extractMeta(message)
+    const displayedModel = model ? resolveModelDisplayName(model, channels) : undefined
 
     // 检测是否有主要内容（text 块）
     const hasTextContent = blocks.some(
@@ -807,10 +839,12 @@ export function SDKMessageRenderer({
       <Message from="assistant">
         {showHeader && (
           <MessageHeader
-            model={model ? resolveModelDisplayName(model, channels) : undefined}
+            model={WORKMATE_DISPLAY_NAME}
             time={meta.createdAt ? formatMessageTime(meta.createdAt) : undefined}
-            logo={<AssistantLogo model={model} />}
-          />
+            logo={<WorkMateLogo />}
+          >
+            <ModelBadge model={displayedModel} />
+          </MessageHeader>
         )}
         <MessageContent>
           <div className={cn('space-y-2')}>
@@ -849,6 +883,9 @@ export function SDKMessageRenderer({
     }
     if (subtype === 'permission_denied') {
       return <PermissionDeniedNotice message={sysMsg} />
+    }
+    if (subtype === 'model_switched') {
+      return <ModelSwitchedDivider message={sysMsg} />
     }
 
     // compacting 事件已由 isCompacting flag 驱动的尾部指示器接管（见 AgentMessages），此处不再渲染持久条目
@@ -1384,6 +1421,7 @@ export function getGroupPreview(group: MessageGroup): string {
     if (group.message.subtype === 'compact_boundary') return '上下文已压缩'
     if (group.message.subtype === 'compacting') return '正在压缩上下文...'
     if (group.message.subtype === 'permission_denied') return '自动审批已拒绝操作'
+    if (group.message.subtype === 'model_switched') return '模型已切换'
     return ''
   }
   // assistant-turn：收集所有 text 块
@@ -1416,6 +1454,7 @@ export function MessageGroupRenderer({ group, allMessages, historicalTaskSubject
     if (subtype === 'compact_boundary') return <div data-message-id={groupId}><CompactBoundaryDivider /></div>
     if (subtype === 'compacting') return <div data-message-id={groupId}><CompactingIndicator /></div>
     if (subtype === 'permission_denied') return <div data-message-id={groupId}><PermissionDeniedNotice message={group.message} /></div>
+    if (subtype === 'model_switched') return <div data-message-id={groupId}><ModelSwitchedDivider message={group.message} /></div>
     return null
   }
 

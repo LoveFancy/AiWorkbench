@@ -58,7 +58,7 @@ export function PluginDetailSheet({
 
   return (
     <Sheet open={!!plugin} onOpenChange={onOpenChange}>
-      <SheetContent hideClose side="right" className="flex w-[62vw] min-w-[680px] max-w-[1100px] flex-col gap-0 overflow-hidden p-0 sm:max-w-[1100px]" aria-describedby={undefined}>
+      <SheetContent hideClose side="right" className="flex w-full sm:w-[46vw] sm:min-w-[520px] sm:max-w-[760px] flex-col gap-0 overflow-hidden p-0" aria-describedby={undefined}>
         <SheetTitle className="sr-only">插件详情</SheetTitle>
         {plugin && (
           <>

@@ -13,6 +13,7 @@ export type AgentReadableFileKind =
 
 export interface RunToolGuardContext {
   supportsMultimodal: boolean
+  imagesProvidedAsMultimodal?: boolean
   autoModeEnabled: boolean
   runHasImageInput: boolean
   sessionRequiresVisionContext: boolean
@@ -131,11 +132,13 @@ function guardFileRead(kind: AgentReadableFileKind, context: RunToolGuardContext
     if (!context.supportsMultimodal && context.canAutoSwitchToMultimodal()) {
       return deny('当前模型不支持多模态图片理解，Auto Mode 应切换到多模态候选模型后再处理该图片。')
     }
-    return deny(
-      context.supportsMultimodal
-        ? '图片不能通过 Read 作为文本读取，请走多模态图片输入流程。'
-        : '当前模型不支持多模态图片理解，请切换支持图片的模型。',
-    )
+    if (context.supportsMultimodal && context.imagesProvidedAsMultimodal) {
+      return deny('图片已通过多模态输入提供给模型，请直接基于视觉内容回答，不要用 Read 当作文本读取。')
+    }
+    if (context.supportsMultimodal) {
+      return deny('图片不能通过 Read 作为文本读取，请重新附加 PNG、JPEG、GIF 或 WebP 图片作为多模态输入。')
+    }
+    return deny('当前模型不支持多模态图片理解，请切换支持图片的模型。')
   }
 
   if (kind === 'pdf' || kind === 'office') {

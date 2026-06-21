@@ -872,12 +872,6 @@ export function useGlobalAgentListeners(): void {
               map.set(sessionId, { ...current, running: true })
               return map
             })
-          } else if (event.type === 'model_switched') {
-            // Auto Mode 模型切换通知
-            toast.warning(`模型已切换：${event.fromModel} → ${event.toModel}`, {
-              description: '自动切换候选池中的下一个可用模型',
-              duration: 6000,
-            })
           }
         }
         }) // unstable_batchedUpdates

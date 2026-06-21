@@ -12,7 +12,7 @@
 import * as React from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { toast } from 'sonner'
-import { Blocks, ChevronDown, Search, Plus, FolderOpen, Check, Mail, ExternalLink, ArrowRight, Info, Bot, Upload, RefreshCw, Package } from 'lucide-react'
+import { Blocks, ChevronDown, Search, Plus, FolderOpen, Check, Mail, ArrowRight, Upload, RefreshCw, Package, Loader2, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Button } from '@/components/ui/button'
@@ -35,7 +35,8 @@ import { useProjectActions } from '@/hooks/useProjectActions'
 import { ExpertPageView } from '@/experts/views/ExpertPageView'
 import { ExpertImportButton } from '@/experts/shared/ExpertImportDropdown'
 import { ExpertFilterPills, type FilterTag } from '@/experts/shared/ExpertFilterPills'
-import type { AgentPluginInfo, McpServerEntry, SkillMeta } from '@proma/shared'
+import type { AgentPluginInfo, DefaultConnectorInitStep, McpServerEntry, SkillMeta } from '@proma/shared'
+import { isVisibleInSkillsView } from '@proma/shared'
 import { getCapabilityTabs, type CapabilityTab } from './capability-tabs'
 import { useAgentSkillsData } from './useAgentSkillsData'
 import { SkillCard } from './SkillCard'
@@ -46,10 +47,7 @@ import { McpDetailSheet } from './McpDetailSheet'
 import { ImportSkillDialog } from './ImportSkillDialog'
 import { SkillMarketPanel } from './SkillMarketPanel'
 import {
-  buildHuataiEmailMcpEntry,
   DEFAULT_CONNECTOR_DEFINITIONS,
-  FEISHU_CLI_AUTHORIZATION_URL,
-  FEISHU_CLI_LAUNCHER_URL,
   type DefaultConnectorDefinition,
   type DefaultConnectorId,
 } from './default-connectors'
@@ -98,7 +96,7 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
     setPluginLoading(true)
     try {
       const plugins = await window.electronAPI.listAgentPlugins()
-      setInstalledPlugins(plugins.filter((plugin) => plugin.capabilities.length > 0))
+      setInstalledPlugins(plugins.filter(isVisibleInSkillsView))
     } catch (error) {
       console.error('[Agent 技能] 加载插件失败:', error)
       toast.error('加载已安装插件失败', { description: error instanceof Error ? error.message : '未知错误' })
@@ -575,11 +573,6 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
           bumpCapabilities((v) => v + 1)
         }}
       />
-
-      <FeishuCliConnectorDialog
-        open={activeDefaultConnector === 'feishu-cli'}
-        onOpenChange={(open) => setActiveDefaultConnector(open ? 'feishu-cli' : null)}
-      />
     </div>
   )
 }
@@ -763,7 +756,7 @@ function summarizePluginCapabilities(plugin: AgentPluginInfo): string {
   return [
     counts.skill ? `${counts.skill} 个技能` : null,
     counts.agent ? `${counts.agent} 个智能体` : null,
-    counts['expert-group'] ? `${counts['expert-group']} 专家团` : null,
+
     counts.mcp ? `${counts.mcp} 个 MCP` : null,
     counts.command ? `${counts.command} 个命令` : null,
   ].filter(Boolean).join(' · ') || '暂无能力'
@@ -891,13 +884,17 @@ function DefaultConnectorCard({
   onOpen: () => void
 }): React.ReactElement {
   const isEmail = connector.id === 'personal-email'
+  const isComingSoon = connector.status === 'coming-soon'
   return (
     <button
       type="button"
-      onClick={onOpen}
+      onClick={isComingSoon ? undefined : onOpen}
+      disabled={isComingSoon}
       className={cn(
         'group relative flex h-full min-h-[132px] flex-col gap-3 rounded-xl border border-border/60 bg-content-area p-4 text-left transition-all',
-        'hover:border-border hover:shadow-sm focus:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+        isComingSoon
+          ? 'cursor-not-allowed opacity-55'
+          : 'hover:border-border hover:shadow-sm focus:outline-none focus-visible:ring-1 focus-visible:ring-ring',
       )}
     >
       <div className="flex items-start gap-3">
@@ -911,12 +908,18 @@ function DefaultConnectorCard({
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-medium text-foreground">{connector.name}</span>
             <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-              默认
+              {isComingSoon ? '敬请期待' : '默认'}
             </span>
           </div>
           <div className="mt-0.5 text-xs text-muted-foreground">{connector.category}</div>
         </div>
-        <ArrowRight size={16} className="shrink-0 text-muted-foreground/50 transition-transform group-hover:translate-x-0.5 group-hover:text-foreground/70" />
+        <ArrowRight
+          size={16}
+          className={cn(
+            'shrink-0 text-muted-foreground/50 transition-transform',
+            !isComingSoon && 'group-hover:translate-x-0.5 group-hover:text-foreground/70',
+          )}
+        />
       </div>
       <p className="line-clamp-3 text-[12px] leading-relaxed text-muted-foreground">{connector.description}</p>
     </button>
@@ -937,12 +940,14 @@ function HuataiEmailConnectorDialog({
   const [emailAddress, setEmailAddress] = React.useState('')
   const [password, setPassword] = React.useState('')
   const [saving, setSaving] = React.useState(false)
+  const [initSteps, setInitSteps] = React.useState<DefaultConnectorInitStep[]>([])
 
   React.useEffect(() => {
     if (!open) {
       setEmailAddress('')
       setPassword('')
       setSaving(false)
+      setInitSteps([])
     }
   }, [open])
 
@@ -951,19 +956,29 @@ function HuataiEmailConnectorDialog({
   const handleSave = async (): Promise<void> => {
     if (!canSave || saving) return
     setSaving(true)
+    setInitSteps([
+      { id: 'check-python', label: '检查环境', status: 'running' },
+      { id: 'check-package', label: '检查 mcp-email-server', status: 'pending' },
+      { id: 'install-package', label: '安装 mcp-email-server', status: 'pending' },
+      { id: 'write-config', label: '写入 MCP 配置', status: 'pending' },
+      { id: 'self-check', label: '自检连接器', status: 'pending' },
+    ])
     try {
-      const config = await window.electronAPI.getWorkspaceMcpConfig(workspaceSlug)
-      await window.electronAPI.saveWorkspaceMcpConfig(workspaceSlug, {
-        servers: {
-          ...config.servers,
-          email: buildHuataiEmailMcpEntry({ emailAddress, password }),
-        },
+      const result = await window.electronAPI.initializeDefaultConnector(workspaceSlug, {
+        connectorId: 'personal-email',
+        emailAddress,
+        password,
       })
-      toast.success('华泰邮箱 MCP 配置已保存')
+      setInitSteps(result.steps)
+      if (!result.success) {
+        toast.error('华泰邮箱连接器初始化失败', { description: result.message })
+        return
+      }
+      toast.success('华泰邮箱连接器已初始化')
       onSaved()
     } catch (error) {
-      console.error('[连接器] 保存华泰邮箱配置失败:', error)
-      toast.error('保存华泰邮箱配置失败')
+      console.error('[连接器] 初始化华泰邮箱失败:', error)
+      toast.error('初始化华泰邮箱失败')
     } finally {
       setSaving(false)
     }
@@ -973,16 +988,16 @@ function HuataiEmailConnectorDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[560px] rounded-2xl border-0 p-8 shadow-2xl">
         <DialogTitle className="text-2xl font-semibold tracking-normal">邮箱绑定</DialogTitle>
-        <DialogDescription className="sr-only">绑定华泰个人邮箱并写入当前工作区 MCP 配置。</DialogDescription>
+        <DialogDescription className="sr-only">绑定华泰邮箱并写入当前工作区 MCP 配置。</DialogDescription>
 
         <div className="mt-2 flex items-start gap-4">
           <div className="flex size-16 shrink-0 items-center justify-center rounded-2xl bg-amber-500/12 text-amber-500">
             <Mail size={28} />
           </div>
           <div className="space-y-2">
-            <div className="text-[15px] font-medium text-foreground">绑定华泰个人邮箱</div>
+            <div className="text-[15px] font-medium text-foreground">绑定华泰邮箱</div>
             <p className="text-[13px] leading-relaxed text-muted-foreground">
-              绑定后会在当前工作区写入 <span className="font-mono text-foreground/70">email</span> MCP 配置。默认只保存 IMAP 读取能力，完成连接测试后再启用。
+              绑定时会检查环境、安装 <span className="font-mono text-foreground/70">mcp-email-server</span>，并写入当前工作区的 <span className="font-mono text-foreground/70">email</span> MCP 配置。默认只启用 IMAP 读取能力。
             </p>
           </div>
         </div>
@@ -1010,6 +1025,26 @@ function HuataiEmailConnectorDialog({
           </div>
         </div>
 
+        {initSteps.length > 0 && (
+          <div className="mt-5 space-y-2 rounded-xl bg-muted/45 p-3">
+            {initSteps.map((step) => (
+              <div key={step.id} className="flex items-center gap-2 text-xs text-muted-foreground">
+                {step.status === 'running' ? (
+                  <Loader2 size={14} className="animate-spin text-primary" />
+                ) : step.status === 'success' || step.status === 'skipped' ? (
+                  <Check size={14} className="text-emerald-500" />
+                ) : step.status === 'error' ? (
+                  <XCircle size={14} className="text-destructive" />
+                ) : (
+                  <span className="size-3.5 rounded-full border border-border" />
+                )}
+                <span className="font-medium text-foreground/80">{step.label}</span>
+                {step.message && <span className="truncate">{step.message}</span>}
+              </div>
+            ))}
+          </div>
+        )}
+
         <Button
           type="button"
           size="lg"
@@ -1021,109 +1056,6 @@ function HuataiEmailConnectorDialog({
         </Button>
       </DialogContent>
     </Dialog>
-  )
-}
-
-function FeishuCliConnectorDialog({
-  open,
-  onOpenChange,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}): React.ReactElement {
-  const [step, setStep] = React.useState<1 | 2>(1)
-
-  React.useEffect(() => {
-    if (!open) setStep(1)
-  }, [open])
-
-  const openLauncher = (): void => {
-    void window.electronAPI.openExternal(FEISHU_CLI_LAUNCHER_URL)
-    setStep(2)
-  }
-
-  const openAuthorization = (): void => {
-    void window.electronAPI.openExternal(FEISHU_CLI_AUTHORIZATION_URL)
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[560px] rounded-2xl border-0 p-8 shadow-2xl">
-        <DialogTitle className="sr-only">飞书 CLI 连接配置</DialogTitle>
-        <DialogDescription className="sr-only">创建飞书智能体应用并完成用户授权。</DialogDescription>
-
-        <div className="flex items-start gap-5">
-          <div className="flex size-16 shrink-0 items-center justify-center rounded-2xl bg-blue-500/12 text-blue-500">
-            <Blocks size={30} />
-          </div>
-          <div className="space-y-3">
-            <h3 className="text-2xl font-semibold tracking-normal text-foreground">飞书 CLI</h3>
-            <p className="text-[14px] leading-relaxed text-muted-foreground">
-              飞书 CLI 可协助 Agent 操作飞书消息、群组、云文档、云空间、电子表格、多维表格、日历、视频会议、邮箱、任务、知识库、通讯录和搜索等办公场景。
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-7 space-y-5">
-          <div className="text-lg font-semibold text-foreground">连接配置</div>
-          <div className="flex items-center gap-5">
-            <StepPill active={step === 1} index={1} label="创建应用" />
-            <div className="h-px w-16 bg-border" />
-            <StepPill active={step === 2} index={2} label="用户授权" />
-          </div>
-
-          {step === 1 ? (
-            <div className="rounded-xl bg-muted/50 px-4 py-3 text-[13px] leading-relaxed text-muted-foreground">
-              <div className="flex gap-2">
-                <Info size={16} className="mt-0.5 shrink-0" />
-                <span>点击下方按钮，将打开浏览器创建飞书个人智能体应用。创建完成后回到 WorkMate 继续授权。</span>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-3 rounded-xl bg-muted/50 px-4 py-3 text-[13px] leading-relaxed text-muted-foreground">
-              <div className="flex gap-2">
-                <Bot size={16} className="mt-0.5 shrink-0" />
-                <span>请确认本机已安装飞书 CLI。未安装时，可在 Agent 中使用内置 Skill 执行飞书 CLI 安装与登录。</span>
-              </div>
-              <div className="font-mono text-xs text-foreground/70">npx @larksuite/cli@latest install</div>
-            </div>
-          )}
-        </div>
-
-        <Button
-          type="button"
-          size="lg"
-          className="mt-4 h-11 rounded-full"
-          onClick={step === 1 ? openLauncher : openAuthorization}
-        >
-          {step === 1 ? (
-            <>
-              开始连接
-              <ExternalLink size={16} />
-            </>
-          ) : (
-            <>
-              开通并授权
-              <ExternalLink size={16} />
-            </>
-          )}
-        </Button>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function StepPill({ active, index, label }: { active: boolean; index: number; label: string }): React.ReactElement {
-  return (
-    <div className={cn('flex items-center gap-2 text-sm font-medium', active ? 'text-foreground' : 'text-muted-foreground/55')}>
-      <span className={cn(
-        'flex size-8 items-center justify-center rounded-full text-sm font-semibold',
-        active ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground/50',
-      )}>
-        {index}
-      </span>
-      <span>{label}</span>
-    </div>
   )
 }
 

@@ -6,9 +6,9 @@ import { filterEnabledSkillsForPicker } from './AgentSkillPicker'
 const source = await Bun.file(join(import.meta.dir, 'AgentSkillPicker.tsx')).text()
 
 const skills: SkillMeta[] = [
-  { slug: 'ardot-design-assistant', name: 'ardot-design-assistant', description: 'Use this skill for any visual design task.', enabled: true },
-  { slug: 'multi-modal', name: '多模态内容生成', description: '支持文生视频、文生图等能力。', enabled: true },
-  { slug: 'disabled-skill', name: 'disabled-skill', description: '不可用', enabled: false },
+  { slug: 'ardot-design-assistant', name: 'ardot-design-assistant', description: 'Use this skill for any visual design task.', enabled: true, sourceKind: 'workspace' },
+  { slug: 'multi-modal', name: '多模态内容生成', description: '支持文生视频、文生图等能力。', enabled: true, sourceKind: 'workspace' },
+  { slug: 'disabled-skill', name: 'disabled-skill', description: '不可用', enabled: false, sourceKind: 'workspace' },
 ]
 
 describe('AgentSkillPicker helpers', () => {

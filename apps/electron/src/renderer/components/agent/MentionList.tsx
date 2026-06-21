@@ -2,7 +2,7 @@
  * MentionList — 泛型 Mention 下拉列表
  *
  * 统一键盘导航（上/下/Enter/Tab/Escape）、选中高亮、滚动定位。
- * 通过 renderItem / keyExtractor 适配不同 Mention 类型（Skill、MCP 等）。
+ * 通过 renderItem / keyExtractor 适配不同 Mention 类型（Skill、会话等）。
  * 通过 React.useImperativeHandle 暴露 onKeyDown 给 TipTap Suggestion。
  */
 

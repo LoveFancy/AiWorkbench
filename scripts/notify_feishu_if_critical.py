@@ -23,6 +23,25 @@ def normalize_text(value):
     return str(value).strip()
 
 
+import re
+
+_CONTENT_SEVERITY_RE = re.compile(
+    r"\*{1,2}"  # ** or * prefix
+    r"\s*"
+    r"(Critical|Blocker|Security[-\s]Critical|严重|致命|阻塞)"
+    r"\s*"
+    r"(?::|：|\*)",  # colon or closing * or literal *
+    re.IGNORECASE,
+)
+
+
+def _extract_severity_from_content(content: str) -> str:
+    m = _CONTENT_SEVERITY_RE.search(content)
+    if m:
+        return m.group(1).lower().replace(" ", "-").replace("：", "").replace(":", "")
+    return ""
+
+
 def normalize_severity(item):
     severity = (
         item.get("severity")
@@ -31,7 +50,16 @@ def normalize_severity(item):
         or item.get("risk")
         or item.get("type")
     )
-    return normalize_text(severity).lower()
+    if severity:
+        return normalize_text(severity).lower()
+
+    content = item.get("content") or item.get("description") or item.get("body")
+    if content:
+        severity = _extract_severity_from_content(normalize_text(content))
+        if severity:
+            return severity
+
+    return ""
 
 
 def is_critical(item):

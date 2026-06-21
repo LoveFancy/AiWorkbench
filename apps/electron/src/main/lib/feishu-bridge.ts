@@ -2290,7 +2290,7 @@ class FeishuBridge {
       if (msg.senderType === 'user') {
         msg.senderName = this.userNameCache.get(msg.senderId)
       } else if (msg.senderType === 'app') {
-        msg.senderName = 'Bot'
+        msg.senderName = '机器人'
       }
     }
   }
@@ -2307,7 +2307,7 @@ class FeishuBridge {
         minute: '2-digit',
       })
       const sender = msg.senderName ?? msg.senderId.slice(0, 8)
-      const role = msg.senderType === 'app' ? 'Bot' : sender
+      const role = msg.senderType === 'app' ? '机器人' : sender
       return `[${time}] ${role}: ${msg.content}`
     })
 

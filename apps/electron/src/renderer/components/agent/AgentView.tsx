@@ -28,6 +28,7 @@ import { AskUserBanner } from './AskUserBanner'
 import { ExitPlanModeBanner } from './ExitPlanModeBanner'
 import { PlanModeDashedBorder } from './PlanModeDashedBorder'
 import { AgentSkillPicker } from './AgentSkillPicker'
+import { AgentConnectorPicker } from './AgentConnectorPicker'
 import { ModelSelector } from '@/components/chat/ModelSelector'
 import { CandidateModelDialog } from '@/components/settings/CandidateModelDialog'
 import { AttachmentPreviewItem } from '@/components/chat/AttachmentPreviewItem'
@@ -93,6 +94,7 @@ import {
   workspaceCapabilitiesVersionAtom,
   finalizeStreamingActivities,
   agentProcessGroupsKeepExpandedAtom,
+  agentSelectedMcpServersAtom,
 } from '@/atoms/agent-atoms'
 import type { AgentContextStatus } from '@/atoms/agent-atoms'
 import { settingsOpenAtom } from '@/atoms/settings-tab'
@@ -558,6 +560,20 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
 
   // 获取工作区共享文件目录路径（@ 引用时需要搜索）
   const workspaceSlug = workspaces.find((w) => w.id === currentWorkspaceId)?.slug ?? null
+  const selectedMcpServersMap = useAtomValue(agentSelectedMcpServersAtom)
+  const setSelectedMcpServersMap = useSetAtom(agentSelectedMcpServersAtom)
+  const selectedMcpServers = selectedMcpServersMap.get(sessionId) ?? []
+  const setSelectedMcpServers = React.useCallback((names: string[]): void => {
+    setSelectedMcpServersMap((prev) => {
+      const map = new Map(prev)
+      if (names.length === 0) {
+        map.delete(sessionId)
+      } else {
+        map.set(sessionId, names)
+      }
+      return map
+    })
+  }, [sessionId, setSelectedMcpServersMap])
   React.useEffect(() => {
     if (!workspaceSlug) {
       setWorkspaceSkills([])
@@ -1588,17 +1604,16 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       permissionModeOverride: permissionMode,
       ...(attachmentMetadata && attachmentMetadata.length > 0 && { attachments: attachmentMetadata }),
       ...(additionalDirectoriesForRun.size > 0 && { additionalDirectories: Array.from(additionalDirectoriesForRun) }),
-      // 解析用户消息中的 Skill/MCP/会话引用，传递结构化元数据给后端
+      // 解析用户消息中的 Skill/会话引用，传递结构化元数据给后端
       ...(() => {
-        const skills = [...effectiveText.matchAll(/\/skill:(\S+)/g)].map(m => m[1]).filter(Boolean) as string[]
-        const mcps = [...effectiveText.matchAll(/#mcp:(\S+)/g)].map(m => m[1]).filter(Boolean) as string[]
-        const sessionIds = [...effectiveText.matchAll(/&session:(\S+)/g)].map(m => m[1]).filter(Boolean) as string[]
+        const skills = [...effectiveText.matchAll(/\/skill:(\S+)/g)].map((m) => m[1]).filter(Boolean) as string[]
+        const sessionIds = [...effectiveText.matchAll(/&session:(\S+)/g)].map((m) => m[1]).filter(Boolean) as string[]
         return {
           ...(skills.length > 0 && { mentionedSkills: skills }),
-          ...(mcps.length > 0 && { mentionedMcpServers: mcps }),
           ...(sessionIds.length > 0 && { mentionedSessionIds: sessionIds }),
         }
       })(),
+      selectedMcpServers,
     }
 
     setInputContent('')
@@ -1614,7 +1629,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
         return map
       })
     })
-  }, [inputContent, attachedDirs, attachedFileDirectories, sessionId, agentChannelId, agentModelId, autoMode.enabled, currentWorkspaceId, workspaces, streaming, backgroundWaiting, suggestion, hasAvailableModel, currentAgentModelSupportsMultimodal, showBlockedPngToast, store, setStreamingStates, setPendingFiles, setAgentStreamErrors, setPromptSuggestions, setInputContent, setLiveMessagesMap, permissionMode, messagesLoaded])
+  }, [inputContent, attachedDirs, attachedFileDirectories, sessionId, agentChannelId, agentModelId, autoMode.enabled, currentWorkspaceId, workspaces, streaming, backgroundWaiting, suggestion, hasAvailableModel, currentAgentModelSupportsMultimodal, showBlockedPngToast, store, setStreamingStates, setPendingFiles, setAgentStreamErrors, setPromptSuggestions, setInputContent, setLiveMessagesMap, permissionMode, messagesLoaded, selectedMcpServers])
 
   /** 停止生成 */
   const handleStop = React.useCallback((): void => {
@@ -1680,6 +1695,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       workspaceId: currentWorkspaceId || undefined,
       startedAt: streamStartedAt,
       permissionModeOverride: permissionMode,
+      selectedMcpServers,
     }).catch((error) => {
       console.error('[AgentView] /compact 发送失败:', error)
       // 回滚：移除合成用户消息 + 清除 isCompacting flag
@@ -1699,7 +1715,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
         return map
       })
     })
-  }, [sessionId, agentChannelId, agentModelId, autoMode.enabled, currentWorkspaceId, streaming, setStreamingStates, store, permissionMode])
+  }, [sessionId, agentChannelId, agentModelId, autoMode.enabled, currentWorkspaceId, streaming, setStreamingStates, store, permissionMode, selectedMcpServers])
 
   /** 复制错误信息到剪贴板 */
   const handleCopyError = React.useCallback(async (): Promise<void> => {
@@ -1758,8 +1774,9 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       workspaceId: currentWorkspaceId || undefined,
       startedAt: streamStartedAt,
       permissionModeOverride: permissionMode,
+      selectedMcpServers,
     }).catch(console.error)
-  }, [persistedSDKMessages, sessionId, agentChannelId, agentModelId, autoMode.enabled, currentWorkspaceId, streaming, setAgentStreamErrors, setStreamingStates, permissionMode])
+  }, [persistedSDKMessages, sessionId, agentChannelId, agentModelId, autoMode.enabled, currentWorkspaceId, streaming, setAgentStreamErrors, setStreamingStates, permissionMode, selectedMcpServers])
 
   /** 在新对话继续：创建新会话 + 切换 tab + 使用 &session 引用旧会话 */
   const handleRetryInNewSession = React.useCallback(async (): Promise<void> => {
@@ -1800,11 +1817,12 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
         mentionedSessionIds: [sessionId],
         startedAt: streamStartedAt,
         permissionModeOverride: permissionMode,
+        selectedMcpServers,
       }).catch(console.error)
     } catch (error) {
       console.error('[AgentView] 在新会话中重试失败:', error)
     }
-  }, [sessionId, agentChannelId, agentModelId, autoMode.enabled, currentWorkspaceId, openSession, setAgentSessions, setStreamingStates, permissionMode])
+  }, [sessionId, agentChannelId, agentModelId, autoMode.enabled, currentWorkspaceId, openSession, setAgentSessions, setStreamingStates, permissionMode, selectedMcpServers])
 
   /** 分叉会话：从指定消息处创建新会话并自动切换 */
   const handleFork = React.useCallback(async (upToMessageUuid: string): Promise<void> => {
@@ -1963,6 +1981,21 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
         />
       ),
     },
+    {
+      key: 'connector-picker',
+      node: (
+        <AgentConnectorPicker
+          workspaceSlug={workspaceSlug}
+          selectedNames={selectedMcpServers}
+          capabilitiesVersion={capabilitiesVersion}
+          onSelectedNamesChange={setSelectedMcpServers}
+          onOpenConnectorManager={() => {
+            setAgentSkillsInitialTab('mcp')
+            setActiveView('agent-skills')
+          }}
+        />
+      ),
+    },
   ], [
     availableAgentChannelIds,
     agentChannelId,
@@ -1974,6 +2007,10 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
     handleModelSelect,
     autoMode.autoModeConfig,
     sessionId,
+    workspaceSlug,
+    selectedMcpServers,
+    capabilitiesVersion,
+    setSelectedMcpServers,
   ])
 
   const inputActionToolbarItems = React.useMemo<ToolbarItem[]>(() => [
@@ -2240,8 +2277,8 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
               placeholder={
                 agentChannelId && hasAvailableModel
                   ? sendWithCmdEnter
-                    ? '输入消息... (⌘/Ctrl+Enter 发送，Enter 换行，@ 引用文件，/ 命令或 Skill，# 调用 MCP，& 引用会话)'
-                    : '输入消息... (Enter 发送，Shift+Enter 换行，@ 引用文件，/ 命令或 Skill，# 调用 MCP，& 引用会话)'
+                    ? '输入消息... (⌘/Ctrl+Enter 发送，Enter 换行，@ 引用文件，/ 命令或 Skill，& 引用会话)'
+                    : '输入消息... (Enter 发送，Shift+Enter 换行，@ 引用文件，/ 命令或 Skill，& 引用会话)'
                   : !agentChannelId
                     ? '请先在设置 → 模型配置中配置并启用 Anthropic 兼容模型'
                     : '请先在设置 → 模型配置中配置 API Key 并启用 Agent 模型'
@@ -2266,6 +2303,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
             <div className="flex h-11 items-center justify-between gap-3 px-3 py-1.5">
               <InputToolbarOverflow
                 items={inputPrimaryToolbarItems}
+                pinnedEndCount={1}
                 gapPx={4}
                 moreButtonPx={32}
                 className="min-w-0 flex-1 justify-start px-0 py-0 h-auto gap-0"
