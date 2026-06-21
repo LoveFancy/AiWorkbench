@@ -30,6 +30,7 @@ import {
   MessageActions,
   MessageAction,
   MessageResponse,
+  MessageModeBadge,
   UserMessageContent,
 } from '@/components/ai-elements/message'
 import { UserAvatar } from '@/components/chat/UserAvatar'
@@ -1058,7 +1059,10 @@ function UserInputMessage({ message }: { message: SDKUserMessage }): React.React
       <div className="flex items-start gap-2.5 mb-2.5">
         <UserAvatar avatar={userProfile.avatar} size={35} />
         <div className="flex flex-col justify-between h-[35px]">
-          <span className="text-sm font-semibold text-foreground/60 leading-none">{userProfile.userName}</span>
+          <span className="flex items-center gap-2 leading-none">
+            <span className="text-sm font-semibold text-foreground/60">{userProfile.userName}</span>
+            <MessageModeBadge mode="Agent" />
+          </span>
           {(meta.createdAt || isScheduledRun) && (
             <span className="flex items-center gap-2 leading-none">
               {meta.createdAt && (

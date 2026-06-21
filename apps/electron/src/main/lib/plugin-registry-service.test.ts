@@ -190,6 +190,44 @@ describe('插件注册表服务', () => {
     }
   })
 
+  test('普通 Agent runtime plugin path 默认排除专家团插件', () => {
+    const temp = tempRoot()
+    try {
+      const builtinDir = join(temp.root, 'default-plugins')
+      const userDir = join(temp.root, 'user-plugins')
+      const configPath = join(temp.root, 'plugins.json')
+      const normalPluginPath = createPlugin(builtinDir, 'dpmp-assist')
+      const expertPluginPath = createExpertPlugin(builtinDir, 'architecture-decision-team', '架构决策专家团')
+
+      const paths = buildPluginRuntimePaths({ builtinDir, userDir, configPath })
+
+      expect(paths).toEqual([{ type: 'local', path: normalPluginPath }])
+      expect(paths.some((plugin) => plugin.path === expertPluginPath)).toBe(false)
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('显式请求时 runtime plugin path 可包含专家团插件', () => {
+    const temp = tempRoot()
+    try {
+      const builtinDir = join(temp.root, 'default-plugins')
+      const userDir = join(temp.root, 'user-plugins')
+      const configPath = join(temp.root, 'plugins.json')
+      const normalPluginPath = createPlugin(builtinDir, 'dpmp-assist')
+      const expertPluginPath = createExpertPlugin(builtinDir, 'architecture-decision-team', '架构决策专家团')
+
+      const paths = buildPluginRuntimePaths({ builtinDir, userDir, configPath, includeExpertGroupPlugins: true })
+
+      expect(paths).toEqual([
+        { type: 'local', path: expertPluginPath },
+        { type: 'local', path: normalPluginPath },
+      ])
+    } finally {
+      temp.cleanup()
+    }
+  })
+
   test('runtime plugin path 使用缓存副本承载插件 MCP env，不修改原插件目录', () => {
     const temp = tempRoot()
     try {

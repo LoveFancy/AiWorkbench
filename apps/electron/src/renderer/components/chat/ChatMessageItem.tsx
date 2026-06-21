@@ -20,6 +20,7 @@ import {
   MessageAction,
   MessageResponse,
   UserMessageContent,
+  MessageModeBadge,
   MessageStopped,
   StreamingIndicator,
   MessageAttachments,
@@ -157,7 +158,10 @@ export const ChatMessageItem = React.memo(function ChatMessageItem({
           <div className="flex items-start gap-2.5 mb-2.5">
             <UserAvatar avatar={userProfile.avatar} size={35} />
             <div className="flex flex-col justify-between h-[35px]">
-              <span className="text-sm font-semibold text-foreground/60 leading-none">{userProfile.userName}</span>
+              <span className="flex items-center gap-2 leading-none">
+                <span className="text-sm font-semibold text-foreground/60">{userProfile.userName}</span>
+                <MessageModeBadge mode="Chat" />
+              </span>
               <span className="text-[10px] text-foreground/[0.38] leading-none">{formatMessageTime(message.createdAt)}</span>
             </div>
           </div>

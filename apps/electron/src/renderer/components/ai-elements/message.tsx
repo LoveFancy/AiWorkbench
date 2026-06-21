@@ -107,6 +107,29 @@ export function MessageHeader({
   )
 }
 
+// ===== MessageModeBadge 模式标识 =====
+
+interface MessageModeBadgeProps extends HTMLAttributes<HTMLSpanElement> {
+  /** 当前消息所属模式 */
+  mode: 'Agent' | 'Chat'
+}
+
+/** 低调展示消息来自 Agent 还是 Chat 模式 */
+export function MessageModeBadge({ mode, className, ...props }: MessageModeBadgeProps): React.ReactElement {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center rounded px-1.5 py-0.5 text-[10px] leading-none',
+        'bg-foreground/[0.04] text-foreground/[0.38]',
+        className
+      )}
+      {...props}
+    >
+      {mode}
+    </span>
+  )
+}
+
 // ===== MessageContent 内容区域 =====
 
 type MessageContentProps = HTMLAttributes<HTMLDivElement>
