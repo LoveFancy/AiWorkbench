@@ -174,8 +174,15 @@ export async function sdkRunSingleAttempt(
   attempt: number,
   queryStartedAt: number,
 ): Promise<SingleRunResult> {
+  const _diagLoopStart = Date.now()
+  const _diagL = (tag: string) => console.log(`[DIAG][SDK Runner] [${tag}] sessionId=${ctx.sessionId}, attempt=${attempt}, elapsed=${Date.now() - _diagLoopStart}ms, ts=${Date.now()}`)
+  _diagL('sdkRunSingleAttempt 入口')
+
+  _diagL('调用 deps.query() 获取 queryIterable')
   const queryIterable = deps.query(ctx.queryOptions)
+  _diagL('deps.query() 返回, 获取 asyncIterator')
   const queryIterator = queryIterable[Symbol.asyncIterator]()
+  _diagL('asyncIterator 已获取')
 
   let pendingNext: Promise<IteratorResult<SDKMessage>> | null = null
   let capturedResultSubtype: string | undefined
@@ -193,8 +200,12 @@ export async function sdkRunSingleAttempt(
   }
 
   try {
+    let _diagIterCount = 0
     while (true) {
       if (!pendingNext) {
+        if (_diagIterCount === 0) {
+          _diagL('while 循环首次迭代, 调用 queryIterator.next()')
+        }
         pendingNext = queryIterator.next()
       }
 
@@ -206,9 +217,17 @@ export async function sdkRunSingleAttempt(
       }
 
       armStallCheck()
+      if (_diagIterCount === 0) {
+        _diagL('首次 Promise.race 开始等待...')
+      }
       const raceResult = await Promise.race(racePromises)
       if (stallCheckTimer) { clearTimeout(stallCheckTimer); stallCheckTimer = null }
       lastMsgTime = Date.now()
+
+      if (_diagIterCount === 0) {
+        _diagL(`首次 Promise.race 返回: kind=${raceResult.kind}, done=${raceResult.result?.done}`)
+      }
+      _diagIterCount++
 
       if (raceResult.kind === 'drain_timeout') {
         console.warn(`[Agent 编排] drain timeout: SDK iterator 在 result 后 ${RESULT_DRAIN_TIMEOUT_MS}ms 内未关闭，强制退出`)
@@ -219,10 +238,19 @@ export async function sdkRunSingleAttempt(
       }
 
       const iterResult = raceResult.result
-      if (!iterResult || iterResult.done) break
+      if (!iterResult || iterResult.done) {
+        _diagL(`while 循环正常退出: iterResult=${iterResult ? 'done' : 'null'}, 总消息数=${_diagIterCount}`)
+        break
+      }
 
       pendingNext = null
       const msg = iterResult.value
+
+      // 诊断：记录消息类型
+      if (_diagIterCount <= 5 || msg.type === 'result' || msg.type === 'system') {
+        const sub = (msg as { subtype?: string }).subtype
+        _diagL(`收到消息 #${_diagIterCount}: type=${msg.type}${sub ? `, subtype=${sub}` : ''}`)
+      }
 
       // ============ api_retry 检测 ============
       if (msg.type === 'system' && (msg as { subtype?: string }).subtype === 'api_retry') {
@@ -366,11 +394,14 @@ export async function sdkRunSingleAttempt(
     }
 
     // 正常退出 while 循环
+    _diagL('while 循环正常完成, 返回 success')
     return { kind: 'success', capturedResultSubtype }
 
   } catch (error) {
     // ============ catch 路径 ============
+    _diagL(`catch 块进入: error=${error instanceof Error ? error.message.slice(0, 200) : String(error).slice(0, 200)}`)
     if (!deps.isActive(ctx.sessionId)) {
+      _diagL('catch: 会话已不活跃, 返回 stopped_by_user')
       return { kind: 'stopped_by_user' }
     }
 
@@ -391,6 +422,7 @@ export async function sdkRunSingleAttempt(
 
     // 根据分类做恢复决策
     if (classified.category === 'api_retryable') {
+      _diagL(`catch 分类: api_retryable`)
       deps.persistMessages(ctx.sessionId, ctx.accumulatedMessages, Date.now() - queryStartedAt)
       ctx.accumulatedMessages.length = 0
       ctx.stderrChunks.length = 0
@@ -402,6 +434,7 @@ export async function sdkRunSingleAttempt(
     }
 
     if (classified.category === 'session_not_found') {
+      _diagL(`catch 分类: session_not_found`)
       return {
         kind: 'error_break',
         shouldRetryFromError: true,
@@ -410,6 +443,7 @@ export async function sdkRunSingleAttempt(
     }
 
     if (classified.category === 'thinking_signature') {
+      _diagL(`catch 分类: thinking_signature`)
       return {
         kind: 'error_break',
         shouldRetryFromError: true,
@@ -418,6 +452,7 @@ export async function sdkRunSingleAttempt(
     }
 
     // api_fatal — 不可重试
+    _diagL(`catch 分类: api_fatal`)
     console.error(`[Agent 编排] catch → fatal: apiError=${apiError ? `status=${apiError.statusCode} msg=${apiError.message}` : 'null'} raw=${rawErrorMessage.slice(0, 200)} stderrLen=${stderrOutput.length}`)
     return {
       kind: 'error_break',
@@ -426,6 +461,7 @@ export async function sdkRunSingleAttempt(
     }
 
   } finally {
+    _diagL('finally 块执行')
     if (stallCheckTimer) clearTimeout(stallCheckTimer)
   }
 }

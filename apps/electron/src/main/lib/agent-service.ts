@@ -120,12 +120,14 @@ export async function runAgent(
   input: AgentSendInput,
   webContents: WebContents,
 ): Promise<void> {
+  console.log(`[DIAG][Agent 服务] runAgent 入口: sessionId=${input.sessionId}, channelId=${input.channelId}, modelId=${input.modelId}, workspaceId=${input.workspaceId}, ts=${Date.now()}`)
   // 更新 webContents 映射（允许覆盖 — 由 orchestrator.activeSessions 处理真正的并发保护）
   registerWebContents(input.sessionId, webContents)
   // 开始新一轮执行时清除"完成未确认"标记
   try {
     updateAgentSessionMeta(input.sessionId, { completedButUnconfirmed: false })
   } catch { /* 新会话可能尚未写入索引 */ }
+  console.log(`[DIAG][Agent 服务] 即将调用 orchestrator.sendMessage, ts=${Date.now()}`)
   try {
     await orchestrator.sendMessage(input, {
       onError: (error) => {
@@ -187,7 +189,9 @@ export async function runAgent(
         }
       },
     })
+    console.log(`[DIAG][Agent 服务] orchestrator.sendMessage 正常返回, sessionId=${input.sessionId}, ts=${Date.now()}`)
   } catch (err) {
+    console.error(`[DIAG][Agent 服务] orchestrator.sendMessage 异常, sessionId=${input.sessionId}, ts=${Date.now()}`, err)
     console.error('[Agent 服务] runAgent 未处理异常:', err)
     const errorMessage = err instanceof Error ? err.message : '未知错误'
     if (!webContents.isDestroyed()) {
