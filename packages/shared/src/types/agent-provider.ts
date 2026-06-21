@@ -8,6 +8,22 @@
 
 import type { SDKMessage } from './agent'
 
+export interface AgentTextContentBlock {
+  type: 'text'
+  text: string
+}
+
+export interface AgentImageContentBlock {
+  type: 'image'
+  source: {
+    type: 'base64'
+    media_type: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
+    data: string
+  }
+}
+
+export type AgentUserContentBlock = AgentTextContentBlock | AgentImageContentBlock
+
 /** SDK 用户消息（队列消息注入用，匹配 SDK SDKUserMessage 结构） */
 export interface SDKUserMessageInput {
   type: 'user'
@@ -28,7 +44,7 @@ export interface AgentQueryInput {
   /** 会话 ID */
   sessionId: string
   /** 用户 prompt（已包含上下文注入） */
-  prompt: string
+  prompt: string | AgentUserContentBlock[]
   /** 模型 ID */
   model?: string
   /** Agent 工作目录 */

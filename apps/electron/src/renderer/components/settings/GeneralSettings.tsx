@@ -26,6 +26,7 @@ import {
 } from '../ui/select'
 import { UserAvatar } from '../chat/UserAvatar'
 import { userProfileAtom } from '@/atoms/user-profile'
+import { authStateAtom } from '@/auth/renderer'
 import {
   notificationsEnabledAtom,
   notificationSoundEnabledAtom,
@@ -57,8 +58,11 @@ interface EmojiMartEmoji {
   shortcodes: string
 }
 
+const GENERAL_SETTINGS_ANCHOR_CLASS = 'scroll-mt-14'
+
 export function GeneralSettings(): React.ReactElement {
   const [userProfile, setUserProfile] = useAtom(userProfileAtom)
+  const [authState] = useAtom(authStateAtom)
   const [notificationsEnabled, setNotificationsEnabled] = useAtom(notificationsEnabledAtom)
   const [notificationSoundEnabled, setNotificationSoundEnabled] = useAtom(notificationSoundEnabledAtom)
   const [notificationSounds, setNotificationSounds] = useAtom(notificationSoundsAtom)
@@ -71,6 +75,9 @@ export function GeneralSettings(): React.ReactElement {
   const [configRootError, setConfigRootError] = React.useState<string | null>(null)
   const [isConfigRootBusy, setIsConfigRootBusy] = React.useState(false)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const emojiPickerScrollRef = React.useRef<HTMLDivElement>(null)
+  const profileDisplayName = authState.jobId?.trim() || userProfile.userName
+  const canEditProfileName = !authState.isLoggedIn
 
   // 快捷导航
   const sectionRefs = React.useRef<Record<string, HTMLDivElement | null>>({})
@@ -182,6 +189,22 @@ export function GeneralSettings(): React.ReactElement {
     }
   }
 
+  const getEmojiPickerScrollElement = (): HTMLElement | null => {
+    const wrapper = emojiPickerScrollRef.current
+    const picker = wrapper?.querySelector('em-emoji-picker')
+    return picker?.shadowRoot?.querySelector('.scroll') ?? wrapper ?? null
+  }
+
+  /** emoji-mart 内部滚动在 Electron 弹层内偶发不响应，兜底滚动真实列表节点 */
+  const handleEmojiPickerWheel = (e: React.WheelEvent<HTMLDivElement>): void => {
+    const scrollEl = getEmojiPickerScrollElement()
+    if (!scrollEl) return
+
+    e.preventDefault()
+    e.stopPropagation()
+    scrollEl.scrollTop += e.deltaY
+  }
+
   return (
     <div className="space-y-6">
       {/* 快捷导航 */}
@@ -200,7 +223,7 @@ export function GeneralSettings(): React.ReactElement {
       </div>
 
       {/* 用户档案区域 */}
-      <div ref={(el) => { sectionRefs.current['profile'] = el }}>
+      <div ref={(el) => { sectionRefs.current['profile'] = el }} className={GENERAL_SETTINGS_ANCHOR_CLASS}>
       <SettingsSection
         title="用户档案"
         description="设置你的头像和显示名称"
@@ -229,15 +252,21 @@ export function GeneralSettings(): React.ReactElement {
                 sideOffset={12}
                 className="w-auto p-0 border-none shadow-xl"
               >
-                <Picker
-                  data={data}
-                  onEmojiSelect={(emoji: EmojiMartEmoji) => handleAvatarChange(emoji.native)}
-                  locale="zh"
-                  theme="auto"
-                  previewPosition="none"
-                  skinTonePosition="search"
-                  perLine={8}
-                />
+                <div
+                  ref={emojiPickerScrollRef}
+                  onWheel={handleEmojiPickerWheel}
+                  className="max-h-[420px] overflow-y-auto overscroll-contain scrollbar-thin"
+                >
+                  <Picker
+                    data={data}
+                    onEmojiSelect={(emoji: EmojiMartEmoji) => handleAvatarChange(emoji.native)}
+                    locale="zh"
+                    theme="auto"
+                    previewPosition="none"
+                    skinTonePosition="search"
+                    perLine={8}
+                  />
+                </div>
                 {/* 上传自定义图片 */}
                 <div className="px-3 p-2">
                   <button
@@ -263,7 +292,7 @@ export function GeneralSettings(): React.ReactElement {
 
             {/* 用户名 */}
             <div className="flex-1 min-w-0">
-              {isEditingName ? (
+              {canEditProfileName && isEditingName ? (
                 <input
                   type="text"
                   value={nameInput}
@@ -277,6 +306,10 @@ export function GeneralSettings(): React.ReactElement {
                     'outline-none w-full max-w-[200px] pb-0.5'
                   )}
                 />
+              ) : !canEditProfileName ? (
+                <div className="text-lg font-semibold text-foreground">
+                  {profileDisplayName}
+                </div>
               ) : (
                 <button
                   onClick={() => {
@@ -285,11 +318,15 @@ export function GeneralSettings(): React.ReactElement {
                   }}
                   className="text-lg font-semibold text-foreground hover:text-primary transition-colors text-left"
                 >
-                  {userProfile.userName}
+                  {profileDisplayName}
                 </button>
               )}
               <p className="text-[12px] text-foreground/40 mt-0.5">
-                点击头像更换，点击名字编辑
+                {authState.isLoggedIn && authState.jobId ? (
+                  <>已登录 · 工号 {authState.jobId}</>
+                ) : (
+                  '点击头像更换，点击名字编辑'
+                )}
               </p>
             </div>
           </div>
@@ -298,7 +335,7 @@ export function GeneralSettings(): React.ReactElement {
       </div>
 
       {/* 基本配置 */}
-      <div ref={(el) => { sectionRefs.current['basic'] = el }}>
+      <div ref={(el) => { sectionRefs.current['basic'] = el }} className={GENERAL_SETTINGS_ANCHOR_CLASS}>
       <SettingsSection
         title="基本配置"
         description="应用的基本配置"
@@ -441,12 +478,12 @@ export function GeneralSettings(): React.ReactElement {
       </div>
 
       {/* 代理配置 */}
-      <div ref={(el) => { sectionRefs.current['proxy'] = el }}>
+      <div ref={(el) => { sectionRefs.current['proxy'] = el }} className={GENERAL_SETTINGS_ANCHOR_CLASS}>
       <ProxySettings />
       </div>
 
       {/* 磁盘管理 */}
-      <div ref={(el) => { sectionRefs.current['storage'] = el }}>
+      <div ref={(el) => { sectionRefs.current['storage'] = el }} className={GENERAL_SETTINGS_ANCHOR_CLASS}>
       <StorageSettings />
       </div>
     </div>

@@ -25,6 +25,7 @@ import type {
   AgentPluginCapability,
   AgentPluginIssueLevel,
 } from '@proma/shared'
+import { isExpertGroupPlugin } from '@proma/shared'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -109,6 +110,15 @@ function summarizeCapabilities(plugin: AgentPluginInfo): string {
     },
     { skill: 0, command: 0, agent: 0, mcp: 0, 'expert-group': 0 },
   )
+  if (isExpertGroupPlugin(plugin)) {
+    return [
+      counts['expert-group'] > 0 ? `${counts['expert-group']} 专家团` : null,
+      counts.skill > 0 ? `${counts.skill} 个私有 Skill` : null,
+      counts.agent > 0 ? `${counts.agent} 个私有 Agent` : null,
+      counts.mcp > 0 ? `${counts.mcp} 个私有 MCP` : null,
+      counts.command > 0 ? `${counts.command} 个私有 Command` : null,
+    ].filter(Boolean).join(' · ') || '专家团资源'
+  }
   return [
     counts.skill > 0 ? `${counts.skill} Skills` : null,
     counts.command > 0 ? `${counts.command} Commands` : null,
@@ -950,7 +960,7 @@ function PluginListSection({
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="font-medium">{plugin.name}</h3>
-                <Badge variant="outline">Plugin</Badge>
+                <Badge variant="outline">{isExpertGroupPlugin(plugin) ? '专家团插件' : '普通插件'}</Badge>
                 {plugin.capabilities.some((capability) => capability.type === 'mcp') && <Badge variant="outline">MCP</Badge>}
                 <Badge variant={plugin.kind === 'builtin' ? 'secondary' : 'outline'}>{plugin.kind === 'builtin' ? 'builtin' : getPluginSourceLabel(plugin, marketplaces)}</Badge>
                 <span className="text-xs text-muted-foreground">{plugin.version}</span>

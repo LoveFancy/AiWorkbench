@@ -129,10 +129,10 @@ export function classifySdkError(input: ClassifyInput): ClassifyResult {
   const isMalformed = rawErrorMessage.includes('empty or malformed')
   if (isMalformed) {
     return {
-      category: 'api_fatal',
+      category: 'api_retryable',
       display: {
         errorCode: 'malformed_response',
-        errorTitle: '执行错误',
+        errorTitle: '暂时性错误',
         errorContent: friendlyErrorMessage(rawErrorMessage),
         errorActions: [{ key: 'r', label: '重试', action: 'retry' }],
       },
@@ -204,7 +204,11 @@ export function classifyFromTypedError(
   const isMalformed = typedError.message.includes('empty or malformed')
 
   return {
-    category: isThinking ? 'thinking_signature' : 'api_fatal',
+    category: isThinking
+      ? 'thinking_signature'
+      : isMalformed
+        ? 'api_retryable'
+        : 'api_fatal',
     display: {
       errorCode: typedError.code || 'unknown_error',
       errorTitle: typedError.title || '执行错误',

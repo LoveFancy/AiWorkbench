@@ -9,6 +9,7 @@ import type {
   AgentQueryInput,
   AgentProviderAdapter,
   SDKUserMessageInput,
+  AgentUserContentBlock,
   TypedError,
   ErrorCode,
   ThinkingConfig,
@@ -34,6 +35,28 @@ type SDKQuery = ReturnType<typeof import('@anthropic-ai/claude-agent-sdk').query
 
 /** SDK 用户消息类型 */
 type SDKUserMessage = import('@anthropic-ai/claude-agent-sdk').SDKUserMessage
+
+const SUPPORTED_PROMPT_IMAGE_MEDIA_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
+
+/** 校验传给 SDK 的首条用户消息内容，避免非法图片块在 SDK 内部变成难定位的运行时错误 */
+export function isValidAgentPromptContent(input: unknown): input is string | AgentUserContentBlock[] {
+  if (typeof input === 'string') return true
+  if (!Array.isArray(input) || input.length === 0) return false
+
+  return input.every((block) => {
+    if (!block || typeof block !== 'object') return false
+    const record = block as Record<string, unknown>
+    if (record.type === 'text') return typeof record.text === 'string'
+    if (record.type !== 'image') return false
+
+    const source = record.source
+    if (!source || typeof source !== 'object') return false
+    const sourceRecord = source as Record<string, unknown>
+    return sourceRecord.type === 'base64' &&
+      typeof sourceRecord.data === 'string' &&
+      SUPPORTED_PROMPT_IMAGE_MEDIA_TYPES.has(String(sourceRecord.media_type))
+  })
+}
 
 // ============================================================================
 // 长生命周期消息通道
@@ -897,6 +920,9 @@ export class ClaudeAgentAdapter implements AgentProviderAdapter {
       const channel = createMessageChannel(controller.signal)
 
       // 将初始 prompt 入队
+      if (!isValidAgentPromptContent(options.prompt)) {
+        throw new Error('[Claude 适配器] Agent 首条用户消息内容格式非法，无法发送给 SDK')
+      }
       channel.enqueue({
         type: 'user' as const,
         session_id: options.sessionId,

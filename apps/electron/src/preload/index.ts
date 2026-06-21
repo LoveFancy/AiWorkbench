@@ -62,6 +62,8 @@ import type {
   GetTaskOutputResult,
   StopTaskInput,
   WorkspaceMcpConfig,
+  InitializeDefaultConnectorInput,
+  InitializeDefaultConnectorResult,
   AgentSlashCommand,
   SkillMeta,
   OtherWorkspaceSkillsGroup,
@@ -665,6 +667,9 @@ export interface ElectronAPI {
 
   /** 测试 MCP 服务器连接 */
   testMcpServer: (name: string, entry: import('@proma/shared').McpServerEntry) => Promise<{ success: boolean; message: string }>
+
+  /** 初始化内置连接器 */
+  initializeDefaultConnector: (workspaceSlug: string, input: InitializeDefaultConnectorInput) => Promise<InitializeDefaultConnectorResult>
 
   /** 获取工作区 Skill 列表（含活跃和不活跃） */
   getWorkspaceSkills: (workspaceSlug: string) => Promise<SkillMeta[]>
@@ -1904,6 +1909,10 @@ const electronAPI: ElectronAPI = {
 
   testMcpServer: (name: string, entry: import('@proma/shared').McpServerEntry) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.TEST_MCP_SERVER, name, entry) as Promise<{ success: boolean; message: string }>
+  },
+
+  initializeDefaultConnector: (workspaceSlug: string, input: InitializeDefaultConnectorInput) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.INITIALIZE_DEFAULT_CONNECTOR, workspaceSlug, input)
   },
 
   getWorkspaceSkills: (workspaceSlug: string) => {

@@ -1,0 +1,48 @@
+import { describe, expect, test } from 'bun:test'
+import { join } from 'node:path'
+import type { WorkspaceMcpConfig } from '@proma/shared'
+import { getAvailableConnectorsForPicker } from './AgentConnectorPicker'
+
+const source = await Bun.file(join(import.meta.dir, 'AgentConnectorPicker.tsx')).text()
+
+const config: WorkspaceMcpConfig = {
+  servers: {
+    email: {
+      type: 'stdio',
+      command: 'mcp-email-server',
+      enabled: true,
+    },
+    docs: {
+      type: 'http',
+      url: 'https://example.test/mcp',
+      enabled: true,
+    },
+    disabled: {
+      type: 'stdio',
+      command: 'disabled-mcp',
+      enabled: false,
+    },
+    'memos-cloud': {
+      type: 'stdio',
+      command: 'memos',
+      enabled: true,
+    },
+  },
+}
+
+describe('AgentConnectorPicker helpers', () => {
+  test('只展示已启用的第三方连接器', () => {
+    expect(getAvailableConnectorsForPicker(config).map((item) => item.name)).toEqual(['docs', 'email'])
+  })
+
+  test('按名称和目标地址搜索连接器', () => {
+    expect(getAvailableConnectorsForPicker(config, 'mail').map((item) => item.name)).toEqual(['email'])
+    expect(getAvailableConnectorsForPicker(config, 'example').map((item) => item.name)).toEqual(['docs'])
+  })
+
+  test('连接器入口包含更多连接器和选择状态文案', () => {
+    expect(source).toContain('更多连接器')
+    expect(source).toContain('选择连接器')
+    expect(source).toContain('已选择')
+  })
+})

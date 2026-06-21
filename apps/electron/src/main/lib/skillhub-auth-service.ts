@@ -6,7 +6,7 @@
  * 依赖：fanxuande 分支的 auth/ 模块（EIP 登录），通过 getToken() 复用 EIPGW-TOKEN
  */
 
-import { safeStorage } from 'electron'
+import { app, safeStorage } from 'electron'
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { getConfigDir, getSettingsPath } from './config-paths'
@@ -75,9 +75,10 @@ export function getSkillHubAuthPath(): string {
 /** 提前刷新阈值：距离过期不足 5 分钟时主动刷新 */
 const REFRESH_THRESHOLD_MS = 5 * 60 * 1000
 
-function shouldUseMockSkillHub(): boolean {
+export function shouldUseMockSkillHub(): boolean {
   if (process.env.WORKMATE_SKILLHUB_MOCK === '1') return true
   if (process.env.WORKMATE_SKILLHUB_MOCK === '0') return false
+  if (app.isPackaged) return false
   return process.env.NODE_ENV !== 'production'
 }
 
