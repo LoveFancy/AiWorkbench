@@ -70,6 +70,7 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
   const [skillView, setSkillView] = React.useState<'market' | 'installed'>('market')
   const [search, setSearch] = React.useState('')
   const [expertFilterTag, setExpertFilterTag] = React.useState<FilterTag>('all')
+  const [expertCategory, setExpertCategory] = React.useState('all')
   const [selectedSkillSlug, setSelectedSkillSlug] = React.useState<string | null>(null)
   const [mcpSheetOpen, setMcpSheetOpen] = React.useState(false)
   const [editingMcp, setEditingMcp] = React.useState<{ name: string; entry: McpServerEntry } | null>(null)
@@ -400,7 +401,7 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
       {/* 内容 */}
       <div className={cn('min-h-0 flex-1', tab === 'experts' ? 'overflow-hidden' : 'overflow-y-auto scrollbar-thin')}>
         {tab === 'experts' ? (
-          <ExpertPageView embedded query={search} filterTag={expertFilterTag} onFilterTagChange={setExpertFilterTag} />
+          <ExpertPageView embedded query={search} filterTag={expertFilterTag} onFilterTagChange={setExpertFilterTag} category={expertCategory} onCategoryChange={setExpertCategory} />
         ) : (
           <div className="mx-auto w-full max-w-6xl px-8 pb-10">
             {data.loading ? (

@@ -28,9 +28,11 @@ interface ExpertPageViewProps {
   query?: string
   filterTag?: FilterTag
   onFilterTagChange?: (tag: FilterTag) => void
+  category?: string
+  onCategoryChange?: (category: string) => void
 }
 
-export function ExpertPageView({ embedded = false, query: externalQuery, filterTag: externalFilterTag, onFilterTagChange }: ExpertPageViewProps): React.ReactElement {
+export function ExpertPageView({ embedded = false, query: externalQuery, filterTag: externalFilterTag, onFilterTagChange, category: externalCategory, onCategoryChange }: ExpertPageViewProps): React.ReactElement {
   const allGroups = useAtomValue(agentExpertGroupsAtom)
   const loadGroups = useSetAtom(loadAgentExpertGroupsAtom)
   const loadRemote = useSetAtom(loadRemoteExpertDataAtom)
@@ -42,7 +44,7 @@ export function ExpertPageView({ embedded = false, query: externalQuery, filterT
 
   const [query, setQuery] = React.useState('')
   const [internalFilterTag, setInternalFilterTag] = React.useState<FilterTag>('all')
-  const [category, setCategory] = React.useState('all')
+  const [internalCategory, setInternalCategory] = React.useState('all')
   const [sceneFilter, setSceneFilter] = React.useState<Set<string> | null>(null)
   const [activeSceneId, setActiveSceneId] = React.useState<string | null>(null)
   const [refreshing, setRefreshing] = React.useState(false)
@@ -74,6 +76,8 @@ export function ExpertPageView({ embedded = false, query: externalQuery, filterT
   const activeQuery = embedded ? (externalQuery ?? '') : query
   const filterTag = externalFilterTag ?? internalFilterTag
   const setFilterTag = onFilterTagChange ?? setInternalFilterTag
+  const category = externalCategory ?? internalCategory
+  const setCategory = onCategoryChange ?? setInternalCategory
 
   const displayGroups = React.useMemo(() => {
     let result = allGroups

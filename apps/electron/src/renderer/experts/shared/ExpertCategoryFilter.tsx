@@ -48,7 +48,7 @@ export function ExpertCategoryFilter({ categories, value, onChange }: ExpertCate
       )}
       <div
         ref={scrollRef}
-        className="flex items-center gap-1 overflow-hidden"
+        className="flex min-w-0 items-center gap-1 overflow-hidden"
         onScroll={checkScroll}
       >
         <button
