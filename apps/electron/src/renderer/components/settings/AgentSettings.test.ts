@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 
@@ -22,4 +22,8 @@ test('Agent 设置页不再展示华泰 SkillHub', () => {
   expect(source).not.toContain('华泰 SkillHub')
   expect(source).not.toContain('getHtSkillHubSkills')
   expect(source).not.toContain('workspaceCapabilitiesVersionAtom')
+})
+
+test('旧设置页 SkillHubPanel 组件已清理', () => {
+  expect(existsSync(join(import.meta.dir, 'SkillHubPanel'))).toBe(false)
 })

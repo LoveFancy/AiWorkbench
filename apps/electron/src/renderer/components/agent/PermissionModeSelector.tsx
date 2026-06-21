@@ -1,19 +1,26 @@
 /**
  * PermissionModeSelector — Agent 权限模式切换器
  *
- * 集成在 AgentHeader 中，紧凑的三模式切换按钮。
- * 支持循环切换和工作区级别的持久化。
+ * 集成在 Agent 输入工具栏中，紧凑展示当前权限模式。
+ * 支持下拉选择和工作区级别的持久化。
  * 每个会话独立维护自己的权限模式。
  */
 
 import * as React from 'react'
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
-import { Zap, Compass, Map as MapIcon } from 'lucide-react'
+import { Zap, Compass, Map as MapIcon, ChevronDown } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { agentPermissionModeMapAtom, agentDefaultPermissionModeAtom, sessionPersistedPermissionModeAtom, sessionExistsAtom, agentPlanModeSessionsAtom } from '@/atoms/agent-atoms'
 import type { PromaPermissionMode } from '@proma/shared'
-import { PROMA_PERMISSION_MODE_CONFIG, PROMA_PERMISSION_MODE_ORDER } from '@proma/shared'
+import { isPromaPermissionMode, PROMA_PERMISSION_MODE_CONFIG, PROMA_PERMISSION_MODE_ORDER } from '@proma/shared'
 import { updatePlanModeSessionSet } from '@/lib/agent-plan-mode'
 
 const MODE_ICONS: Record<PromaPermissionMode, React.ComponentType<{ className?: string }>> = {
@@ -49,11 +56,8 @@ export function PermissionModeSelector({ sessionId }: PermissionModeSelectorProp
     })
   }, [sessionId, persistedSessionMode, sessionExistsInList, defaultMode, setModeMap])
 
-  /** 循环切换模式 */
-  const cycleMode = React.useCallback(async () => {
-    const currentIndex = PROMA_PERMISSION_MODE_ORDER.indexOf(mode)
-    const nextIndex = (currentIndex + 1) % PROMA_PERMISSION_MODE_ORDER.length
-    const nextMode = PROMA_PERMISSION_MODE_ORDER[nextIndex]!
+  const selectMode = React.useCallback(async (nextMode: PromaPermissionMode) => {
+    if (nextMode === mode) return
     const prevMode = mode
 
     // 乐观更新当前 session 的模式
@@ -82,30 +86,67 @@ export function PermissionModeSelector({ sessionId }: PermissionModeSelectorProp
     }
   }, [mode, sessionId, setModeMap, setPlanModeSessions])
 
+  const handleModeChange = React.useCallback((value: string): void => {
+    if (!isPromaPermissionMode(value)) return
+    void selectMode(value)
+    requestAnimationFrame(() => document.querySelector<HTMLElement>('.ProseMirror')?.focus())
+  }, [selectMode])
+
   const config = PROMA_PERMISSION_MODE_CONFIG[mode]
   const Icon = MODE_ICONS[mode]
 
   return (
     <TooltipProvider delayDuration={300}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={config.label}
-            onClick={() => { cycleMode(); requestAnimationFrame(() => document.querySelector<HTMLElement>('.ProseMirror')?.focus()) }}
-            className="size-8 rounded-full text-foreground/60 hover:text-foreground"
-          >
-            <Icon className="size-4" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom" className="max-w-[200px]">
-          <p className="font-medium">{config.label}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">{config.description}</p>
-          <p className="text-xs text-muted-foreground mt-1">点击切换模式</p>
-        </TooltipContent>
-      </Tooltip>
+      <DropdownMenu>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                aria-label={`权限模式：${config.label}`}
+                className="h-8 shrink-0 rounded-full px-2.5 text-[13px] font-medium text-foreground/70 hover:text-foreground"
+              >
+                <Icon className="size-4" />
+                <span>{config.label}</span>
+                <ChevronDown className="size-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-[220px]">
+            <p className="font-medium">{config.label}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{config.description}</p>
+            <p className="text-xs text-muted-foreground mt-1">点击选择权限模式</p>
+          </TooltipContent>
+        </Tooltip>
+
+        <DropdownMenuContent side="top" align="center" sideOffset={10} className="w-64 p-1.5">
+          <DropdownMenuRadioGroup value={mode} onValueChange={handleModeChange}>
+            {PROMA_PERMISSION_MODE_ORDER.map((permissionMode) => {
+              const itemConfig = PROMA_PERMISSION_MODE_CONFIG[permissionMode]
+              const ItemIcon = MODE_ICONS[permissionMode]
+
+              return (
+                <DropdownMenuRadioItem
+                  key={permissionMode}
+                  value={permissionMode}
+                  className="items-start gap-2 rounded-md py-2 pl-8 pr-2"
+                >
+                  <ItemIcon className="mt-0.5 size-4 text-muted-foreground" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[13px] font-medium leading-5 text-foreground">
+                      {itemConfig.label}
+                    </span>
+                    <span className="block text-xs leading-5 text-muted-foreground">
+                      {itemConfig.description}
+                    </span>
+                  </span>
+                </DropdownMenuRadioItem>
+              )
+            })}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </TooltipProvider>
   )
 }

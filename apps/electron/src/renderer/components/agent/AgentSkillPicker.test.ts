@@ -26,4 +26,9 @@ describe('AgentSkillPicker helpers', () => {
     expect(source).toContain('<WandSparkles className="mt-0.5 size-4 shrink-0 text-violet-500" />')
     expect(source).not.toContain('getSkillAvatarText')
   })
+
+  test('技能入口使用带下拉箭头的触发按钮', () => {
+    expect(source).toContain('ChevronDown')
+    expect(source).toContain('<span className="text-[13px] font-medium">技能</span>')
+  })
 })

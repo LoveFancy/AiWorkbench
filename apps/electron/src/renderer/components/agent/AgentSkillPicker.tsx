@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { FolderInput, Search, WandSparkles } from 'lucide-react'
+import { ChevronDown, FolderInput, Search, WandSparkles } from 'lucide-react'
 import type { SkillMeta } from '@proma/shared'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -70,6 +70,7 @@ export function AgentSkillPicker({
             >
               <WandSparkles className="size-4" />
               <span className="text-[13px] font-medium">技能</span>
+              <ChevronDown className="size-3.5" />
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
