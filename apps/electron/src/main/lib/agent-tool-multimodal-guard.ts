@@ -1,8 +1,8 @@
 /**
  * Agent 工具多模态能力守卫
  *
- * 用于在 PreToolUse / canUseTool 阶段拦截非多模态模型读取 PDF、图片和
- * SDK 会转为 base64 的二进制文件，避免工具层绕过前端附件限制。
+ * 用于在 PreToolUse / canUseTool 阶段拦截不支持直接 Read 的多模态资源。
+ * PDF / Office 文档不允许通过 Read/base64 直接读取；图片按模型多模态能力判断。
  */
 
 interface MultimodalGuardInput {
@@ -27,7 +27,7 @@ export interface PreToolUseGuardOutput {
 }
 
 const MULTIMODAL_FILE_EXTENSIONS = /\.(pdf|png|jpe?g|gif|webp|bmp|svg|ico|heic|heif|tiff?|docx?|pptx?|xlsx?)$/i
-const BASE64_BINARY_FILE_EXTENSIONS = /\.(docx?|pptx?|xlsx?)$/i
+const DOCUMENT_FILE_EXTENSIONS = /\.(pdf|docx?|pptx?|xlsx?)$/i
 const TEXT_FILE_EXTENSIONS = /\.(txt|md|mdx|markdown|json|jsonl|yaml|yml|toml|xml|html?|css|scss|sass|less|js|jsx|ts|tsx|mjs|cjs|py|rb|go|rs|java|kt|kts|c|cc|cpp|cxx|h|hpp|cs|php|swift|sql|sh|bash|zsh|fish|ps1|bat|cmd|csv|tsv|log|ini|conf|config|env|gitignore|dockerfile)$/i
 
 function readPathFromToolInput(input: Record<string, unknown>): string | null {
@@ -50,13 +50,21 @@ function requiresMultimodalRead(filePath: string, input: Record<string, unknown>
   return isBase64ReadRequested(input)
 }
 
+function requiresDocumentRead(filePath: string, input: Record<string, unknown>): boolean {
+  const normalized = filePath.split(/[?#]/, 1)[0] ?? filePath
+  return DOCUMENT_FILE_EXTENSIONS.test(normalized) || isBase64ReadRequested(input)
+}
+
 function buildBlockedMessage(filePath: string, input: Record<string, unknown>): string {
   const lower = filePath.toLowerCase()
   const kind = lower.endsWith('.pdf')
     ? 'PDF'
-    : BASE64_BINARY_FILE_EXTENSIONS.test(lower) || isBase64ReadRequested(input)
+    : DOCUMENT_FILE_EXTENSIONS.test(lower) || isBase64ReadRequested(input)
       ? 'base64 文件'
       : '图片或二进制文件'
+  if (DOCUMENT_FILE_EXTENSIONS.test(lower) || isBase64ReadRequested(input)) {
+    return `${kind} 不支持通过 Read/base64 直接读取：${filePath}。请先使用文档解析或对应 Skill 提取文本后再处理。`
+  }
   return `当前 Agent 模型不支持多模态，不能通过 Read 读取 ${kind}：${filePath}。请切换到支持多模态的模型，或先将文件转换为可读取的纯文本后再处理。`
 }
 
@@ -65,11 +73,19 @@ export function getBlockedMultimodalToolUse({
   input,
   supportsMultimodal,
 }: MultimodalGuardInput): BlockedMultimodalToolUse | null {
-  if (supportsMultimodal) return null
   if (toolName !== 'Read') return null
 
   const filePath = readPathFromToolInput(input)
   if (!filePath) return null
+
+  if (requiresDocumentRead(filePath, input)) {
+    return {
+      path: filePath,
+      message: buildBlockedMessage(filePath, input),
+    }
+  }
+
+  if (supportsMultimodal) return null
   if (!requiresMultimodalRead(filePath, input)) return null
 
   return {

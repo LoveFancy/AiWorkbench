@@ -14,7 +14,7 @@ describe('agent tool multimodal guard', () => {
     })
 
     expect(blocked?.path).toBe('/workspace/产品经理_数据.pdf')
-    expect(blocked?.message).toContain('当前 Agent 模型不支持多模态')
+    expect(blocked?.message).toContain('Read/base64')
     expect(blocked?.message).toContain('PDF')
   })
 
@@ -40,10 +40,28 @@ describe('agent tool multimodal guard', () => {
     expect(blocked?.message).toContain('base64')
   })
 
-  test('多模态模型允许 Read 读取 PDF，文本文件不受限制', () => {
-    expect(getBlockedMultimodalToolUse({
+  test('多模态模型也禁止 Read 直接读取 PDF 和 Office 文档', () => {
+    const pdfBlocked = getBlockedMultimodalToolUse({
       toolName: 'Read',
       input: { file_path: '/workspace/report.pdf' },
+      supportsMultimodal: true,
+    })
+
+    expect(pdfBlocked?.message).toContain('PDF')
+
+    const docxBlocked = getBlockedMultimodalToolUse({
+      toolName: 'Read',
+      input: { file_path: '/workspace/report.docx' },
+      supportsMultimodal: true,
+    })
+
+    expect(docxBlocked?.message).toContain('base64')
+  })
+
+  test('多模态模型允许图片由后续通道处理，文本文件不受限制', () => {
+    expect(getBlockedMultimodalToolUse({
+      toolName: 'Read',
+      input: { file_path: '/workspace/image.png' },
       supportsMultimodal: true,
     })).toBeNull()
 

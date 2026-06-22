@@ -933,6 +933,8 @@ export interface AgentPluginManifest {
   repository?: string
   license?: string
   keywords?: string[]
+  /** Claude Code 插件声明的 Skills 路径，未声明时默认扫描 skills/ */
+  skills?: string | string[]
   /** 插件声明的唯一专家团 ID，对应 expert-groups/{id}.json */
   expertGroup?: string
   /** @deprecated 兼容旧插件；运行时只读取第一个专家团 ID。 */
@@ -1128,6 +1130,12 @@ export interface AgentPluginsConfig {
 }
 
 export type AgentPluginMarketplaceType = 'github' | 'gitee' | 'gitlab' | 'raw' | 'local'
+export type AgentPluginMarketplaceAuthType = 'none' | 'token'
+
+export interface AgentPluginMarketplaceAuth {
+  type: AgentPluginMarketplaceAuthType
+  tokenConfigured?: boolean
+}
 
 export interface AgentPluginMarketplace {
   id: string
@@ -1136,6 +1144,10 @@ export interface AgentPluginMarketplace {
   type: AgentPluginMarketplaceType
   /** 仓库型市场读取 .claude-plugin/marketplace.json 的分支，默认 main */
   branch?: string
+  /** 插件市场认证状态。Token 明文不会返回到渲染进程。 */
+  auth?: AgentPluginMarketplaceAuth
+  /** Token 的加密存储值，仅主进程内部使用，返回前必须脱敏。 */
+  authToken?: string
   enabled: boolean
   addedAt: string
   lastRefreshAt?: string | null

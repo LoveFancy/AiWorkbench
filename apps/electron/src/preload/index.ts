@@ -599,7 +599,7 @@ export interface ElectronAPI {
   /** 列出插件市场 */
   listAgentPluginMarketplaces: () => Promise<AgentPluginMarketplace[]>
   /** 添加插件市场 */
-  addAgentPluginMarketplace: (input: { id: string; name: string; source: string; type: AgentPluginMarketplaceType; branch?: string }) => Promise<AgentPluginMarketplace>
+  addAgentPluginMarketplace: (input: { id: string; name: string; source: string; type: AgentPluginMarketplaceType; branch?: string; auth?: { type: 'none' | 'token'; token?: string } }) => Promise<AgentPluginMarketplace>
   /** 更新插件市场 */
   updateAgentPluginMarketplace: (id: string, updates: Partial<Omit<AgentPluginMarketplace, 'id' | 'addedAt'>>) => Promise<AgentPluginMarketplace>
   /** 删除插件市场 */
@@ -1820,7 +1820,7 @@ const electronAPI: ElectronAPI = {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.LIST_PLUGIN_MARKETPLACES)
   },
 
-  addAgentPluginMarketplace: (input: { id: string; name: string; source: string; type: AgentPluginMarketplaceType; branch?: string }) => {
+  addAgentPluginMarketplace: (input: { id: string; name: string; source: string; type: AgentPluginMarketplaceType; branch?: string; auth?: { type: 'none' | 'token'; token?: string } }) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.ADD_PLUGIN_MARKETPLACE, input)
   },
 

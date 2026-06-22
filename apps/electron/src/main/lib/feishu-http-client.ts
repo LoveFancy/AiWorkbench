@@ -19,10 +19,26 @@ export interface FeishuSdkTransport {
   agent?: HttpsProxyAgent<string>
 }
 
-export async function createFeishuSdkTransport(): Promise<FeishuSdkTransport> {
+async function applyFeishuProxy(httpInstance: AxiosInstance): Promise<HttpsProxyAgent<string> | undefined> {
   const proxyUrl = await getEffectiveProxyUrl()
-  const httpInstance = axios.create()
   httpInstance.defaults.proxy = false
+
+  if (!proxyUrl) {
+    delete httpInstance.defaults.httpAgent
+    delete httpInstance.defaults.httpsAgent
+    return undefined
+  }
+
+  const agent = new HttpsProxyAgent(proxyUrl)
+  httpInstance.defaults.httpAgent = agent
+  httpInstance.defaults.httpsAgent = agent
+
+  console.log('[飞书 SDK] 使用代理:', proxyUrl)
+  return agent
+}
+
+export async function createFeishuSdkTransport(): Promise<FeishuSdkTransport> {
+  const httpInstance = axios.create()
 
   httpInstance.interceptors.response.use((resp) => {
     const config = resp.config as typeof resp.config & FeishuAxiosConfig
@@ -35,14 +51,10 @@ export async function createFeishuSdkTransport(): Promise<FeishuSdkTransport> {
     return resp.data
   })
 
-  if (!proxyUrl) {
-    return { httpInstance }
-  }
-
-  const agent = new HttpsProxyAgent(proxyUrl)
-  httpInstance.defaults.httpAgent = agent
-  httpInstance.defaults.httpsAgent = agent
-
-  console.log('[飞书 SDK] 使用代理:', proxyUrl)
+  const agent = await applyFeishuProxy(httpInstance)
   return { httpInstance, agent }
+}
+
+export async function configureFeishuDefaultHttpInstance(httpInstance: AxiosInstance): Promise<void> {
+  await applyFeishuProxy(httpInstance)
 }

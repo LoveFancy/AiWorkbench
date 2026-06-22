@@ -11,6 +11,8 @@ import type {
   AgentPluginInstallInput,
   AgentPluginInstallResult,
   AgentPluginMarketplace,
+  AgentPluginMarketplaceAuth,
+  AgentPluginMarketplaceAuthType,
   AgentPluginMarketplaceDetail,
   AgentPluginMarketplacePlugin,
   AgentPluginMarketplacesConfig,
@@ -30,7 +32,9 @@ interface PluginMarketplacePaths {
   cacheDir?: string
   userPluginsDir?: string
   pluginsConfigPath?: string
-  cloneRepo?: (source: string, targetDir: string, branch?: string) => Promise<void>
+  cloneRepo?: (source: string, targetDir: string, branch?: string, authHeader?: string) => Promise<void>
+  encryptToken?: (token: string) => string
+  decryptToken?: (token: string) => string
   /** 测试专用：cloneRepo stub 完成后用该目录内容作为克隆结果 */
   copyClonedFixture?: string
 }
@@ -41,6 +45,7 @@ interface AddMarketplaceInput {
   source: string
   type: AgentPluginMarketplaceType
   branch?: string
+  auth?: AgentPluginMarketplaceAuth & { token?: string }
 }
 
 interface MarketManifestPlugin {
@@ -73,6 +78,8 @@ function paths(input?: PluginMarketplacePaths): Required<PluginMarketplacePaths>
     userPluginsDir: input?.userPluginsDir ?? getUserPluginsDir(),
     pluginsConfigPath: input?.pluginsConfigPath ?? getPluginsConfigPath(),
     cloneRepo: input?.cloneRepo ?? cloneGitRepo,
+    encryptToken: input?.encryptToken ?? encryptMarketplaceToken,
+    decryptToken: input?.decryptToken ?? decryptMarketplaceToken,
     copyClonedFixture: input?.copyClonedFixture ?? '',
   }
 }
@@ -242,6 +249,85 @@ function parseMarketplaceType(value: unknown): AgentPluginMarketplaceType {
   return value === 'github' || value === 'gitee' || value === 'gitlab' || value === 'raw' || value === 'local' ? value : 'raw'
 }
 
+function parseMarketplaceAuthType(value: unknown): AgentPluginMarketplaceAuthType {
+  return value === 'token' ? 'token' : 'none'
+}
+
+interface ElectronSafeStorage {
+  isEncryptionAvailable: () => boolean
+  encryptString: (plainText: string) => Buffer
+  decryptString: (encrypted: Buffer) => string
+}
+
+function getSafeStorage(): ElectronSafeStorage | null {
+  try {
+    const electron = require('electron') as { safeStorage?: ElectronSafeStorage }
+    return electron.safeStorage ?? null
+  } catch {
+    return null
+  }
+}
+
+function encryptMarketplaceToken(token: string): string {
+  const safeStorage = getSafeStorage()
+  if (!safeStorage?.isEncryptionAvailable()) {
+    console.warn('[插件市场] safeStorage 加密不可用，Token 将以明文存储')
+    return token
+  }
+  return safeStorage.encryptString(token).toString('base64')
+}
+
+function decryptMarketplaceToken(token: string): string {
+  const safeStorage = getSafeStorage()
+  if (!safeStorage?.isEncryptionAvailable()) return token
+  return safeStorage.decryptString(Buffer.from(token, 'base64'))
+}
+
+function marketplaceAuthState(authType: AgentPluginMarketplaceAuthType, authToken?: string): AgentPluginMarketplaceAuth | undefined {
+  if (authType === 'none') return undefined
+  return {
+    type: 'token',
+    tokenConfigured: Boolean(authToken?.trim()),
+  }
+}
+
+function publicMarketplace(marketplace: AgentPluginMarketplace): AgentPluginMarketplace {
+  const { authToken: _authToken, ...rest } = marketplace
+  return rest
+}
+
+function normalizeMarketplaceAuth(
+  auth: AddMarketplaceInput['auth'] | undefined,
+  current: AgentPluginMarketplace | undefined,
+  input: Required<PluginMarketplacePaths>,
+): Pick<AgentPluginMarketplace, 'auth' | 'authToken'> {
+  if (!auth && current) {
+    return {
+      auth: current.auth,
+      authToken: current.authToken,
+    }
+  }
+
+  const authType = parseMarketplaceAuthType(auth?.type)
+  if (authType === 'none') {
+    return { auth: undefined, authToken: undefined }
+  }
+
+  const token = typeof auth?.token === 'string' ? auth.token.trim() : ''
+  const authToken = token ? input.encryptToken(token) : current?.authToken
+  if (!authToken) throw new Error('Token 认证的插件市场需要填写 Token')
+  return {
+    auth: marketplaceAuthState('token', authToken),
+    authToken,
+  }
+}
+
+function marketplaceAuthHeader(marketplace: AgentPluginMarketplace, input: Required<PluginMarketplacePaths>): string | undefined {
+  if (marketplace.auth?.type !== 'token' || !marketplace.authToken) return undefined
+  const token = input.decryptToken(marketplace.authToken).trim()
+  return token ? `Authorization: Bearer ${token}` : undefined
+}
+
 export function readPluginMarketplacesConfig(input?: Pick<PluginMarketplacePaths, 'marketplacesPath'>): AgentPluginMarketplacesConfig {
   const marketplacesPath = input?.marketplacesPath ?? getPluginMarketplacesPath()
   if (!existsSync(marketplacesPath)) return structuredClone(DEFAULT_MARKETPLACES_CONFIG)
@@ -251,17 +337,25 @@ export function readPluginMarketplacesConfig(input?: Pick<PluginMarketplacePaths
     return {
       version: 1,
       marketplaces: Array.isArray(record.marketplaces)
-        ? record.marketplaces.filter(isRecord).map((item): AgentPluginMarketplace => ({
-          id: typeof item.id === 'string' ? item.id : '',
-          name: typeof item.name === 'string' ? item.name : '',
-          source: typeof item.source === 'string' ? item.source : '',
-          type: parseMarketplaceType(item.type),
-          ...(normalizeMarketplaceBranch(item.branch) && { branch: normalizeMarketplaceBranch(item.branch) }),
-          enabled: typeof item.enabled === 'boolean' ? item.enabled : true,
-          addedAt: typeof item.addedAt === 'string' ? item.addedAt : new Date().toISOString(),
-          lastRefreshAt: typeof item.lastRefreshAt === 'string' || item.lastRefreshAt === null ? item.lastRefreshAt : null,
-          ...(typeof item.lastError === 'string' && { lastError: item.lastError }),
-        })).filter((item) => item.id && item.name && item.source)
+        ? record.marketplaces.filter(isRecord).map((item): AgentPluginMarketplace => {
+          const authToken = typeof item.authToken === 'string' ? item.authToken : undefined
+          const authRecord = isRecord(item.auth) ? item.auth : {}
+          const authType = authToken ? 'token' : parseMarketplaceAuthType(authRecord.type)
+          const auth = marketplaceAuthState(authType, authToken)
+          return {
+            id: typeof item.id === 'string' ? item.id : '',
+            name: typeof item.name === 'string' ? item.name : '',
+            source: typeof item.source === 'string' ? item.source : '',
+            type: parseMarketplaceType(item.type),
+            ...(normalizeMarketplaceBranch(item.branch) && { branch: normalizeMarketplaceBranch(item.branch) }),
+            ...(auth && { auth }),
+            ...(authToken && { authToken }),
+            enabled: typeof item.enabled === 'boolean' ? item.enabled : true,
+            addedAt: typeof item.addedAt === 'string' ? item.addedAt : new Date().toISOString(),
+            lastRefreshAt: typeof item.lastRefreshAt === 'string' || item.lastRefreshAt === null ? item.lastRefreshAt : null,
+            ...(typeof item.lastError === 'string' && { lastError: item.lastError }),
+          }
+        }).filter((item) => item.id && item.name && item.source)
         : [],
     }
   } catch (error) {
@@ -277,7 +371,7 @@ function writeMarketplacesConfig(config: AgentPluginMarketplacesConfig, input?: 
 }
 
 export function listPluginMarketplaces(input?: Pick<PluginMarketplacePaths, 'marketplacesPath'>): AgentPluginMarketplace[] {
-  return readPluginMarketplacesConfig(input).marketplaces
+  return readPluginMarketplacesConfig(input).marketplaces.map(publicMarketplace)
 }
 
 export function addPluginMarketplace(marketplace: AddMarketplaceInput, input?: PluginMarketplacePaths): AgentPluginMarketplace {
@@ -288,32 +382,38 @@ export function addPluginMarketplace(marketplace: AddMarketplaceInput, input?: P
   if (existedIndex !== -1) {
     const current = config.marketplaces[existedIndex]
     if (!current) throw new Error(`插件市场不存在: ${id}`)
+    const auth = normalizeMarketplaceAuth(marketplace.auth, current, resolved)
     const next: AgentPluginMarketplace = {
       ...current,
       name: marketplace.name.trim() || id,
       source: marketplace.source.trim(),
       type: marketplace.type,
       branch: normalizeMarketplaceBranch(marketplace.branch),
+      auth: auth.auth,
+      authToken: auth.authToken,
       enabled: true,
       lastError: undefined,
     }
     config.marketplaces[existedIndex] = next
     writeMarketplacesConfig(config, { marketplacesPath: resolved.marketplacesPath })
-    return next
+    return publicMarketplace(next)
   }
+  const auth = normalizeMarketplaceAuth(marketplace.auth, undefined, resolved)
   const entry: AgentPluginMarketplace = {
     id,
     name: marketplace.name.trim() || id,
     source: marketplace.source.trim(),
     type: marketplace.type,
     branch: normalizeMarketplaceBranch(marketplace.branch),
+    auth: auth.auth,
+    authToken: auth.authToken,
     enabled: true,
     addedAt: new Date().toISOString(),
     lastRefreshAt: null,
   }
   config.marketplaces.push(entry)
   writeMarketplacesConfig(config, { marketplacesPath: resolved.marketplacesPath })
-  return entry
+  return publicMarketplace(entry)
 }
 
 async function readRemoteJson(response: Response, url: string): Promise<unknown> {
@@ -347,7 +447,7 @@ export function updatePluginMarketplace(id: string, updates: Partial<Omit<AgentP
   }
   config.marketplaces[index] = next
   writeMarketplacesConfig(config, { marketplacesPath: resolved.marketplacesPath })
-  return next
+  return publicMarketplace(next)
 }
 
 export function removePluginMarketplace(id: string, input?: PluginMarketplacePaths): void {
@@ -358,14 +458,17 @@ export function removePluginMarketplace(id: string, input?: PluginMarketplacePat
   rmSync(join(resolved.cacheDir, id), { recursive: true, force: true })
 }
 
-async function readMarketplaceManifest(marketplace: AgentPluginMarketplace): Promise<MarketManifest> {
+async function readMarketplaceManifest(marketplace: AgentPluginMarketplace, input: Required<PluginMarketplacePaths>): Promise<MarketManifest> {
   if (marketplace.type === 'local') {
     const sourcePath = resolve(marketplace.source)
     return normalizeManifest(readJson(resolveLocalMarketplaceManifestPath(sourcePath)))
   }
 
   const url = resolveMarketplaceManifestUrl(marketplace)
-  const response = await fetch(url)
+  const authHeader = marketplaceAuthHeader(marketplace, input)
+  const response = await fetch(url, {
+    ...(authHeader && { headers: { Authorization: authHeader.replace(/^Authorization:\s*/i, '') } }),
+  })
   if (!response.ok) {
     throw new Error(formatMarketplaceHttpError(marketplace, url, response.status, await response.text()))
   }
@@ -437,7 +540,7 @@ export async function refreshPluginMarketplace(id: string, input?: PluginMarketp
   if (!marketplace) throw new Error(`插件市场不存在: ${id}`)
 
   try {
-    const manifest = await readMarketplaceManifest(marketplace)
+    const manifest = await readMarketplaceManifest(marketplace, resolved)
     cacheManifest(marketplace, manifest, resolved)
     return updatePluginMarketplace(id, {
       name: manifest.name ?? marketplace.name,
@@ -617,7 +720,7 @@ function createLoosePluginFromMarketplaceEntry(sourceDir: string, targetDir: str
   copySelectedSkillsToPlugin(sourceDir, targetDir, plugin.skills ?? [])
 }
 
-async function cloneGitRepo(source: string, targetDir: string, branch?: string): Promise<void> {
+async function cloneGitRepo(source: string, targetDir: string, branch?: string, authHeader?: string): Promise<void> {
   await new Promise<void>((resolvePromise, reject) => {
     const args = [
       'clone',
@@ -630,6 +733,14 @@ async function cloneGitRepo(source: string, targetDir: string, branch?: string):
     const child = spawn('git', args, {
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
+      env: authHeader
+        ? {
+            ...process.env,
+            GIT_CONFIG_COUNT: '1',
+            GIT_CONFIG_KEY_0: 'http.extraHeader',
+            GIT_CONFIG_VALUE_0: authHeader,
+          }
+        : process.env,
     })
     let stderr = ''
     child.stderr?.on('data', (chunk) => {
@@ -646,7 +757,7 @@ async function cloneGitRepo(source: string, targetDir: string, branch?: string):
   })
 }
 
-async function preparePluginSource(source: PluginInstallSource, pluginName: string, input: Required<PluginMarketplacePaths>): Promise<{ sourceDir: string; cleanup: () => void }> {
+async function preparePluginSource(source: PluginInstallSource, pluginName: string, input: Required<PluginMarketplacePaths>, authHeader?: string): Promise<{ sourceDir: string; cleanup: () => void }> {
   if (source.localSource) {
     return { sourceDir: source.localSource, cleanup: () => undefined }
   }
@@ -658,7 +769,7 @@ async function preparePluginSource(source: PluginInstallSource, pluginName: stri
   const tmpRoot = join(input.cacheDir, '.installing', `${pluginName}-${Date.now()}`)
   rmSync(tmpRoot, { recursive: true, force: true })
   mkdirSync(dirname(tmpRoot), { recursive: true })
-  await input.cloneRepo(source.cloneSource, tmpRoot, source.branch)
+  await input.cloneRepo(source.cloneSource, tmpRoot, source.branch, authHeader)
   if (input.copyClonedFixture) {
     rmSync(tmpRoot, { recursive: true, force: true })
     cpSync(input.copyClonedFixture, tmpRoot, { recursive: true })
@@ -740,7 +851,7 @@ export async function installMarketplacePlugin(input: AgentPluginInstallInput, p
   const pluginName = slugSafe(input.pluginName, '插件名称')
   const { marketplace, plugin } = findMarketplacePlugin(marketplaceId, pluginName, resolved)
   const source = resolvePluginInstallSource(marketplace, plugin)
-  const prepared = await preparePluginSource(source, pluginName, resolved)
+  const prepared = await preparePluginSource(source, pluginName, resolved, marketplaceAuthHeader(marketplace, resolved))
 
   const targetDir = join(resolved.userPluginsDir, marketplaceId, pluginName)
   let status: 'installed' | 'overwritten'
