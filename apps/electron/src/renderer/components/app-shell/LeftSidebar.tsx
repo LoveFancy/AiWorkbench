@@ -2092,43 +2092,26 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
         </div>
       )}
 
-      {/* 底部：用户菜单 + 设置入口 */}
+      {/* 底部：账户中心入口 */}
       <div className="px-3 pb-3 flex flex-col gap-1">
-        {/* 用户头像 + 设置 */}
         <div className="flex items-center gap-1">
-        {authState.isLoggedIn ? (
-          /* 已登录：用户头像 → 弹出账户快捷面板 */
-          <UserAccountMenu
-            userProfile={userProfile}
-            jobId={authState.jobId}
-            hasAttention={hasUpdate || hasEnvironmentIssues}
-            onOpenManual={handleOpenManual}
-            onLogout={handleLogout}
-          />
-        ) : (
-          <GuestAccountMenu
-            hasAttention={hasUpdate || hasEnvironmentIssues}
-            onOpenManual={handleOpenManual}
-            onLogin={handleLogin}
-          />
-        )}
-
-        {/* 设置按钮 */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              onClick={() => setSettingsOpen(true)}
-              className="relative flex-shrink-0 size-10 flex items-center justify-center rounded-[10px] transition-colors titlebar-no-drag text-foreground/40 hover:bg-foreground/[0.04] hover:text-foreground"
-            >
-              <Settings size={16} />
-              {(hasUpdate || hasEnvironmentIssues) && (
-                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500" />
-              )}
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="top">设置</TooltipContent>
-        </Tooltip>
-      </div>
+          {authState.isLoggedIn ? (
+            /* 已登录：用户头像 → 弹出账户快捷面板 */
+            <UserAccountMenu
+              userProfile={userProfile}
+              jobId={authState.jobId}
+              hasAttention={hasUpdate || hasEnvironmentIssues}
+              onOpenManual={handleOpenManual}
+              onLogout={handleLogout}
+            />
+          ) : (
+            <GuestAccountMenu
+              hasAttention={hasUpdate || hasEnvironmentIssues}
+              onOpenManual={handleOpenManual}
+              onLogin={handleLogin}
+            />
+          )}
+        </div>
       </div>
 
       {deleteDialog}
