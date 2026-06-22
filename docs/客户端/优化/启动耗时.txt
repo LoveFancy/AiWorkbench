@@ -1,0 +1,100 @@
+026-06-22T01:24:56.202Z [INFO] [启动耗时] +0.00s | 单实例锁检查开始
+2026-06-22T01:24:57.795Z [INFO] [启动耗时] +1.59s | 单实例锁已获取，注册协议和事件监听
+2026-06-22T01:24:59.268Z [INFO] [启动耗时] +3.07s | 协议和事件监听注册完成
+2026-06-22T01:25:00.749Z [INFO] [启动耗时] +4.55s | 模块加载完成，等待 app.whenReady()
+2026-06-22T01:25:02.546Z [INFO] [启动耗时] +6.35s | app.whenReady() 回调触发，开始 bootstrap
+2026-06-22T01:25:03.966Z [INFO] [启动] Proma v0.12.37 
+2026-06-22T01:25:05.345Z [INFO] [启动耗时] +9.14s | bootstrap: 版本号 & 协议注册完成，开始 initializeRuntime
+2026-06-22T01:25:06.865Z [INFO] [Windows 环境] 正在从注册表加载 PATH...
+2026-06-22T01:25:08.443Z [INFO] [Windows 环境] 系统 PATH: 新增 0 个路径
+2026-06-22T01:25:09.995Z [INFO] [Windows 环境] 用户 PATH: 新增 0 个路径
+2026-06-22T01:25:11.585Z [INFO] [Windows 环境] PATH 加载完成，共新增 0 个路径
+2026-06-22T01:25:13.423Z [INFO] [Node.js 检测] 找到 Node.js: C:\Program Files\nodejs\node.exe (24.16.0)
+2026-06-22T01:25:15.067Z [WARN] [Bun 检测] 未找到（非必须）
+2026-06-22T01:25:17.084Z [INFO] [Git 检测] 找到 Git: C:\Program Files\Git\cmd\git.exe (2.54.0)
+2026-06-22T01:25:18.794Z [INFO] [运行时初始化] 完成 (11930ms) | node=24.16.0 git=2.54.0 bun=✗ shell=git-bash env=ok
+2026-06-22T01:25:20.190Z [INFO] [启动耗时] +23.99s | bootstrap: initializeRuntime 完成
+2026-06-22T01:25:21.662Z [INFO] [配置] 已移除废弃默认 Skill: proma-coach
+2026-06-22T01:25:23.034Z [INFO] [配置] 已升级默认 Skill: transfer-buddy-experts (0.0.0 → 1.3.1)
+2026-06-22T01:25:24.415Z [INFO] [配置] 已升级默认 Skill: workmate-coach (1.0.3 → 1.0.4)
+2026-06-22T01:25:25.728Z [INFO] [配置] 已升级默认 Skill: workmate-manual (1.0.0 → 1.0.1)
+2026-06-22T01:25:27.097Z [INFO] [配置] 已同步默认插件: data-analysis-expert
+2026-06-22T01:25:28.819Z [INFO] [配置] 已同步默认插件: document-processing-expert
+2026-06-22T01:25:30.926Z [INFO] [启动耗时] +21.85s | 单实例锁已获取，注册协议和事件监听
+2026-06-22T01:25:32.331Z [INFO] [启动耗时] +23.26s | 协议和事件监听注册完成
+2026-06-22T01:25:33.760Z [INFO] [启动耗时] +24.69s | 模块加载完成，等待 app.whenReady()
+2026-06-22T01:25:35.545Z [INFO] [启动耗时] +26.47s | app.whenReady() 回调触发，开始 bootstrap
+2026-06-22T01:25:36.870Z [INFO] [启动] Proma v0.12.37 
+2026-06-22T01:25:38.180Z [INFO] [启动耗时] +29.11s | bootstrap: 版本号 & 协议注册完成，开始 initializeRuntime
+2026-06-22T01:25:39.465Z [INFO] [Windows 环境] 正在从注册表加载 PATH...
+2026-06-22T01:25:41.155Z [INFO] [Windows 环境] 系统 PATH: 新增 0 个路径
+2026-06-22T01:25:42.644Z [INFO] [Windows 环境] 用户 PATH: 新增 0 个路径
+2026-06-22T01:25:44.067Z [INFO] [Windows 环境] PATH 加载完成，共新增 0 个路径
+2026-06-22T01:25:45.819Z [INFO] [Node.js 检测] 找到 Node.js: C:\Program Files\nodejs\node.exe (24.16.0)
+2026-06-22T01:25:47.448Z [WARN] [Bun 检测] 未找到（非必须）
+2026-06-22T01:25:49.222Z [INFO] [Git 检测] 找到 Git: C:\Program Files\Git\cmd\git.exe (2.54.0)
+2026-06-22T01:25:50.924Z [INFO] [运行时初始化] 完成 (11459ms) | node=24.16.0 git=2.54.0 bun=✗ shell=git-bash env=ok
+2026-06-22T01:25:52.272Z [INFO] [启动耗时] +43.20s | bootstrap: initializeRuntime 完成
+2026-06-22T01:25:53.798Z [INFO] [Agent 工作区] 已升级默认 Skill: workspace-1780387654316/transfer-buddy-experts (active, 0.0.0 → 1.3.1)
+2026-06-22T01:25:55.155Z [INFO] [Agent 工作区] 已升级默认 Skill: workspace-1780387654316/workmate-coach (active, 1.0.3 → 1.0.4)
+2026-06-22T01:25:56.566Z [INFO] [Agent 工作区] 已升级默认 Skill: workspace-1780387654316/workmate-manual (active, 1.0.0 → 1.0.1)
+2026-06-22T01:25:57.876Z [INFO] [Agent 工作区] 已移除废弃默认 Skill: default/proma-coach (active)
+2026-06-22T01:25:59.273Z [INFO] [Agent 工作区] 已升级默认 Skill: default/transfer-buddy-experts (active, 0.0.0 → 1.3.1)
+2026-06-22T01:26:00.602Z [INFO] [Agent 工作区] 已升级默认 Skill: default/workmate-coach (active, 1.0.3 → 1.0.4)
+2026-06-22T01:26:01.979Z [INFO] [Agent 工作区] 已升级默认 Skill: default/workmate-manual (active, 1.0.0 → 1.0.1)
+2026-06-22T01:26:03.350Z [INFO] [启动耗时] +54.28s | bootstrap: Skills/Plugins 初始化完成
+2026-06-22T01:26:04.648Z [INFO] [启动耗时] +55.58s | bootstrap: 菜单创建完成
+2026-06-22T01:26:06.091Z [INFO] [IPC] 处理器注册完成
+2026-06-22T01:26:07.563Z [INFO] [启动耗时] +58.49s | bootstrap: IPC handlers 注册完成
+2026-06-22T01:26:08.974Z [INFO] [WorkMate] 观测上报服务已初始化, url=%s http://eip.htsc.com.cn/workmate/observability/events
+2026-06-22T01:26:10.454Z [INFO] [启动耗时] +61.38s | bootstrap: WorkMate 服务初始化完成
+2026-06-22T01:26:11.830Z [INFO] [启动耗时] +62.76s | bootstrap: 模型缓存加载完成
+2026-06-22T01:26:13.194Z [INFO] [启动耗时] +64.12s | bootstrap: 准备创建主窗口
+2026-06-22T01:26:14.586Z [WARN] App icon not found at: C:\Program Files\WorkMate\resources\app.asar\dist\resources\icon.ico
+2026-06-22T01:26:16.072Z [INFO] [启动耗时] +67.00s | createWindow: BrowserWindow 实例创建完成
+2026-06-22T01:26:17.471Z [INFO] [启动耗时] +68.40s | createWindow: 页面加载指令已发出（loadURL/loadFile）
+2026-06-22T01:26:18.893Z [INFO] [启动耗时] +69.82s | bootstrap: 主窗口创建完成（页面加载中...）
+2026-06-22T01:26:20.339Z [INFO] System tray created
+2026-06-22T01:26:22.411Z [INFO] [启动耗时] +21.78s | 单实例锁已获取，注册协议和事件监听
+2026-06-22T01:26:23.981Z [INFO] [启动耗时] +23.35s | 协议和事件监听注册完成
+2026-06-22T01:26:25.321Z [INFO] [启动耗时] +24.69s | 模块加载完成，等待 app.whenReady()
+2026-06-22T01:26:27.022Z [INFO] [启动耗时] +26.39s | app.whenReady() 回调触发，开始 bootstrap
+2026-06-22T01:26:28.617Z [INFO] [启动] Proma v0.12.37 
+2026-06-22T01:26:30.081Z [INFO] [启动耗时] +29.45s | bootstrap: 版本号 & 协议注册完成，开始 initializeRuntime
+2026-06-22T01:26:31.505Z [INFO] [Windows 环境] 正在从注册表加载 PATH...
+2026-06-22T01:26:33.169Z [INFO] [Windows 环境] 系统 PATH: 新增 0 个路径
+2026-06-22T01:26:34.740Z [INFO] [Windows 环境] 用户 PATH: 新增 0 个路径
+2026-06-22T01:26:36.100Z [INFO] [Windows 环境] PATH 加载完成，共新增 0 个路径
+2026-06-22T01:26:37.857Z [INFO] [Node.js 检测] 找到 Node.js: C:\Program Files\nodejs\node.exe (24.16.0)
+2026-06-22T01:26:39.699Z [WARN] [Bun 检测] 未找到（非必须）
+2026-06-22T01:26:41.509Z [INFO] [Git 检测] 找到 Git: C:\Program Files\Git\cmd\git.exe (2.54.0)
+2026-06-22T01:26:43.449Z [INFO] [运行时初始化] 完成 (11944ms) | node=24.16.0 git=2.54.0 bun=✗ shell=git-bash env=ok
+2026-06-22T01:26:44.831Z [INFO] [启动耗时] +44.20s | bootstrap: initializeRuntime 完成
+2026-06-22T01:26:46.286Z [INFO] [启动耗时] +45.65s | bootstrap: Skills/Plugins 初始化完成
+2026-06-22T01:26:47.665Z [INFO] [启动耗时] +47.03s | bootstrap: 菜单创建完成
+2026-06-22T01:26:49.312Z [INFO] [IPC] 处理器注册完成
+2026-06-22T01:26:50.697Z [INFO] [启动耗时] +50.06s | bootstrap: IPC handlers 注册完成
+2026-06-22T01:26:52.085Z [INFO] [WorkMate] 观测上报服务已初始化, url=%s http://eip.htsc.com.cn/workmate/observability/events
+2026-06-22T01:26:53.527Z [INFO] [启动耗时] +52.89s | bootstrap: WorkMate 服务初始化完成
+2026-06-22T01:26:54.912Z [INFO] [启动耗时] +54.28s | bootstrap: 模型缓存加载完成
+2026-06-22T01:26:56.378Z [INFO] [启动耗时] +55.75s | bootstrap: 准备创建主窗口
+2026-06-22T01:26:57.783Z [WARN] App icon not found at: C:\Program Files\WorkMate\resources\app.asar\dist\resources\icon.ico
+2026-06-22T01:26:59.149Z [INFO] [启动耗时] +58.52s | createWindow: BrowserWindow 实例创建完成
+2026-06-22T01:27:00.516Z [INFO] [启动耗时] +59.88s | createWindow: 页面加载指令已发出（loadURL/loadFile）
+2026-06-22T01:27:02.032Z [INFO] [启动耗时] +61.40s | bootstrap: 主窗口创建完成（页面加载中...）
+2026-06-22T01:27:03.487Z [INFO] System tray created
+2026-06-22T01:27:04.934Z [INFO] [启动耗时] +64.30s | bootstrap: 系统托盘创建完成
+2026-06-22T01:27:06.309Z [INFO] [工作区监听] 已启动文件监听: C:\Users\024445\.proma\agent-workspaces
+2026-06-22T01:27:07.687Z [INFO] [更新] WorkMate 升级检测初始化
+2026-06-22T01:27:09.029Z [INFO] [更新] 首检延迟 %d 秒 1242
+2026-06-22T01:27:10.535Z [INFO] [启动耗时] +69.90s | bootstrap: 快捷窗口 & 更新器初始化完成
+2026-06-22T01:27:11.910Z [INFO] [启动耗时] +71.28s | bootstrap: 准备启动 Bridges
+2026-06-22T01:27:13.357Z [INFO] [Bridge Registry] 自愈守护已启动
+2026-06-22T01:27:14.749Z [INFO] [启动耗时] +74.12s | bootstrap: Bridges 启动完成
+2026-06-22T01:27:16.092Z [INFO] [定时任务] 调度器已启动，tick 周期 30s
+2026-06-22T01:27:17.414Z [INFO] [启动耗时] +76.78s | bootstrap: 全部初始化完成
+2026-06-22T01:27:18.950Z [INFO] [观测上报] 开始上报, url=%s, events=%d http://eip.htsc.com.cn/workmate/observability/events 1
+2026-06-22T01:27:21.176Z [INFO] [启动耗时] +80.54s | renderer: dom-ready 事件（DOM 解析完成）
+2026-06-22T01:27:22.573Z [INFO] [启动耗时] +81.94s | createWindow: ready-to-show 事件触发，窗口即将显示
+2026-06-22T01:27:24.019Z [INFO] [启动耗时] +83.39s | createWindow: 窗口已显示（首屏可见）
+2026-06-22T01:27:25.530Z [INFO] [启动耗时] +84.90s | renderer: did-finish-load 事件（页面资源加载完成）
