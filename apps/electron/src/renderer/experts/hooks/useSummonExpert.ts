@@ -51,6 +51,14 @@ export function useSummonExpert(): UseSummonExpertResult {
         recordRecent(group.id)
         openSession('agent', session.id, session.title)
       } catch (err) {
+        // 主进程取消时抛 DownloadCancelledError（message=「下载已取消」）。
+        // 经 Electron IPC 跨进程后 message 会被加前缀（如 "Error invoking remote
+        // method '...': Error: 下载已取消"），故用子串匹配而非精确相等。
+        const cancelled = err instanceof Error && err.message.includes('下载已取消')
+        if (cancelled) {
+          toast(`已取消下载 ${group.name}`)
+          return
+        }
         console.error('[专家团] 下载远程专家团失败:', err)
         toast.error(`下载 ${group.name} 失败`)
       } finally {

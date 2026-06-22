@@ -1108,7 +1108,7 @@ export interface FeaturedScenesResponse {
 
 export interface RemoteDownloadProgress {
   groupId: string
-  status: 'downloading' | 'installing' | 'done' | 'error'
+  status: 'downloading' | 'installing' | 'done' | 'error' | 'cancelled'
   progress: number
   downloadedBytes: number
   totalBytes: number

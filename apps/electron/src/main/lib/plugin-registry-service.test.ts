@@ -9,6 +9,7 @@ import {
   buildPluginRuntimePaths,
   getPluginCapabilitySummary,
   installUserPluginZip,
+  installUserPluginZipAsync,
   listInstalledPlugins,
   readPluginsConfig,
   setPluginEnabled,
@@ -460,6 +461,53 @@ describe('插件注册表服务', () => {
         userDir: join(temp.root, 'user-plugins'),
         configPath: join(temp.root, 'plugins.json'),
       })).toThrow('必须包含 .claude-plugin/plugin.json')
+    } finally {
+      temp.cleanup()
+    }
+  })
+})
+
+describe('异步插件安装（installUserPluginZipAsync）', () => {
+  test('installUserPluginZipAsync 异步安装结果与同步一致', async () => {
+    const temp = tempRoot()
+    try {
+      const sourceDir = createPlugin(temp.root, 'async-plugin', '1.0.0')
+      const zipPath = join(temp.root, 'async-plugin.zip')
+      const zip = new AdmZip()
+      zip.addLocalFolder(sourceDir, 'async-plugin')
+      zip.writeZip(zipPath)
+
+      const installed = await installUserPluginZipAsync(zipPath, {
+        builtinDir: join(temp.root, 'default-plugins'),
+        userDir: join(temp.root, 'user-plugins'),
+        configPath: join(temp.root, 'plugins.json'),
+      })
+
+      expect(installed.id).toBe('user:local/async-plugin')
+      expect(installed.version).toBe('1.0.0')
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('installUserPluginZipAsync 在 signal 已 abort 时抛出取消错误', async () => {
+    const temp = tempRoot()
+    try {
+      const sourceDir = createPlugin(temp.root, 'cancel-plugin', '1.0.0')
+      const zipPath = join(temp.root, 'cancel-plugin.zip')
+      const zip = new AdmZip()
+      zip.addLocalFolder(sourceDir, 'cancel-plugin')
+      zip.writeZip(zipPath)
+
+      const controller = new AbortController()
+      controller.abort()
+
+      await expect(installUserPluginZipAsync(zipPath, {
+        builtinDir: join(temp.root, 'default-plugins'),
+        userDir: join(temp.root, 'user-plugins'),
+        configPath: join(temp.root, 'plugins.json'),
+        signal: controller.signal,
+      })).rejects.toThrow('下载已取消')
     } finally {
       temp.cleanup()
     }
