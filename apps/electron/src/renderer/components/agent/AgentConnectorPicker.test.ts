@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { join } from 'node:path'
 import type { WorkspaceMcpConfig } from '@proma/shared'
-import { getAvailableConnectorsForPicker } from './AgentConnectorPicker'
+import { getAvailableConnectorsForPicker, getConnectorVisualKind } from './AgentConnectorPicker'
 
 const source = await Bun.file(join(import.meta.dir, 'AgentConnectorPicker.tsx')).text()
 
@@ -47,5 +47,17 @@ describe('AgentConnectorPicker helpers', () => {
     expect(source).toContain('连接应用')
     expect(source).toContain('连应用')
     expect(source).toContain('已选择')
+  })
+
+  test('默认连接器使用差异化视觉类型', () => {
+    const items = getAvailableConnectorsForPicker(config)
+
+    expect(items.map((item) => getConnectorVisualKind(item))).toEqual(['email', 'feishu', 'hiagent', 'custom'])
+  })
+
+  test('连接器弹层使用紧凑分层布局', () => {
+    expect(source).toContain('w-[360px]')
+    expect(source).toContain('ConnectorStatusBadge')
+    expect(source).toContain('text-[12px] font-medium')
   })
 })
