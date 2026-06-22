@@ -171,11 +171,24 @@ function readDescriptionFromMarkdown(filePath: string): string | undefined {
     const content = readFileSync(filePath, 'utf-8')
     const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---/)
     if (fmMatch?.[1]) {
-      for (const line of fmMatch[1].split('\n')) {
+      const lines = fmMatch[1].split('\n')
+      for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+        const line = lines[lineIndex] ?? ''
         const index = line.indexOf(':')
         if (index <= 0) continue
         const key = line.slice(0, index).trim()
         const value = line.slice(index + 1).trim().replace(/^['"]|['"]$/g, '')
+        if (key === 'description' && (value === '>' || value === '|')) {
+          const blockLines: string[] = []
+          for (const blockLine of lines.slice(lineIndex + 1)) {
+            if (!/^\s+/.test(blockLine) && blockLine.trim()) break
+            blockLines.push(blockLine.trim())
+          }
+          const description = value === '>'
+            ? blockLines.filter(Boolean).join(' ').trim()
+            : blockLines.join('\n').trim()
+          if (description) return description
+        }
         if (key === 'description' && value) return value
       }
     }
@@ -487,6 +500,7 @@ function pluginInfoFromPath(kind: 'builtin' | 'user', pluginPath: string, plugin
   const { manifest, issues } = readManifest(pluginPath)
   const enabled = defaultEnabledFor(pluginId, config)
   const state = config.plugins[pluginId]
+  const version = manifest.version === '0.0.0' && state?.version ? state.version : manifest.version
   const sourceLabel = manifest.name || basename(pluginPath)
   const capabilities = [
     ...discoverSkills(pluginPath, pluginId, sourceLabel, enabled, manifest),
@@ -501,7 +515,7 @@ function pluginInfoFromPath(kind: 'builtin' | 'user', pluginPath: string, plugin
     id: pluginId,
     kind,
     name: manifest.name,
-    version: manifest.version,
+    version,
     ...(manifest.description && { description: manifest.description }),
     ...(manifest.author?.name && { author: manifest.author.name }),
     ...(manifest.homepage && { homepage: manifest.homepage }),
