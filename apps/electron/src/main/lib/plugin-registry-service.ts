@@ -284,6 +284,19 @@ function validateExpertGroupFile(filePath: string): { issue?: AgentPluginCapabil
   }
 }
 
+/**
+ * 归一化插件 manifest 中声明的专家团 id。
+ *
+ * 兼容个别插件把 `expertGroup` 误写成相对路径（如
+ * `./expert-groups/legal-compliance-reviewer.json`）的情况：剥离目录前缀与
+ * `.json` 后缀，得到裸 id（`legal-compliance-reviewer`），保证与服务端列表 id 对齐。
+ */
+export function normalizeDeclaredExpertGroupId(declared: string): string {
+  const trimmed = declared.trim()
+  const base = trimmed.split(/[\\/]/).filter(Boolean).at(-1) ?? trimmed
+  return base.replace(/\.json$/i, '')
+}
+
 function discoverExpertGroups(
   pluginPath: string,
   pluginId: string,
@@ -292,9 +305,10 @@ function discoverExpertGroups(
   manifest: AgentPluginManifest,
 ): AgentPluginCapability[] {
   const groupsDir = join(pluginPath, 'expert-groups')
-  const declaredGroups = manifest.expertGroup
+  const declaredGroups = (manifest.expertGroup
     ? [manifest.expertGroup]
     : manifest.expertGroups ?? []
+  ).map(normalizeDeclaredExpertGroupId)
   const discoveredGroups = existsSync(groupsDir)
     ? readdirSync(groupsDir, { withFileTypes: true })
       .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))

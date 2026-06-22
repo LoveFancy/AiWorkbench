@@ -8,6 +8,7 @@ import {
   followedExpertGroupsAtom,
   toggleFollowExpertGroupAtom,
 } from '@/experts/atoms/expert-follow'
+import { isCardSummonActionable } from '@/experts/utils/summon'
 
 interface ExpertCardProps {
   group: AgentExpertGroupInfo
@@ -92,7 +93,7 @@ export function ExpertCard({ group, onOpen, onSummon, compact = false }: ExpertC
                 'pointer-events-none h-9 px-4 opacity-0 shadow-sm transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100',
                 compact && 'h-8 px-3',
               )}
-              disabled={group.status !== 'available' && group.status !== 'remote_not_downloaded' && group.status !== 'remote_downloading'}
+              disabled={!isCardSummonActionable(group.status)}
               onClick={() => onSummon(group)}
             >
               {group.status === 'remote_not_downloaded' ? '下载' : group.status === 'remote_downloading' ? '下载中...' : '召唤'}

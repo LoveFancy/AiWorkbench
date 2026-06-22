@@ -2496,7 +2496,8 @@ export function registerIpcHandlers(): void {
     EXPERT_IPC_CHANNELS.DOWNLOAD_REMOTE_EXPERT,
     async (_, groupId: string): Promise<AgentPluginInfo> => {
       const { downloadAndInstallRemoteExpert } = await import('./lib/expert-download-service')
-      return downloadAndInstallRemoteExpert(groupId)
+      // 下载语义为"安装/覆盖为最新"；目标目录已存在时需覆盖，避免抛出"插件已存在"
+      return downloadAndInstallRemoteExpert(groupId, { overwrite: true })
     }
   )
 
