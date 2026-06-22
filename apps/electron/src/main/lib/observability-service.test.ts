@@ -17,10 +17,15 @@ let mockTempDir = ''
 
 mock.module('electron', () => ({
   app: { getVersion: () => '1.0.0' },
+  safeStorage: {
+    isEncryptionAvailable: () => true,
+    encryptString: (s: string) => Buffer.from(s, 'utf-8'),
+    decryptString: (b: Buffer) => b.toString('utf-8'),
+  },
 }))
 
 mock.module('../../auth', () => ({
-  isLoggedIn: () => mockLoggedIn,
+  hasValidSession: () => mockLoggedIn,
   getToken: () => 'mock-token',
   getJobId: () => '022480',
 }))
