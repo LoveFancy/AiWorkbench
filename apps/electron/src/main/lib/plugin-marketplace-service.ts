@@ -328,6 +328,16 @@ function marketplaceAuthHeader(marketplace: AgentPluginMarketplace, input: Requi
   return token ? `Authorization: Bearer ${token}` : undefined
 }
 
+function marketplaceGitAuthHeader(marketplace: AgentPluginMarketplace, input: Required<PluginMarketplacePaths>): string | undefined {
+  if (marketplace.auth?.type !== 'token' || !marketplace.authToken) return undefined
+  const token = input.decryptToken(marketplace.authToken).trim()
+  if (!token) return undefined
+  if (marketplace.type === 'gitee') {
+    return `Authorization: Basic ${Buffer.from(`oauth2:${token}`).toString('base64')}`
+  }
+  return `Authorization: Bearer ${token}`
+}
+
 export function readPluginMarketplacesConfig(input?: Pick<PluginMarketplacePaths, 'marketplacesPath'>): AgentPluginMarketplacesConfig {
   const marketplacesPath = input?.marketplacesPath ?? getPluginMarketplacesPath()
   if (!existsSync(marketplacesPath)) return structuredClone(DEFAULT_MARKETPLACES_CONFIG)
@@ -851,7 +861,7 @@ export async function installMarketplacePlugin(input: AgentPluginInstallInput, p
   const pluginName = slugSafe(input.pluginName, '插件名称')
   const { marketplace, plugin } = findMarketplacePlugin(marketplaceId, pluginName, resolved)
   const source = resolvePluginInstallSource(marketplace, plugin)
-  const prepared = await preparePluginSource(source, pluginName, resolved, marketplaceAuthHeader(marketplace, resolved))
+  const prepared = await preparePluginSource(source, pluginName, resolved, marketplaceGitAuthHeader(marketplace, resolved))
 
   const targetDir = join(resolved.userPluginsDir, marketplaceId, pluginName)
   let status: 'installed' | 'overwritten'

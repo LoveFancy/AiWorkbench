@@ -829,6 +829,68 @@ describe('插件市场服务', () => {
     }
   })
 
+  test('安装 Gitee 私有市场插件时使用 Git HTTPS 可识别的 Token 认证头', async () => {
+    const temp = tempRoot()
+    try {
+      const marketplacesPath = join(temp.root, 'plugin-marketplaces.json')
+      const cacheDir = join(temp.root, 'cache')
+      const userPluginsDir = join(temp.root, 'user-plugins')
+      const pluginsConfigPath = join(temp.root, 'plugins.json')
+      const sourceRepo = join(temp.root, 'source-repo')
+      mkdirSync(join(sourceRepo, 'plugins', 'ppt-master', '.claude-plugin'), { recursive: true })
+      writeFileSync(
+        join(sourceRepo, 'plugins', 'ppt-master', '.claude-plugin', 'plugin.json'),
+        JSON.stringify({ name: 'ppt-master', version: '2.7.0' }),
+        'utf-8',
+      )
+
+      const cloneCalls: Array<{ source: string; authHeader?: string }> = []
+      const servicePaths = {
+        marketplacesPath,
+        cacheDir,
+        userPluginsDir,
+        pluginsConfigPath,
+        encryptToken: (token: string) => `encrypted:${token}`,
+        decryptToken: (token: string) => token.replace(/^encrypted:/, ''),
+        cloneRepo: async (source: string, targetDir: string, _branch?: string, authHeader?: string) => {
+          cloneCalls.push({ source, authHeader })
+          mkdirSync(targetDir, { recursive: true })
+        },
+        copyClonedFixture: sourceRepo,
+      }
+
+      addPluginMarketplace({
+        id: 'gitee-private',
+        name: 'Gitee Private',
+        source: 'https://gitee.com/lovefancy315/cc-plugins-marketplace',
+        type: 'gitee',
+        branch: 'master',
+        auth: { type: 'token', token: 'gitee-secret' },
+      }, servicePaths)
+      mkdirSync(join(cacheDir, 'gitee-private'), { recursive: true })
+      writeFileSync(
+        join(cacheDir, 'gitee-private', 'manifest.json'),
+        JSON.stringify({
+          plugins: [{ name: 'ppt-master', source: './plugins/ppt-master', version: '2.7.0' }],
+        }),
+        'utf-8',
+      )
+
+      await installMarketplacePlugin({
+        marketplaceId: 'gitee-private',
+        pluginName: 'ppt-master',
+        enable: true,
+      }, servicePaths)
+
+      expect(cloneCalls).toEqual([{
+        source: 'https://gitee.com/lovefancy315/cc-plugins-marketplace',
+        authHeader: `Authorization: Basic ${Buffer.from('oauth2:gitee-secret').toString('base64')}`,
+      }])
+    } finally {
+      temp.cleanup()
+    }
+  })
+
   test('Gitee 市场子目录地址会解析到对应目录的 raw marketplace.json', async () => {
     const temp = tempRoot()
     try {
