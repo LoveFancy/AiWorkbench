@@ -41,7 +41,7 @@ import {
 } from '@/hooks/useConversationSettings'
 import { cn } from '@/lib/utils'
 import { fileToBase64, formatFileNames } from '@/lib/file-utils'
-import { MAX_ATTACHMENT_SIZE } from '@proma/shared'
+import { MAX_ATTACHMENT_SIZE, type ChatMessage } from '@proma/shared'
 import { sendWithCmdEnterAtom } from '@/atoms/shortcut-atoms'
 import { settingsOpenAtom, settingsTabAtom } from '@/atoms/settings-tab'
 import { hasUsableChatModel } from '@/lib/model-selection'
@@ -50,6 +50,8 @@ import { toast } from 'sonner'
 interface ChatInputProps {
   /** 当前对话 ID */
   conversationId: string
+  /** 当前对话消息列表（来自 ChatView 本地状态，供 ↑/↓ 调出历史） */
+  messages: ChatMessage[]
   /** 是否正在流式生成 */
   streaming: boolean
   /** 待发送附件列表 */
@@ -64,12 +66,20 @@ interface ChatInputProps {
   onClearContext?: () => void
 }
 
-export function ChatInput({ conversationId, streaming, pendingAttachments, onSetPendingAttachments, onSend, onStop, onClearContext }: ChatInputProps): React.ReactElement {
+export function ChatInput({ conversationId, messages, streaming, pendingAttachments, onSetPendingAttachments, onSend, onStop, onClearContext }: ChatInputProps): React.ReactElement {
   const sendWithCmdEnter = useAtomValue(sendWithCmdEnterAtom)
   // 从 Map atom 读写草稿
   const draftsMap = useAtomValue(conversationDraftsAtom)
   const setDraftsMap = useSetAtom(conversationDraftsAtom)
   const channels = useAtomValue(channelsAtom)
+  // 历史用户提问（按时间正序，最旧 → 最新），供输入框 ↑/↓ 调出
+  const historyMessages = React.useMemo(
+    () => messages
+      .filter((m) => m.role === 'user')
+      .map((m) => m.content)
+      .filter((c) => c.trim() !== ''),
+    [messages],
+  )
   const setSettingsOpen = useSetAtom(settingsOpenAtom)
   const setSettingsTab = useSetAtom(settingsTabAtom)
   const content = draftsMap.get(conversationId) ?? ''
@@ -414,11 +424,12 @@ export function ChatInput({ conversationId, streaming, pendingAttachments, onSet
             onPasteFiles={handlePasteFiles}
             placeholder={
               hasAvailableModel
-                ? sendWithCmdEnter ? '输入消息... (⌘/Ctrl+Enter 发送，Enter 换行)' : '输入消息... (Enter 发送，Shift+Enter 换行)'
+                ? sendWithCmdEnter ? '输入消息... (⌘/Ctrl+Enter 发送，Enter 换行)' : '输入消息... (Enter 发送，Shift+Enter / Ctrl+Enter 换行)'
                 : '请先在设置中配置 API Key 并启用模型'
             }
             autoFocusTrigger={conversationId}
             sendWithCmdEnter={sendWithCmdEnter}
+            historyMessages={historyMessages}
             disabled={!hasAvailableModel}
           />
 

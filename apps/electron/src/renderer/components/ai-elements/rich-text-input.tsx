@@ -10,6 +10,7 @@
  * - IME composition 处理
  * - Enter 提交 / Shift+Enter 换行
  * - 代码块内 Enter 换行例外
+ * - ArrowUp/ArrowDown 调出历史用户输入（首/末行触发，不循环）
  * - 自动扩高
  */
 
@@ -129,6 +130,11 @@ interface RichTextInputProps {
   onHtmlChange?: (html: string) => void
   /** 是否使用 Cmd/Ctrl+Enter 发送（而非 Enter） */
   sendWithCmdEnter?: boolean
+  /**
+   * 历史用户输入列表（按时间正序：最旧 → 最新）。
+   * 提供后可在光标处于首行时按 ↑ 调出上一条、按 ↓ 调出下一条（不循环）。
+   */
+  historyMessages?: string[]
   className?: string
 }
 
@@ -136,6 +142,9 @@ export interface RichTextInputRef {
   openSlashSuggestion: () => void
   insertSkillMention: (skill: { id: string; name: string }) => void
 }
+
+/** 空历史列表默认值（稳定引用，避免每次渲染分配新数组） */
+const EMPTY_HISTORY: string[] = []
 
 /**
  * 富文本输入组件
@@ -167,6 +176,7 @@ function RichTextInputInner({
   htmlValue,
   onHtmlChange,
   sendWithCmdEnter = false,
+  historyMessages = EMPTY_HISTORY,
 }: RichTextInputProps, ref: React.ForwardedRef<RichTextInputRef>): React.ReactElement {
   const [isExpanded, setIsExpanded] = useState(false)
   const inputIdRef = useRef(`rich-text-input-${Math.random().toString(36).slice(2)}`)
@@ -197,6 +207,11 @@ function RichTextInputInner({
   // 发送模式引用
   const sendWithCmdEnterRef = useRef(sendWithCmdEnter)
   sendWithCmdEnterRef.current = sendWithCmdEnter
+  // 历史提问导航：列表引用 + 当前索引（null 表示未进入历史导航）+ 进入导航前的草稿备份
+  const historyMessagesRef = useRef<string[]>(historyMessages)
+  historyMessagesRef.current = historyMessages
+  const historyIndexRef = useRef<number | null>(null)
+  const historyDraftRef = useRef<string>('')
   // Mention 活跃状态（阻止 Enter 发送消息）
   const mentionActiveRef = useRef(false)
   // Mention 弹窗中的可选项数量（0 时 Enter 不阻塞发送）
@@ -439,6 +454,91 @@ function RichTextInputInner({
           }
         }
 
+        // 历史提问导航：光标在首行按 ↑ 调出上一条、末行按 ↓ 调出下一条（不循环）
+        if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+          // 仅处理无修饰键的纯方向键；IME 组合 / Mention 弹窗交给原生处理
+          if (event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return false
+          if (isComposingRef.current || event.isComposing) return false
+          if (mentionActiveRef.current && mentionItemCountRef.current > 0) return false
+
+          const history = historyMessagesRef.current
+          if (history.length === 0) return false
+
+          const { state } = view
+          const { $from, empty } = state.selection
+          // 有选区时不拦截，保留正常的方向键行为
+          if (!empty) return false
+
+          // 判断光标是否在首行/末行：以段落内 hardBreak 为换行界，确定性判断（不依赖 DOM 测量）
+          const isOnFirstLine = (): boolean => {
+            if ($from.index(0) !== 0) return false
+            let hasBreakBefore = false
+            $from.parent.forEach((child, off) => {
+              if (off < $from.parentOffset && child.type.name === 'hardBreak') hasBreakBefore = true
+            })
+            return !hasBreakBefore
+          }
+          const isOnLastLine = (): boolean => {
+            if ($from.index(0) !== state.doc.childCount - 1) return false
+            let hasBreakAfter = false
+            $from.parent.forEach((child, off) => {
+              if (off >= $from.parentOffset && child.type.name === 'hardBreak') hasBreakAfter = true
+            })
+            return !hasBreakAfter
+          }
+
+          // 将 Markdown 写入编辑器并把光标移到末尾（emitUpdate 触发草稿同步）
+          const applyHistoryContent = (markdown: string | undefined): void => {
+            if (markdown === undefined) return
+            const html = markdown
+              .split(/\n\n+/)
+              .map((para) => `<p>${para.replace(/\n/g, '<br>')}</p>`)
+              .join('')
+            editor?.chain().setContent(html || '<p></p>', { emitUpdate: true }).focus('end').run()
+          }
+
+          if (event.key === 'ArrowUp') {
+            if (!isOnFirstLine()) return false
+
+            if (historyIndexRef.current === null) {
+              // 进入导航：备份当前草稿，定位到最新一条
+              historyDraftRef.current = lastEditorValueRef.current
+              historyIndexRef.current = history.length - 1
+            } else if (historyIndexRef.current > 0) {
+              historyIndexRef.current -= 1
+            } else {
+              // 已是最早一条：不循环
+              event.preventDefault()
+              return true
+            }
+            event.preventDefault()
+            applyHistoryContent(history[historyIndexRef.current])
+            return true
+          }
+
+          // ArrowDown：仅在导航历史过程中生效
+          if (historyIndexRef.current === null) return false
+          if (!isOnLastLine()) return false
+
+          if (historyIndexRef.current < history.length - 1) {
+            historyIndexRef.current += 1
+            event.preventDefault()
+            applyHistoryContent(history[historyIndexRef.current])
+            return true
+          }
+
+          // 越过最新一条：退出导航并恢复进入前的草稿
+          historyIndexRef.current = null
+          event.preventDefault()
+          const draft = historyDraftRef.current
+          if (draft) {
+            applyHistoryContent(draft)
+          } else {
+            editor?.chain().clearContent(true).focus().run()
+          }
+          return true
+        }
+
         // 发送/换行逻辑：根据 sendWithCmdEnter 模式决定行为
         if (event.key === 'Enter') {
           const cmdEnterMode = sendWithCmdEnterRef.current
@@ -468,6 +568,7 @@ function RichTextInputInner({
 
           if (isSend) {
             event.preventDefault()
+            historyIndexRef.current = null
             onSubmitRef.current()
             return true
           }
@@ -649,6 +750,12 @@ function RichTextInputInner({
       return () => clearTimeout(timer)
     }
   }, [editor, disabled, autoFocusTrigger])
+
+  // 切换会话/对话时重置历史导航状态
+  useEffect(() => {
+    historyIndexRef.current = null
+    historyDraftRef.current = ''
+  }, [autoFocusTrigger])
 
   // 语音输入回填：优先插入到当前编辑器的光标位置。
   useEffect(() => {
