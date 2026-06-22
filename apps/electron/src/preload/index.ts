@@ -69,6 +69,7 @@ import type {
   OtherWorkspaceSkillsGroup,
   WorkspaceCapabilities,
   HtSkillHubSkill,
+  HtSkillHubSkillPage,
   HtSkillHubInstallResult,
   AgentPluginInfo,
   AgentPluginMarketplace,
@@ -723,7 +724,7 @@ export interface ElectronAPI {
   renameSkillEntry: (workspaceSlug: string, skillSlug: string, fromRelative: string, toRelative: string) => Promise<void>
 
   /** 获取华泰 SkillHub 清单 */
-  getHtSkillHubSkills: (workspaceSlug: string, page?: number, keyword?: string, category?: string) => Promise<HtSkillHubSkill[]>
+  getHtSkillHubSkills: (workspaceSlug: string, page?: number, keyword?: string, category?: string, pageSize?: number) => Promise<HtSkillHubSkillPage>
 
   /** 读取华泰 SkillHub 远端 SKILL.md */
   readHtSkillHubSkill: (skillName: string) => Promise<string>
@@ -903,7 +904,7 @@ export interface ElectronAPI {
   showPluginInFolder: (pluginPath: string) => Promise<void>
 
   /** 解析文件路径并读取内容（供内联预览使用） */
-  resolveAndReadFile: (filePath: string, access?: import('@proma/shared').FileAccessOptions) => Promise<{ resolvedPath: string; content: string } | null>
+  resolveAndReadFile: (filePath: string, access?: import('@proma/shared').FileAccessOptions) => Promise<import('@proma/shared').FilePreviewReadResult>
 
   /** 写入文本文件（供 Markdown 内联编辑使用） */
   writeTextFile: (filePath: string, content: string, access?: import('@proma/shared').FileAccessOptions) => Promise<boolean>
@@ -2001,8 +2002,8 @@ const electronAPI: ElectronAPI = {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.RENAME_SKILL_ENTRY, workspaceSlug, skillSlug, fromRelative, toRelative)
   },
 
-  getHtSkillHubSkills: (workspaceSlug: string, page?: number, keyword?: string, category?: string) => {
-    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_HT_SKILLHUB_SKILLS, workspaceSlug, page, keyword, category)
+  getHtSkillHubSkills: (workspaceSlug: string, page?: number, keyword?: string, category?: string, pageSize?: number) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_HT_SKILLHUB_SKILLS, workspaceSlug, page, keyword, category, pageSize)
   },
 
   readHtSkillHubSkill: (skillName: string) => {
@@ -2260,7 +2261,7 @@ const electronAPI: ElectronAPI = {
   },
 
   resolveAndReadFile: (filePath: string, access?: import('@proma/shared').FileAccessOptions) => {
-    return ipcRenderer.invoke('file:resolve-and-read', filePath, access) as Promise<{ resolvedPath: string; content: string } | null>
+    return ipcRenderer.invoke('file:resolve-and-read', filePath, access) as Promise<import('@proma/shared').FilePreviewReadResult>
   },
 
   writeTextFile: (filePath: string, content: string, access?: import('@proma/shared').FileAccessOptions) => {

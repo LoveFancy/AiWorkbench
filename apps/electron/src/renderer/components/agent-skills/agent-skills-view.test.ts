@@ -26,12 +26,15 @@ test('已安装区块区分插件和技能', () => {
   expect(source).toContain('isBuiltin={(slug) => data.defaultSkillSlugs.has(slug)}')
 })
 
-test('技能市场不展示分类 Tab 且加载全部分页结果', () => {
+test('技能市场不展示分类 Tab 且按页加载结果', () => {
   expect(skillMarketPanelSource).not.toContain('MARKET_CATEGORIES')
   expect(skillMarketPanelSource).not.toContain("'推荐'")
   expect(skillMarketPanelSource).not.toContain('skills.slice(0, 12)')
   expect(skillMarketPanelSource).toContain('SKILLHUB_PAGE_SIZE')
-  expect(skillMarketPanelSource).toContain('while (true)')
+  expect(skillMarketPanelSource).not.toContain('while (true)')
+  expect(skillMarketPanelSource).toContain('useDebouncedValue')
+  expect(skillMarketPanelSource).toContain('loadMoreRef')
+  expect(skillMarketPanelSource).toContain('hasMore')
   expect(skillMarketPanelSource).toContain('skills.map((skill)')
 })
 

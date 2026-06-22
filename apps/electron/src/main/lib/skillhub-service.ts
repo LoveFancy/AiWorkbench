@@ -30,6 +30,13 @@ export interface HtSkillHubSkillWithStatus extends HtSkillHubSkill {
   enabled?: boolean
 }
 
+export interface HtSkillHubSkillPage {
+  items: HtSkillHubSkillWithStatus[]
+  page: number
+  pageSize: number
+  hasMore: boolean
+}
+
 export interface InstallHtSkillHubSkillInput {
   workspaceSlug: string
   skill: HtSkillHubSkill
@@ -89,6 +96,10 @@ export function redactSkillHubHeaders(headers: Record<string, string>): Record<s
 
 // ===== SkillHub API 统一请求入口 =====
 
+function isSkillHubDebugLogEnabled(): boolean {
+  return process.env.WORKMATE_SKILLHUB_DEBUG === '1'
+}
+
 function formatErrorResponse(text: string): string {
   if (!text) return '(空响应)'
   try {
@@ -109,7 +120,8 @@ async function skillHubFetch(path: string, init?: RequestInit): Promise<Response
   const url = `${base}${path}`
   const method = init?.method ?? 'GET'
   console.log('[SkillHub] => %s %s', method, url)
-  if (init?.body) {
+  const debugLog = isSkillHubDebugLogEnabled()
+  if (debugLog && init?.body) {
     try {
       console.log('[SkillHub]    body: %s', typeof init.body === 'string' ? init.body.substring(0, 500) : String(init.body).substring(0, 500))
     } catch { /* ignore */ }
@@ -123,7 +135,9 @@ async function skillHubFetch(path: string, init?: RequestInit): Promise<Response
   const makeRequest = (t: string) => fetch(url, { ...init, headers: buildHeaders(t) })
 
   const requestHeaders = buildHeaders(token)
-  console.log('[SkillHub]    headers: %s', JSON.stringify(redactSkillHubHeaders(requestHeaders)))
+  if (debugLog) {
+    console.log('[SkillHub]    headers: %s', JSON.stringify(redactSkillHubHeaders(requestHeaders)))
+  }
 
   let response = await makeRequest(token)
   console.log('[SkillHub] <= %s %s HTTP %d', method, url, response.status)
@@ -160,6 +174,56 @@ interface SkillListQuery {
   pageSize?: number
   sort?: string
   order?: string
+}
+
+interface WorkspaceInstallStatusCacheEntry {
+  expiresAt: number
+  slugLowerMap: Map<string, boolean>
+  sourceNameMap: Map<string, boolean>
+}
+
+const WORKSPACE_INSTALL_STATUS_CACHE_TTL_MS = 5_000
+const workspaceInstallStatusCache = new Map<string, WorkspaceInstallStatusCacheEntry>()
+
+function invalidateWorkspaceInstallStatusCache(workspaceSlug: string): void {
+  workspaceInstallStatusCache.delete(workspaceSlug)
+}
+
+function readWorkspaceInstallStatus(workspaceSlug: string): WorkspaceInstallStatusCacheEntry {
+  const cached = workspaceInstallStatusCache.get(workspaceSlug)
+  if (cached && cached.expiresAt > Date.now()) return cached
+
+  const localSkills = getAllWorkspaceSkills(workspaceSlug)
+  const activeSkillsDir = getWorkspaceSkillsDir(workspaceSlug)
+  const inactiveSkillsDir = getInactiveSkillsDir(workspaceSlug)
+  const slugLowerMap = new Map<string, boolean>()
+  const sourceNameMap = new Map<string, boolean>()
+
+  for (const s of localSkills) {
+    slugLowerMap.set(s.slug.toLowerCase(), s.enabled)
+  }
+
+  for (const dir of [activeSkillsDir, inactiveSkillsDir]) {
+    for (const s of localSkills) {
+      const sourcePath = join(dir, s.slug, '.proma-source.json')
+      try {
+        if (existsSync(sourcePath)) {
+          const source = JSON.parse(readFileSync(sourcePath, 'utf-8')) as { skillName?: string }
+          if (source.skillName) {
+            sourceNameMap.set(source.skillName.toLowerCase(), s.enabled)
+          }
+        }
+      } catch { /* 跳过损坏的来源记录 */ }
+    }
+  }
+
+  const entry = {
+    expiresAt: Date.now() + WORKSPACE_INSTALL_STATUS_CACHE_TTL_MS,
+    slugLowerMap,
+    sourceNameMap,
+  }
+  workspaceInstallStatusCache.set(workspaceSlug, entry)
+  return entry
 }
 
 interface SkillMetadataRaw {
@@ -389,10 +453,8 @@ export async function downloadSkillHubZip(skillName: string, version: string): P
 
 // ===== SkillHub 管理操作 =====
 
-export async function fetchHtSkillHubIndex(workspaceSlug?: string, page?: number, keyword?: string, category?: string): Promise<HtSkillHubSkillWithStatus[]> {
-  const remoteSkills = await fetchSkillHubSkills({ page: page ?? 1, pageSize: 20, keyword, category })
-
-  const skills: HtSkillHubSkill[] = remoteSkills.map((raw) => ({
+function mapSkillHubSkill(raw: SkillMetadataRaw): HtSkillHubSkill {
+  return {
     name: raw.skillName,
     displayName: raw.displayName,
     description: raw.description,
@@ -402,46 +464,59 @@ export async function fetchHtSkillHubIndex(workspaceSlug?: string, page?: number
     author: raw.ownerName,
     downloadCount: raw.downloadCount,
     files: [],
-  }))
+  }
+}
 
+function applyWorkspaceInstallStatus(skills: HtSkillHubSkill[], workspaceSlug?: string): HtSkillHubSkillWithStatus[] {
   if (!workspaceSlug) {
     return skills.map((skill) => ({ ...skill, installed: false }))
   }
 
-  const localSkills = getAllWorkspaceSkills(workspaceSlug)
-  const activeSkillsDir = getWorkspaceSkillsDir(workspaceSlug)
-  const inactiveSkillsDir = getInactiveSkillsDir(workspaceSlug)
+  const { slugLowerMap, sourceNameMap } = readWorkspaceInstallStatus(workspaceSlug)
 
   // 多维度匹配，避免大小写 / 目录名不一致导致已安装 Skill 显示为未安装：
   //   1. slug（目录名）case-insensitive
   //   2. .proma-source.json 中记录的原始 skillName（包括活跃和禁用目录）
-  const slugLowerMap = new Map<string, boolean>()
-  const sourceNameMap = new Map<string, boolean>()
-
-  for (const s of localSkills) {
-    slugLowerMap.set(s.slug.toLowerCase(), s.enabled)
-  }
-
-  for (const dir of [activeSkillsDir, inactiveSkillsDir]) {
-    for (const s of localSkills) {
-      const sourcePath = join(dir, s.slug, '.proma-source.json')
-      try {
-        if (existsSync(sourcePath)) {
-          const source = JSON.parse(readFileSync(sourcePath, 'utf-8')) as { skillName?: string }
-          if (source.skillName) {
-            sourceNameMap.set(source.skillName.toLowerCase(), s.enabled)
-          }
-        }
-      } catch { /* skip corrupt files */ }
-    }
-  }
-
   return skills.map((skill) => {
     const short = shortSkillName(skill.name)
     const installed = slugLowerMap.has(short.toLowerCase()) || sourceNameMap.has(skill.name.toLowerCase())
     const enabled = slugLowerMap.get(short.toLowerCase()) ?? sourceNameMap.get(skill.name.toLowerCase())
     return { ...skill, installed, enabled }
   })
+}
+
+export async function fetchHtSkillHubIndexPage(
+  workspaceSlug?: string,
+  page?: number,
+  keyword?: string,
+  category?: string,
+  pageSize = 20,
+): Promise<HtSkillHubSkillPage> {
+  const normalizedPage = Math.max(1, page ?? 1)
+  const normalizedPageSize = Math.max(1, Math.min(Math.floor(pageSize), 50))
+  const remoteSkills = await fetchSkillHubSkills({
+    page: normalizedPage,
+    pageSize: normalizedPageSize + 1,
+    keyword,
+    category,
+  })
+  const hasMore = remoteSkills.length > normalizedPageSize
+  const items = applyWorkspaceInstallStatus(
+    remoteSkills.slice(0, normalizedPageSize).map(mapSkillHubSkill),
+    workspaceSlug,
+  )
+
+  return {
+    items,
+    page: normalizedPage,
+    pageSize: normalizedPageSize,
+    hasMore,
+  }
+}
+
+export async function fetchHtSkillHubIndex(workspaceSlug?: string, page?: number, keyword?: string, category?: string): Promise<HtSkillHubSkillWithStatus[]> {
+  const result = await fetchHtSkillHubIndexPage(workspaceSlug, page, keyword, category)
+  return result.items
 }
 
 export async function readHtSkillHubSkillContent(skillName: string): Promise<string> {
@@ -520,6 +595,7 @@ export async function installHtSkillHubSkill(input: InstallHtSkillHubSkillInput)
   }, null, 2), 'utf-8')
 
   rmSync(tmpDir, { recursive: true, force: true })
+  invalidateWorkspaceInstallStatusCache(workspaceSlug)
 
   return {
     skillName: skill.name,
@@ -544,6 +620,7 @@ export async function uninstallHtSkillHubSkill(
   if (existsSync(inactivePath)) {
     rmSync(inactivePath, { recursive: true, force: true })
   }
+  invalidateWorkspaceInstallStatusCache(workspaceSlug)
 }
 
 export async function checkSkillUpdates(

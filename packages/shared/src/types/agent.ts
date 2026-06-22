@@ -888,6 +888,14 @@ export interface HtSkillHubSkill {
   enabled?: boolean
 }
 
+/** 华泰 SkillHub 市场分页结果 */
+export interface HtSkillHubSkillPage {
+  items: HtSkillHubSkill[]
+  page: number
+  pageSize: number
+  hasMore: boolean
+}
+
 /** 华泰 SkillHub 安装结果 */
 export interface HtSkillHubInstallResult {
   skillName: string

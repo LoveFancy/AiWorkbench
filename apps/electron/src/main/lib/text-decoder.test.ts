@@ -26,4 +26,13 @@ describe('文本解码', () => {
 
     expect(resolveAndReadFile(filePath)?.content).toBe('中文注释')
   })
+
+  test('内联文件预览区分不存在文件和空文件', () => {
+    const filePath = join(tmpdir(), `proma-preview-missing-${Date.now()}.txt`)
+
+    expect(resolveAndReadFile(filePath)).toMatchObject({
+      status: 'unavailable',
+      content: '',
+    })
+  })
 })

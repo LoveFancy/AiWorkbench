@@ -17,6 +17,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { GitBashStatus } from '@proma/shared'
 import { getGitForWindowsInstallPath } from './windows-env'
+import { decodeCommandOutput } from './windows-command-output'
 
 /**
  * 获取 Git for Windows 常见安装路径列表
@@ -66,13 +67,13 @@ function verifyBashPath(bashPath: string): string | null {
 
     // 执行 bash --version 获取版本信息
     const output = execSync(`"${bashPath}" --version`, {
-      encoding: 'utf-8',
       timeout: 5000,
       stdio: ['pipe', 'pipe', 'pipe'],
     })
+    const text = decodeCommandOutput(output)
 
     // 解析版本号（示例输出："GNU bash, version 5.2.15(1)-release (x86_64-pc-msys)"）
-    const versionMatch = output.match(/version\s+(\S+)/)
+    const versionMatch = text.match(/version\s+(\S+)/)
     if (versionMatch?.[1]) {
       // 提取主版本号（如 "5.2.15(1)-release" → "5.2.15"）
       const cleanVersion = versionMatch[1]!.split('(')[0]!
@@ -93,13 +94,12 @@ function verifyBashPath(bashPath: string): string | null {
 function findBashInPath(): string | null {
   try {
     const output = execSync('where bash', {
-      encoding: 'utf-8',
       timeout: 5000,
       stdio: ['pipe', 'pipe', 'pipe'],
     })
 
     // where 命令可能返回多个路径，取第一个
-    const paths = output.trim().split('\n')
+    const paths = decodeCommandOutput(output).trim().split(/\r?\n/)
     for (const path of paths) {
       const trimmedPath = path.trim()
       // 优先选择包含 "Git" 的路径
