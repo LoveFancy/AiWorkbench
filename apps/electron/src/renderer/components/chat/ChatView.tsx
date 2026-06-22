@@ -90,6 +90,7 @@ function ChatViewInner({ conversationId }: ChatViewProps): React.ReactElement {
   const setChatStreamErrors = useSetAtom(chatStreamErrorsAtom)
   const chatStreamErrors = useAtomValue(chatStreamErrorsAtom)
   const chatRetryingMap = useAtomValue(chatRetryingAtom)
+  const setChatRetrying = useSetAtom(chatRetryingAtom)
   const refreshMap = useAtomValue(chatMessageRefreshAtom)
   const promptConfig = useAtomValue(promptConfigAtom)
   const userProfile = useAtomValue(userProfileAtom)
@@ -228,6 +229,15 @@ function ChatViewInner({ conversationId }: ChatViewProps): React.ReactElement {
       return map
     })
 
+    // 清除当前对话的重试失败提示（重发/新发送应重置上一次失败的 RetryingNotice，
+    // 否则首次尝试即成功时后端不会发送 STREAM_RETRY_CLEARED，残留提示无法消除）
+    setChatRetrying((prev) => {
+      if (!prev.has(conversationId)) return prev
+      const map = new Map(prev)
+      map.delete(conversationId)
+      return map
+    })
+
     // 判断是否为第一条消息（发送前历史为空）
     const messageCountBeforeSend = options?.messageCountBeforeSend ?? messages.length
     const isFirstMessage = messageCountBeforeSend === 0
@@ -346,6 +356,7 @@ function ChatViewInner({ conversationId }: ChatViewProps): React.ReactElement {
     userProfile.userName,
     activeToolIds,
     setChatStreamErrors,
+    setChatRetrying,
     setStreamingStates,
   ])
 
