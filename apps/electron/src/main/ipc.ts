@@ -129,6 +129,7 @@ import type {
   AgentExpertGroupInfo,
   ServerExpertGroupSummary,
   FeaturedScene,
+  EnsureExpertGroupLatestResult,
   Automation,
   CreateAutomationInput,
   UpdateAutomationInput,
@@ -2504,6 +2505,14 @@ export function registerIpcHandlers(): void {
     async (_, groupId: string): Promise<void> => {
       // 初版不实现断点续传/取消，预留通道
       console.log('[IPC] 取消下载请求（初版未实现）:', groupId)
+    }
+  )
+
+  ipcMain.handle(
+    EXPERT_IPC_CHANNELS.ENSURE_LATEST,
+    async (_, groupId: string, localVersion: string): Promise<EnsureExpertGroupLatestResult> => {
+      const { ensureExpertGroupLatest } = await import('./lib/expert-upgrade-service')
+      return ensureExpertGroupLatest(groupId, localVersion)
     }
   )
 

@@ -32,7 +32,16 @@ async function downloadFile(
     headers['Cookie'] = `EIPGW-TOKEN=${token}`
   }
 
-  const response = await fetch(url, { headers })
+  // 为建立连接/返回响应头设置超时，避免服务端不响应时无限挂起。
+  // 一旦开始流式传输（拿到响应），后续读取不再受此超时约束。
+  const controller = new AbortController()
+  const connectTimer = setTimeout(() => controller.abort(), 15_000)
+  let response: Response
+  try {
+    response = await fetch(url, { headers, signal: controller.signal })
+  } finally {
+    clearTimeout(connectTimer)
+  }
 
   if (!response.ok) {
     throw new Error(`下载失败 HTTP ${response.status}`)
@@ -73,6 +82,7 @@ async function downloadFile(
 
 export async function downloadAndInstallRemoteExpert(
   groupId: string,
+  options: { overwrite?: boolean } = {},
 ): Promise<AgentPluginInfo> {
   const downloadPath = `/workmate/expert-groups/${groupId}/download`
   const downloadUrl = `${resolveApiBase()}${downloadPath}`
@@ -91,8 +101,8 @@ export async function downloadAndInstallRemoteExpert(
     // 3. 广播安装中
     broadcastProgress({ groupId, status: 'installing', progress: 100, downloadedBytes: 0, totalBytes: 0 })
 
-    // 4. 安装插件（marketplaceId: 'remote' 安装到 user-plugins/remote/）
-    const plugin = installUserPluginZip(tempPath, { marketplaceId: 'remote' })
+    // 4. 安装插件（marketplaceId: 'remote' 安装到 user-plugins/remote/；升级时 overwrite 覆盖旧版本）
+    const plugin = installUserPluginZip(tempPath, { marketplaceId: 'remote', overwrite: options.overwrite ?? false })
 
     // 5. 清理临时文件
     try { unlinkSync(tempPath) } catch { /* ignore */ }

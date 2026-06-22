@@ -92,3 +92,30 @@ export async function fetchServerExpertGroupCategories(): Promise<string[]> {
   writeCache(cachePath, categories)
   return categories
 }
+
+/**
+ * 拉取单个专家团详情（用于召唤时的实时版本检查）。
+ *
+ * - 1s 超时，避免阻塞召唤；超时由 httpGet 归一化为 { ok:false }，不抛异常。
+ * - 不读写磁盘缓存——版本检查必须命中服务端最新值。
+ * - 失败（网络异常/超时/业务错误码）一律返回 null，交由上层降级为本地版本。
+ *
+ * @param get 注入点，默认走 hteip-client 的 httpGet（便于测试）。
+ */
+export async function fetchServerExpertGroupDetail(
+  id: string,
+  get: typeof httpGet = httpGet,
+): Promise<import('@proma/shared').ServerExpertGroupSummary | null> {
+  const path = `/workmate/expert-groups/group-detail/${encodeURIComponent(id)}`
+  const res = await get<{ code: number; data: import('@proma/shared').ServerExpertGroupSummary }>(
+    path,
+    { timeoutMs: 1000 },
+  )
+
+  if (!res.ok || !res.data || res.data.code !== 0) {
+    console.warn('[expert-remote] 获取专家团详情失败: id=%s status=%d err=%s', id, res.status, res.error ?? res.data)
+    return null
+  }
+
+  return res.data.data
+}

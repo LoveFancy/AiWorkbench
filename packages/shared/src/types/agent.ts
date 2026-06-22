@@ -1115,6 +1115,14 @@ export interface RemoteDownloadProgress {
   error?: string
 }
 
+/** 召唤前确保专家团为最新版的结果 */
+export interface EnsureExpertGroupLatestResult {
+  /** 是否实际下载安装了新版本 */
+  updated: boolean
+  /** 升级后的插件信息（仅 updated 为 true 时存在） */
+  plugin?: AgentPluginInfo
+}
+
 export interface AgentPluginsConfig {
   version: 1
   plugins: Record<string, {
@@ -1966,6 +1974,8 @@ export const EXPERT_IPC_CHANNELS = {
   CANCEL_DOWNLOAD: 'expert:cancel-download',
   /** 获取服务端专家团分类列表 */
   FETCH_CATEGORIES: 'expert:fetch-categories',
+  /** 召唤前确保专家团为最新版（检查 group-detail 版本并按需下载） */
+  ENSURE_LATEST: 'expert:ensure-latest',
 } as const
 
 /**

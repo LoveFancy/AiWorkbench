@@ -83,6 +83,7 @@ import type {
   ServerExpertGroupSummary,
   FeaturedScene,
   RemoteDownloadProgress,
+  EnsureExpertGroupLatestResult,
   FileEntry,
   CreateFileEntryInput,
   FileSearchResult,
@@ -637,6 +638,8 @@ export interface ElectronAPI {
   fetchServerExpertGroupCategories: () => Promise<string[]>
   /** 订阅下载进度事件（返回清理函数） */
   onExpertDownloadProgress: (callback: (progress: RemoteDownloadProgress) => void) => () => void
+  /** 召唤前确保专家团为最新版（静默检查 group-detail 版本，按需覆盖下载；失败降级本地版） */
+  ensureExpertGroupLatest: (groupId: string, localVersion: string) => Promise<EnsureExpertGroupLatestResult>
 
   // ===== Agent 工作区管理相关 =====
 
@@ -1891,6 +1894,10 @@ const electronAPI: ElectronAPI = {
 
   fetchServerExpertGroupCategories: () => {
     return ipcRenderer.invoke(EXPERT_IPC_CHANNELS.FETCH_CATEGORIES)
+  },
+
+  ensureExpertGroupLatest: (groupId: string, localVersion: string) => {
+    return ipcRenderer.invoke(EXPERT_IPC_CHANNELS.ENSURE_LATEST, groupId, localVersion)
   },
 
   onExpertDownloadProgress: (callback: (progress: RemoteDownloadProgress) => void) => {
