@@ -68,6 +68,21 @@ function defaultRunCommand(command: string, args: string[]): Promise<CommandResu
   })
 }
 
+/**
+ * 解析命令的全路径
+ *
+ * Windows: where command 返回完整路径（如 C:\Users\...\Scripts\mcp-email-server.exe）
+ * Unix: which command 返回完整路径
+ */
+async function resolveCommandPath(command: string, runCommand: (command: string, args: string[]) => Promise<CommandResult>): Promise<string | null> {
+  const probe = process.platform === 'win32' ? 'where' : 'which'
+  const result = await runCommand(probe, [command])
+  if (!result.ok) return null
+  // where/which 可能返回多行，取第一行
+  const path = result.stdout.trim().split('\n')[0].trim()
+  return path || null
+}
+
 async function findFirstAvailable(commands: string[], commandExists: (command: string) => Promise<boolean>): Promise<string | null> {
   for (const command of commands) {
     if (await commandExists(command)) return command
@@ -129,10 +144,25 @@ export async function initializeDefaultConnector(
     setStep(steps, 'install-package', 'success', '安装完成')
   }
 
+  // 解析 mcp-email-server 的全路径，避免 PATH 不一致导致后续校验失败
+  const resolvedPath = await resolveCommandPath('mcp-email-server', runCommand)
+  if (!resolvedPath) {
+    setStep(steps, 'check-package', 'error', 'mcp-email-server 安装后无法定位到可执行文件')
+    return {
+      connectorId: input.connectorId,
+      serverName: 'email',
+      success: false,
+      steps,
+      message: 'mcp-email-server 安装后无法定位到可执行文件，请检查 pip 安装路径是否在 PATH 中。',
+    }
+  }
+
   const entry = buildHuataiEmailMcpEntry({
     emailAddress: input.emailAddress!,
     password: input.password!,
   })
+  // 用全路径替换命令名
+  entry.command = resolvedPath
   const config = getWorkspaceMcpConfig(workspaceSlug)
   saveWorkspaceMcpConfig(workspaceSlug, {
     servers: {

@@ -1,7 +1,9 @@
 {
+  "type":"mcp",
   "displayName": "华泰邮箱",
   "description": "华泰证券企业邮箱 IMAP/SMTP，基于 mcp-email-server",
   "version": "1.0.0",
+  "disabledTools": ["send_email", "delete_email"],
   "mcpServer": {
     "type": "stdio",
     "command": "mcp-email-server",

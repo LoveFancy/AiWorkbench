@@ -735,27 +735,49 @@ export function syncDefaultConnectorsToWorkspace(workspaceSlug: string): void {
 }
 
 /**
- * 获取所有预置连接器的默认条目
+ * 读取所有预置连接器的默认条目
+ *
+ * 从 default-connectors/{name}/connector.json 读取元数据，
+ * 转换为 connectors.json 的 ConnectorEntry 格式。
+ * 新增的预置连接器默认 enabled: false。
  */
 function getDefaultConnectorEntries(): Record<string, ConnectorEntry> {
-  return {
-    'huatai-email': {
-      type: 'mcp',
-      enabled: false,
-      source: 'preset',
-      displayName: '华泰邮箱',
-      description: '华泰证券企业邮箱 IMAP/SMTP，基于 mcp-email-server',
-      disabledTools: ['send_email', 'delete_email'],
-    },
-    'feishu-cli': {
-      type: 'cli',
-      enabled: false,
-      source: 'preset',
-      displayName: '飞书 CLI',
-      description: '飞书命令行工具（日历/消息/文档/云盘等）',
-      skillDirs: ['skill'],
-    },
+  const defaultDir = getDefaultConnectorsDir()
+  const entries: Record<string, ConnectorEntry> = {}
+
+  let dirEntries: { name: string }[] = []
+  try {
+    dirEntries = readdirSync(defaultDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+  } catch {
+    return entries
   }
+
+  for (const dirEnt of dirEntries) {
+    const connectorJsonPath = join(defaultDir, dirEnt.name, 'connector.json')
+    if (!existsSync(connectorJsonPath)) continue
+
+    try {
+      const raw = JSON.parse(readFileSync(connectorJsonPath, 'utf-8'))
+
+      const entry: ConnectorEntry = {
+        type: raw.type ?? 'mcp',
+        enabled: false,
+        source: 'preset',
+      }
+      if (raw.displayName) entry.displayName = raw.displayName
+      if (raw.description) entry.description = raw.description
+      if (raw.version) entry.version = raw.version
+      if (Array.isArray(raw.skillDirs) && raw.skillDirs.length > 0) entry.skillDirs = raw.skillDirs
+      if (Array.isArray(raw.disabledTools) && raw.disabledTools.length > 0) entry.disabledTools = raw.disabledTools
+
+      entries[dirEnt.name] = entry
+    } catch (err) {
+      console.warn(`[Agent 工作区] 读取预置连接器元数据失败 (${dirEnt.name}):`, err)
+    }
+  }
+
+  return entries
 }
 
 // ===== Skill 目录扫描 =====

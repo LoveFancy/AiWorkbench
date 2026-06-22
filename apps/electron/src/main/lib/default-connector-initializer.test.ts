@@ -13,6 +13,10 @@ function readMcp(workspaceSlug: string): WorkspaceMcpConfig {
   return JSON.parse(readFileSync(getWorkspaceMcpPath(workspaceSlug), 'utf-8')) as WorkspaceMcpConfig
 }
 
+const MOCK_MCP_EMAIL_SERVER_PATH = process.platform === 'win32'
+  ? 'C:\\Users\\test\\AppData\\Local\\Programs\\Python\\Scripts\\mcp-email-server.exe'
+  : '/usr/local/bin/mcp-email-server'
+
 describe('initializeDefaultConnector', () => {
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'proma-default-connector-'))
@@ -47,6 +51,11 @@ describe('initializeDefaultConnector', () => {
       commandExists: async (command) => command === 'python3' || command === 'pip3',
       runCommand: async (command, args) => {
         calls.push([command, ...args].join(' '))
+        // where/which mcp-email-server 返回全路径
+        const probe = process.platform === 'win32' ? 'where' : 'which'
+        if (command === probe && args[0] === 'mcp-email-server') {
+          return { ok: true, stdout: MOCK_MCP_EMAIL_SERVER_PATH, stderr: '' }
+        }
         return { ok: true, stdout: '', stderr: '' }
       },
       validateMcpServer: async () => ({ success: true, message: '连接成功' }),
@@ -66,7 +75,7 @@ describe('initializeDefaultConnector', () => {
     expect(config.servers.docs).toBeDefined()
     expect(config.servers.email).toEqual({
       type: 'stdio',
-      command: 'mcp-email-server',
+      command: MOCK_MCP_EMAIL_SERVER_PATH,
       args: ['stdio'],
       env: {
         MCP_EMAIL_SERVER_ACCOUNT_NAME: 'htsc',
@@ -93,13 +102,19 @@ describe('initializeDefaultConnector', () => {
       commandExists: async (command) => command === 'python3' || command === 'pip3' || command === 'mcp-email-server',
       runCommand: async (command, args) => {
         calls.push([command, ...args].join(' '))
+        const probe = process.platform === 'win32' ? 'where' : 'which'
+        if (command === probe && args[0] === 'mcp-email-server') {
+          return { ok: true, stdout: MOCK_MCP_EMAIL_SERVER_PATH, stderr: '' }
+        }
         return { ok: true, stdout: '', stderr: '' }
       },
       validateMcpServer: async () => ({ success: true, message: '连接成功' }),
     })
 
     expect(result.success).toBe(true)
-    expect(calls).toEqual([])
+    // 已安装时不调用 pip install，但会调用 where/which 解析全路径
+    const probe = process.platform === 'win32' ? 'where' : 'which'
+    expect(calls).toEqual([`${probe} mcp-email-server`])
     expect(result.steps.find((step) => step.id === 'install-package')?.status).toBe('skipped')
   })
 })
