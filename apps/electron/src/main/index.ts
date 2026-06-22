@@ -119,7 +119,7 @@ import { startWorkspaceWatcher, stopWorkspaceWatcher } from './lib/workspace-wat
 import { registerAuthIpcHandlers } from '../auth'
 import { registerLogUploadIpc } from './lib/log-upload-ipc'
 import './lib/issue-report'
-import { loadCacheFromDisk, initModelRefresh } from '../models'
+import { loadCacheFromDisk, initModelRefresh } from '../platform-models/model-service'
 import { registerPlatformModelsIpcHandlers } from '../platform-models'
 import { startChatToolsWatcher, stopChatToolsWatcher } from './lib/chat-tools-watcher'
 import { getIsQuitting, setQuitting } from './lib/app-lifecycle'
