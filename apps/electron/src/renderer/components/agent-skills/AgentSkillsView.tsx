@@ -437,6 +437,7 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
                 onInstalled={async () => {
                   bumpCapabilities((v) => v + 1)
                   await loadInstalledPlugins()
+                  setSkillView('installed')
                 }}
                 onOpen={setSelectedSkillSlug}
                 onOpenPlugin={setSelectedPluginId}

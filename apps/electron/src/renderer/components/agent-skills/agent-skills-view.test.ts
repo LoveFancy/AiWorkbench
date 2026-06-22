@@ -53,6 +53,10 @@ test('切换已安装 Skill 状态后保留当前技能二级 Tab', () => {
   expect(source).not.toContain("function SkillsTab({ skills, total, updateCount, updatingSkill, isBuiltin, workspaceSlug, query, installedSkillNames, onInstalled, onOpen, onToggle, onUpdate }: SkillsTabProps): React.ReactElement {\n  const [skillView, setSkillView] = React.useState<'market' | 'installed'>('market')")
 })
 
+test('从市场安装完成后跳转到已安装二级页', () => {
+  expect(source).toContain("onInstalled={async () => {\n                  bumpCapabilities((v) => v + 1)\n                  await loadInstalledPlugins()\n                  setSkillView('installed')\n                }}")
+})
+
 test('技能页通过添加弹窗提供上传 zip 和跨工作区导入入口', () => {
   expect(source).toContain('handleInstallSkillZip')
   expect(source).toContain('window.electronAPI.installSkillZip(data.workspaceSlug)')
