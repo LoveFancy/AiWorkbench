@@ -5,6 +5,7 @@ const source = await Bun.file(join(import.meta.dir, 'AgentSkillsView.tsx')).text
 const skillCardSource = await Bun.file(join(import.meta.dir, 'SkillCard.tsx')).text()
 const skillMarketPanelSource = await Bun.file(join(import.meta.dir, 'SkillMarketPanel.tsx')).text()
 const skillMarketCardSource = await Bun.file(join(import.meta.dir, 'SkillMarketCard.tsx')).text()
+const skillMarketDetailSheetSource = await Bun.file(join(import.meta.dir, 'SkillMarketDetailSheet.tsx')).text()
 const pluginDetailSheetSource = await Bun.file(join(import.meta.dir, 'PluginDetailSheet.tsx')).text()
 
 test('技能页提供技能市场和已安装二级切换', () => {
@@ -25,21 +26,25 @@ test('已安装区块区分插件和技能', () => {
   expect(source).toContain('isBuiltin={(slug) => data.defaultSkillSlugs.has(slug)}')
 })
 
-test('技能市场不展示分类 Tab 且加载全部分页结果', () => {
+test('技能市场不展示分类 Tab 且按页加载结果', () => {
   expect(skillMarketPanelSource).not.toContain('MARKET_CATEGORIES')
   expect(skillMarketPanelSource).not.toContain("'推荐'")
-  expect(skillMarketPanelSource).not.toContain('套件')
   expect(skillMarketPanelSource).not.toContain('skills.slice(0, 12)')
   expect(skillMarketPanelSource).toContain('SKILLHUB_PAGE_SIZE')
-  expect(skillMarketPanelSource).toContain('while (true)')
+  expect(skillMarketPanelSource).not.toContain('while (true)')
+  expect(skillMarketPanelSource).toContain('useDebouncedValue')
+  expect(skillMarketPanelSource).toContain('loadMoreRef')
+  expect(skillMarketPanelSource).toContain('hasMore')
   expect(skillMarketPanelSource).toContain('skills.map((skill)')
 })
 
 test('技能市场卡片样式对齐已安装 Skill 卡片', () => {
-  expect(skillMarketCardSource).toContain('min-h-[158px]')
   expect(skillMarketCardSource).toContain('rounded-xl')
   expect(skillMarketCardSource).toContain('line-clamp-2')
-  expect(skillMarketCardSource).not.toContain('SkillHub')
+  expect(skillMarketCardSource).toContain('ShieldCheck')
+  expect(skillMarketCardSource).toContain('华泰 SkillHub')
+  expect(skillMarketPanelSource).toContain('Package')
+  expect(skillMarketPanelSource).toContain('插件套件')
 })
 
 test('切换已安装 Skill 状态后保留当前技能二级 Tab', () => {
@@ -92,4 +97,14 @@ test('技能市场来源切换展示职责和适用方式说明', () => {
 test('插件详情抽屉使用收窄宽度避免占据过多主界面', () => {
   expect(pluginDetailSheetSource).toContain('w-full sm:w-[46vw] sm:min-w-[520px] sm:max-w-[760px]')
   expect(pluginDetailSheetSource).not.toContain('w-[62vw] min-w-[680px] max-w-[1100px]')
+})
+
+test('技能市场详情抽屉展示元信息并避免重复描述正文', () => {
+  expect(skillMarketDetailSheetSource).toContain('shouldRenderContent')
+  expect(skillMarketDetailSheetSource).toContain('buildMetadataRows')
+  expect(skillMarketDetailSheetSource).toContain('SettingsCard')
+  expect(skillMarketDetailSheetSource).toContain('skill.tags.slice(0, 8)')
+  expect(skillMarketDetailSheetSource).toContain('downloadCount')
+  expect(skillMarketDetailSheetSource).toContain("value: '华泰 SkillHub'")
+  expect(skillMarketDetailSheetSource).toContain('暂无更多详情')
 })

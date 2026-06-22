@@ -9,7 +9,6 @@
 import * as React from 'react'
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
 import { Zap, Compass, Map as MapIcon, ChevronDown } from 'lucide-react'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -40,6 +39,7 @@ export function PermissionModeSelector({ sessionId }: PermissionModeSelectorProp
   const persistedSessionMode = useAtomValue(sessionPersistedPermissionModeAtom(sessionId))
   const mode = modeMap.get(sessionId) ?? persistedSessionMode ?? defaultMode
   const sessionExistsInList = useAtomValue(sessionExistsAtom(sessionId))
+  const [menuOpen, setMenuOpen] = React.useState(false)
 
   // 初始化：如果当前 session 不在 Map 中，按以下优先级读回：
   // 1. session meta.permissionMode（每个 tab 独立持久化，重启恢复各自的值）
@@ -92,61 +92,54 @@ export function PermissionModeSelector({ sessionId }: PermissionModeSelectorProp
     requestAnimationFrame(() => document.querySelector<HTMLElement>('.ProseMirror')?.focus())
   }, [selectMode])
 
+  const handleMenuOpenChange = React.useCallback((open: boolean): void => {
+    setMenuOpen(open)
+  }, [])
+
   const config = PROMA_PERMISSION_MODE_CONFIG[mode]
   const Icon = MODE_ICONS[mode]
 
   return (
-    <TooltipProvider delayDuration={300}>
-      <DropdownMenu>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                aria-label={`权限模式：${config.label}`}
-                className="h-8 shrink-0 rounded-full px-2.5 text-[13px] font-medium text-foreground/70 hover:text-foreground"
+    <DropdownMenu open={menuOpen} onOpenChange={handleMenuOpenChange}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          aria-label={`权限模式：${config.label}`}
+          className="h-8 shrink-0 rounded-full px-2.5 text-[13px] font-medium text-foreground/70 hover:text-foreground"
+        >
+          <Icon className="size-4" />
+          <span>{config.label}</span>
+          <ChevronDown className="size-3.5" />
+        </Button>
+      </DropdownMenuTrigger>
+
+      <DropdownMenuContent side="top" align="center" sideOffset={10} className="z-[10060] w-64 p-1.5">
+        <DropdownMenuRadioGroup value={mode} onValueChange={handleModeChange}>
+          {PROMA_PERMISSION_MODE_ORDER.map((permissionMode) => {
+            const itemConfig = PROMA_PERMISSION_MODE_CONFIG[permissionMode]
+            const ItemIcon = MODE_ICONS[permissionMode]
+
+            return (
+              <DropdownMenuRadioItem
+                key={permissionMode}
+                value={permissionMode}
+                className="items-start gap-2 rounded-md py-2 pl-8 pr-2"
               >
-                <Icon className="size-4" />
-                <span>{config.label}</span>
-                <ChevronDown className="size-3.5" />
-              </Button>
-            </DropdownMenuTrigger>
-          </TooltipTrigger>
-          <TooltipContent side="top" className="max-w-[220px]">
-            <p className="font-medium">{config.label}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">{config.description}</p>
-            <p className="text-xs text-muted-foreground mt-1">点击选择权限模式</p>
-          </TooltipContent>
-        </Tooltip>
-
-        <DropdownMenuContent side="top" align="center" sideOffset={10} className="w-64 p-1.5">
-          <DropdownMenuRadioGroup value={mode} onValueChange={handleModeChange}>
-            {PROMA_PERMISSION_MODE_ORDER.map((permissionMode) => {
-              const itemConfig = PROMA_PERMISSION_MODE_CONFIG[permissionMode]
-              const ItemIcon = MODE_ICONS[permissionMode]
-
-              return (
-                <DropdownMenuRadioItem
-                  key={permissionMode}
-                  value={permissionMode}
-                  className="items-start gap-2 rounded-md py-2 pl-8 pr-2"
-                >
-                  <ItemIcon className="mt-0.5 size-4 text-muted-foreground" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[13px] font-medium leading-5 text-foreground">
-                      {itemConfig.label}
-                    </span>
-                    <span className="block text-xs leading-5 text-muted-foreground">
-                      {itemConfig.description}
-                    </span>
+                <ItemIcon className="mt-0.5 size-4 text-muted-foreground" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[13px] font-medium leading-5 text-foreground">
+                    {itemConfig.label}
                   </span>
-                </DropdownMenuRadioItem>
-              )
-            })}
-          </DropdownMenuRadioGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </TooltipProvider>
+                  <span className="block text-xs leading-5 text-muted-foreground">
+                    {itemConfig.description}
+                  </span>
+                </span>
+              </DropdownMenuRadioItem>
+            )
+          })}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }

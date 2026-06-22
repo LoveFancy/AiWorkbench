@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Info, Loader2, LogIn, MoreHorizontal, Plus, RefreshCw } from 'lucide-react'
+import { Info, Loader2, LogIn, MoreHorizontal, Package, Plus, RefreshCw } from 'lucide-react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { toast } from 'sonner'
 import type { AgentPluginMarketplace, AgentPluginMarketplaceDetail, AgentPluginMarketplacePlugin } from '@proma/shared'
@@ -23,6 +23,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { authStateAtom, loginDialogOpenAtom } from '@/auth/renderer'
 import { settingsOpenAtom } from '@/atoms/settings-tab'
 import { cn } from '@/lib/utils'
+import { getCapabilityToastId } from '@/lib/capabilities-toast'
 import { inferMarketplaceInput } from '@/components/settings/PluginSettings'
 import type { SkillMarketItem } from './skill-market-types'
 import { SkillMarketCard } from './SkillMarketCard'
@@ -50,6 +51,18 @@ const MARKET_SOURCES: Array<{ value: MarketSource; label: string; description: s
   },
 ]
 const SKILLHUB_PAGE_SIZE = 20
+const SKILLHUB_SEARCH_DEBOUNCE_MS = 300
+
+function useDebouncedValue(value: string, delayMs: number): string {
+  const [debouncedValue, setDebouncedValue] = React.useState(value)
+
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedValue(value), delayMs)
+    return () => window.clearTimeout(timer)
+  }, [delayMs, value])
+
+  return debouncedValue
+}
 
 export function SkillMarketPanel({ workspaceSlug, query, installedSkillNames, onInstalled }: SkillMarketPanelProps): React.ReactElement {
   const authState = useAtomValue(authStateAtom)
@@ -65,6 +78,12 @@ export function SkillMarketPanel({ workspaceSlug, query, installedSkillNames, on
   const [selectedSkill, setSelectedSkill] = React.useState<SkillMarketItem | null>(null)
   const [detailContent, setDetailContent] = React.useState<string | null>(null)
   const [detailLoading, setDetailLoading] = React.useState(false)
+  const [page, setPage] = React.useState(1)
+  const [hasMore, setHasMore] = React.useState(false)
+  const [loadingMore, setLoadingMore] = React.useState(false)
+  const loadMoreRef = React.useRef<HTMLDivElement | null>(null)
+  const requestSeqRef = React.useRef(0)
+  const debouncedQuery = useDebouncedValue(query, SKILLHUB_SEARCH_DEBOUNCE_MS)
 
   const checkAuth = React.useCallback(async (): Promise<boolean> => {
     try {
@@ -77,42 +96,62 @@ export function SkillMarketPanel({ workspaceSlug, query, installedSkillNames, on
     }
   }, [])
 
-  const loadSkills = React.useCallback(async (): Promise<void> => {
+  const loadSkills = React.useCallback(async (nextPage = 1): Promise<void> => {
     if (!workspaceSlug) return
-    setLoading(true)
+    const requestSeq = requestSeqRef.current + 1
+    requestSeqRef.current = requestSeq
+    const keyword = debouncedQuery.trim() || undefined
+    if (nextPage === 1) setLoading(true)
+    else setLoadingMore(true)
     try {
-      const keyword = query.trim() || undefined
-      const list: SkillMarketItem[] = []
-      let page = 1
-      while (true) {
-        const pageItems = await window.electronAPI.getHtSkillHubSkills(workspaceSlug, page, keyword)
-        list.push(...pageItems)
-        if (pageItems.length < SKILLHUB_PAGE_SIZE) break
-        page += 1
-      }
-      setSkills(list.filter((skill) => !installedSkillNames.has(skill.name)))
+      const result = await window.electronAPI.getHtSkillHubSkills(workspaceSlug, nextPage, keyword, undefined, SKILLHUB_PAGE_SIZE)
+      if (requestSeq !== requestSeqRef.current) return
+
+      const pageItems = result.items.filter((skill) => !installedSkillNames.has(skill.name))
+      setSkills((prev) => nextPage === 1 ? pageItems : [...prev, ...pageItems])
+      setPage(result.page)
+      setHasMore(result.hasMore)
     } catch (error) {
+      if (requestSeq !== requestSeqRef.current) return
       console.error('[技能市场] 加载失败:', error)
       toast.error('加载技能市场失败', { description: error instanceof Error ? error.message : '未知错误' })
     } finally {
-      setLoading(false)
+      if (requestSeq === requestSeqRef.current) {
+        if (nextPage === 1) setLoading(false)
+        else setLoadingMore(false)
+      }
     }
-  }, [installedSkillNames, query, workspaceSlug])
+  }, [debouncedQuery, installedSkillNames, workspaceSlug])
 
   React.useEffect(() => {
     if (source !== 'skillhub') return
     void (async () => {
       const ok = await checkAuth()
-      if (ok) void loadSkills()
+      if (ok) void loadSkills(1)
     })()
   }, [checkAuth, loadSkills, source])
+
+  React.useEffect(() => {
+    if (source !== 'skillhub' || !authenticated || !hasMore || loading || loadingMore) return
+    const sentinel = loadMoreRef.current
+    if (!sentinel) return
+
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[0]
+      if (!entry?.isIntersecting) return
+      void loadSkills(page + 1)
+    }, { rootMargin: '240px' })
+
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [authenticated, hasMore, loadSkills, loading, loadingMore, page, source])
 
   const handleAuthenticate = React.useCallback(async (): Promise<void> => {
     setAuthLoading(true)
     try {
       await window.electronAPI.skillHubAuthenticate()
       const ok = await checkAuth()
-      if (ok) void loadSkills()
+      if (ok) void loadSkills(1)
     } catch (error) {
       toast.error('SkillHub 认证失败', { description: error instanceof Error ? error.message : '未知错误' })
     } finally {
@@ -130,7 +169,9 @@ export function SkillMarketPanel({ workspaceSlug, query, installedSkillNames, on
     setInstalling(skill.name)
     try {
       await window.electronAPI.installHtSkillHubSkill(workspaceSlug, skill.name, false)
-      toast.success(`已安装：${skill.displayName || skill.name}`)
+      toast.success(`已安装：${skill.displayName || skill.name}`, {
+        id: getCapabilityToastId({ type: 'skill_added', name: skill.name }),
+      })
       await onInstalled()
       setSkills((prev) => prev.filter((item) => item.name !== skill.name))
       setSelectedSkill((current) => current?.name === skill.name ? { ...current, installed: true } : current)
@@ -186,11 +227,13 @@ export function SkillMarketPanel({ workspaceSlug, query, installedSkillNames, on
             authenticated={authenticated}
             authLoading={authLoading}
             loading={loading}
+            loadingMore={loadingMore}
+            hasMore={hasMore}
+            loadMoreRef={loadMoreRef}
             skills={skills}
             installing={installing}
             onLogin={handleLogin}
             onAuthenticate={() => void handleAuthenticate()}
-            onRefresh={() => void loadSkills()}
             onOpenDetail={openDetail}
             onInstall={(skill) => void handleInstall(skill)}
           />
@@ -216,16 +259,18 @@ interface SkillHubMarketContentProps {
   authenticated: boolean | null
   authLoading: boolean
   loading: boolean
+  loadingMore: boolean
+  hasMore: boolean
+  loadMoreRef: React.RefObject<HTMLDivElement>
   skills: SkillMarketItem[]
   installing: string | null
   onLogin: () => void
   onAuthenticate: () => void
-  onRefresh: () => void
   onOpenDetail: (skill: SkillMarketItem) => void
   onInstall: (skill: SkillMarketItem) => void
 }
 
-function SkillHubMarketContent({ authStateLoggedIn, authenticated, authLoading, loading, skills, installing, onLogin, onAuthenticate, onRefresh, onOpenDetail, onInstall }: SkillHubMarketContentProps): React.ReactElement {
+function SkillHubMarketContent({ authStateLoggedIn, authenticated, authLoading, loading, loadingMore, hasMore, loadMoreRef, skills, installing, onLogin, onAuthenticate, onOpenDetail, onInstall }: SkillHubMarketContentProps): React.ReactElement {
   if (!authStateLoggedIn) {
     return (
       <div className="rounded-lg border border-dashed border-border/70 bg-content-area px-4 py-8 text-center">
@@ -253,13 +298,7 @@ function SkillHubMarketContent({ authStateLoggedIn, authenticated, authLoading, 
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-end">
-        <Button size="sm" variant="ghost" className="h-8 px-2" onClick={onRefresh} disabled={loading}>
-          <RefreshCw size={14} className={loading ? 'animate-spin' : undefined} />
-        </Button>
-      </div>
-
+    <div className="flex flex-col gap-3">
       {loading ? (
         <div className="py-10 text-center text-sm text-muted-foreground">加载中...</div>
       ) : skills.length === 0 ? (
@@ -275,6 +314,11 @@ function SkillHubMarketContent({ authStateLoggedIn, authenticated, authLoading, 
               onInstall={() => onInstall(skill)}
             />
           ))}
+        </div>
+      )}
+      {skills.length > 0 && (
+        <div ref={loadMoreRef} className="py-2 text-center text-xs text-muted-foreground">
+          {loadingMore ? '继续加载中...' : hasMore ? '向下滚动加载更多' : '已加载全部'}
         </div>
       )}
     </div>
@@ -601,39 +645,57 @@ function PluginMarketCard({ plugin, installing, onOpen, onInstall }: { plugin: A
           onOpen()
         }
       }}
-      className="flex min-h-[86px] cursor-pointer items-center gap-3 rounded-lg border border-border/55 bg-content-area px-4 py-3 text-left transition-all hover:border-border hover:bg-foreground/[0.02] hover:shadow-sm focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      className="group relative flex h-full cursor-pointer flex-col gap-3 rounded-xl border border-border/60 bg-content-area p-4 text-left transition-all hover:border-border hover:shadow-sm focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     >
-      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-sm font-semibold text-muted-foreground">
-        {(plugin.name[0] ?? 'P').toUpperCase()}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-sm font-semibold text-foreground">{plugin.name}</span>
-          {plugin.version && (
-            <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-              v{plugin.version}
-            </span>
-          )}
+      <div className="flex items-start gap-3">
+        <div className="shrink-0 rounded-xl bg-violet-500/10 p-2 text-violet-500 shadow-sm">
+          <Package size={18} />
         </div>
-        <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{plugin.description || plugin.marketplaceName}</p>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-sm font-medium text-foreground">{plugin.name}</span>
+            <span className="shrink-0 rounded-md bg-violet-500/10 px-1.5 py-0.5 text-[11px] font-medium text-violet-600 dark:text-violet-300">套件</span>
+            {plugin.version && (
+              <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                v{plugin.version}
+              </span>
+            )}
+          </div>
+          <div className="mt-0.5 truncate text-xs text-muted-foreground">市场 ({plugin.marketplaceName || plugin.marketplaceId})</div>
+        </div>
       </div>
-      <button
-        type="button"
-        onClick={(event) => {
-          event.stopPropagation()
-          onInstall()
-        }}
-        disabled={installing}
-        className={cn(
-          'flex shrink-0 items-center justify-center rounded-md transition-colors disabled:cursor-not-allowed disabled:opacity-60',
-          plugin.installed
-            ? 'h-7 px-2 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/15 dark:text-emerald-300'
-            : 'size-7 bg-muted text-muted-foreground hover:bg-primary hover:text-primary-foreground',
+
+      <p className="line-clamp-2 min-h-[40px] text-[13px] leading-6 text-muted-foreground">
+        {plugin.description || '暂无描述'}
+      </p>
+
+      <div className="mt-auto flex items-center gap-2">
+        <span className="truncate rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+          插件套件
+        </span>
+        {plugin.enabled && (
+          <span className="rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-300">
+            已启用
+          </span>
         )}
-        title={plugin.installed ? '更新' : '安装'}
-      >
-        {installing ? <Loader2 size={15} className="animate-spin" /> : plugin.installed ? <span className="text-xs font-medium">已安装</span> : <Plus size={15} />}
-      </button>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            onInstall()
+          }}
+          disabled={installing}
+          className={cn(
+            'ml-auto flex shrink-0 items-center justify-center rounded-md transition-colors disabled:cursor-not-allowed disabled:opacity-60',
+            plugin.installed
+              ? 'h-7 px-2 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/15 dark:text-emerald-300'
+              : 'size-7 bg-muted text-muted-foreground hover:bg-primary hover:text-primary-foreground',
+          )}
+          title={plugin.installed ? '更新' : '安装'}
+        >
+          {installing ? <Loader2 size={15} className="animate-spin" /> : plugin.installed ? <span className="text-xs font-medium">已安装</span> : <Plus size={15} />}
+        </button>
+      </div>
     </div>
   )
 }

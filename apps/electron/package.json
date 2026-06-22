@@ -1,6 +1,6 @@
 {
   "name": "@proma/electron",
-  "version": "0.12.37",
+  "version": "0.12.38",
   "description": "WorkMate next gen ai software with general agents - Electron App",
   "main": "dist/main.cjs",
   "author": {
@@ -41,7 +41,9 @@
     "@pierre/diffs": "^1.1.20",
     "@xmldom/xmldom": "^0.8.11",
     "adm-zip": "^0.5.17",
+    "axios": "1.13.6",
     "dompurify": "^3.4.5",
+    "https-proxy-agent": "7.0.6",
     "iconv-lite": "^0.6.3",
     "mammoth": "^1.12.0",
     "pdfjs-dist": "^4.10.38"

@@ -209,11 +209,23 @@ export interface FileAccessOptions {
   workspaceSlug?: string
   /** 路径解析候选目录；主进程会先过滤到已授权目录内再使用 */
   candidateBasePaths?: string[]
+  /** 仅允许系统文件管理器/默认应用打开本机临时预览路径，不允许读取内容 */
+  allowTempPreviewPath?: boolean
 }
 
 /** 已授权本地文件的 proma-file URL */
 export interface ResolvedFileUrl {
   url: string
+}
+
+/** 文本文件预览读取结果 */
+export interface FilePreviewReadResult {
+  /** 路径解析和读取状态 */
+  status: 'ok' | 'empty' | 'unavailable' | 'unauthorized' | 'too_large'
+  /** 成功解析到的真实路径；不可访问时为空 */
+  resolvedPath: string
+  /** 文本内容；非 ok 时为空字符串 */
+  content: string
 }
 
 /** HTML 预览 URL 准备结果 */

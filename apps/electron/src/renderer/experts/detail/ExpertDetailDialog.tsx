@@ -1,16 +1,9 @@
 import * as React from 'react'
 import type { AgentExpertGroupInfo } from '@proma/shared'
-import { Bot, Plug, Sparkles } from 'lucide-react'
+import { ArrowLeft, Bot, Plug, Sparkles } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet'
 import { ExpertStatusBadge } from '@/experts/card/ExpertStatusBadge'
 import { getExpertSubagentLabel } from '@/experts/card/subagents'
 
@@ -23,20 +16,27 @@ interface ExpertDetailDialogProps {
 
 export function ExpertDetailDialog({ group, open, onOpenChange, onSummon }: ExpertDetailDialogProps): React.ReactElement {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent hideClose side="right" className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:w-[62vw] sm:min-w-[680px] sm:max-w-[1100px]" aria-describedby={undefined}>
         {group && (
-          <>
-            <DialogHeader>
-              <div className="flex items-start gap-4">
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-muted">
-                  <Sparkles size={24} />
+          <div className="flex h-full min-h-0 flex-col">
+            <div className="shrink-0 border-b border-border/60 px-5 pb-4 pt-5">
+              <div className="flex items-center gap-3">
+                <Button variant="ghost" size="icon" className="h-8 w-8" type="button" onClick={() => onOpenChange(false)}>
+                  <ArrowLeft size={18} />
+                </Button>
+                <SheetTitle className="text-lg font-medium text-foreground">专家详情</SheetTitle>
+              </div>
+
+              <div className="mt-4 flex items-start gap-3">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-muted text-foreground/70 shadow-sm">
+                  <Sparkles size={18} />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <DialogTitle className="text-xl">{group.name}</DialogTitle>
-                  <DialogDescription className="mt-2">
+                  <h3 className="truncate text-base font-semibold text-foreground">{group.name}</h3>
+                  <SheetDescription className="mt-1 truncate">
                     主角色：{group.mainRole.name} · 来源：{group.sourceLabel} · 版本：{group.sourcePluginVersion}
-                  </DialogDescription>
+                  </SheetDescription>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <ExpertStatusBadge status={group.status} />
                     <Badge variant="outline">{group.sourcePluginKind === 'builtin' ? '内置' : '用户插件'}</Badge>
@@ -45,18 +45,19 @@ export function ExpertDetailDialog({ group, open, onOpenChange, onSummon }: Expe
                   </div>
                 </div>
               </div>
-            </DialogHeader>
+            </div>
 
-            <div className="space-y-5 py-2">
+            <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin">
+              <div className="space-y-6 p-5">
               {group.description && (
                 <section>
-                  <h4 className="text-sm font-medium">能力介绍</h4>
-                  <p className="mt-2 text-sm text-muted-foreground">{group.description}</p>
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">能力介绍</h4>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{group.description}</p>
                 </section>
               )}
 
               <section>
-                <h4 className="text-sm font-medium">专家成员</h4>
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">专家成员</h4>
                 <div className="mt-2 flex flex-wrap gap-2">
                   <Badge variant="outline">{group.mainRole.name}</Badge>
                   {(group.subagents ?? []).map((agent) => (
@@ -69,7 +70,7 @@ export function ExpertDetailDialog({ group, open, onOpenChange, onSummon }: Expe
               </section>
 
               <section>
-                <h4 className="text-sm font-medium">依赖能力</h4>
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">依赖能力</h4>
                 <div className="mt-2 space-y-2 text-sm text-muted-foreground">
                   <div>Skills: {(group.skills ?? []).join('、') || '无'}</div>
                   <div className="flex items-center gap-1"><Plug size={14} />MCP: {(group.mcpServers ?? []).join('、') || '无'}</div>
@@ -78,7 +79,7 @@ export function ExpertDetailDialog({ group, open, onOpenChange, onSummon }: Expe
 
               {(group.samplePrompts ?? []).length > 0 && (
                 <section>
-                  <h4 className="text-sm font-medium">试试这样问</h4>
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">试试这样问</h4>
                   <div className="mt-2 space-y-2">
                     {group.samplePrompts?.map((prompt) => (
                       <div key={prompt} className="rounded-md bg-muted/60 px-3 py-2 text-sm text-muted-foreground">
@@ -91,7 +92,7 @@ export function ExpertDetailDialog({ group, open, onOpenChange, onSummon }: Expe
 
               {group.issues.length > 0 && (
                 <section>
-                  <h4 className="text-sm font-medium text-destructive">配置问题</h4>
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-destructive">配置问题</h4>
                   <div className="mt-2 space-y-2">
                     {group.issues.map((issue, index) => (
                       <div key={`${issue.message}-${index}`} className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -101,9 +102,11 @@ export function ExpertDetailDialog({ group, open, onOpenChange, onSummon }: Expe
                   </div>
                 </section>
               )}
+              </div>
             </div>
 
-            <DialogFooter>
+            <div className="shrink-0 border-t border-border/60 px-5 py-4">
+              <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => onOpenChange(false)}>关闭</Button>
               {onSummon && (
                 <Button
@@ -115,10 +118,11 @@ export function ExpertDetailDialog({ group, open, onOpenChange, onSummon }: Expe
                     : `召唤${group.name}`}
                 </Button>
               )}
-            </DialogFooter>
-          </>
+              </div>
+            </div>
+          </div>
         )}
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   )
 }

@@ -48,9 +48,12 @@ import { ImportSkillDialog } from './ImportSkillDialog'
 import { SkillMarketPanel } from './SkillMarketPanel'
 import {
   DEFAULT_CONNECTOR_DEFINITIONS,
+  getDefaultConnectorServerNames,
   type DefaultConnectorDefinition,
   type DefaultConnectorId,
 } from './default-connectors'
+
+const DEFAULT_CONNECTOR_SERVER_NAMES = getDefaultConnectorServerNames()
 
 interface AgentSkillsViewProps {
   initialTab?: CapabilityTab
@@ -155,14 +158,22 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
   const serverEntries = React.useMemo(() => {
     return Object.entries(data.mcpConfig.servers ?? {})
       .filter(([name]) => name !== 'memos-cloud')
+      .filter(([name]) => !DEFAULT_CONNECTOR_SERVER_NAMES.has(name))
       .filter(([name]) => !q || name.toLowerCase().includes(q))
   }, [data.mcpConfig, q])
 
   // 不含搜索过滤的 MCP 总数（标签计数与空态判断用）
   const mcpCount = React.useMemo(
-    () => Object.keys(data.mcpConfig.servers ?? {}).filter((n) => n !== 'memos-cloud').length + DEFAULT_CONNECTOR_DEFINITIONS.length,
+    () => Object.keys(data.mcpConfig.servers ?? {}).filter((n) => n !== 'memos-cloud' && !DEFAULT_CONNECTOR_SERVER_NAMES.has(n)).length + DEFAULT_CONNECTOR_DEFINITIONS.length,
     [data.mcpConfig],
   )
+  const defaultConnectorServers = React.useMemo(() => {
+    return Object.fromEntries(
+      DEFAULT_CONNECTOR_DEFINITIONS
+        .filter((connector) => connector.serverName)
+        .map((connector) => [connector.id, data.mcpConfig.servers[connector.serverName as string]]),
+    ) as Partial<Record<DefaultConnectorId, McpServerEntry>>
+  }, [data.mcpConfig.servers])
   const capabilityTabs = React.useMemo(
     () => getCapabilityTabs({ experts: expertGroups.length, skills: data.skills.length, connectors: mcpCount }),
     [data.skills.length, expertGroups.length, mcpCount],
@@ -438,6 +449,7 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
                 onRequestDelete={setPendingDeleteMcpName}
                 onAdd={() => { setEditingMcp(null); setMcpSheetOpen(true) }}
                 onOpenDefaultConnector={setActiveDefaultConnector}
+                defaultConnectorServers={defaultConnectorServers}
               />
             )}
           </div>
@@ -567,6 +579,7 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
       <HuataiEmailConnectorDialog
         open={activeDefaultConnector === 'personal-email'}
         workspaceSlug={data.workspaceSlug}
+        server={defaultConnectorServers['personal-email'] ?? null}
         onOpenChange={(open) => setActiveDefaultConnector(open ? 'personal-email' : null)}
         onSaved={() => {
           setActiveDefaultConnector(null)
@@ -813,6 +826,7 @@ interface McpTabProps {
   entries: Array<[string, McpServerEntry]>
   total: number
   query: string
+  defaultConnectorServers: Partial<Record<DefaultConnectorId, McpServerEntry>>
   onOpen: (name: string, entry: McpServerEntry) => void
   onToggle: (name: string, enabled: boolean) => void
   onRequestDelete: (name: string) => void
@@ -820,7 +834,7 @@ interface McpTabProps {
   onOpenDefaultConnector: (id: DefaultConnectorId) => void
 }
 
-function McpTab({ entries, total, query, onOpen, onToggle, onRequestDelete, onAdd, onOpenDefaultConnector }: McpTabProps): React.ReactElement {
+function McpTab({ entries, total, query, defaultConnectorServers, onOpen, onToggle, onRequestDelete, onAdd, onOpenDefaultConnector }: McpTabProps): React.ReactElement {
   const defaultConnectors = React.useMemo(() => {
     if (!query) return DEFAULT_CONNECTOR_DEFINITIONS
     return DEFAULT_CONNECTOR_DEFINITIONS.filter((connector) =>
@@ -859,6 +873,7 @@ function McpTab({ entries, total, query, onOpen, onToggle, onRequestDelete, onAd
         <DefaultConnectorCard
           key={connector.id}
           connector={connector}
+          server={defaultConnectorServers[connector.id] ?? null}
           onOpen={() => onOpenDefaultConnector(connector.id)}
         />
       ))}
@@ -878,13 +893,16 @@ function McpTab({ entries, total, query, onOpen, onToggle, onRequestDelete, onAd
 
 function DefaultConnectorCard({
   connector,
+  server,
   onOpen,
 }: {
   connector: DefaultConnectorDefinition
+  server: McpServerEntry | null
   onOpen: () => void
 }): React.ReactElement {
   const isEmail = connector.id === 'personal-email'
   const isComingSoon = connector.status === 'coming-soon'
+  const isInitialized = Boolean(server)
   return (
     <button
       type="button"
@@ -908,10 +926,12 @@ function DefaultConnectorCard({
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-medium text-foreground">{connector.name}</span>
             <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-              {isComingSoon ? '敬请期待' : '默认'}
+              {isComingSoon ? '敬请期待' : isInitialized ? '已初始化' : '默认'}
             </span>
           </div>
-          <div className="mt-0.5 text-xs text-muted-foreground">{connector.category}</div>
+          <div className="mt-0.5 truncate text-xs text-muted-foreground">
+            {server?.env?.MCP_EMAIL_SERVER_EMAIL_ADDRESS ?? connector.category}
+          </div>
         </div>
         <ArrowRight
           size={16}
@@ -921,7 +941,9 @@ function DefaultConnectorCard({
           )}
         />
       </div>
-      <p className="line-clamp-3 text-[12px] leading-relaxed text-muted-foreground">{connector.description}</p>
+      <p className="line-clamp-3 text-[12px] leading-relaxed text-muted-foreground">
+        {isInitialized && server ? `MCP: ${connector.serverName ?? '默认'} · ${server.type === 'stdio' ? server.command : server.url}` : connector.description}
+      </p>
     </button>
   )
 }
@@ -929,27 +951,35 @@ function DefaultConnectorCard({
 function HuataiEmailConnectorDialog({
   open,
   workspaceSlug,
+  server,
   onOpenChange,
   onSaved,
 }: {
   open: boolean
   workspaceSlug: string
+  server: McpServerEntry | null
   onOpenChange: (open: boolean) => void
   onSaved: () => void
 }): React.ReactElement {
   const [emailAddress, setEmailAddress] = React.useState('')
   const [password, setPassword] = React.useState('')
   const [saving, setSaving] = React.useState(false)
+  const [editing, setEditing] = React.useState(false)
   const [initSteps, setInitSteps] = React.useState<DefaultConnectorInitStep[]>([])
+  const isInitialized = Boolean(server)
+  const currentEmail = server?.env?.MCP_EMAIL_SERVER_EMAIL_ADDRESS ?? ''
 
   React.useEffect(() => {
     if (!open) {
       setEmailAddress('')
       setPassword('')
       setSaving(false)
+      setEditing(false)
       setInitSteps([])
+      return
     }
-  }, [open])
+    setEmailAddress(currentEmail)
+  }, [currentEmail, open])
 
   const canSave = emailAddress.trim().length > 0 && password.trim().length > 0
 
@@ -975,6 +1005,7 @@ function HuataiEmailConnectorDialog({
         return
       }
       toast.success('华泰邮箱连接器已初始化')
+      setEditing(false)
       onSaved()
     } catch (error) {
       console.error('[连接器] 初始化华泰邮箱失败:', error)
@@ -1002,6 +1033,34 @@ function HuataiEmailConnectorDialog({
           </div>
         </div>
 
+        {isInitialized && !editing && server && (
+          <div className="mt-6 space-y-3 rounded-xl bg-muted/45 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-medium text-foreground">当前 MCP 配置</div>
+                <div className="mt-1 text-xs text-muted-foreground">已挂载为 <span className="font-mono text-foreground/70">email</span>，不会在连接器列表中重复展示。</div>
+              </div>
+              <Button type="button" variant="outline" size="sm" onClick={() => setEditing(true)}>
+                重新绑定
+              </Button>
+            </div>
+            <div className="grid gap-2 text-xs text-muted-foreground">
+              <ConnectorDetailRow label="状态" value={server.enabled ? '已启用' : '未启用'} />
+              <ConnectorDetailRow label="类型" value={server.type} />
+              <ConnectorDetailRow label="命令" value={server.type === 'stdio' ? server.command : server.url} mono />
+              <ConnectorDetailRow label="账号" value={currentEmail || '未配置'} mono />
+              <ConnectorDetailRow label="IMAP" value={`${server.env?.MCP_EMAIL_SERVER_IMAP_HOST ?? '未配置'}:${server.env?.MCP_EMAIL_SERVER_IMAP_PORT ?? ''}`} mono />
+              {server.lastTestResult && (
+                <ConnectorDetailRow
+                  label="最近自检"
+                  value={`${server.lastTestResult.success ? '成功' : '失败'} · ${server.lastTestResult.message}`}
+                />
+              )}
+            </div>
+          </div>
+        )}
+
+        {(!isInitialized || editing) && (
         <div className="mt-6 space-y-4">
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">邮箱账号 *</label>
@@ -1024,6 +1083,7 @@ function HuataiEmailConnectorDialog({
             <p className="text-xs text-muted-foreground">密码只保存在本地 MCP 配置中，不会上传到云端。</p>
           </div>
         </div>
+        )}
 
         {initSteps.length > 0 && (
           <div className="mt-5 space-y-2 rounded-xl bg-muted/45 p-3">
@@ -1045,17 +1105,28 @@ function HuataiEmailConnectorDialog({
           </div>
         )}
 
-        <Button
-          type="button"
-          size="lg"
-          className="mt-4 h-11 rounded-full"
-          disabled={!canSave || saving}
-          onClick={() => void handleSave()}
-        >
-          {saving ? '保存中...' : '完成连接'}
-        </Button>
+        {(!isInitialized || editing) && (
+          <Button
+            type="button"
+            size="lg"
+            className="mt-4 h-11 rounded-full"
+            disabled={!canSave || saving}
+            onClick={() => void handleSave()}
+          >
+            {saving ? '保存中...' : isInitialized ? '保存并覆盖配置' : '完成连接'}
+          </Button>
+        )}
       </DialogContent>
     </Dialog>
+  )
+}
+
+function ConnectorDetailRow({ label, value, mono = false }: { label: string; value: string | undefined; mono?: boolean }): React.ReactElement {
+  return (
+    <div className="flex items-start justify-between gap-3 rounded-lg bg-background/70 px-3 py-2">
+      <span className="shrink-0 text-muted-foreground">{label}</span>
+      <span className={cn('min-w-0 break-all text-right text-foreground/80', mono && 'font-mono')}>{value || '未配置'}</span>
+    </div>
   )
 }
 

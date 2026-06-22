@@ -132,6 +132,18 @@ describe('华泰 SkillHub 服务', () => {
     expect(detail.readme).toContain('逐章节确认模式')
   })
 
+  test('SkillHub 市场索引返回分页信息，不要求前端全量拉取', async () => {
+    process.env.WORKMATE_SKILLHUB_MOCK = '1'
+    const { fetchHtSkillHubIndexPage } = await import('./skillhub-service.ts')
+
+    const page = await fetchHtSkillHubIndexPage(undefined, 1, undefined, undefined, 2)
+
+    expect(page.page).toBe(1)
+    expect(page.pageSize).toBe(2)
+    expect(page.items).toHaveLength(2)
+    expect(page.hasMore).toBe(true)
+  })
+
   test('打包环境缺少 NODE_ENV 时不启用 SkillHub mock', async () => {
     const previousNodeEnv = process.env.NODE_ENV
     electronAppIsPackaged = true

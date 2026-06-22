@@ -8,6 +8,7 @@ export interface DefaultConnectorDefinition {
   description: string
   category: string
   status: 'available' | 'coming-soon'
+  serverName?: string
 }
 
 export interface HuataiEmailInput {
@@ -22,6 +23,7 @@ export const DEFAULT_CONNECTOR_DEFINITIONS: readonly DefaultConnectorDefinition[
     category: '邮件服务',
     description: '绑定华泰邮箱后，Agent 可读取邮件主题、发件人和正文内容，辅助整理邮件与提炼信息。',
     status: 'available',
+    serverName: 'email',
   },
   {
     id: 'feishu-cli',
@@ -38,6 +40,10 @@ export const DEFAULT_CONNECTOR_DEFINITIONS: readonly DefaultConnectorDefinition[
     status: 'coming-soon',
   },
 ]
+
+export function getDefaultConnectorServerNames(): Set<string> {
+  return new Set(DEFAULT_CONNECTOR_DEFINITIONS.map((connector) => connector.serverName).filter((serverName): serverName is string => Boolean(serverName)))
+}
 
 export function buildHuataiEmailMcpEntry(input: HuataiEmailInput): McpServerEntry {
   const emailAddress = input.emailAddress.trim()

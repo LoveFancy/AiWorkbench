@@ -15,6 +15,7 @@ import { execSync } from 'child_process'
 import { existsSync } from 'fs'
 import { app } from 'electron'
 import type { ShellEnvResult } from '@proma/shared'
+import { decodeCommandOutput } from './windows-command-output'
 
 /**
  * Windows PATH 分隔符
@@ -33,14 +34,14 @@ export function readRegistryValue(key: string, valueName: string): string | null
     const output = execSync(
       `reg query "${key}" /v "${valueName}"`,
       {
-        encoding: 'utf-8',
         timeout: 5000,
         stdio: ['pipe', 'pipe', 'pipe'],
       },
     )
 
+    const text = decodeCommandOutput(output)
     const escaped = valueName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const match = output.match(new RegExp(`${escaped}\\s+REG_\\w+\\s+(.+)`, 'i'))
+    const match = text.match(new RegExp(`${escaped}\\s+REG_\\w+\\s+(.+)`, 'i'))
     return match?.[1]?.trim() || null
   } catch {
     return null

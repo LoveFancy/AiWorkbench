@@ -64,6 +64,7 @@ import type {
   SkillMeta,
   WorkspaceCapabilities,
   HtSkillHubSkill,
+  HtSkillHubSkillPage,
   HtSkillHubInstallResult,
   FileEntry,
   CreateFileEntryInput,
@@ -114,6 +115,7 @@ import type {
   DetachedPreviewWindowInput,
   RevertFileInput,
   FileAccessOptions,
+  FilePreviewReadResult,
   ResolvedFileUrl,
   HtmlPreviewResult,
   AgentPluginInfo,
@@ -369,6 +371,7 @@ function normalizeFileAccessOptions(value?: FileAccessOptions | string[]): FileA
   return {
     sessionId: typeof value.sessionId === 'string' ? value.sessionId : undefined,
     workspaceSlug: typeof value.workspaceSlug === 'string' ? value.workspaceSlug : undefined,
+    allowTempPreviewPath: value.allowTempPreviewPath === true,
     candidateBasePaths: Array.isArray(value.candidateBasePaths)
       ? value.candidateBasePaths.filter((p): p is string => typeof p === 'string' && p.length > 0)
       : undefined,
@@ -384,6 +387,21 @@ function ensurePathAllowed(filePath: string, options?: FileAccessOptions): boole
   if (isPathAllowed(filePath, options)) return true
   console.warn('[IPC] 拒绝越界路径:', filePath)
   return false
+}
+
+function isTempPreviewPathAllowed(filePath: string, options?: FileAccessOptions): boolean {
+  if (options?.allowTempPreviewPath !== true) return false
+  let resolved: string
+  try {
+    resolved = realpathSync(resolve(filePath))
+  } catch {
+    return false
+  }
+  return isUnderRoot(resolved, tmpdir())
+}
+
+function isPathAllowedForExternalOpen(filePath: string, options?: FileAccessOptions): boolean {
+  return isPathAllowed(filePath, options) || isTempPreviewPathAllowed(filePath, options)
 }
 
 /**
@@ -976,7 +994,7 @@ export function registerIpcHandlers(): void {
       const { resolve } = await import('node:path')
       const absPath = resolve(filePath)
       const options = normalizeFileAccessOptions(access)
-      if (!isPathAllowed(absPath, options)) {
+      if (!isPathAllowedForExternalOpen(absPath, options)) {
         console.warn('[IPC] shell:system-open-file 拒绝越界路径:', absPath)
         return
       }
@@ -2217,9 +2235,9 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(
     AGENT_IPC_CHANNELS.GET_HT_SKILLHUB_SKILLS,
-    async (_, workspaceSlug: string, page?: number, keyword?: string, category?: string): Promise<HtSkillHubSkill[]> => {
-      const { fetchHtSkillHubIndex } = await import('./lib/skillhub-service')
-      return fetchHtSkillHubIndex(workspaceSlug, page, keyword, category)
+    async (_, workspaceSlug: string, page?: number, keyword?: string, category?: string, pageSize?: number): Promise<HtSkillHubSkillPage> => {
+      const { fetchHtSkillHubIndexPage } = await import('./lib/skillhub-service')
+      return fetchHtSkillHubIndexPage(workspaceSlug, page, keyword, category, pageSize)
     }
   )
 
@@ -3214,14 +3232,14 @@ export function registerIpcHandlers(): void {
   // 解析文件路径并读取内容（供内联预览使用）
   ipcMain.handle(
     'file:resolve-and-read',
-    async (_, filePath: string, access?: FileAccessOptions | string[]): Promise<{ resolvedPath: string; content: string } | null> => {
+    async (_, filePath: string, access?: FileAccessOptions | string[]): Promise<FilePreviewReadResult> => {
       const { resolveAndReadFile, resolveFilePath } = await import('./lib/file-preview-service')
       const options = normalizeFileAccessOptions(access)
       const allowedBasePaths = getAllowedCandidateBasePaths(options)
       const resolved = resolveFilePath(filePath, allowedBasePaths)
       if (!resolved || !isPathAllowed(resolved, options)) {
         console.warn('[IPC] file:resolve-and-read 拒绝越界路径:', resolved ?? filePath)
-        return null
+        return { status: 'unauthorized', resolvedPath: resolved ?? '', content: '' }
       }
       const result = resolveAndReadFile(resolved)
       return result
@@ -3561,7 +3579,7 @@ export function registerIpcHandlers(): void {
       const { resolve } = await import('node:path')
       const safePath = resolve(filePath)
       const options = normalizeFileAccessOptions(access)
-      if (!isPathAllowed(safePath, options)) {
+      if (!isPathAllowedForExternalOpen(safePath, options)) {
         console.warn('[IPC] show-attached-in-folder 拒绝越界路径:', safePath)
         return
       }
