@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { fetchUserModels, getModels, getApiKey } from '../models/model-service'
+import { fetchUserModels, getModels, getApiKey } from './model-service'
 
 export const PLATFORM_MODELS_IPC_CHANNELS = {
   FETCH: 'platform-models:fetch',

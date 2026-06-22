@@ -149,7 +149,7 @@ export async function resolveAutoModeConfig(): Promise<AutoModeConfig> {
 
   // 平台模型
   try {
-    const { getPlatformChannel } = await import('../../models/model-service')
+    const { getPlatformChannel } = await import('../../platform-models/model-service')
     const platformCh = getPlatformChannel()
     if (platformCh) {
       for (const m of platformCh.models) {

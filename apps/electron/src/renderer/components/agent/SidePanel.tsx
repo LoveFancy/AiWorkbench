@@ -1317,10 +1317,10 @@ function AttachedFilesSection({ attachedFiles, onDetach, onAddToChat, onFilePrev
                     <MoreHorizontal className="size-3.5" />
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-40 z-[9999] min-w-0 p-0.5">
+                <DropdownMenuContent align="start" className="w-48 z-[9999] min-w-0 p-1.5">
                   {onAddToChat && (
                     <DropdownMenuItem
-                      className="text-xs py-1 [&>svg]:size-3.5"
+                      className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
                       onSelect={() => onAddToChat(entry)}
                     >
                       <MessageSquarePlus />
@@ -1328,7 +1328,7 @@ function AttachedFilesSection({ attachedFiles, onDetach, onAddToChat, onFilePrev
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuItem
-                    className="text-xs py-1 [&>svg]:size-3.5"
+                    className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
                     onSelect={() => window.electronAPI.showAttachedInFolder(filePath, { sessionId, candidateBasePaths: allowedPaths }).catch(console.error)}
                   >
                     <FolderSearch />
@@ -1336,7 +1336,7 @@ function AttachedFilesSection({ attachedFiles, onDetach, onAddToChat, onFilePrev
                   </DropdownMenuItem>
                   {onFilePreview && (
                     <DropdownMenuItem
-                      className="text-xs py-1 [&>svg]:size-3.5"
+                      className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
                       onSelect={() => onFilePreview(filePath)}
                     >
                       <ExternalLink />
@@ -1344,7 +1344,7 @@ function AttachedFilesSection({ attachedFiles, onDetach, onAddToChat, onFilePrev
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuItem
-                    className="text-xs py-1 text-destructive focus:text-destructive [&>svg]:size-3.5"
+                    className="text-[13px] py-2 gap-3 rounded-md text-destructive focus:text-destructive [&>svg]:size-4"
                     onSelect={() => onDetach(filePath)}
                   >
                     <X />
@@ -2073,10 +2073,10 @@ function AttachedDirItem({ entry, depth, selectedPaths, onSelect, refreshVersion
                 <MoreHorizontal className="size-3.5" />
               </button>
             </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-40 z-[9999] min-w-0 p-0.5">
+              <DropdownMenuContent align="start" className="w-48 z-[9999] min-w-0 p-1.5">
                 {onAddToChat && !entry.isDirectory && (
                   <DropdownMenuItem
-                    className="text-xs py-1 [&>svg]:size-3.5"
+                    className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
                     onSelect={() => onAddToChat({ ...entry, path: currentPath, name: currentName })}
                   >
                     <MessageSquarePlus />
@@ -2084,7 +2084,7 @@ function AttachedDirItem({ entry, depth, selectedPaths, onSelect, refreshVersion
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem
-                  className="text-xs py-1 [&>svg]:size-3.5"
+                  className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
                   onSelect={() => window.electronAPI.showAttachedInFolder(currentPath, { sessionId, candidateBasePaths: allowedPaths }).catch(console.error)}
                 >
                   <FolderSearch />
@@ -2092,7 +2092,7 @@ function AttachedDirItem({ entry, depth, selectedPaths, onSelect, refreshVersion
                 </DropdownMenuItem>
                 {!entry.isDirectory && onFilePreview && (
                   <DropdownMenuItem
-                    className="text-xs py-1 [&>svg]:size-3.5"
+                    className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
                     onSelect={() => onFilePreview(currentPath)}
                   >
                     <ExternalLink />
@@ -2100,14 +2100,14 @@ function AttachedDirItem({ entry, depth, selectedPaths, onSelect, refreshVersion
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem
-                  className="text-xs py-1 [&>svg]:size-3.5"
+                  className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
                   onSelect={startRename}
                 >
                   <Pencil />
                   重命名
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  className="text-xs py-1 [&>svg]:size-3.5"
+                  className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
                   onSelect={handleMove}
                 >
                   <FolderInput />

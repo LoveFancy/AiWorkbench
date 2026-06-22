@@ -1175,25 +1175,25 @@ function FileTreeItem({
       {onCreateEntry && menuSelectedCount === 1 && entry.isDirectory && (
         <>
           <ContextMenuItem
-            className="text-xs py-1 [&>svg]:size-3.5"
+            className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
             onSelect={() => onCreateEntry(entry.path, 'file')}
           >
             <FilePlus />
             新建文件
           </ContextMenuItem>
           <ContextMenuItem
-            className="text-xs py-1 [&>svg]:size-3.5"
+            className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
             onSelect={() => onCreateEntry(entry.path, 'directory')}
           >
             <FolderPlus />
             新建文件夹
           </ContextMenuItem>
-          <ContextMenuSeparator className="my-0.5" />
+          <ContextMenuSeparator className="my-1" />
         </>
       )}
       {onAddToChat && !entry.isDirectory && menuSelectedCount === 1 && (
         <ContextMenuItem
-          className="text-xs py-1 [&>svg]:size-3.5"
+          className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
           onSelect={() => onAddToChat(entry)}
         >
           <MessageSquarePlus />
@@ -1202,7 +1202,7 @@ function FileTreeItem({
       )}
       {onFilePreview && !entry.isDirectory && menuSelectedCount === 1 && isHtmlPreviewPath(entry.path) && (
         <ContextMenuItem
-          className="text-xs py-1 [&>svg]:size-3.5"
+          className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
           onSelect={() => onFilePreview?.(entry.path)}
         >
           <MonitorPlay />
@@ -1211,7 +1211,7 @@ function FileTreeItem({
       )}
       {menuSelectedCount === 1 && (
         <ContextMenuItem
-          className="text-xs py-1 [&>svg]:size-3.5"
+          className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
           onSelect={() => onShowInFolder(entry)}
         >
           <FolderSearch />
@@ -1222,11 +1222,11 @@ function FileTreeItem({
         <DefaultAppMenuItem
           filePath={entry.path}
           menuKind="context"
-          className="text-xs py-1 [&>svg]:size-3.5"
+          className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
         />
       )}
       <ContextMenuItem
-        className="text-xs py-1 [&>svg]:size-3.5"
+        className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
         disabled={moving}
         onSelect={() => { void onMove(entry) }}
       >
@@ -1235,7 +1235,7 @@ function FileTreeItem({
       </ContextMenuItem>
       {transferTarget && (
         <ContextMenuItem
-          className="text-xs py-1 [&>svg]:size-3.5"
+          className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
           disabled={moving || !transferTarget.targetDir}
           onSelect={() => {
             if (!transferTarget.targetDir) return
@@ -1248,16 +1248,16 @@ function FileTreeItem({
       )}
       {menuSelectedCount === 1 && (
         <ContextMenuItem
-          className="text-xs py-1 [&>svg]:size-3.5"
+          className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
           onSelect={() => onStartRename(entry)}
         >
           <Pencil />
           重命名
         </ContextMenuItem>
       )}
-      <ContextMenuSeparator className="my-0.5" />
+      <ContextMenuSeparator className="my-1" />
       <ContextMenuItem
-        className="text-xs py-1 [&>svg]:size-3.5 text-destructive"
+        className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4 text-destructive"
         onSelect={() => onDelete(entry)}
       >
         <Trash2 />
@@ -1362,7 +1362,7 @@ function FileTreeItem({
           </div>
         </ContextMenuTrigger>
         {showMenu && (
-          <ContextMenuContent className="w-40 z-[9999] min-w-0 p-0.5">
+          <ContextMenuContent className="w-48 z-[9999] min-w-0 p-1.5">
             {menuItems()}
           </ContextMenuContent>
         )}
