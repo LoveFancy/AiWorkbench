@@ -53,6 +53,8 @@ import type {
   AgentGenerateTitleInput,
   AgentSaveFilesInput,
   AgentSaveWorkspaceFilesInput,
+  AgentCopyExternalPathsInput,
+  AgentCopyExternalPathsResult,
   AgentSavedFile,
   AgentAttachDirectoryInput,
   AgentAttachFileInput,
@@ -828,6 +830,9 @@ export interface ElectronAPI {
 
   /** 保存文件到工作区文件目录 */
   saveFilesToWorkspaceFiles: (input: AgentSaveWorkspaceFilesInput) => Promise<AgentSavedFile[]>
+
+  /** 复制外部文件/文件夹到托管目录（支持文件夹递归） */
+  copyExternalPathsIntoManagedDir: (input: AgentCopyExternalPathsInput) => Promise<AgentCopyExternalPathsResult>
 
   /** 获取工作区文件目录路径 */
   getWorkspaceFilesPath: (workspaceSlug: string) => Promise<string>
@@ -2164,6 +2169,10 @@ const electronAPI: ElectronAPI = {
 
   saveFilesToWorkspaceFiles: (input: AgentSaveWorkspaceFilesInput) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.SAVE_FILES_TO_WORKSPACE, input)
+  },
+
+  copyExternalPathsIntoManagedDir: (input: AgentCopyExternalPathsInput) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.COPY_EXTERNAL_PATHS, input)
   },
 
   getWorkspaceFilesPath: (workspaceSlug: string) => {

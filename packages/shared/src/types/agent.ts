@@ -1463,6 +1463,27 @@ export interface AgentSaveWorkspaceFilesInput {
   targetDir?: string
 }
 
+/** 复制外部文件/文件夹到托管目录的输入 */
+export interface AgentCopyExternalPathsInput {
+  workspaceSlug: string
+  /** 目标作用域：会话文件 或 工作区文件 */
+  scope: 'session' | 'workspace'
+  /** scope 为 'session' 时必填 */
+  sessionId?: string
+  /** 目标目录绝对路径；必须位于对应托管根目录内 */
+  targetDir: string
+  /** 源文件/文件夹的绝对磁盘路径 */
+  sourcePaths: string[]
+}
+
+/** 复制外部文件/文件夹的结果 */
+export interface AgentCopyExternalPathsResult {
+  /** 成功复制的项目（name 为相对目标目录的名称） */
+  copied: Array<{ name: string; targetPath: string }>
+  /** 被跳过的项目及原因 */
+  skipped: Array<{ path: string; reason: string }>
+}
+
 /** 附加/分离目录的输入参数 */
 export interface AgentAttachDirectoryInput {
   /** 会话 ID */
@@ -1852,6 +1873,8 @@ export const AGENT_IPC_CHANNELS = {
   SAVE_FILES_TO_SESSION: 'agent:save-files-to-session',
   /** 保存文件到工作区文件目录 */
   SAVE_FILES_TO_WORKSPACE: 'agent:save-files-to-workspace',
+  /** 复制外部文件/文件夹到托管目录（支持文件夹递归） */
+  COPY_EXTERNAL_PATHS: 'agent:copy-external-paths',
   /** 获取工作区文件目录路径 */
   GET_WORKSPACE_FILES_PATH: 'agent:get-workspace-files-path',
   /** 打开文件夹选择对话框 */

@@ -168,8 +168,8 @@ interface FileBrowserProps {
   }
   /** 文件通过拖拽或菜单移动成功后通知外部刷新其它文件树 */
   onFilesMoved?: () => void
-  /** 外部文件拖到具体目录行时保存到该目录 */
-  onExternalFilesDropToDirectory?: (files: File[], targetDir: string) => Promise<void> | void
+  /** 外部文件拖到具体目录行时保存到该目录（paths 为同步解析出的磁盘路径，unresolvedFiles 为无法解析路径的文件） */
+  onExternalFilesDropToDirectory?: (payload: { paths: string[]; unresolvedFiles: File[] }, targetDir: string) => Promise<void> | void
   /** 目录行成为拖拽目标时通知外层清理其它 drop target 状态 */
   onDirectoryDropTargetActive?: () => void
 }
@@ -734,7 +734,7 @@ interface FileTreeItemProps {
   }
   onTransfer: (entry: FileEntry, targetDir: string) => Promise<void>
   onMovePathsToDirectory: (paths: string[], targetDir: string) => Promise<void>
-  onExternalFilesDropToDirectory?: (files: File[], targetDir: string) => Promise<void> | void
+  onExternalFilesDropToDirectory?: (payload: { paths: string[]; unresolvedFiles: File[] }, targetDir: string) => Promise<void> | void
   onDirectoryDropTargetActive?: () => void
 }
 
@@ -1039,10 +1039,21 @@ function FileTreeItem({
       clearAutoCollapseTimer()
       setIsDropTarget(false)
       autoExpandedByDragRef.current = false
-      const files = Array.from(event.dataTransfer.files)
+      // 必须在 drop 事件同步执行期内调用 getPathForFile：
+      // 经过 await 后拖拽事件结束，File 的底层 native 资源被释放，
+      // 此时再调用 webUtils.getPathForFile 会访问失效句柄导致 renderer 进程崩溃。
+      const droppedFiles = Array.from(event.dataTransfer.files)
+      const paths: string[] = []
+      const unresolvedFiles: File[] = []
+      for (const file of droppedFiles) {
+        let path: string | null = null
+        try { path = window.electronAPI.getPathForFile(file) } catch { path = null }
+        if (path) paths.push(path)
+        else unresolvedFiles.push(file)
+      }
       void (async () => {
         await expandDir()
-        await onExternalFilesDropToDirectory(files, entry.path)
+        await onExternalFilesDropToDirectory({ paths, unresolvedFiles }, entry.path)
         try {
           const items = await window.electronAPI.listDirectory(entry.path)
           setChildren(items)

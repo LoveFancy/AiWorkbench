@@ -49,6 +49,8 @@ import type {
   AgentGenerateTitleInput,
   AgentSaveFilesInput,
   AgentSaveWorkspaceFilesInput,
+  AgentCopyExternalPathsInput,
+  AgentCopyExternalPathsResult,
   AgentSavedFile,
   AgentAttachDirectoryInput,
   AgentAttachFileInput,
@@ -212,7 +214,7 @@ import {
   searchAgentSessionMessages,
   searchAgentSessionReferences,
 } from './lib/agent-session-manager'
-import { runAgent, stopAgent, generateAgentTitle, saveFilesToAgentSession, saveFilesToWorkspaceFiles, isAgentSessionActive, queueAgentMessage, updateAgentPermissionMode, rewindAgentSession } from './lib/agent-service'
+import { runAgent, stopAgent, generateAgentTitle, saveFilesToAgentSession, saveFilesToWorkspaceFiles, copyExternalPathsIntoManagedDir, isAgentSessionActive, queueAgentMessage, updateAgentPermissionMode, rewindAgentSession } from './lib/agent-service'
 import { permissionService } from './lib/agent-permission-service'
 import { askUserService } from './lib/agent-ask-user-service'
 import { exitPlanService } from './lib/agent-exit-plan-service'
@@ -2867,6 +2869,14 @@ export function registerIpcHandlers(): void {
     AGENT_IPC_CHANNELS.SAVE_FILES_TO_WORKSPACE,
     async (_, input: AgentSaveWorkspaceFilesInput): Promise<AgentSavedFile[]> => {
       return saveFilesToWorkspaceFiles(input)
+    }
+  )
+
+  // 复制外部文件/文件夹到托管目录（支持文件夹递归）
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.COPY_EXTERNAL_PATHS,
+    async (_, input: AgentCopyExternalPathsInput): Promise<AgentCopyExternalPathsResult> => {
+      return copyExternalPathsIntoManagedDir(input)
     }
   )
 
