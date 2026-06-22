@@ -265,6 +265,24 @@ export function DiffTabContent({ filePath, dirPath, sessionId, gitRoot, previewO
     () => formatManagedPath(filePath, { basePaths }),
     [basePaths, filePath],
   )
+
+  /** 在系统文件管理器中显示该文件所在路径 */
+  const handleShowInFolder = React.useCallback(() => {
+    const candidateBasePaths: string[] = []
+    const slash = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'))
+    if (slash > 0) candidateBasePaths.push(filePath.slice(0, slash))
+    if (dirPath) candidateBasePaths.push(dirPath)
+    if (gitRoot) candidateBasePaths.push(gitRoot)
+    for (const basePath of basePaths ?? []) {
+      if (basePath && !candidateBasePaths.includes(basePath)) candidateBasePaths.push(basePath)
+    }
+    window.electronAPI
+      .showAttachedInFolder(filePath, { sessionId, candidateBasePaths, allowTempPreviewPath: true })
+      .catch((error) => {
+        console.error('[DiffTabContent] 在文件管理器中显示失败:', error)
+        toast.error('无法在文件管理器中显示该文件')
+      })
+  }, [filePath, dirPath, gitRoot, basePaths, sessionId])
   const [imageDataUrl, setImageDataUrl] = React.useState('')
   // 默认 25%：预览面板空间有限，先展示缩略全貌，用户可手动放大查看细节
   const [imageZoom, setImageZoom] = React.useState(0.25)
@@ -1093,6 +1111,15 @@ export function DiffTabContent({ filePath, dirPath, sessionId, gitRoot, previewO
           title="刷新文件内容（检测外部编辑器的修改）"
         >
           <RefreshCw className="size-3.5" />
+        </button>
+
+        <button
+          type="button"
+          onClick={handleShowInFolder}
+          className="p-1 rounded hover:bg-foreground/[0.06] text-foreground/40 hover:text-foreground/60 shrink-0"
+          title="在文件管理器中显示"
+        >
+          <FolderOpen className="size-3.5" />
         </button>
 
         {isMarkdown && !markdownEditing && (
