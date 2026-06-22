@@ -615,6 +615,7 @@ function ChatViewInner({ conversationId }: ChatViewProps): React.ReactElement {
           {/* 底部：输入框 */}
           <ChatInput
             conversationId={conversationId}
+            messages={messages}
             streaming={isStreaming}
             pendingAttachments={pendingAttachments}
             onSetPendingAttachments={setPendingAttachments}
