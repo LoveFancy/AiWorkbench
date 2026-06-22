@@ -2073,6 +2073,95 @@ export function registerIpcHandlers(): void {
     }
   )
 
+  // 获取飞书 CLI 授权状态
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.GET_FEISHU_CLI_AUTH_STATUS,
+    async (): Promise<import('@proma/shared').FeishuCliAuthState> => {
+      const { getFeishuCliAuthStatus } = await import('./lib/feishu-device-auth')
+      return getFeishuCliAuthStatus()
+    }
+  )
+
+  // 注册飞书 CLI 应用（SDK registerApp）
+  let activeFeishuCliRegisterAbort: AbortController | null = null
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.REGISTER_FEISHU_APP,
+    async (event): Promise<{ appId: string; appSecret: string }> => {
+      if (activeFeishuCliRegisterAbort) {
+        activeFeishuCliRegisterAbort.abort()
+      }
+      const abort = new AbortController()
+      activeFeishuCliRegisterAbort = abort
+
+      try {
+        const lark = await import('@larksuiteoapi/node-sdk')
+        const result = await lark.registerApp({
+          source: 'proma-cli',
+          signal: abort.signal,
+          onQRCodeReady: (info) => {
+            if (event.sender.isDestroyed()) return
+            event.sender.send(AGENT_IPC_CHANNELS.FEISHU_CLI_REGISTER_QRCODE, {
+              url: info.url,
+              expireIn: info.expireIn,
+            })
+          },
+          onStatusChange: (info) => {
+            if (event.sender.isDestroyed()) return
+            event.sender.send(AGENT_IPC_CHANNELS.FEISHU_CLI_REGISTER_STATUS, {
+              status: info.status,
+              interval: info.interval,
+            })
+          },
+        })
+        return {
+          appId: result.client_id,
+          appSecret: result.client_secret,
+        }
+      } finally {
+        if (activeFeishuCliRegisterAbort === abort) {
+          activeFeishuCliRegisterAbort = null
+        }
+      }
+    }
+  )
+
+  // 取消飞书 CLI 应用注册
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.CANCEL_FEISHU_CLI_REGISTER,
+    async (): Promise<void> => {
+      activeFeishuCliRegisterAbort?.abort()
+      activeFeishuCliRegisterAbort = null
+    }
+  )
+
+  // 发起设备授权
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.START_FEISHU_DEVICE_AUTH,
+    async (_, appId: string, appSecret: string): Promise<import('@proma/shared').FeishuCliDeviceCodeData> => {
+      const { startFeishuDeviceAuth } = await import('./lib/feishu-device-auth')
+      return startFeishuDeviceAuth(appId, appSecret)
+    }
+  )
+
+  // 轮询设备授权 Token（含两阶段认证）
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.POLL_FEISHU_DEVICE_AUTH,
+    async (_, appId: string, appSecret: string, deviceCode: string, phase: number): Promise<import('@proma/shared').FeishuCliPollResult> => {
+      const { pollFeishuDeviceAuth } = await import('./lib/feishu-device-auth')
+      return pollFeishuDeviceAuth(appId, appSecret, deviceCode, phase)
+    }
+  )
+
+  // 解绑飞书 CLI
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.UNBIND_FEISHU_CLI,
+    async (): Promise<boolean> => {
+      const { unbindFeishuCli } = await import('./lib/feishu-device-auth')
+      return unbindFeishuCli()
+    }
+  )
+
   // 获取工作区连接器配置
   ipcMain.handle(
     AGENT_IPC_CHANNELS.GET_CONNECTORS_CONFIG,

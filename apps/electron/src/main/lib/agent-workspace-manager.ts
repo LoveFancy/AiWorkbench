@@ -38,7 +38,6 @@ interface AgentWorkspacesIndex {
 
 const INDEX_VERSION = 3
 
-const DEFAULT_INACTIVE_SKILL_SLUGS = new Set(['feishu-lark-setup'])
 const DEFAULT_SKILLS_TO_ENABLE_ON_MIGRATION = ['huatai-email-setup', 'install-python'] as const
 const REMOVED_DEFAULT_SKILL_SLUGS = ['proma-coach'] as const
 
@@ -53,8 +52,8 @@ interface WorkspaceSkillDirs {
   inactiveDir?: string
 }
 
-export function getDefaultSkillInitialEnabled(skillSlug: string): boolean {
-  return !DEFAULT_INACTIVE_SKILL_SLUGS.has(skillSlug)
+export function getDefaultSkillInitialEnabled(_skillSlug: string): boolean {
+  return true
 }
 
 /** 读取工作区索引文件，自动执行版本迁移 */
@@ -260,6 +259,7 @@ export function createAgentWorkspace(name: string): AgentWorkspace {
   getAgentWorkspacePath(slug)
   ensurePluginManifest(slug, name)
   copyDefaultSkills(slug)
+  syncDefaultConnectorsToWorkspace(slug)
 
   index.workspaces.unshift(workspace)
   writeIndex(index)
@@ -688,7 +688,6 @@ export function migrateMcpJsonToConnectors(workspaceSlug: string): void {
  * 时机：用户打开/切换工作区时调用。
  * 1. 将 default-connectors/ 复制到工作区 connectors/（缺失的）
  * 2. 更新 connectors.json（添加新预置连接器，默认 disabled）
- * 3. 清理旧 Skill（如 skills-inactive/feishu-lark-setup）
  */
 export function syncDefaultConnectorsToWorkspace(workspaceSlug: string): void {
   const defaultDir = getDefaultConnectorsDir()
@@ -733,18 +732,6 @@ export function syncDefaultConnectorsToWorkspace(workspaceSlug: string): void {
   if (changed) {
     saveWorkspaceConnectorsConfig(workspaceSlug, config)
   }
-
-  // 3. 清理旧 Skill（统一由 connectors/ 管理）
-  const inactiveDir = getInactiveSkillsDir(workspaceSlug)
-  const oldLarkSkill = join(inactiveDir, 'feishu-lark-setup')
-  if (existsSync(oldLarkSkill)) {
-    try {
-      rmSync(oldLarkSkill, { recursive: true, force: true })
-      console.log(`[Agent 工作区] 已清理旧 Skill: feishu-lark-setup`)
-    } catch (err) {
-      console.warn('[Agent 工作区] 清理旧 Skill 失败:', err)
-    }
-  }
 }
 
 /**
@@ -766,7 +753,7 @@ function getDefaultConnectorEntries(): Record<string, ConnectorEntry> {
       source: 'preset',
       displayName: '飞书 CLI',
       description: '飞书命令行工具（日历/消息/文档/云盘等）',
-      skillDir: 'skill',
+      skillDirs: ['skill'],
     },
   }
 }

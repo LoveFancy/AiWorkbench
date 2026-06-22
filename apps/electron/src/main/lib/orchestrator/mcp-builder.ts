@@ -5,7 +5,6 @@
  * - 记忆工具（memos-cloud）
  * - 生图工具（Nano Banana）
  * - 联网搜索工具（WebSearch）
- * - 内置 http快速开发工具
  */
 
 import { getWorkspaceMcpConfig, getWorkspaceConnectorsConfig } from '../agent-workspace-manager'

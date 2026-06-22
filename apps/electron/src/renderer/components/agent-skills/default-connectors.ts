@@ -1,4 +1,5 @@
-import type { McpServerEntry } from '@proma/shared'
+export { buildHuataiEmailMcpEntry } from '@proma/shared'
+export type { HuataiEmailInput } from '@proma/shared'
 
 export type DefaultConnectorId = 'personal-email' | 'feishu-cli' | 'hiagent-taiwei'
 
@@ -9,11 +10,6 @@ export interface DefaultConnectorDefinition {
   category: string
   status: 'available' | 'coming-soon'
   serverName?: string
-}
-
-export interface HuataiEmailInput {
-  emailAddress: string
-  password: string
 }
 
 export const DEFAULT_CONNECTOR_DEFINITIONS: readonly DefaultConnectorDefinition[] = [
@@ -29,8 +25,8 @@ export const DEFAULT_CONNECTOR_DEFINITIONS: readonly DefaultConnectorDefinition[
     id: 'feishu-cli',
     name: '飞书 CLI',
     category: '办公协同',
-    description: '飞书消息、云文档、日历和任务等办公协同能力正在准备中。',
-    status: 'coming-soon',
+    description: '通过飞书开放平台接入，让 Agent 使用飞书消息、云文档、日历和任务等办公协同能力。',
+    status: 'available',
   },
   {
     id: 'hiagent-taiwei',
@@ -43,24 +39,4 @@ export const DEFAULT_CONNECTOR_DEFINITIONS: readonly DefaultConnectorDefinition[
 
 export function getDefaultConnectorServerNames(): Set<string> {
   return new Set(DEFAULT_CONNECTOR_DEFINITIONS.map((connector) => connector.serverName).filter((serverName): serverName is string => Boolean(serverName)))
-}
-
-export function buildHuataiEmailMcpEntry(input: HuataiEmailInput): McpServerEntry {
-  const emailAddress = input.emailAddress.trim()
-  return {
-    type: 'stdio',
-    command: 'mcp-email-server',
-    args: ['stdio'],
-    env: {
-      MCP_EMAIL_SERVER_ACCOUNT_NAME: 'htsc',
-      MCP_EMAIL_SERVER_EMAIL_ADDRESS: emailAddress,
-      MCP_EMAIL_SERVER_PASSWORD: input.password.trim(),
-      MCP_EMAIL_SERVER_FULL_NAME: emailAddress,
-      MCP_EMAIL_SERVER_USER_NAME: emailAddress,
-      MCP_EMAIL_SERVER_IMAP_HOST: 'htemail.htsc.com.cn',
-      MCP_EMAIL_SERVER_IMAP_PORT: '993',
-      MCP_EMAIL_SERVER_IMAP_SSL: 'true',
-    },
-    enabled: true,
-  }
 }

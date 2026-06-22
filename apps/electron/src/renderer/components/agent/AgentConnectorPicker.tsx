@@ -1,9 +1,11 @@
 import * as React from 'react'
 import { ChevronDown, Plug, Settings } from 'lucide-react'
-import type { McpServerEntry, WorkspaceMcpConfig } from '@proma/shared'
+import { toast } from 'sonner'
+import type { McpServerEntry, WorkspaceMcpConfig, ConnectorsConfig } from '@proma/shared'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import {
   DEFAULT_CONNECTOR_DEFINITIONS,
@@ -17,9 +19,12 @@ export interface ConnectorPickerItem {
   target: string
   entry?: McpServerEntry
   defaultConnector?: DefaultConnectorDefinition
-  selectable: boolean
-  selectedName?: string
-  statusLabel: string
+  /** 是否已配置认证凭据 */
+  isConfigured: boolean
+  /** 当前 enabled 状态（仅 isConfigured 时有意义） */
+  enabled: boolean
+  isComingSoon: boolean
+  isFeishu: boolean
 }
 
 function getConnectorTarget(entry: McpServerEntry): string {
@@ -27,22 +32,42 @@ function getConnectorTarget(entry: McpServerEntry): string {
   return entry.url ?? ''
 }
 
-export function getAvailableConnectorsForPicker(config: WorkspaceMcpConfig, query = ''): ConnectorPickerItem[] {
+export function getAvailableConnectorsForPicker(
+  config: WorkspaceMcpConfig,
+  connectorsConfig: ConnectorsConfig | null,
+  feishuConnected: boolean,
+  query = '',
+): ConnectorPickerItem[] {
   const normalized = query.trim().toLowerCase()
   const defaultServerNames = getDefaultConnectorServerNames()
+
   const defaultItems: ConnectorPickerItem[] = DEFAULT_CONNECTOR_DEFINITIONS.map((connector) => {
-    const entry = connector.serverName ? config.servers?.[connector.serverName] : undefined
-    const initialized = Boolean(entry)
-    const selectable = Boolean(entry?.enabled && connector.serverName)
+    const isFeishu = connector.id === 'feishu-cli'
+    const isEmail = connector.id === 'personal-email'
+    const isComingSoon = connector.status === 'coming-soon'
+
+    const emailEntry = connector.serverName ? config.servers?.[connector.serverName] : undefined
+    const entry = isFeishu ? undefined : emailEntry
+
+    const isConfigured = isComingSoon ? false
+      : isEmail ? Boolean(emailEntry)
+      : isFeishu ? feishuConnected
+      : false
+
+    const enabled = isConfigured
+      ? (connectorsConfig?.connectors?.[connector.id]?.enabled ?? false)
+      : false
+
     return {
       name: connector.serverName ?? connector.id,
       displayName: connector.name,
       target: entry ? getConnectorTarget(entry) : connector.category,
       entry,
       defaultConnector: connector,
-      selectable,
-      selectedName: connector.serverName,
-      statusLabel: selectable ? '连接' : connector.status === 'coming-soon' ? '敬请期待' : initialized ? '未启用' : '配置',
+      isConfigured,
+      enabled,
+      isComingSoon,
+      isFeishu,
     }
   })
 
@@ -53,9 +78,10 @@ export function getAvailableConnectorsForPicker(config: WorkspaceMcpConfig, quer
       displayName: name,
       entry,
       target: getConnectorTarget(entry),
-      selectable: true,
-      selectedName: name,
-      statusLabel: '连接',
+      isConfigured: true,
+      enabled: entry.enabled ?? false,
+      isComingSoon: false,
+      isFeishu: false,
     }))
 
   return [...defaultItems, ...customItems]
@@ -91,55 +117,95 @@ export function AgentConnectorPicker({
 }: AgentConnectorPickerProps): React.ReactElement {
   const [open, setOpen] = React.useState(false)
   const [config, setConfig] = React.useState<WorkspaceMcpConfig>({ servers: {} })
+  const [connectorsConfig, setConnectorsConfig] = React.useState<ConnectorsConfig | null>(null)
+  const [feishuConnected, setFeishuConnected] = React.useState(false)
 
   React.useEffect(() => {
     if (!workspaceSlug) {
       setConfig({ servers: {} })
+      setConnectorsConfig(null)
+      setFeishuConnected(false)
       return
     }
 
     let cancelled = false
     window.electronAPI.getWorkspaceMcpConfig(workspaceSlug)
-      .then((nextConfig) => {
-        if (!cancelled) setConfig(nextConfig)
-      })
-      .catch((error) => {
-        console.error('[连接器] 加载 MCP 配置失败:', error)
-        if (!cancelled) setConfig({ servers: {} })
-      })
+      .then((nextConfig) => { if (!cancelled) setConfig(nextConfig) })
+      .catch((error) => { console.error('[连接器] 加载 MCP 配置失败:', error); if (!cancelled) setConfig({ servers: {} }) })
 
-    return () => {
-      cancelled = true
-    }
+    window.electronAPI.getConnectorsConfig(workspaceSlug)
+      .then((next) => { if (!cancelled) setConnectorsConfig(next) })
+      .catch(() => { if (!cancelled) setConnectorsConfig(null) })
+
+    window.electronAPI.getFeishuCliAuthStatus()
+      .then((s) => { if (!cancelled) setFeishuConnected(s.status === 'connected') })
+      .catch(() => { if (!cancelled) setFeishuConnected(false) })
+
+    return () => { cancelled = true }
   }, [workspaceSlug, capabilitiesVersion])
 
-  const connectors = React.useMemo(() => getAvailableConnectorsForPicker(config), [config])
-  const selectedSet = React.useMemo(() => new Set(selectedNames), [selectedNames])
-
-  const toggleConnector = React.useCallback((name: string): void => {
-    const next = selectedSet.has(name)
-      ? selectedNames.filter((item) => item !== name)
-      : [...selectedNames, name]
-    onSelectedNamesChange(next)
-  }, [onSelectedNamesChange, selectedNames, selectedSet])
+  const connectors = React.useMemo(
+    () => getAvailableConnectorsForPicker(config, connectorsConfig, feishuConnected),
+    [config, connectorsConfig, feishuConnected],
+  )
 
   const handleOpenConnectorManager = React.useCallback((): void => {
     setOpen(false)
     onOpenConnectorManager()
   }, [onOpenConnectorManager])
 
-  const handleConnectorClick = React.useCallback((connector: ConnectorPickerItem): void => {
-    if (!connector.selectable || !connector.selectedName) {
-      handleOpenConnectorManager()
-      return
-    }
-    toggleConnector(connector.selectedName)
-  }, [handleOpenConnectorManager, toggleConnector])
+  /** 切换连接器 enabled 状态 */
+  const handleToggleEnabled = React.useCallback(async (connector: ConnectorPickerItem, enabled: boolean): Promise<void> => {
+    if (!workspaceSlug || !connector.defaultConnector) return
 
-  const selectedCount = selectedNames.length
+    // 即时 UI 更新
+    const connectorId = connector.defaultConnector.id
+    setConnectorsConfig((prev) => {
+      if (!prev) return prev
+      const c = prev.connectors[connectorId]
+      if (!c) return prev
+      return { ...prev, connectors: { ...prev.connectors, [connectorId]: { ...c, enabled } } }
+    })
+
+    // 同步更新 selectedNames
+    if (enabled) {
+      if (!selectedNames.includes(connectorId)) {
+        onSelectedNamesChange([...selectedNames, connectorId])
+      }
+    } else {
+      onSelectedNamesChange(selectedNames.filter((n) => n !== connectorId))
+    }
+
+    try {
+      const cc = await window.electronAPI.getConnectorsConfig(workspaceSlug)
+      const c = cc.connectors[connectorId]
+      if (c) {
+        await window.electronAPI.saveConnectorsConfig(workspaceSlug, {
+          ...cc,
+          connectors: { ...cc.connectors, [connectorId]: { ...c, enabled } },
+        })
+      }
+    } catch (e) {
+      toast.error('切换连接器状态失败', { description: (e as Error).message })
+    }
+  }, [workspaceSlug, selectedNames, onSelectedNamesChange])
+
+  const handleOpenChange = React.useCallback((nextOpen: boolean) => {
+    setOpen(nextOpen)
+    if (nextOpen && workspaceSlug) {
+      window.electronAPI.getConnectorsConfig(workspaceSlug)
+        .then((next) => { setConnectorsConfig(next) })
+        .catch(() => {})
+      window.electronAPI.getFeishuCliAuthStatus()
+        .then((s) => { setFeishuConnected(s.status === 'connected') })
+        .catch(() => {})
+    }
+  }, [workspaceSlug])
+
+  const anyEnabled = connectors.some((c) => c.isConfigured && c.enabled)
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <Tooltip>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
@@ -148,13 +214,13 @@ export function AgentConnectorPicker({
               variant="ghost"
               className={cn(
                 'h-8 shrink-0 rounded-full px-2.5 text-foreground/70 hover:text-foreground',
-                (open || selectedCount > 0) && 'bg-muted text-foreground',
+                (open || anyEnabled) && 'bg-muted text-foreground',
               )}
               disabled={disabled || !workspaceSlug}
             >
-              <Plug className={cn('size-4', selectedCount > 0 && 'text-blue-500')} />
+              <Plug className={cn('size-4', anyEnabled && 'text-blue-500')} />
               <span className="text-[13px] font-medium">
-                {selectedCount > 0 ? `连应用 ${selectedCount}` : '连应用'}
+                {anyEnabled ? `连应用 ${connectors.filter((c) => c.isConfigured && c.enabled).length}` : '连应用'}
               </span>
               <ChevronDown className="size-3.5" />
             </Button>
@@ -174,32 +240,14 @@ export function AgentConnectorPicker({
       >
         <div className="max-h-[420px] overflow-y-auto py-1.5 scrollbar-thin">
           {connectors.length > 0 ? (
-            connectors.map((connector) => {
-              const checked = connector.selectedName ? selectedSet.has(connector.selectedName) : false
-              return (
-                <button
-                  key={connector.name}
-                  type="button"
-                  className={cn(
-                    'flex h-12 w-full items-center gap-3 px-3 text-left transition-colors hover:bg-accent',
-                    !connector.selectable && 'text-muted-foreground',
-                  )}
-                  onClick={() => handleConnectorClick(connector)}
-                >
-                  <ConnectorAppIcon name={connector.displayName} selected={checked} unavailable={!connector.selectable} />
-                  <span className="min-w-0 flex-1 truncate text-[15px] font-medium text-foreground">
-                    {connector.displayName}
-                  </span>
-                  <span className={cn(
-                    'shrink-0 text-[14px] font-medium',
-                    checked ? 'text-blue-600 dark:text-blue-300' : 'text-foreground/70',
-                  )}
-                  >
-                    {checked ? '已选择' : connector.statusLabel}
-                  </span>
-                </button>
-              )
-            })
+            connectors.map((connector) => (
+              <ConnectorRow
+                key={connector.name}
+                connector={connector}
+                onOpenManager={handleOpenConnectorManager}
+                onToggleEnabled={handleToggleEnabled}
+              />
+            ))
           ) : (
             <div className="px-4 py-8 text-center text-sm text-muted-foreground">
               没有可用连接器
@@ -220,20 +268,72 @@ export function AgentConnectorPicker({
   )
 }
 
-function ConnectorAppIcon({ name, selected, unavailable }: { name: string; selected: boolean; unavailable: boolean }): React.ReactElement {
-  const initial = (name.trim()[0] ?? 'C').toUpperCase()
+// ===== 单行连接器组件 =====
+
+interface ConnectorRowProps {
+  connector: ConnectorPickerItem
+  onOpenManager: () => void
+  onToggleEnabled: (connector: ConnectorPickerItem, enabled: boolean) => void
+}
+
+function ConnectorRow({
+  connector,
+  onOpenManager,
+  onToggleEnabled,
+}: ConnectorRowProps): React.ReactElement {
+  return (
+    <div
+      className={cn(
+        'group flex h-12 w-full items-center gap-3 px-3 transition-colors',
+        connector.isComingSoon && 'pointer-events-none opacity-40',
+      )}
+    >
+      <ConnectorAppIcon name={connector.displayName} enabled={connector.enabled} />
+
+      <span className="min-w-0 flex-1 truncate text-[15px] font-medium text-foreground">
+        {connector.displayName}
+      </span>
+
+      {connector.isComingSoon ? (
+        <span className="shrink-0 text-[14px] text-muted-foreground">敬请期待</span>
+      ) : connector.isConfigured ? (
+        <div className="flex shrink-0 items-center gap-2">
+          {/* Switch 切换开关：绿色 = 启用，灰色 = 未启用 */}
+          <Switch
+            checked={connector.enabled}
+            onCheckedChange={(checked) => onToggleEnabled(connector, checked)}
+            className={cn(
+              'data-[state=checked]:bg-emerald-500',
+            )}
+          />
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onOpenManager()
+          }}
+          className="shrink-0 rounded-md bg-primary px-3 py-1 text-[13px] font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+        >
+          连接
+        </button>
+      )}
+    </div>
+  )
+}
+
+function ConnectorAppIcon({ name, enabled }: { name: string; enabled: boolean }): React.ReactElement {
   return (
     <span className={cn(
       'flex size-8 shrink-0 items-center justify-center rounded-lg text-sm font-semibold',
-      selected
-        ? 'bg-blue-500/12 text-blue-600 dark:text-blue-300'
-        : unavailable
-          ? 'bg-muted/70 text-muted-foreground/60'
-          : 'bg-muted text-muted-foreground',
+      enabled
+        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300'
+        : 'bg-muted text-muted-foreground',
     )}
     >
       <Plug className="size-4" />
-      <span className="sr-only">{initial}</span>
+      <span className="sr-only">{name}</span>
     </span>
   )
 }

@@ -31,9 +31,10 @@ const config: WorkspaceMcpConfig = {
 }
 
 describe('AgentConnectorPicker helpers', () => {
-  test('只展示已启用的第三方连接器', () => {
+  test('只展示已配置或可用的连接器', () => {
     expect(getAvailableConnectorsForPicker(config).map((item) => item.displayName)).toEqual(['华泰邮箱', '飞书 CLI', 'HiAgent 泰为', 'docs'])
-    expect(getAvailableConnectorsForPicker(config).filter((item) => item.selectable).map((item) => item.name)).toEqual(['email', 'docs'])
+    // 华泰邮箱因为有 email entry 所以 isConfigured=true；docs 也是自定义连接器，isConfigured=true
+    expect(getAvailableConnectorsForPicker(config).filter((item) => item.isConfigured).map((item) => item.name)).toEqual(['email', 'docs'])
   })
 
   test('按名称和目标地址搜索连接器', () => {
@@ -42,10 +43,10 @@ describe('AgentConnectorPicker helpers', () => {
     expect(getAvailableConnectorsForPicker(config, 'example').map((item) => item.name)).toEqual(['docs'])
   })
 
-  test('连接器入口包含更多连接器和选择状态文案', () => {
+  test('连接器入口包含更多连接器和状态文案', () => {
     expect(source).toContain('更多连接器')
     expect(source).toContain('连接应用')
     expect(source).toContain('连应用')
-    expect(source).toContain('已选择')
+    expect(source).toContain('连接')
   })
 })

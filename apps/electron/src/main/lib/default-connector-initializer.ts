@@ -6,6 +6,7 @@ import type {
   InitializeDefaultConnectorResult,
   McpServerEntry,
 } from '@proma/shared'
+import { buildHuataiEmailMcpEntry } from '@proma/shared'
 import { getWorkspaceMcpConfig, saveWorkspaceMcpConfig } from './agent-workspace-manager'
 import { validateMcpServer } from './mcp-validator'
 
@@ -65,26 +66,6 @@ function defaultRunCommand(command: string, args: string[]): Promise<CommandResu
       })
     })
   })
-}
-
-function buildHuataiEmailMcpEntry(input: Required<Pick<InitializeDefaultConnectorInput, 'emailAddress' | 'password'>>): McpServerEntry {
-  const emailAddress = input.emailAddress.trim()
-  return {
-    type: 'stdio',
-    command: 'mcp-email-server',
-    args: ['stdio'],
-    env: {
-      MCP_EMAIL_SERVER_ACCOUNT_NAME: 'htsc',
-      MCP_EMAIL_SERVER_EMAIL_ADDRESS: emailAddress,
-      MCP_EMAIL_SERVER_PASSWORD: input.password.trim(),
-      MCP_EMAIL_SERVER_FULL_NAME: emailAddress,
-      MCP_EMAIL_SERVER_USER_NAME: emailAddress,
-      MCP_EMAIL_SERVER_IMAP_HOST: 'htemail.htsc.com.cn',
-      MCP_EMAIL_SERVER_IMAP_PORT: '993',
-      MCP_EMAIL_SERVER_IMAP_SSL: 'true',
-    },
-    enabled: true,
-  }
 }
 
 async function findFirstAvailable(commands: string[], commandExists: (command: string) => Promise<boolean>): Promise<string | null> {
@@ -149,8 +130,8 @@ export async function initializeDefaultConnector(
   }
 
   const entry = buildHuataiEmailMcpEntry({
-    emailAddress: input.emailAddress,
-    password: input.password,
+    emailAddress: input.emailAddress!,
+    password: input.password!,
   })
   const config = getWorkspaceMcpConfig(workspaceSlug)
   saveWorkspaceMcpConfig(workspaceSlug, {

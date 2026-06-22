@@ -962,11 +962,26 @@ export class AgentOrchestrator {
           ]
           return plugins.length > 0 ? { plugins } : {}
         })(),
-        // 连接器 CLI Skill 扫描：传入 connectors/ 目录让 SDK 扫描其中的 skill/
+        // 连接器 CLI Skill 扫描：传入 connectors/ 基目录 + 每个 CLI 连接器的 skillDir
         ...(() => {
           const { getConnectorsDir } = require('./config-paths')
           const connectorsDir = workspaceSlug ? getConnectorsDir(workspaceSlug) : ''
-          return connectorsDir ? { additionalSkillDirs: [connectorsDir] } : {}
+          if (!connectorsDir) return {}
+
+          const skillDirs: string[] = [connectorsDir]
+          // 为每个 CLI 类型的启用连接器拼接 connectors/{name}/{skillDir}
+          try {
+            const config = workspaceSlug ? getWorkspaceConnectorsConfig(workspaceSlug) : { version: '1.0', connectors: {} }
+            for (const [name, connector] of Object.entries(config.connectors)) {
+              if (!connector.enabled) continue
+              if (connector.type !== 'cli' || !connector.skillDirs) continue
+              for (const d of connector.skillDirs) {
+                skillDirs.push(join(connectorsDir, name, d))
+              }
+            }
+          } catch { /* connectors/ 目录可能尚未同步 */ }
+
+          return { additionalSkillDirs: skillDirs }
         })(),
         // 合并附加目录：用户当次输入 + 会话级 + 工作区级（详见 collectAttachedDirectories）
         ...(() => {

@@ -418,21 +418,57 @@ bun add -d prosemirror-state
 
 ### 7. `bun run dev` 报 `Electron failed to install correctly`
 
-**原因**：问题 5 导致 workspace 链接失败后，`electron` 包的 postinstall 脚本没有执行，Electron 二进制文件未下载。
+**根本原因链**：
 
-**解决**：先修复问题 5，然后执行：
+```
+bun install 执行流程
+  └─ 尝试把 workspace 内部包（@proma/shared、@proma/electron）
+     链接到 apps/electron/node_modules/
+  └─ Bun 1.3.x 在 Windows 上创建符号链接不稳定
+  └─ 链接失败 → ENOENT: failed linking dependency/workspace
+  └─ Bun 判定安装异常，后续所有包的 postinstall 脚本被跳过
+  └─ electron 包的 install.js 根本没机会执行
+  └─ electron.exe 永远不会被下载
+```
+
+> **与网络/镜像无关**。postinstall 连跑都没跑，所以即使配置了 npmmirror 镜像也无效。
+
+**解决（手动绕过）**：
+
+1. 手动解压已缓存的 Electron ZIP：
+
+```powershell
+Expand-Archive -Path "$env:LOCALAPPDATA\electron\Cache\electron-v39.5.1-win32-x64.zip" `
+  -DestinationPath "d:\code\workmate\dev\AiWorkbench\node_modules\.bun\electron@39.5.1+3844822a191571ee\node_modules\electron\dist" `
+  -Force
+```
+
+> 版本号 `39.5.1+3844822a191571ee` 可能随 electron 版本变化。用 `Get-ChildItem node_modules\.bun -Directory -Filter "electron@*"` 查找实际目录名。
+
+2. 创建 `path.txt` 告诉 Electron 可执行文件名（**必须用 ASCII 编码**）：
+
+```powershell
+Set-Content -Path "node_modules\.bun\electron@39.5.1+3844822a191571ee\node_modules\electron\path.txt" `
+  -Value "electron.exe" -Encoding ASCII -NoNewline
+```
+
+> PowerShell 的 `echo` 默认输出 UTF-16，Node.js 读出来会是乱码，导致 `ERR_INVALID_ARG_VALUE: null bytes` 错误。必须用 `Set-Content -Encoding ASCII`。
+
+### 8. `bun install` 出现 `Slow filesystem detected` 或 workspace 链接失败（Windows）
+
+**原因**：`bun.lock` 在 macOS/Linux 上生成时，记录了与 Unix 符号链接适配的依赖解析方式。Windows 上的 Bun 解析同一份 lockfile 可能路径对不上，导致 workspace 包映射失败。
+
+> `bun.lock` 是依赖的精确快照。它锁定所有包的确切版本和嵌套依赖关系，确保团队所有人的 `bun install` 安装完全相同的依赖。跨平台时，platform-specific 的依赖（如 `@anthropic-ai/claude-agent-sdk-win32-x64` vs `darwin-arm64`）如果在 lockfile 中标记为另一个平台，Windows 端 Bun 可能跳过，造成链式缺失。
+
+**解决**：
 
 ```bash
 cd d:\code\workmate\dev\AiWorkbench
+rm -Force bun.lock
 bun install
 ```
 
-如果还不生效，删除 Electron 缓存后重装：
-
-```bash
-Remove-Item -Recurse -Force node_modules\.bun\electron@*
-bun install
-```
+> 这样会基于当前 Windows 平台重新生成 `bun.lock`。如果希望团队兼容，把新生成的 lockfile 提交到仓库。
 
 ---
 
