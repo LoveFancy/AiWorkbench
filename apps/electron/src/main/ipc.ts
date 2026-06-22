@@ -58,6 +58,8 @@ import type {
   GetTaskOutputResult,
   StopTaskInput,
   WorkspaceMcpConfig,
+  InitializeDefaultConnectorInput,
+  InitializeDefaultConnectorResult,
   AgentSlashCommand,
   SkillMeta,
   WorkspaceCapabilities,
@@ -2062,6 +2064,15 @@ export function registerIpcHandlers(): void {
     }
   )
 
+  // 初始化内置连接器
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.INITIALIZE_DEFAULT_CONNECTOR,
+    async (_, workspaceSlug: string, input: InitializeDefaultConnectorInput): Promise<InitializeDefaultConnectorResult> => {
+      const { initializeDefaultConnector } = await import('./lib/default-connector-initializer')
+      return initializeDefaultConnector(workspaceSlug, input)
+    }
+  )
+
   // 获取工作区连接器配置
   ipcMain.handle(
     AGENT_IPC_CHANNELS.GET_CONNECTORS_CONFIG,
@@ -2480,6 +2491,14 @@ export function registerIpcHandlers(): void {
     async (): Promise<FeaturedScene[]> => {
       const { fetchFeaturedScenes } = await import('./lib/expert-remote-service')
       return fetchFeaturedScenes()
+    }
+  )
+
+  ipcMain.handle(
+    EXPERT_IPC_CHANNELS.FETCH_CATEGORIES,
+    async (): Promise<string[]> => {
+      const { fetchServerExpertGroupCategories } = await import('./lib/expert-remote-service')
+      return fetchServerExpertGroupCategories()
     }
   )
 
@@ -3554,7 +3573,9 @@ export function registerIpcHandlers(): void {
       const safePath = resolve(filePath)
       const safeTarget = resolve(targetDir)
       const options = normalizeFileAccessOptions(access)
-      if (!isPathAllowed(safePath, options) || !isPathAllowed(safeTarget, options)) {
+      const workspacesRoot = resolve(getAgentWorkspacesDir())
+      const sourceAllowed = isPathAllowed(safePath, options) || safePath.startsWith(workspacesRoot)
+      if (!sourceAllowed || !isPathAllowed(safeTarget, options)) {
         throw new Error('访问路径不在允许范围内')
       }
       const newPath = join(safeTarget, basename(safePath))

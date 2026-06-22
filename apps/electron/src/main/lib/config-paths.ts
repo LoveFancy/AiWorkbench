@@ -27,6 +27,8 @@ import type { ConfigRootServiceOptions } from './config-root-service'
  */
 let _configDirName: string | undefined
 
+const REMOVED_DEFAULT_SKILL_SLUGS = ['proma-coach'] as const
+
 export function resolveDefaultConfigDirName(homeDir: string, preferredName: string, legacyName: string): string {
   const preferredDir = join(homeDir, preferredName)
   const legacyDir = join(homeDir, legacyName)
@@ -553,6 +555,15 @@ export function getFeaturedScenesCachePath(): string {
 }
 
 /**
+ * 获取专家团分类列表缓存路径
+ *
+ * @returns ~/.workmate/expert-group-categories-cache.json
+ */
+export function getExpertGroupCategoriesCachePath(): string {
+  return join(getConfigDir(), 'expert-group-categories-cache.json')
+}
+
+/**
  * 从 SKILL.md 的 YAML frontmatter 中解析 version 字段
  *
  * 无 version 字段时返回 '0.0.0'（确保旧 Skill 会被更新）。
@@ -652,6 +663,8 @@ export function seedDefaultSkills(): void {
   const userDir = getDefaultSkillsDir()
 
   try {
+    removeDeletedDefaultSkills(userDir)
+
     const entries = readdirSync(bundledDir, { withFileTypes: true })
 
     for (const entry of entries) {
@@ -686,6 +699,20 @@ export function seedDefaultSkills(): void {
     }
   } catch (err) {
     console.warn('[配置] 同步默认 Skills 失败:', err)
+  }
+}
+
+function removeDeletedDefaultSkills(defaultSkillsDir: string): void {
+  for (const slug of REMOVED_DEFAULT_SKILL_SLUGS) {
+    const target = join(defaultSkillsDir, slug)
+    if (!existsSync(target)) continue
+
+    try {
+      rmSync(target, { recursive: true, force: true })
+      console.log(`[配置] 已移除废弃默认 Skill: ${slug}`)
+    } catch (err) {
+      console.warn(`[配置] 移除废弃默认 Skill 失败 (${slug})，跳过:`, err)
+    }
   }
 }
 

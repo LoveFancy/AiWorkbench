@@ -35,6 +35,8 @@ export interface ToolbarItem {
 interface InputToolbarOverflowProps {
   /** 左侧按钮列表，按从左到右顺序，靠右的优先进溢出菜单 */
   items: ToolbarItem[]
+  /** 固定展示在列表尾部的数量，不参与折叠 */
+  pinnedEndCount?: number
   /** 右侧固定区（如发送 / 停止按钮），不参与折叠 */
   trailing?: React.ReactNode
   /** 按钮间距（px），与外部 gap-1.5 (0.375rem) 对应 */
@@ -46,10 +48,11 @@ interface InputToolbarOverflowProps {
 }
 
 const DEFAULT_GAP_PX = 6
-const DEFAULT_MORE_BUTTON_PX = 36
+const DEFAULT_MORE_BUTTON_PX = 32
 
 export function InputToolbarOverflow({
   items,
+  pinnedEndCount = 0,
   trailing,
   gapPx = DEFAULT_GAP_PX,
   moreButtonPx = DEFAULT_MORE_BUTTON_PX,
@@ -60,6 +63,9 @@ export function InputToolbarOverflow({
   const [containerWidth, setContainerWidth] = React.useState(0)
   const [itemWidths, setItemWidths] = React.useState<Record<string, number>>({})
   const [popoverOpen, setPopoverOpen] = React.useState(false)
+  const normalizedPinnedEndCount = Math.min(Math.max(pinnedEndCount, 0), items.length)
+  const foldableItems = normalizedPinnedEndCount > 0 ? items.slice(0, -normalizedPinnedEndCount) : items
+  const pinnedItems = normalizedPinnedEndCount > 0 ? items.slice(-normalizedPinnedEndCount) : []
 
   // 容器宽度监听
   React.useLayoutEffect(() => {
@@ -126,31 +132,37 @@ export function InputToolbarOverflow({
    * 缺失测量数据时返回 items.length，让所有 item 先显示再测量。
    */
   const visibleCount = React.useMemo(() => {
-    if (containerWidth === 0) return items.length
-    if (!items.every((it) => itemWidths[it.key] !== undefined)) return items.length
+    if (containerWidth === 0) return foldableItems.length
+    if (!items.every((it) => itemWidths[it.key] !== undefined)) return foldableItems.length
 
+    const pinnedWidth = pinnedItems.reduce((total, item, index) => {
+      const width = itemWidths[item.key] ?? 0
+      return total + width + (index > 0 ? gapPx : 0)
+    }, 0)
+    const pinnedGap = pinnedItems.length > 0 && foldableItems.length > 0 ? gapPx : 0
+    const availableWidth = Math.max(0, containerWidth - pinnedWidth - pinnedGap)
     let total = 0
-    for (let i = 0; i < items.length; i++) {
-      const w = itemWidths[items[i]!.key]!
+    for (let i = 0; i < foldableItems.length; i++) {
+      const w = itemWidths[foldableItems[i]!.key]!
       const next = total + w + (i > 0 ? gapPx : 0)
-      if (next > containerWidth) {
+      if (next > availableWidth) {
         const reserved = moreButtonPx + gapPx
         let fit = i
         let acc = total
-        while (fit > 0 && acc + reserved > containerWidth) {
+        while (fit > 0 && acc + reserved > availableWidth) {
           fit -= 1
-          const fitW = itemWidths[items[fit]!.key]!
+          const fitW = itemWidths[foldableItems[fit]!.key]!
           acc -= fitW + (fit > 0 ? gapPx : 0)
         }
         return Math.max(0, fit)
       }
       total = next
     }
-    return items.length
-  }, [containerWidth, itemWidths, items, gapPx, moreButtonPx])
+    return foldableItems.length
+  }, [containerWidth, itemWidths, items, foldableItems, pinnedItems, gapPx, moreButtonPx])
 
-  const visibleItems = items.slice(0, visibleCount)
-  const overflowItems = items.slice(visibleCount)
+  const visibleItems = foldableItems.slice(0, visibleCount)
+  const overflowItems = foldableItems.slice(visibleCount)
   const hasOverflow = overflowItems.length > 0
 
   const setItemRef = (key: string) => (el: HTMLDivElement | null): void => {
@@ -183,10 +195,11 @@ export function InputToolbarOverflow({
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="size-[36px] shrink-0 rounded-full text-foreground/60 hover:text-foreground"
+                    style={{ width: moreButtonPx, height: moreButtonPx }}
+                    className="shrink-0 rounded-full text-foreground/60 hover:text-foreground"
                     aria-label="更多工具"
                   >
-                    <MoreHorizontal className="size-5" />
+                    <MoreHorizontal className="size-4" />
                   </Button>
                 </PopoverTrigger>
               </TooltipTrigger>
@@ -210,6 +223,11 @@ export function InputToolbarOverflow({
             </PopoverContent>
           </Popover>
         )}
+        {pinnedItems.map((it) => (
+          <div key={it.key} ref={setItemRef(it.key)} className="shrink-0 flex items-center">
+            {it.node}
+          </div>
+        ))}
       </div>
       {trailing && <div className="flex items-center gap-1.5 shrink-0">{trailing}</div>}
     </div>

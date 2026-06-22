@@ -15,6 +15,7 @@
 import * as React from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { Loader2 } from 'lucide-react'
+import { RetryingNotice } from '@/components/ai-elements/retrying-notice'
 import { WelcomeEmptyState } from '@/components/welcome/WelcomeEmptyState'
 import { ChatMessageItem, formatMessageTime } from './ChatMessageItem'
 import type { InlineEditSubmitPayload } from './ChatMessageItem'
@@ -48,7 +49,8 @@ import { useConversationParallelMode } from '@/hooks/useConversationSettings'
 import { getModelLogo } from '@/lib/model-logo'
 import { userProfileAtom } from '@/atoms/user-profile'
 import { tabMinimapCacheAtom } from '@/atoms/tab-atoms'
-import type { ChatMessage, ChatToolActivity } from '@proma/shared'
+import type { ChatRetryingState } from '@/atoms/chat-atoms'
+import type { ChatMessage, ChatToolActivity, ChatRetryAttempt } from '@proma/shared'
 
 // ===== 滚动到顶部加载更多 =====
 
@@ -154,11 +156,42 @@ interface ChatMessagesProps {
   onDeleteDivider?: (messageId: string) => void
   /** 加载更多历史消息回调 */
   onLoadMore?: () => Promise<void>
+  /** Chat 重试状态 */
+  retrying?: ChatRetryingState | null
 }
 
 /** 空状态引导 — 使用 WelcomeEmptyState */
 function EmptyState(): React.ReactElement {
   return <WelcomeEmptyState />
+}
+
+/** Chat 重试提示（包装共享 RetryingNotice） */
+function ChatRetryingNotice({ retrying }: { retrying: ChatRetryingState }): React.ReactElement {
+  const lastAttempt = retrying.history[retrying.history.length - 1]
+
+  return (
+    <div className="mx-4">
+      <RetryingNotice<ChatRetryAttempt>
+        currentAttempt={retrying.currentAttempt}
+        maxAttempts={retrying.maxAttempts}
+        failed={retrying.failed}
+        delaySeconds={retrying.delaySeconds}
+        reason={retrying.reason}
+        lastAttemptTimestamp={lastAttempt?.timestamp ?? retrying.lastRetryStartedAt}
+        history={retrying.history}
+        renderHistoryItem={(attempt) => (
+          <div key={attempt.timestamp} className="text-xs text-amber-700 dark:text-amber-300 pl-6">
+            <span className="text-destructive mr-1">✗</span>
+            第 {attempt.attempt} 次
+            <span className="mx-1">·</span>
+            {new Date(attempt.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            <span className="mx-1">·</span>
+            <span className="text-amber-600 dark:text-amber-400">{attempt.errorMessage.slice(0, 100)}</span>
+          </div>
+        )}
+      />
+    </div>
+  )
 }
 
 export function ChatMessages({
@@ -181,6 +214,7 @@ export function ChatMessages({
   inlineEditingMessageId,
   onDeleteDivider,
   onLoadMore,
+  retrying,
 }: ChatMessagesProps): React.ReactElement {
   const userProfile = useAtomValue(userProfileAtom)
   const setMinimapCache = useSetAtom(tabMinimapCacheAtom)
@@ -396,6 +430,9 @@ export function ChatMessages({
                 )}
               </React.Fragment>
             ))}
+
+            {/* Chat 重试提示 */}
+            {retrying && <ChatRetryingNotice retrying={retrying} />}
 
             {/* 正在生成 / 停止后等待磁盘消息加载的临时 assistant 消息 */}
             {(streaming || smoothContent || smoothReasoning) && (

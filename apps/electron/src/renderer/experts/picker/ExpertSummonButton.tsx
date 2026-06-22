@@ -59,6 +59,7 @@ export function ExpertSummonButton({ variant = 'header', sessionId }: ExpertSumm
     [sessionId, sessions],
   )
   const displayName = getExpertSummonDisplayName(currentSession, groups)
+  const showComposerLabel = variant === 'composer' && displayName !== null
 
   React.useEffect(() => {
     if (currentSession?.expertGroupId && groups.length === 0) {
@@ -126,7 +127,10 @@ export function ExpertSummonButton({ variant = 'header', sessionId }: ExpertSumm
             className={cn(
               'titlebar-no-drag',
               variant === 'composer'
-                ? 'h-[36px] gap-2 rounded-full px-3 text-sm font-medium text-foreground hover:bg-muted'
+                ? cn(
+                    'h-8 rounded-full text-[13px] font-medium text-foreground hover:bg-muted',
+                    showComposerLabel ? 'gap-1.5 px-2' : 'w-8 px-0',
+                  )
                 : 'h-7 gap-1.5 px-2 text-xs',
             )}
             onClick={() => setOpen(true)}
@@ -136,8 +140,12 @@ export function ExpertSummonButton({ variant = 'header', sessionId }: ExpertSumm
                 <span className="flex size-6 items-center justify-center rounded-full bg-primary/10 text-primary">
                   <Sparkles className="size-3.5" />
                 </span>
-                <span className="max-w-[160px] truncate">{displayName}</span>
-                <ChevronDown className="size-4 text-muted-foreground" />
+                {showComposerLabel && (
+                  <>
+                    <span className="max-w-[112px] truncate">{displayName}</span>
+                    <ChevronDown className="size-3.5 text-muted-foreground" />
+                  </>
+                )}
               </>
             ) : (
               <>

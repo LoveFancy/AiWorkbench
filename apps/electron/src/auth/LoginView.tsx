@@ -93,7 +93,7 @@ export function LoginView({
 
         {/* Logo + 欢迎文案 */}
         <div className="text-center mb-4">
-          <h2 className="text-lg font-semibold mb-1">登录</h2>
+          <h2 className="text-lg font-semibold mb-1">登录 WorkMate</h2>
           <p className="text-xs text-muted-foreground">请输入 OA 工号和密码</p>
         </div>
 

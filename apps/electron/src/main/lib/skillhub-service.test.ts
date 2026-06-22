@@ -7,7 +7,14 @@ import type { HtSkillHubSkill } from './skillhub-service.ts'
 import { clearConfigRootOverride, resolveConfigDir } from './config-root-service.ts'
 import { getAgentWorkspacePath, getWorkspaceSkillsDir } from './config-paths.ts'
 
+let electronAppIsPackaged = false
+
 mock.module('electron', () => ({
+  app: {
+    get isPackaged() {
+      return electronAppIsPackaged
+    },
+  },
   safeStorage: {
     isEncryptionAvailable: () => false,
   },
@@ -48,6 +55,8 @@ function marketSkill(): HtSkillHubSkill {
 describe('华泰 SkillHub 服务', () => {
   afterEach(() => {
     clearConfigRootOverride()
+    delete process.env.WORKMATE_SKILLHUB_MOCK
+    electronAppIsPackaged = false
   })
 
   test('HtSkillHubSkill 类型结构正确', () => {
@@ -106,5 +115,35 @@ describe('华泰 SkillHub 服务', () => {
     expect(redacted.Authorization).toBe('[REDACTED]')
     expect(redacted.Cookie).toBe('[REDACTED]')
     expect(redacted['Content-Type']).toBe('application/json')
+  })
+
+  test('开发 mock 返回 SkillHub 市场数据并支持关键词过滤', async () => {
+    process.env.WORKMATE_SKILLHUB_MOCK = '1'
+    const { fetchSkillHubSkills, fetchSkillHubDetail } = await import('./skillhub-service.ts')
+
+    const all = await fetchSkillHubSkills()
+    expect(all.length).toBeGreaterThan(0)
+    expect(all.some((skill) => skill.skillName === 'prd-writer')).toBe(true)
+
+    const filtered = await fetchSkillHubSkills({ keyword: 'Drawio' })
+    expect(filtered.map((skill) => skill.skillName)).toEqual(['drawio-doc-exporter'])
+
+    const detail = await fetchSkillHubDetail('prd-writer')
+    expect(detail.readme).toContain('逐章节确认模式')
+  })
+
+  test('打包环境缺少 NODE_ENV 时不启用 SkillHub mock', async () => {
+    const previousNodeEnv = process.env.NODE_ENV
+    electronAppIsPackaged = true
+    delete process.env.NODE_ENV
+
+    try {
+      const { shouldUseMockSkillHub } = await import('./skillhub-auth-service.ts')
+
+      expect(shouldUseMockSkillHub()).toBe(false)
+    } finally {
+      if (previousNodeEnv === undefined) delete process.env.NODE_ENV
+      else process.env.NODE_ENV = previousNodeEnv
+    }
   })
 })

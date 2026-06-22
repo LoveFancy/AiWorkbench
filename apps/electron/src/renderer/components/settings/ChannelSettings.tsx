@@ -1,14 +1,12 @@
 /**
  * ChannelSettings - 渠道配置页
  *
- * 分为两个区块：
- * 1. 渠道管理 — 所有渠道列表 + 添加/编辑/删除（渠道同时用于 Chat 和 Agent）
- * 2. Agent 供应商 — 从已启用的 Anthropic 兼容渠道（Anthropic / DeepSeek / Kimi / MiniMax）中
- *    通过 Switch 开关启用多个 Agent 供应商
+ * 模型配置同时作为 Chat 和 Agent 的来源。Agent 可用模型由已启用的
+ * Anthropic 兼容渠道自动推导，不再维护独立的供应商开关。
  */
 
 import * as React from 'react'
-import { useAtom, useAtomValue, useSetAtom } from 'jotai'
+import { useAtom, useSetAtom } from 'jotai'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
@@ -18,9 +16,8 @@ import { getChannelLogo } from '@/lib/model-logo'
 import { agentChannelIdAtom, agentModelIdAtom, agentChannelIdsAtom } from '@/atoms/agent-atoms'
 import { channelsAtom, selectedModelAtom } from '@/atoms/chat-atoms'
 import { applySavedChannelSnapshot } from '@/lib/channel-sync'
-import { hasConfiguredApiKey, resolveAgentSelectedModel, resolveSelectedModel } from '@/lib/model-selection'
+import { getAgentAvailableChannelIds, hasConfiguredApiKey, resolveAgentSelectedModel, resolveSelectedModel } from '@/lib/model-selection'
 import { PlatformModelsSection } from '@/platform-models/renderer'
-import { platformModelsAtom, platformApiKeyAtom } from '@/platform-models/renderer'
 import { SettingsSection, SettingsCard, SettingsRow } from './primitives'
 import {
   AlertDialog,
@@ -44,16 +41,11 @@ export function ChannelSettings(): React.ReactElement {
   const [loading, setLoading] = React.useState(true)
   const [agentChannelId, setAgentChannelId] = useAtom(agentChannelIdAtom)
   const [agentModelId, setAgentModelId] = useAtom(agentModelIdAtom)
-  const [agentChannelIds, setAgentChannelIds] = useAtom(agentChannelIdsAtom)
+  const setAgentChannelIds = useSetAtom(agentChannelIdsAtom)
   const setGlobalChannels = useSetAtom(channelsAtom)
   const [selectedModel, setSelectedModel] = useAtom(selectedModelAtom)
   const [deleteTarget, setDeleteTarget] = React.useState<Channel | null>(null)
-  const agentChannelIdsRef = React.useRef(agentChannelIds)
   const agentChannelIdRef = React.useRef(agentChannelId)
-
-  React.useEffect(() => {
-    agentChannelIdsRef.current = agentChannelIds
-  }, [agentChannelIds])
 
   React.useEffect(() => {
     agentChannelIdRef.current = agentChannelId
@@ -61,12 +53,14 @@ export function ChannelSettings(): React.ReactElement {
 
   const syncDefaultAgentModel = React.useCallback(async (
     list: Channel[],
-    nextAgentChannelIds = agentChannelIdsRef.current,
   ): Promise<void> => {
+    const nextAgentChannelIds = getAgentAvailableChannelIds(list)
     const current = agentChannelIdRef.current && agentModelId
       ? { channelId: agentChannelIdRef.current, modelId: agentModelId }
       : null
-    const nextModel = resolveAgentSelectedModel(list, nextAgentChannelIds, current)
+    const nextModel = resolveAgentSelectedModel(list, current)
+
+    setAgentChannelIds(nextAgentChannelIds)
 
     if (nextModel?.channelId === current?.channelId && nextModel?.modelId === current?.modelId) return
 
@@ -106,34 +100,9 @@ export function ChannelSettings(): React.ReactElement {
     loadChannels()
   }, [loadChannels])
 
-  const syncAgentChannelEligibility = React.useCallback(async (
-    channel: Channel,
-    eligible: boolean,
-  ): Promise<void> => {
-    const currentIds = agentChannelIdsRef.current
-
-    if (eligible) {
-      if (currentIds.includes(channel.id)) return
-      const newIds = [...currentIds, channel.id]
-      agentChannelIdsRef.current = newIds
-      setAgentChannelIds(newIds)
-      await syncDefaultAgentModel(await window.electronAPI.listChannels(), newIds)
-      return
-    }
-
-    if (!currentIds.includes(channel.id)) return
-    const newIds = currentIds.filter((id) => id !== channel.id)
-    agentChannelIdsRef.current = newIds
-    setAgentChannelIds(newIds)
-
-    if (agentChannelIdRef.current === channel.id) {
-      agentChannelIdRef.current = null
-      setAgentChannelId(null)
-      setAgentModelId(null)
-    }
-
-    await syncDefaultAgentModel(await window.electronAPI.listChannels(), newIds)
-  }, [setAgentChannelIds, setAgentChannelId, setAgentModelId, syncDefaultAgentModel])
+  const syncAgentChannelEligibility = React.useCallback(async (): Promise<void> => {
+    await syncDefaultAgentModel(await window.electronAPI.listChannels())
+  }, [syncDefaultAgentModel])
 
   /** 删除渠道（通过弹窗确认） */
   const handleDeleteRequest = (channel: Channel): void => {
@@ -147,8 +116,8 @@ export function ChannelSettings(): React.ReactElement {
     try {
       await window.electronAPI.deleteChannel(target.id)
 
-      // 从 Agent 渠道列表中移除
-      const newIds = agentChannelIds.filter((id) => id !== target.id)
+      const nextChannels = (await window.electronAPI.listChannels()).filter((channel) => channel.id !== target.id)
+      const newIds = getAgentAvailableChannelIds(nextChannels)
       setAgentChannelIds(newIds)
 
       // 如果删除的是当前选中的 Agent 渠道，清空选择
@@ -172,35 +141,13 @@ export function ChannelSettings(): React.ReactElement {
   /** 切换渠道启用状态 */
   const handleToggle = async (channel: Channel): Promise<void> => {
     try {
-      const savedChannel = await window.electronAPI.updateChannel(channel.id, { enabled: !channel.enabled })
-      await syncAgentChannelEligibility(
-        savedChannel,
-        savedChannel.enabled && hasConfiguredApiKey(savedChannel) && isAgentCompatibleProvider(savedChannel.provider),
-      )
+      await window.electronAPI.updateChannel(channel.id, { enabled: !channel.enabled })
+      await syncAgentChannelEligibility()
 
       await loadChannels()
     } catch (error) {
       console.error('[渠道设置] 切换渠道状态失败:', error)
     }
-  }
-
-  /** 切换 Agent 供应商开关 */
-  const handleToggleAgentProvider = async (channelId: string, enabled: boolean): Promise<void> => {
-    const newIds = enabled
-      ? [...agentChannelIds, channelId]
-      : agentChannelIds.filter((id) => id !== channelId)
-
-    setAgentChannelIds(newIds)
-    agentChannelIdsRef.current = newIds
-
-    // 如果关闭的是当前选中的渠道，清空选择
-    if (!enabled && agentChannelId === channelId) {
-      agentChannelIdRef.current = null
-      setAgentChannelId(null)
-      setAgentModelId(null)
-    }
-
-    await syncDefaultAgentModel(channels, newIds)
   }
 
   /** 表单保存回调 */
@@ -225,45 +172,6 @@ export function ChannelSettings(): React.ReactElement {
     setEditingChannel(null)
   }
 
-  // Agent 兼容渠道（已启用）：Anthropic / DeepSeek / Kimi API / Kimi Coding Plan / MiniMax
-  const agentCapableChannels = channels.filter(
-    (c) => isAgentCompatibleProvider(c.provider) && c.enabled
-  )
-
-  // 从平台模型构建虚拟渠道（用于 Agent 供应商）
-  const platformModels = useAtomValue(platformModelsAtom)
-  const platformApiKey = useAtomValue(platformApiKeyAtom)
-  const agentCompatiblePlatformModels = React.useMemo(
-    () => platformModels.filter((m) => m.enabled && m.provider && isAgentCompatibleProvider(m.provider as any)),
-    [platformModels],
-  )
-  const platformAgentChannel: Channel | null = React.useMemo(() => {
-    if (agentCompatiblePlatformModels.length === 0) return null
-    return {
-      id: '__platform__',
-      name: '泰为平台模型',
-      provider: 'anthropic',
-      baseUrl: agentCompatiblePlatformModels.find((m) => m.baseUrl)?.baseUrl ?? '',
-      apiKey: platformApiKey ?? '',
-      apiKeyConfigured: true,
-      models: agentCompatiblePlatformModels.map((m) => ({
-        id: m.id,
-        name: m.name,
-        enabled: true,
-        supportsMultimodal: m.supportsMultimodal,
-      })),
-      enabled: true,
-    } as Channel
-  }, [agentCompatiblePlatformModels, platformApiKey])
-
-  // 合并本地渠道和平台模型虚拟渠道
-  const allAgentCapableChannels = React.useMemo(() => {
-    if (platformAgentChannel) {
-      return [platformAgentChannel, ...agentCapableChannels]
-    }
-    return agentCapableChannels
-  }, [platformAgentChannel, agentCapableChannels])
-
   // 表单视图
   if (viewMode === 'create' || viewMode === 'edit') {
     return (
@@ -280,13 +188,13 @@ export function ChannelSettings(): React.ReactElement {
   // 列表视图
   return (
     <div className="space-y-8">
-      {/* 区块零：泰为平台模型（位于模型配置和 Agent 供应商之前） */}
+      {/* 区块零：泰为平台模型 */}
       <PlatformModelsSection />
 
       {/* 区块一：自定义模型配置 */}
       <SettingsSection
         title="自定义模型配置"
-        description={<>手动配置 AI 供应商连接、API Key 和模型， 支持 Anthropic / OpenAI 协议。可在下方 <strong>Agent 供应商</strong> 中进行配置</>}
+        description="手动配置 AI 供应商连接、API Key 和模型。Anthropic 兼容协议的已启用模型会自动用于 Agent"
         action={
           <Button size="sm" onClick={() => setViewMode('create')}>
             <Plus size={16} />
@@ -316,42 +224,6 @@ export function ChannelSettings(): React.ReactElement {
                 onToggle={() => handleToggle(channel)}
               />
             ))}
-          </SettingsCard>
-        )}
-      </SettingsSection>
-
-      {/* 区块二：Agent 供应商 */}
-      <SettingsSection
-        title="Agent 供应商"
-        description="供应商来源于上方的泰为平台模型和自定义模型配置。支持同时开启多个供应商，在 Agent 模式下可自由切换使用"
-      >
-        {loading ? (
-          <div className="text-sm text-muted-foreground py-8 text-center">加载中...</div>
-        ) : allAgentCapableChannels.length === 0 ? (
-          <SettingsCard divided={false}>
-            <div className="text-sm text-muted-foreground py-8 text-center">
-              暂无可用的 Agent 供应商，请先在上方"泰为平台模型"中登录 OA 获取平台模型，或在"自定义模型配置"中添加 Anthropic / DeepSeek / Kimi / MiniMax 等兼容渠道并启用
-            </div>
-          </SettingsCard>
-        ) : (
-          <SettingsCard>
-            {allAgentCapableChannels.map((channel) =>
-              channel.id === '__platform__' ? (
-                <AgentProviderRow
-                  key="__platform__"
-                  channel={channel}
-                  enabled={true}
-                  onToggle={() => {}}
-                />
-              ) : (
-                <AgentProviderRow
-                  key={channel.id}
-                  channel={channel}
-                  enabled={agentChannelIds.includes(channel.id)}
-                  onToggle={(enabled) => handleToggleAgentProvider(channel.id, enabled)}
-                />
-              ),
-            )}
           </SettingsCard>
         )}
       </SettingsSection>
@@ -425,40 +297,6 @@ function ChannelRow({ channel, onEdit, onDelete, onToggle }: ChannelRowProps): R
           onCheckedChange={onToggle}
         />
       </div>
-    </SettingsRow>
-  )
-}
-
-// ===== Agent 供应商行子组件 =====
-
-interface AgentProviderRowProps {
-  channel: Channel
-  enabled: boolean
-  onToggle: (enabled: boolean) => void
-}
-
-function AgentProviderRow({ channel, enabled, onToggle }: AgentProviderRowProps): React.ReactElement {
-  const enabledCount = channel.models.filter((m) => m.enabled).length
-  const apiKeyMissing = !hasConfiguredApiKey(channel)
-  const description = [
-    PROVIDER_LABELS[channel.provider],
-    apiKeyMissing ? '待配置 API Key' : undefined,
-    enabledCount > 0 ? `${enabledCount} 个模型可用` : undefined,
-  ]
-    .filter(Boolean)
-    .join(' · ')
-
-  return (
-    <SettingsRow
-      label={channel.name}
-      icon={<img src={getChannelLogo(channel)} alt="" className="w-8 h-8 rounded" />}
-      description={description}
-    >
-      <Switch
-        checked={enabled}
-        onCheckedChange={apiKeyMissing ? undefined : onToggle}
-        disabled={apiKeyMissing}
-      />
     </SettingsRow>
   )
 }

@@ -5,6 +5,7 @@
  * - 记忆工具（memos-cloud）
  * - 生图工具（Nano Banana）
  * - 联网搜索工具（WebSearch）
+ * - 内置 http快速开发工具
  */
 
 import { getWorkspaceMcpConfig, getWorkspaceConnectorsConfig } from '../agent-workspace-manager'
@@ -21,18 +22,38 @@ import { join } from 'node:path'
  * 构建工作区 MCP 服务器配置
  *
  * 优先从 connectors/ 目录加载（新格式），兜底从旧 mcp.json 加载。
+ *
+ * @param preReadConfig 可选，调用方已读好的配置，避免重复 I/O
+ * @param selectedMcpServers 可选，只加载指定的 MCP server（空数组 = 全部）
  */
 export function buildMcpServers(
   workspaceSlug: string | undefined,
   preReadConfig?: ConnectorsConfig,
+  selectedMcpServers: readonly string[] = [],
 ): Record<string, Record<string, unknown>> {
   const mcpServers: Record<string, Record<string, unknown>> = {}
   if (!workspaceSlug) return mcpServers
 
+  const selectedNames = new Set(selectedMcpServers)
+
   // 尝试从 connectors/ 加载（新格式）
   const connectorsConfig = preReadConfig ?? getWorkspaceConnectorsConfig(workspaceSlug)
   if (Object.keys(connectorsConfig.connectors).length > 0) {
-    loadMcpFromConnectors(workspaceSlug, connectorsConfig, mcpServers)
+    for (const [name, connector] of Object.entries(connectorsConfig.connectors)) {
+      if (!connector.enabled) continue
+      if (connector.type !== 'mcp') continue
+      if (selectedNames.size > 0 && !selectedNames.has(name)) continue
+
+      const mcpPath = join(getConnectorsDir(workspaceSlug), name, 'mcp.json')
+      if (!existsSync(mcpPath)) continue
+
+      try {
+        const entry = JSON.parse(readFileSync(mcpPath, 'utf-8'))
+        registerMcpServer(name, entry, mcpServers)
+      } catch (err) {
+        console.error(`[Agent 编排] 读取连接器 MCP 配置失败 (${name}):`, err)
+      }
+    }
     if (Object.keys(mcpServers).length > 0) {
       console.log(`[Agent 编排] 已从 connectors/ 加载 ${Object.keys(mcpServers).length} 个 MCP 服务器`)
     }
@@ -42,6 +63,7 @@ export function buildMcpServers(
   // 兜底：从旧 mcp.json 加载
   const mcpConfig = getWorkspaceMcpConfig(workspaceSlug)
   for (const [name, entry] of Object.entries(mcpConfig.servers ?? {})) {
+    if (selectedNames.size > 0 && !selectedNames.has(name)) continue
     if (!entry.enabled) continue
     if (name === 'memos-cloud') continue
     registerMcpServer(name, entry, mcpServers)
@@ -52,32 +74,6 @@ export function buildMcpServers(
   }
 
   return mcpServers
-}
-
-/**
- * 从 connectors/ 目录加载 MCP 类型的连接器
- */
-function loadMcpFromConnectors(
-  workspaceSlug: string,
-  connectorsConfig: ReturnType<typeof getWorkspaceConnectorsConfig>,
-  mcpServers: Record<string, Record<string, unknown>>,
-): void {
-  const connectorsDir = getConnectorsDir(workspaceSlug)
-
-  for (const [name, connector] of Object.entries(connectorsConfig.connectors)) {
-    if (!connector.enabled) continue
-    if (connector.type !== 'mcp') continue
-
-    const mcpPath = join(connectorsDir, name, 'mcp.json')
-    if (!existsSync(mcpPath)) continue
-
-    try {
-      const entry = JSON.parse(readFileSync(mcpPath, 'utf-8'))
-      registerMcpServer(name, entry, mcpServers)
-    } catch (err) {
-      console.error(`[Agent 编排] 读取连接器 MCP 配置失败 (${name}):`, err)
-    }
-  }
 }
 
 /**

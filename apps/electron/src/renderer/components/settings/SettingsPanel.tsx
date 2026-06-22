@@ -30,12 +30,10 @@ import { ChannelSettings } from "./ChannelSettings";
 import { GeneralSettings } from "./GeneralSettings";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { AboutSettings } from "./AboutSettings";
-import { AgentSettings } from "./AgentSettings";
 import { PromptSettings } from "./PromptSettings";
 import { ToolSettings } from "./ToolSettings";
 import { UsageLogSettings } from "./UsageLogSettings";
 import { SystemLogSettings } from "./SystemLogSettings";
-import { PluginSettings } from "./PluginSettings";
 import { ShortcutSettings } from "./ShortcutSettings";
 import { BotHubSettings } from "./BotHubSettings";
 import type { TabItem } from "./settings-tabs";
@@ -50,16 +48,12 @@ function renderTabContent(tab: SettingsTab): React.ReactElement {
       return <ChannelSettings />;
     case "prompts":
       return <PromptSettings />;
-    case "agent":
-      return <AgentSettings />;
     case "tools":
       return <ToolSettings />;
     case "usage-log":
       return <UsageLogSettings />;
     case "system-log":
       return <SystemLogSettings />;
-    case "plugins":
-      return <PluginSettings />;
     case "bots":
       return <BotHubSettings />;
     case "appearance":

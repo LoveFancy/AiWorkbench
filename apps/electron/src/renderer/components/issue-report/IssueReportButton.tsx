@@ -5,7 +5,7 @@
  */
 
 import * as React from 'react'
-import { Bug } from 'lucide-react'
+import { Headset } from 'lucide-react'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { useSetAtom } from 'jotai'
 import { issueReportOpenAtom } from '@/atoms/issue-report'
@@ -20,7 +20,7 @@ export function IssueReportButton(): React.ReactElement {
           onClick={() => setOpen(true)}
           className="flex items-center gap-3 min-w-0 px-3 py-2 rounded-[10px] transition-colors titlebar-no-drag text-foreground/70 hover:bg-foreground/[0.04] hover:text-foreground"
         >
-          <Bug className="size-5 flex-shrink-0" />
+          <Headset className="size-5 flex-shrink-0" />
           <span className="flex-1 text-sm truncate text-left">问题反馈</span>
         </button>
       </TooltipTrigger>

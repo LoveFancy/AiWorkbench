@@ -29,20 +29,28 @@ import {
 import { listInstalledPlugins } from './plugin-registry-service'
 import type { AgentPluginInfo } from '@proma/shared'
 import type { AgentWorkspace, WorkspaceMcpConfig, SkillMeta, SkillImportSource, OtherWorkspaceSkillsGroup, WorkspaceCapabilities, SkillFileNode, SkillFileContent, ConnectorsConfig, ConnectorEntry } from '@proma/shared'
+import { isGeneralPlugin } from '@proma/shared'
 
 interface AgentWorkspacesIndex {
   version: number
   workspaces: AgentWorkspace[]
 }
 
-const INDEX_VERSION = 2
+const INDEX_VERSION = 3
 
-const DEFAULT_INACTIVE_SKILL_SLUGS = new Set(['feishu-lark-setup', 'huatai-email-setup'])
+const DEFAULT_INACTIVE_SKILL_SLUGS = new Set(['feishu-lark-setup'])
+const DEFAULT_SKILLS_TO_ENABLE_ON_MIGRATION = ['huatai-email-setup', 'install-python'] as const
+const REMOVED_DEFAULT_SKILL_SLUGS = ['proma-coach'] as const
 
 interface InstallSkillZipOptions {
   activeDir?: string
   inactiveDir?: string
   tempRoot?: string
+}
+
+interface WorkspaceSkillDirs {
+  activeDir?: string
+  inactiveDir?: string
 }
 
 export function getDefaultSkillInitialEnabled(skillSlug: string): boolean {
@@ -73,6 +81,11 @@ function migrateIndex(index: AgentWorkspacesIndex): void {
     activateSkillCreatorInAllWorkspaces(index)
   }
 
+  // v2 → v3: 华泰邮箱和 Python 安装 Skill 改为默认启用
+  if (oldVersion < 3) {
+    activateDefaultEnabledSkillsInAllWorkspaces(index)
+  }
+
   index.version = INDEX_VERSION
   writeIndex(index)
   console.log(`[Agent 工作区] 索引已迁移: v${oldVersion} → v${INDEX_VERSION}`)
@@ -97,6 +110,35 @@ function activateSkillCreatorInAllWorkspaces(index: AgentWorkspacesIndex): void 
       console.log(`[Agent 工作区] 已为 ${workspace.slug} 启用 skill-creator`)
     } catch (err) {
       console.warn(`[Agent 工作区] 启用 skill-creator 失败 (${workspace.slug}):`, err)
+    }
+  }
+}
+
+/** v2→v3 迁移：将现在默认启用的内置 Skill 从 inactive 移到 active */
+function activateDefaultEnabledSkillsInAllWorkspaces(index: AgentWorkspacesIndex): void {
+  for (const workspace of index.workspaces) {
+    activateDefaultEnabledSkillsForWorkspace(workspace.slug)
+  }
+}
+
+export function activateDefaultEnabledSkillsForWorkspace(workspaceSlug: string, dirs: WorkspaceSkillDirs = {}): void {
+  const activeDir = dirs.activeDir ?? getWorkspaceSkillsDir(workspaceSlug)
+  const inactiveDir = dirs.inactiveDir ?? getInactiveSkillsDir(workspaceSlug)
+
+  for (const skillSlug of DEFAULT_SKILLS_TO_ENABLE_ON_MIGRATION) {
+    const inactivePath = join(inactiveDir, skillSlug)
+    const activePath = join(activeDir, skillSlug)
+
+    if (existsSync(activePath) || !existsSync(inactivePath)) continue
+
+    try {
+      if (!existsSync(activeDir)) {
+        mkdirSync(activeDir, { recursive: true })
+      }
+      renameSync(inactivePath, activePath)
+      console.log(`[Agent 工作区] 已默认启用 ${skillSlug}: ${workspaceSlug}`)
+    } catch (err) {
+      console.warn(`[Agent 工作区] 默认启用 ${skillSlug} 失败 (${workspaceSlug}):`, err)
     }
   }
 }
@@ -371,6 +413,8 @@ export function upgradeDefaultSkillsInWorkspaces(): void {
     const activeDir = getWorkspaceSkillsDir(workspace.slug)
     const inactiveDir = getInactiveSkillsDir(workspace.slug)
 
+    removeDeletedDefaultSkillsFromWorkspace(workspace.slug, activeDir, inactiveDir)
+
     for (const [slug, info] of defaultSkills) {
       const activePath = join(activeDir, slug)
       const inactivePath = join(inactiveDir, slug)
@@ -416,6 +460,22 @@ export function upgradeDefaultSkillsInWorkspaces(): void {
         console.log(`[Agent 工作区] 已注入新默认 Skill: ${workspace.slug}/${slug} → ${enabledByDefault ? 'active' : 'inactive'}`)
       } catch (err) {
         console.warn(`[Agent 工作区] 注入默认 Skill 失败 (${workspace.slug}/${slug}):`, err)
+      }
+    }
+  }
+}
+
+function removeDeletedDefaultSkillsFromWorkspace(workspaceSlug: string, activeDir: string, inactiveDir: string): void {
+  for (const slug of REMOVED_DEFAULT_SKILL_SLUGS) {
+    for (const [state, dir] of [['active', activeDir], ['inactive', inactiveDir]] as const) {
+      const target = join(dir, slug)
+      if (!existsSync(target)) continue
+
+      try {
+        rmSync(target, { recursive: true, force: true })
+        console.log(`[Agent 工作区] 已移除废弃默认 Skill: ${workspaceSlug}/${slug} (${state})`)
+      } catch (err) {
+        console.warn(`[Agent 工作区] 移除废弃默认 Skill 失败 (${workspaceSlug}/${slug}, ${state})，跳过:`, err)
       }
     }
   }
@@ -720,7 +780,7 @@ export function getWorkspaceSkills(workspaceSlug: string): SkillMeta[] {
 
 /** 解析 SKILL.md 的 YAML frontmatter，支持单行值、block scalar（`|` / `>`）和多行缩进 */
 function parseSkillFrontmatter(content: string, slug: string, enabled: boolean): SkillMeta {
-  const meta: SkillMeta = { slug, name: slug, enabled }
+  const meta: SkillMeta = { slug, name: slug, enabled, sourceKind: 'workspace' }
 
   const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---/)
   if (!fmMatch) return meta
@@ -780,7 +840,21 @@ function pluginSkillMeta(capability: AgentPluginInfo['capabilities'][number]): S
     name: capability.name,
     ...(capability.description && { description: capability.description }),
     enabled: capability.enabled,
+    sourceKind: 'plugin',
+    sourcePluginId: capability.sourcePluginId,
+    sourcePluginName: capability.sourceLabel,
   }
+}
+
+function skillSourcePriority(skill: SkillMeta): number {
+  if (skill.sourceKind === 'plugin') return 2
+  return 1
+}
+
+function shouldReplaceSkill(current: SkillMeta, next: SkillMeta): boolean {
+  if (!current.enabled && next.enabled) return true
+  if (current.enabled !== next.enabled) return false
+  return skillSourcePriority(next) > skillSourcePriority(current)
 }
 
 function mergeSkillsBySlug(skills: SkillMeta[]): SkillMeta[] {
@@ -791,7 +865,7 @@ function mergeSkillsBySlug(skills: SkillMeta[]): SkillMeta[] {
       continue
     }
     const current = result.get(skill.slug)
-    if (current && !current.enabled && skill.enabled) {
+    if (current && shouldReplaceSkill(current, skill)) {
       result.set(skill.slug, skill)
     }
   }
@@ -805,7 +879,7 @@ export function getWorkspaceCapabilitiesFromSources(input: {
   plugins: AgentPluginInfo[]
 }): WorkspaceCapabilities {
   const pluginSkills = input.plugins
-    .filter((plugin) => plugin.enabled && plugin.issues.every((issue) => issue.level !== 'error'))
+    .filter((plugin) => plugin.enabled && isGeneralPlugin(plugin) && plugin.issues.every((issue) => issue.level !== 'error'))
     .flatMap((plugin) => plugin.capabilities.filter((capability) => capability.type === 'skill' && capability.enabled).map(pluginSkillMeta))
   const skills = mergeSkillsBySlug([...input.workspaceSkills, ...pluginSkills])
 
@@ -828,16 +902,31 @@ export function getWorkspaceCapabilities(workspaceSlug: string): WorkspaceCapabi
   })
 }
 
-export function deleteWorkspaceSkill(workspaceSlug: string, skillSlug: string): void {
-  const skillsDir = getWorkspaceSkillsDir(workspaceSlug)
-  const skillPath = join(skillsDir, skillSlug)
+interface DeleteWorkspaceSkillOptions {
+  activeDir?: string
+  inactiveDir?: string
+}
 
-  if (!existsSync(skillPath)) {
-    throw new Error(`Skill 不存在: ${skillSlug}`)
+export function deleteWorkspaceSkill(workspaceSlug: string, skillSlug: string, options: DeleteWorkspaceSkillOptions = {}): void {
+  const normalizedSkillSlug = normalizeSkillSlug(skillSlug)
+  const activeDir = options.activeDir ?? getWorkspaceSkillsDir(workspaceSlug)
+  const inactiveDir = options.inactiveDir ?? getInactiveSkillsDir(workspaceSlug)
+  const activePath = join(activeDir, normalizedSkillSlug)
+  const inactivePath = join(inactiveDir, normalizedSkillSlug)
+  const activeExists = existsSync(activePath)
+  const inactiveExists = existsSync(inactivePath)
+
+  if (!activeExists && !inactiveExists) {
+    throw new Error(`Skill 不存在: ${normalizedSkillSlug}`)
   }
 
-  rmSync(skillPath, { recursive: true, force: true })
-  console.log(`[Agent 工作区] 已删除 Skill: ${workspaceSlug}/${skillSlug}`)
+  if (activeExists) {
+    rmSync(activePath, { recursive: true, force: true })
+  }
+  if (inactiveExists) {
+    rmSync(inactivePath, { recursive: true, force: true })
+  }
+  console.log(`[Agent 工作区] 已删除 Skill: ${workspaceSlug}/${normalizedSkillSlug}`)
 }
 
 /** 扫描指定目录下的 Skills，供 getWorkspaceSkills 和 getAllWorkspaceSkills 复用 */
@@ -862,6 +951,7 @@ function scanSkillsInDir(dir: string, enabled: boolean): SkillMeta[] {
         const importSource = readSkillImportSource(join(dir, entry.name))
         if (importSource) {
           meta.importSource = importSource
+          meta.sourceKind = 'import'
           const sourceSkillDir = resolveSkillDir(importSource.sourceWorkspaceSlug, entry.name)
           if (sourceSkillDir) {
             const currentSourceVersion = parseSkillVersion(sourceSkillDir)
@@ -1099,6 +1189,7 @@ export function importSkillFromWorkspace(
   const content = readFileSync(join(targetPath, 'SKILL.md'), 'utf-8')
   const meta = parseSkillFrontmatter(content, skillSlug, true)
   meta.importSource = importSource
+  meta.sourceKind = 'import'
   return meta
 }
 
@@ -1166,6 +1257,7 @@ export function updateSkillFromSource(
   const content = readFileSync(join(targetPath, 'SKILL.md'), 'utf-8')
   const meta = parseSkillFrontmatter(content, skillSlug, enabled)
   meta.importSource = updatedSource
+  meta.sourceKind = 'import'
   meta.hasUpdate = false
 
   console.log(`[Agent 工作区] 已从源更新 Skill: ${targetSlug}/${skillSlug}`)

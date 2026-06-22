@@ -24,9 +24,10 @@ test('专家团卡片展示专家团唯一 ID，而不是来源插件名', () =>
   expect(getExpertGroupIdentifierLabel(group)).toBe('architecture-decision-team')
 })
 
-test('专家卡片展示名称和主角色', () => {
-  expect(expertCardSource).toContain('{group.name}')
+test('专家卡片标题展示专家团名称，主角色只作为辅助信息', () => {
+  expect(expertCardSource).toContain('<h3 className="truncate text-sm font-medium text-foreground">{group.name}</h3>')
   expect(expertCardSource).toContain('主角色：{group.mainRole.name')
+  expect(expertCardSource).not.toContain('<h3 className="truncate text-sm font-medium text-foreground">{group.mainRole.name')
 })
 
 test('专家卡片不展示可用或不可用状态', () => {
@@ -43,6 +44,13 @@ test('卡片支持关注（Star 按钮）', () => {
 test('专家卡片操作按钮默认隐藏并在 hover 时显示', () => {
   expect(expertCardSource).toContain('group-hover:opacity-100')
   expect(expertCardSource).toContain('group-hover:pointer-events-auto')
+})
+
+test('专家卡片已收藏后星标常驻显示', () => {
+  expect(expertCardSource).toContain('size-[26px]')
+  expect(expertCardSource).toContain('rounded-bl-lg rounded-tr-xl')
+  expect(expertCardSource).toContain("isFollowed && 'text-yellow-500'")
+  expect(expertCardSource).toContain("isFollowed && 'fill-yellow-500 text-yellow-500'")
 })
 
 test('专家卡片不展示底部能力统计和插件目录', () => {

@@ -41,6 +41,7 @@ import {
   resolveAutoModeConfig,
   resolveInitialModel,
   findChannelForModel,
+  filterCandidatePoolByCapabilities,
 } from './agent-auto-model-switcher'
 import {
   MAX_AUTO_RETRIES,
@@ -66,6 +67,7 @@ import {
   logStderr,
 } from './orchestrator/error-presenter'
 import { buildSdkEnv } from './orchestrator/sdk-env'
+import { buildAgentUserContent } from './orchestrator/agent-user-content'
 import {
   buildMcpServers,
   collectConnectorDisabledTools,
@@ -77,6 +79,7 @@ import { generateTitle, autoGenerateTitle } from './orchestrator/title-generator
 import { persistSDKMessages } from './orchestrator/sdk-message-persister'
 import { prepareResumeFallbackRecovery, prepareSessionNotFoundRecovery } from './orchestrator/resume-recovery'
 import { rewindSession as rewindSessionImpl } from './orchestrator/rewind'
+import { getRetryLimitForCategory } from './orchestrator/retry-policy'
 import { buildSystemPrompt, buildDynamicContext, buildAgentsForSession } from './agent-prompt-builder'
 import { permissionService } from './agent-permission-service'
 import type { PermissionResult, CanUseToolOptions } from './agent-permission-service'
@@ -87,6 +90,7 @@ import { getMemoryConfig } from './memory-service'
 import { validateToolInput } from './agent-tool-input-validator'
 import { estimateTokenCount, WRITE_CONTENT_TOKEN_THRESHOLD } from './agent-tool-token-estimator'
 import { resolveExpertGroupRuntime } from './agent-expert-group-manager'
+import { detectAgentReadableFileKind, guardToolUseBeforePermission, type RunToolGuardContext } from './agent-tool-read-guard'
 
 // ===== 类型定义 =====
 
@@ -105,6 +109,26 @@ export interface SessionCallbacks {
   onTitleUpdated: (title: string) => void
   /** 用户消息已持久化，外部入口可据此通知前端切到实时会话 */
   onRunStarted?: (opts: { startedAt: number }) => void
+}
+
+function isImageAttachment(input: { filename: string; mediaType?: string; path?: string }): boolean {
+  const target = input.path || input.filename
+  return detectAgentReadableFileKind(target, input.mediaType) === 'raster_image'
+}
+
+function getChannelModelSupportsMultimodal(channel: ReturnType<typeof getChannelById>, modelId: string): boolean {
+  return channel?.models.find((model) => model.id === modelId)?.supportsMultimodal === true
+}
+
+function buildModelSwitchedSystemMessage(fromModel: string, toModel: string): SDKMessage {
+  return {
+    type: 'system',
+    subtype: 'model_switched',
+    from_model: fromModel,
+    to_model: toModel,
+    _createdAt: Date.now(),
+    uuid: randomUUID(),
+  } as unknown as SDKMessage
 }
 
 
@@ -163,7 +187,7 @@ export class AgentOrchestrator {
    * 通过 EventBus 分发 AgentEvent，通过 callbacks 发送控制信号。
    */
   async sendMessage(input: AgentSendInput, callbacks: SessionCallbacks): Promise<void> {
-    const { sessionId, userMessage, channelId, modelId, workspaceId, additionalDirectories, customMcpServers, permissionModeOverride, mentionedSkills, mentionedMcpServers, mentionedSessionIds, automationContext } = input
+    const { sessionId, userMessage, channelId, modelId, workspaceId, additionalDirectories, attachments, customMcpServers, permissionModeOverride, mentionedSkills, mentionedSessionIds, automationContext, selectedMcpServers } = input
     const stderrChunks: string[] = []
 
     // 0. 并发保护
@@ -338,6 +362,8 @@ export class AgentOrchestrator {
     // 4. 读取已有的 SDK session ID（用于 resume）
     const sessionMeta = getAgentSessionMeta(sessionId)
     let existingSdkSessionId = sessionMeta?.sdkSessionId
+    const runHasImageInput = (attachments ?? []).some(isImageAttachment)
+    const runRequiresVision = runHasImageInput || sessionMeta?.requiresVisionContext === true
 
     // 4.1 检测回退后的 resume 截断点（快照回退功能）
     let rewindResumeAt: string | undefined
@@ -371,10 +397,46 @@ export class AgentOrchestrator {
 
     // Auto Mode 配置解析与初始模型确定
     const autoModeConfig = await resolveAutoModeConfig()
-    const { activeModelId, state: autoModeState } = resolveInitialModel(sessionId, modelId, autoModeConfig)
+    if (autoModeConfig.enabled && runRequiresVision) {
+      const multimodalPool = filterCandidatePoolByCapabilities(autoModeConfig.candidatePool, { requiresMultimodal: true })
+      const availableMultimodalPool = multimodalPool.filter((candidate) => autoModeConfig.availableModelIds.has(candidate.modelId))
+      if (availableMultimodalPool.length === 0) {
+        reportPreflightError({
+          code: 'model_not_support_multimodal',
+          title: 'Auto Mode 缺少多模态模型',
+          message: '当前会话需要多模态模型，但 Auto Mode 候选池中没有可用的多模态模型。请在设置中加入支持图片理解的候选模型。',
+          actions: [
+            { key: 's', label: '打开 Agent 设置', action: 'open_agent_settings' },
+          ],
+          canRetry: false,
+        })
+        return
+      }
+    }
+    if (!autoModeConfig.enabled && runRequiresVision && !getChannelModelSupportsMultimodal(channel, modelId || DEFAULT_MODEL_ID)) {
+      reportPreflightError({
+        code: 'model_not_support_multimodal',
+        title: '当前模型不支持图片理解',
+        message: '当前会话包含图片上下文，请切换到支持多模态的模型，或新建会话处理纯文本任务。',
+        actions: [
+          { key: 's', label: '切换模型', action: 'open_agent_settings' },
+        ],
+        canRetry: false,
+      })
+      return
+    }
+    const { activeModelId, state: autoModeState } = resolveInitialModel(
+      sessionId,
+      modelId,
+      autoModeConfig,
+      { requiresMultimodal: runRequiresVision },
+    )
 
     if (autoModeConfig.enabled && activeModelId !== modelId) {
       console.log(`[Auto Mode] 初始模型切换: ${modelId || DEFAULT_MODEL_ID} -> ${activeModelId}`)
+      const initialSwitchMessage = buildModelSwitchedSystemMessage('Auto', activeModelId)
+      accumulatedMessages.push(initialSwitchMessage)
+      this.eventBus.emit(sessionId, { kind: 'sdk_message', message: initialSwitchMessage })
       const candidateRef = autoModeConfig.candidatePool.find((c) => c.modelId === activeModelId)
       const chInfo = findChannelForModel(activeModelId, candidateRef?.channelId)
       if (chInfo && chInfo.channelId !== currentChannelId) {
@@ -507,7 +569,7 @@ export class AgentOrchestrator {
       // 10. 构建 MCP 服务器配置
       // 预读连接器配置一次，避免 buildMcpServers + collectConnectorDisabledTools 重复 I/O
       const connectorsConfig = workspaceSlug ? getWorkspaceConnectorsConfig(workspaceSlug) : { version: '1.0', connectors: {} }
-      const mcpServers = buildMcpServers(workspaceSlug, connectorsConfig)
+      const mcpServers = buildMcpServers(workspaceSlug, connectorsConfig, selectedMcpServers)
       await injectMemoryTools(sdk, mcpServers)
       await injectNanoBananaTools(sdk, mcpServers, sessionId, agentCwd)
       await injectWebSearchTools(sdk, mcpServers)
@@ -553,7 +615,7 @@ export class AgentOrchestrator {
         enrichedMessage = `${referencedSessionsBlock}\n\n${enrichedMessage}`
         console.log(`[Agent 编排] 注入 referenced_sessions: ${mentionedSessionIds?.length ?? 0} sessions`)
       }
-      if (mentionedSkills?.length || mentionedMcpServers?.length) {
+      if (mentionedSkills?.length) {
         const toolLines: string[] = ['用户在消息中明确引用了以下工具，请在本次回复中主动调用：']
         for (const slug of mentionedSkills ?? []) {
           const qualifiedName = workspaceSlug
@@ -561,11 +623,8 @@ export class AgentOrchestrator {
             : slug
           toolLines.push(`- Skill: ${qualifiedName}（请立即调用此 Skill）`)
         }
-        for (const name of mentionedMcpServers ?? []) {
-          toolLines.push(`- MCP 服务器: ${name}（请使用此 MCP 服务器的工具来完成任务）`)
-        }
         enrichedMessage = `<mentioned_tools>\n${toolLines.join('\n')}\n</mentioned_tools>\n\n${userMessage}`
-        console.log(`[Agent 编排] 注入 mentioned_tools: ${mentionedSkills?.length ?? 0} skills, ${mentionedMcpServers?.length ?? 0} MCP`)
+        console.log(`[Agent 编排] 注入 mentioned_tools: ${mentionedSkills?.length ?? 0} skills`)
       }
 
       const contextualMessage = `${dynamicCtx}\n\n${enrichedMessage}`
@@ -576,6 +635,12 @@ export class AgentOrchestrator {
         : existingSdkSessionId
           ? contextualMessage
           : buildContextPrompt(sessionId, contextualMessage, { agentCwd })
+      const sdkPromptContent = runHasImageInput
+        ? await buildAgentUserContent({ userMessage: finalPrompt, attachments })
+        : undefined
+      if (sdkPromptContent?.warnings.length) {
+        console.warn(`[Agent 编排] 图片输入处理警告: ${sdkPromptContent.warnings.join('; ')}`)
+      }
 
       if (existingSdkSessionId) {
         console.log(`[Agent 编排] 使用 resume 模式，SDK session ID: ${existingSdkSessionId}`)
@@ -609,6 +674,36 @@ export class AgentOrchestrator {
       const getPermissionMode = (): PromaPermissionMode =>
         this.sessionPermissionModes.get(sessionId) ?? initialPermissionMode
 
+      const canAutoSwitchToMultimodal = (): boolean => {
+        if (!autoModeConfig.enabled) return false
+        return autoModeConfig.candidatePool.some((candidate) =>
+          candidate.supportsMultimodal === true &&
+          autoModeConfig.availableModelIds.has(candidate.modelId) &&
+          !autoModeState.triedModelIds.has(candidate.modelId),
+        )
+      }
+
+      const runToolGuardContext: RunToolGuardContext = {
+        supportsMultimodal: getChannelModelSupportsMultimodal(channel, resolvedModel),
+        imagesProvidedAsMultimodal: (sdkPromptContent?.imageCount ?? 0) > 0,
+        autoModeEnabled: autoModeConfig.enabled,
+        runHasImageInput,
+        sessionRequiresVisionContext: sessionMeta?.requiresVisionContext === true,
+        cwd: agentCwd,
+        canAutoSwitchToMultimodal,
+      }
+
+      const refreshRunToolGuardModelCapability = (): void => {
+        runToolGuardContext.supportsMultimodal = getChannelModelSupportsMultimodal(channel, resolvedModel)
+      }
+
+      const getModelSupportsMultimodal = (targetModelId: string | undefined): boolean => {
+        if (!targetModelId) return false
+        const activeChannel = getChannelById(currentChannelId) ?? channel
+        const activeModel = activeChannel?.models.find((item) => item.id === targetModelId)
+        return activeModel?.supportsMultimodal === true
+      }
+
       // ExitPlanMode 拦截器：plan 模式下走 UI 审批流程
       const handleExitPlanMode = (toolInput: Record<string, unknown>, signal: AbortSignal): Promise<ExitPlanPermissionResult> => {
         return exitPlanService.handleExitPlanMode(
@@ -631,6 +726,7 @@ export class AgentOrchestrator {
         (request: AskUserRequest) => {
           this.eventBus.emit(sessionId, { kind: 'proma_event', event: { type: 'ask_user_request', request } })
         },
+        runToolGuardContext,
       )
 
       /**
@@ -698,6 +794,13 @@ export class AgentOrchestrator {
         if (validationFailure) {
           console.warn(`[Agent 工具验证] 参数缺失: tool=${toolName}, mode=${currentMode}`)
           return validationFailure
+        }
+
+        const readGuardFailure = guardToolUseBeforePermission(toolName, input, runToolGuardContext)
+        if (readGuardFailure) {
+          const reason = readGuardFailure.behavior === 'deny' ? readGuardFailure.message : 'allow'
+          console.warn(`[Agent 工具守卫] 拒绝错误读取通道: tool=${toolName}, mode=${currentMode}, reason=${reason}`)
+          return readGuardFailure
         }
 
         // ── Write 大文件 token 截断防护 ──
@@ -816,7 +919,7 @@ export class AgentOrchestrator {
         : undefined
       const queryOptions: ClaudeAgentQueryOptions = {
         sessionId,
-        prompt: finalPrompt,
+        prompt: sdkPromptContent?.imageCount ? sdkPromptContent.content : finalPrompt,
         model: resolvedModel,
         cwd: agentCwd,
         sdkCliPath: cliPath,
@@ -925,13 +1028,14 @@ export class AgentOrchestrator {
           // 通知渲染进程更新流式状态中的模型信息
           this.eventBus.emit(sessionId, { kind: 'proma_event', event: { type: 'model_resolved', model } })
         },
-       
-          }
+        getModelSupportsMultimodal,
+      }
 
       console.log(`[Agent 编排] 开始通过 Adapter 遍历事件流...`)
 
       // 14. 遍历 Adapter 产出的 AgentEvent 流（含自动重试）
       let lastRetryableError: string | undefined
+      let lastRetryableCategory: import('./orchestrator/error-classifier').ErrorCategory | undefined
       let retryDelayElapsedMs = 0
       let retryAttemptsScheduled = 0
       let retrySucceeded = false
@@ -968,10 +1072,14 @@ export class AgentOrchestrator {
           autoModeConfig.candidatePool,
           excludeSet,
           autoModeConfig.availableModelIds,
+          { requiresMultimodal: runRequiresVision },
         )
         if (nextCandidate) {
           const nextModel = nextCandidate.modelId
           console.log(`[Auto Mode] 切换模型: ${autoModeState.activeModelId} -> ${nextModel}${nextCandidate.channelId ? ` (渠道: ${nextCandidate.channelId})` : ''}`)
+          const switchMessage = buildModelSwitchedSystemMessage(autoModeState.activeModelId, nextModel)
+          accumulatedMessages.push(switchMessage)
+          this.eventBus.emit(sessionId, { kind: 'sdk_message', message: switchMessage })
           this.eventBus.emit(sessionId, {
             kind: 'proma_event',
             event: { type: 'model_switched', fromModel: autoModeState.activeModelId, toModel: nextModel },
@@ -988,6 +1096,7 @@ export class AgentOrchestrator {
             queryOptions.resumeSessionId = undefined
           }
           await switchChannelForModel(nextModel, nextCandidate.channelId)
+          refreshRunToolGuardModelCapability()
           skipNextRetryDelay = true
           return true
         }
@@ -997,7 +1106,7 @@ export class AgentOrchestrator {
       }
 
       const canAutoRetry = (attempt: number): boolean =>
-        attempt <= MAX_AUTO_RETRIES && retryDelayElapsedMs < MAX_AUTO_RETRY_WAIT_MS
+        attempt <= getRetryLimitForCategory(lastRetryableCategory) && retryDelayElapsedMs < MAX_AUTO_RETRY_WAIT_MS
 
       /** 捕获到的 SDK session ID（用于 resume / recovery） */
       let capturedSdkSessionId = existingSdkSessionId
@@ -1016,6 +1125,11 @@ export class AgentOrchestrator {
             skipNextRetryDelay = false
           } else {
             const retryAttempt = Math.max(1, attempt - 1 - invisibleRecoveryAttempts)
+            const retryLimit = getRetryLimitForCategory(lastRetryableCategory)
+            if (retryAttempt > retryLimit) {
+              console.log(`[Agent 编排] 已达到当前错误的自动重试上限 (${retryLimit})，停止重试`)
+              break
+            }
             const delayMs = getRetryDelayMs(retryAttempt, retryDelayElapsedMs)
             if (delayMs <= 0) {
               console.log(`[Agent 编排] 自动重试等待预算已耗尽 (${MAX_AUTO_RETRY_WAIT_MS}ms)，停止重试`)
@@ -1034,7 +1148,7 @@ export class AgentOrchestrator {
 
             this.eventBus.emit(sessionId, {
               kind: 'proma_event',
-              event: { type: 'retry', status: 'starting', attempt: retryAttempt, maxAttempts: MAX_AUTO_RETRIES, delaySeconds: delaySec, reason: lastRetryableError ?? '未知错误' },
+              event: { type: 'retry', status: 'starting', attempt: retryAttempt, maxAttempts: retryLimit, delaySeconds: delaySec, reason: lastRetryableError ?? '未知错误' },
             })
             this.eventBus.emit(sessionId, {
               kind: 'proma_event',
@@ -1108,6 +1222,7 @@ export class AgentOrchestrator {
 
             if (!wasStoppedByUser && retryAttemptsScheduled > 0) {
               lastRetryableError = undefined
+            lastRetryableCategory = undefined
               this.eventBus.emit(sessionId, { kind: 'proma_event', event: { type: 'retry', status: 'cleared' } })
             }
 
@@ -1115,6 +1230,9 @@ export class AgentOrchestrator {
 
             if (autoModeConfig.enabled && autoModeState.activeModelId) {
               try { updateAgentSessionMeta(sessionId, { activeModelId: autoModeState.activeModelId } as Partial<AgentSessionMeta>) } catch { /* ignore */ }
+            }
+            if (runHasImageInput && sessionMeta?.requiresVisionContext !== true) {
+              try { updateAgentSessionMeta(sessionId, { requiresVisionContext: true }) } catch { /* ignore */ }
             }
 
             if (initialPermissionMode === 'plan' && planModeEntered && this.activeSessions.has(sessionId)) {
@@ -1139,11 +1257,17 @@ export class AgentOrchestrator {
 
           // error_break — 模式特定处理
           if (result.shouldRetryFromError) {
+            if (result.retryReason) {
+              lastRetryableError = result.retryReason
+              lastRetryableCategory = result.retryCategory
+            }
+
             // Session 不存在恢复
             if (result.recoveryType === 'session_not_found' && existingSdkSessionId) {
               existingSdkSessionId = undefined
               capturedSdkSessionId = undefined
               lastRetryableError = prepareSessionNotFoundRecovery(sessionId, queryOptions, contextualMessage, agentCwd, accumulatedMessages, queryStartedAt)
+              lastRetryableCategory = 'session_not_found'
               stderrChunks.length = 0
               continue
             }
@@ -1161,6 +1285,7 @@ export class AgentOrchestrator {
                 '检测到 thinking signature 不兼容，清除 sdkSessionId 并切换到上下文回填模式',
                 '思考签名不兼容，切换到上下文回填模式',
               )
+              lastRetryableCategory = 'thinking_signature'
               stderrChunks.length = 0
               continue
             }
@@ -1171,6 +1296,7 @@ export class AgentOrchestrator {
               console.log(`[Auto Mode] 模型失败计数: ${autoModeState.activeModelId} -> ${autoModeState.sameModelAttempts}/${MAX_SAME_MODEL_RETRIES} (attempt ${attempt})`)
               if (!await trySwitchAutoModeModel()) {
                 lastRetryableError = `Auto Mode 候选池已耗尽，已尝试模型: ${[...autoModeState.triedModelIds].join(', ')}`
+                lastRetryableCategory = undefined
                 break
               }
             }

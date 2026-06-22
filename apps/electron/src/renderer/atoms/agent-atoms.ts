@@ -258,6 +258,7 @@ function mergeExpertGroups(
     const server = serverSummaries.find((s) => s.id === local.id)
     result.push({
       ...local,
+      categories: server?.categories ?? local.categories ?? [],
       status: server && server.version !== local.sourcePluginVersion
         ? ('remote_update_available' as const)
         : local.status,
@@ -280,6 +281,7 @@ function mergeExpertGroups(
       mcpServers: server.mcpServers,
       tags: server.tags,
       samplePrompts: server.samplePrompts,
+      categories: server.categories ?? [],
       // 兜底：若服务端未提供 expertType，根据 subagentCount 推断
       expertType: server.expertType || (server.subagentCount > 0 ? 'team' : 'agent'),
       sourcePluginId: '',
@@ -353,6 +355,9 @@ export const agentPendingPromptAtom = atom<AgentPendingPrompt | null>(null)
  * 切换会话时保留各 session 自己的 pending files，与文字草稿语义一致
  */
 export const agentSessionPendingFilesAtom = atom<Map<string, AgentPendingFile[]>>(new Map())
+
+/** 当前会话选择注入的 MCP 连接器 Map — sessionId → MCP server name 集合 */
+export const agentSelectedMcpServersAtom = atom<Map<string, string[]>>(new Map())
 
 /**
  * 单个 session 的 pending files 派生 atom（读写）— 按 sessionId 切片

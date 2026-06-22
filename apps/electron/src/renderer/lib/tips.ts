@@ -54,7 +54,6 @@ export const TIPS: Tip[] = [
 
   // 通用
   { id: 'tip-agent-file', text: 'Agent 模式下输入 @ 可以引用工作区文件', platform: 'all' },
-  { id: 'tip-agent-mcp', text: 'Agent 模式下输入 # 可以调用 MCP 工具', platform: 'all' },
   { id: 'tip-agent-skill', text: 'Agent 模式下输入 / 可以使用 Skill', platform: 'all' },
   { id: 'tip-attachment', text: '支持拖拽文件到输入框直接上传附件', platform: 'all' },
   { id: 'tip-shortcuts-custom', text: '在设置 → 快捷键中可以自定义所有快捷键', platform: 'all' },

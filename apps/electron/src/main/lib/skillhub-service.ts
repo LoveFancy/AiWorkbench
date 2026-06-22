@@ -9,13 +9,18 @@ import { execSync } from 'node:child_process'
 import { join, resolve, sep } from 'node:path'
 import { getInactiveSkillsDir, getWorkspaceSkillsDir } from './config-paths'
 import { getAllWorkspaceSkills } from './agent-workspace-manager'
-import { getValidSkillHubToken, getSkillHubApiBase } from './skillhub-auth-service'
+import { getValidSkillHubToken, getSkillHubApiBase, shouldUseMockSkillHub } from './skillhub-auth-service'
 import { getToken } from '../../auth/auth-service'
 
 export interface HtSkillHubSkill {
   name: string
+  displayName?: string
   description: string
   version?: string
+  category?: string
+  tags?: string[]
+  author?: string
+  downloadCount?: number
   installed?: boolean
   files: string[]
 }
@@ -183,7 +188,162 @@ interface SkillMetadataRaw {
   businessOwnerName?: string
 }
 
+const MOCK_SKILLHUB_SKILLS: SkillMetadataRaw[] = [
+  {
+    skillName: 'prd-writer',
+    displayName: 'PRD 文档助手',
+    description: '根据需求背景、用户故事和流程信息生成结构化 PRD，支持章节拆分、待确认问题和评审清单。',
+    category: '产品设计',
+    tags: ['PRD', '需求分析', '产品经理'],
+    ownerName: '产品工具组',
+    version: '1.4.2',
+    downloadCount: 286,
+    readme: [
+      '# PRD 文档助手',
+      '',
+      '用于将零散需求材料整理为结构化 PRD。',
+      '',
+      '## 能力',
+      '- 自动生成背景、目标、范围、流程、异常场景和验收标准',
+      '- 支持逐章节确认模式',
+      '- 支持按公司产品模板输出',
+      '',
+      '## 适用场景',
+      '新需求立项、存量需求补充、PRD 评审前自检。',
+    ].join('\n'),
+  },
+  {
+    skillName: 'drawio-doc-exporter',
+    displayName: 'Drawio 文档嵌入',
+    description: '将 Drawio 流程图、架构图转换为图片并嵌入文档，适合方案设计和流程说明。',
+    category: '文档处理',
+    tags: ['Drawio', '流程图', '文档'],
+    ownerName: '研发效能组',
+    version: '0.9.8',
+    downloadCount: 172,
+    readme: [
+      '# Drawio 文档嵌入',
+      '',
+      '读取 `.drawio` 文件并导出为图片，自动插入到目标文档。',
+      '',
+      '## 能力',
+      '- 支持流程图、架构图、ER 图导出',
+      '- 支持批量处理多个图表',
+      '- 支持在 Word/Markdown 文档中插入图片和标题',
+    ].join('\n'),
+  },
+  {
+    skillName: 'test-case-generator',
+    displayName: '测试用例生成',
+    description: '基于接口定义、需求说明和业务规则生成测试点、用例表和边界场景。',
+    category: '测试',
+    tags: ['测试用例', '边界条件', '质量保障'],
+    ownerName: '测试平台组',
+    version: '1.1.0',
+    downloadCount: 241,
+    readme: [
+      '# 测试用例生成',
+      '',
+      '帮助测试人员从需求和接口材料中快速生成覆盖完整的测试用例。',
+      '',
+      '## 输出',
+      '- 功能测试点',
+      '- 异常和边界场景',
+      '- 可复制到 Excel 的用例表',
+    ].join('\n'),
+  },
+  {
+    skillName: 'api-design-review',
+    displayName: '接口设计评审',
+    description: '检查 REST/RPC 接口设计的一致性、兼容性、错误码、幂等性和字段命名问题。',
+    category: '研发',
+    tags: ['API', '接口设计', '评审'],
+    ownerName: '架构治理组',
+    version: '2.0.1',
+    downloadCount: 398,
+    readme: [
+      '# 接口设计评审',
+      '',
+      '用于在概设和详设阶段检查接口设计质量。',
+      '',
+      '## 检查项',
+      '- 字段命名和数据结构一致性',
+      '- 错误码与异常语义',
+      '- 幂等、分页、排序和兼容性',
+    ].join('\n'),
+  },
+  {
+    skillName: 'weekly-report-polisher',
+    displayName: '周报润色',
+    description: '把零散工作项整理为面向管理汇报的周报，突出产出、价值、风险和下周计划。',
+    category: '办公效率',
+    tags: ['周报', '汇报', '总结'],
+    ownerName: 'WorkMate 团队',
+    version: '1.0.3',
+    downloadCount: 519,
+    readme: [
+      '# 周报润色',
+      '',
+      '将原始工作流水整理为结构化周报。',
+      '',
+      '## 特点',
+      '- 保留事实，不夸大',
+      '- 合并重复事项',
+      '- 自动提炼业务价值和用户影响',
+    ].join('\n'),
+  },
+  {
+    skillName: 'incident-review',
+    displayName: '故障复盘助手',
+    description: '根据故障时间线、监控日志和处置记录生成复盘报告、根因分析和改进项。',
+    category: '运维',
+    tags: ['故障复盘', 'SRE', '根因分析'],
+    ownerName: '基础设施中心',
+    version: '0.8.5',
+    downloadCount: 133,
+    readme: [
+      '# 故障复盘助手',
+      '',
+      '面向故障复盘场景，整理时间线、影响面、根因和改进动作。',
+      '',
+      '## 输出',
+      '- 故障概览',
+      '- 时间线',
+      '- 根因分析',
+      '- 改进项和负责人',
+    ].join('\n'),
+  },
+]
+
+function filterMockSkillHubSkills(query: SkillListQuery = {}): SkillMetadataRaw[] {
+  const keyword = query.keyword?.trim().toLowerCase()
+  const category = query.category?.trim()
+  const filtered = MOCK_SKILLHUB_SKILLS.filter((skill) => {
+    if (category && skill.category !== category) return false
+    if (!keyword) return true
+    return [
+      skill.skillName,
+      skill.displayName,
+      skill.description,
+      skill.category,
+      ...(skill.tags ?? []),
+      skill.ownerName,
+    ]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(keyword))
+  })
+
+  const page = Math.max(1, query.page ?? 1)
+  const pageSize = Math.max(1, query.pageSize ?? 20)
+  return filtered.slice((page - 1) * pageSize, page * pageSize)
+}
+
 export async function fetchSkillHubSkills(query: SkillListQuery = {}): Promise<SkillMetadataRaw[]> {
+  if (shouldUseMockSkillHub()) {
+    console.log('[SkillHub] 使用 mock 技能市场数据')
+    return filterMockSkillHubSkills(query)
+  }
+
   const reqBody: Record<string, unknown> = {
     page: query.page ?? 1,
     pageSize: query.pageSize ?? 20,
@@ -205,6 +365,12 @@ export async function fetchSkillHubSkills(query: SkillListQuery = {}): Promise<S
 }
 
 export async function fetchSkillHubDetail(skillName: string): Promise<SkillMetadataRaw> {
+  if (shouldUseMockSkillHub()) {
+    const skill = MOCK_SKILLHUB_SKILLS.find((item) => item.skillName.toLowerCase() === skillName.toLowerCase())
+    if (!skill) throw new Error(`华泰 SkillHub mock 未找到 Skill: ${skillName}`)
+    return skill
+  }
+
   const response = await skillHubFetch(
     `/workmate/skillhub/ai_skillhub_service/api/v1/market/skills/${encodeURIComponent(skillName)}`
   )

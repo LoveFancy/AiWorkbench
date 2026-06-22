@@ -41,6 +41,7 @@ import {
 } from '@/atoms/chat-atoms'
 import { activeViewAtom } from '@/atoms/active-view'
 import { useCreateSession } from '@/hooks/useCreateSession'
+import { useSwitchModeWithSession } from '@/hooks/useSwitchModeWithSession'
 import { useShortcut } from '@/hooks/useShortcut'
 import { useCloseTab } from '@/hooks/useCloseTab'
 import {
@@ -65,6 +66,7 @@ export function GlobalShortcuts(): null {
   const shortcutOverrides = useAtomValue(shortcutOverridesAtom)
   const setSendWithCmdEnter = useSetAtom(sendWithCmdEnterAtom)
   const { createChat, createAgent } = useCreateSession()
+  const switchModeWithSession = useSwitchModeWithSession()
 
   // Tab 管理（用于关闭标签页）
   const activeTabId = useAtomValue(activeTabIdAtom)
@@ -161,8 +163,11 @@ export function GlobalShortcuts(): null {
   useShortcut(
     'toggle-mode',
     useCallback(
-      () => { if (appMode !== 'scratch') setAppMode(appMode === 'chat' ? 'agent' : 'chat') },
-      [appMode, setAppMode],
+      () => {
+        if (appMode === 'scratch') return
+        void switchModeWithSession(appMode === 'chat' ? 'agent' : 'chat')
+      },
+      [appMode, switchModeWithSession],
     ),
   )
 

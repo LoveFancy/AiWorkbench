@@ -1,6 +1,9 @@
 import { expect, test } from 'bun:test'
+import { join } from 'node:path'
 import type { AgentExpertGroupInfo, AgentSessionMeta } from '@proma/shared'
 import { getExpertSummonDisplayName } from './summon-label'
+
+const expertSummonButtonSource = await Bun.file(join(import.meta.dir, 'ExpertSummonButton.tsx')).text()
 
 const groups: AgentExpertGroupInfo[] = [
   {
@@ -19,8 +22,8 @@ const groups: AgentExpertGroupInfo[] = [
   },
 ]
 
-test('无 session 时显示默认标签', () => {
-  expect(getExpertSummonDisplayName(undefined, groups)).toBe('WorkMate专家')
+test('无 session 时不展示默认专家团名称', () => {
+  expect(getExpertSummonDisplayName(undefined, groups)).toBeNull()
 })
 
 test('有 expertGroupId 但无匹配 group 时回退 session.title', () => {
@@ -43,4 +46,10 @@ test('有匹配 group 时显示 group.name', () => {
     expertGroupId: 'architecture-decision-team',
   }
   expect(getExpertSummonDisplayName(session, groups)).toBe('架构决策专家团')
+})
+
+test('输入框专家入口默认只展示图标，有名称时才展示文字', () => {
+  expect(expertSummonButtonSource).toContain('const showComposerLabel = variant ===')
+  expect(expertSummonButtonSource).toContain('showComposerLabel ?')
+  expect(expertSummonButtonSource).toContain('{showComposerLabel &&')
 })

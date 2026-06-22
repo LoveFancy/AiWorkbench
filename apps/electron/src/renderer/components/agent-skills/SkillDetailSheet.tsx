@@ -126,11 +126,16 @@ function SkillDetailBody({
     }
   }
 
-  const sourceLabel = isBuiltin
-    ? 'PROMA 内置'
-    : skill.importSource
-      ? `从 ${skill.importSource.sourceWorkspaceName} 导入`
-      : '当前工作区'
+  let sourceLabel: string
+  if (skill.sourceKind === 'plugin') {
+    sourceLabel = `插件：${skill.sourcePluginName ?? skill.sourcePluginId ?? '未知'}`
+  } else if (skill.sourceKind === 'import' && skill.importSource) {
+    sourceLabel = `从 ${skill.importSource.sourceWorkspaceName} 导入`
+  } else if (isBuiltin) {
+    sourceLabel = 'WorkMate 内置'
+  } else {
+    sourceLabel = '当前工作区'
+  }
 
   return (
     <div className="flex h-full flex-col min-h-0">
@@ -180,21 +185,19 @@ function SkillDetailBody({
             </TooltipTrigger>
             <TooltipContent side="top">打开目录</TooltipContent>
           </Tooltip>
-          {!isBuiltin && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={onRequestDelete}
-                  className="text-muted-foreground hover:text-destructive"
-                >
-                  <Trash2 size={14} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="top">卸载</TooltipContent>
-            </Tooltip>
-          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={onRequestDelete}
+                className="text-muted-foreground hover:text-destructive"
+              >
+                <Trash2 size={14} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">删除</TooltipContent>
+          </Tooltip>
         </div>
       </div>
 

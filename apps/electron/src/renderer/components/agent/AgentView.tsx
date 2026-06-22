@@ -27,11 +27,13 @@ import { ExpertSummonButton } from '@/experts/picker/ExpertSummonButton'
 import { AskUserBanner } from './AskUserBanner'
 import { ExitPlanModeBanner } from './ExitPlanModeBanner'
 import { PlanModeDashedBorder } from './PlanModeDashedBorder'
+import { AgentSkillPicker } from './AgentSkillPicker'
+import { AgentConnectorPicker } from './AgentConnectorPicker'
 import { ModelSelector } from '@/components/chat/ModelSelector'
 import { CandidateModelDialog } from '@/components/settings/CandidateModelDialog'
 import { AttachmentPreviewItem } from '@/components/chat/AttachmentPreviewItem'
 import { QuotedSelectionChip } from '@/components/diff/QuotedSelectionChip'
-import { RichTextInput } from '@/components/ai-elements/rich-text-input'
+import { RichTextInput, type RichTextInputRef } from '@/components/ai-elements/rich-text-input'
 import { SpeechButton } from '@/components/ai-elements/speech-button'
 import { InputToolbarOverflow, type ToolbarItem } from '@/components/ai-elements/InputToolbarOverflow'
 import { Button } from '@/components/ui/button'
@@ -49,7 +51,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { cn } from '@/lib/utils'
-import { hasConfiguredApiKey } from '@/lib/model-selection'
+import { getAgentAvailableChannelIds } from '@/lib/model-selection'
 import { getActiveAccelerator, getAcceleratorDisplay } from '@/lib/shortcut-registry'
 import { registerShortcut } from '@/lib/shortcut-registry'
 import { previewPanelOpenMapAtom, previewFileMapAtom, autoPreviewEnabledAtom, PREVIEW_KIND, quotedSelectionMapAtom, currentQuotedSelectionAtom } from '@/atoms/preview-atoms'
@@ -58,7 +60,6 @@ import {
   agentSessionStreamingStateAtomFamily,
   agentChannelIdAtom,
   agentModelIdAtom,
-  agentChannelIdsAtom,
   agentSessionChannelMapAtom,
   agentSessionModelMapAtom,
   currentAgentWorkspaceIdAtom,
@@ -90,11 +91,14 @@ import {
   agentSessionPathMapAtom,
   allPendingAskUserRequestsAtom,
   allPendingExitPlanRequestsAtom,
+  workspaceCapabilitiesVersionAtom,
   finalizeStreamingActivities,
   agentProcessGroupsKeepExpandedAtom,
+  agentSelectedMcpServersAtom,
 } from '@/atoms/agent-atoms'
 import type { AgentContextStatus } from '@/atoms/agent-atoms'
 import { settingsOpenAtom } from '@/atoms/settings-tab'
+import { activeViewAtom, agentSkillsInitialTabAtom } from '@/atoms/active-view'
 import { channelsAtom, thinkingExpandedAtom } from '@/atoms/chat-atoms'
 import { useOpenSession } from '@/hooks/useOpenSession'
 import { useAutoMode } from '@/hooks/useAutoMode'
@@ -102,7 +106,7 @@ import { AgentSessionProvider } from '@/contexts/session-context'
 import { draftSessionIdsAtom } from '@/atoms/draft-session-atoms'
 import { sendWithCmdEnterAtom } from '@/atoms/shortcut-atoms'
 import { activeTabIdAtom, getPreviewTabTitle, openTab, tabsAtom } from '@/atoms/tab-atoms'
-import type { AgentSendInput, AgentPendingFile, FileDialogLargeFile, ModelOption, SDKMessage } from '@proma/shared'
+import type { AgentSendInput, AgentPendingFile, FileDialogLargeFile, ModelOption, SDKMessage, SkillMeta } from '@proma/shared'
 import { MAX_ATTACHMENT_SIZE } from '@proma/shared'
 import { fileToBase64, formatFileNames, getFileParentPath } from '@/lib/file-utils'
 import { isHtmlPreviewPath } from '@/components/diff/html-preview-utils'
@@ -185,14 +189,14 @@ function AgentThinkingPopover({ agentThinking, onToggle }: AgentThinkingPopoverP
           variant="ghost"
           size="icon"
           className={cn(
-            'size-[36px] rounded-full',
+            'size-8 rounded-full',
             isEnabled ? 'text-green-500' : 'text-foreground/60 hover:text-foreground'
           )}
           onClick={onToggle}
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
         >
-          <Brain className="size-5" />
+          <Brain className="size-4" />
         </Button>
       </PopoverTrigger>
       <PopoverContent
@@ -268,14 +272,14 @@ function DisplayOptionsPopover({
           variant="ghost"
           size="icon"
           className={cn(
-            'size-[36px] rounded-full',
+            'size-8 rounded-full',
             hasEnabledOption ? 'text-green-500' : 'text-foreground/60 hover:text-foreground'
           )}
           aria-label="显示选项"
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
         >
-          <Eye className="size-5" />
+          <Eye className="size-4" />
         </Button>
       </PopoverTrigger>
       <PopoverContent
@@ -340,12 +344,13 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
   const [defaultModelId, setDefaultModelId] = useAtom(agentModelIdAtom)
   const agentChannelId = sessionChannelMap.get(sessionId) ?? defaultChannelId
   const agentModelId = sessionModelMap.get(sessionId) ?? defaultModelId
-  const agentChannelIds = useAtomValue(agentChannelIdsAtom)
-  const setAgentChannelIds = useSetAtom(agentChannelIdsAtom)
   const [agentThinking, setAgentThinking] = useAtom(agentThinkingAtom)
   const setSettingsOpen = useSetAtom(settingsOpenAtom)
+  const setActiveView = useSetAtom(activeViewAtom)
+  const setAgentSkillsInitialTab = useSetAtom(agentSkillsInitialTabAtom)
   const setDraftSessionIds = useSetAtom(draftSessionIdsAtom)
   const globalWorkspaceId = useAtomValue(currentAgentWorkspaceIdAtom)
+  const capabilitiesVersion = useAtomValue(workspaceCapabilitiesVersionAtom)
   const autoMode = useAutoMode()
   const sessions = useAtomValue(agentSessionsAtom)
   // 从会话元数据派生 workspaceId：会话数据已加载时以自身为准，未加载时回退全局 atom
@@ -463,6 +468,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
   const setSessionPathMap = useSetAtom(agentSessionPathMapAtom)
   const sessionPath = sessionPathMap.get(sessionId) ?? null
   const [workspaceFilesPath, setWorkspaceFilesPath] = React.useState<string | null>(null)
+  const [workspaceSkills, setWorkspaceSkills] = React.useState<SkillMeta[]>([])
   const [isDragOver, setIsDragOver] = React.useState(false)
   const [errorCopied, setErrorCopied] = React.useState(false)
 
@@ -479,17 +485,15 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
     [globalChannels, agentChannelId, agentModelId],
   )
 
-  // 检查 Agent 渠道列表中是否存在可用的模型（渠道 enabled + 模型 enabled）
+  const availableAgentChannelIds = React.useMemo(
+    () => getAgentAvailableChannelIds(globalChannels),
+    [globalChannels],
+  )
+
+  // 检查是否存在可用的 Agent 模型（Anthropic 兼容渠道 + API Key + 已启用模型）
   const hasAvailableModel = React.useMemo(() => {
-    // Proma 官方渠道（商业版）：只要 enabled 且有可用模型，直接视为可用
-    const promaOfficial = globalChannels.find((c) => c.id === 'proma-official')
-    if (promaOfficial?.enabled && hasConfiguredApiKey(promaOfficial) && promaOfficial.models.some((m) => m.enabled)) return true
-    // 其他渠道：需在 agentChannelIds 白名单中
-    if (!agentChannelIds || agentChannelIds.length === 0) return false
-    return globalChannels.some(
-      (c) => c.enabled && hasConfiguredApiKey(c) && agentChannelIds.includes(c.id) && c.models.some((m) => m.enabled),
-    )
-  }, [globalChannels, agentChannelIds])
+    return availableAgentChannelIds.length > 0
+  }, [availableAgentChannelIds])
   React.useEffect(() => {
     if (!agentChannelId || agentModelId) return
 
@@ -556,6 +560,42 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
 
   // 获取工作区共享文件目录路径（@ 引用时需要搜索）
   const workspaceSlug = workspaces.find((w) => w.id === currentWorkspaceId)?.slug ?? null
+  const selectedMcpServersMap = useAtomValue(agentSelectedMcpServersAtom)
+  const setSelectedMcpServersMap = useSetAtom(agentSelectedMcpServersAtom)
+  const selectedMcpServers = selectedMcpServersMap.get(sessionId) ?? []
+  const setSelectedMcpServers = React.useCallback((names: string[]): void => {
+    setSelectedMcpServersMap((prev) => {
+      const map = new Map(prev)
+      if (names.length === 0) {
+        map.delete(sessionId)
+      } else {
+        map.set(sessionId, names)
+      }
+      return map
+    })
+  }, [sessionId, setSelectedMcpServersMap])
+  React.useEffect(() => {
+    if (!workspaceSlug) {
+      setWorkspaceSkills([])
+      return
+    }
+    let cancelled = false
+    window.electronAPI
+      .getWorkspaceCapabilities(workspaceSlug)
+      .then((capabilities) => {
+        if (!cancelled) setWorkspaceSkills(capabilities.skills)
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setWorkspaceSkills([])
+          console.error('[AgentView] 加载工作区 Skill 失败:', error)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [workspaceSlug, capabilitiesVersion])
+
   React.useEffect(() => {
     if (!workspaceSlug) {
       setWorkspaceFilesPath(null)
@@ -1247,14 +1287,6 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       return map
     })
 
-    // 自动将选中的渠道加入 Agent 可用渠道白名单
-    const updatedChannelIds = agentChannelIds.includes(option.channelId)
-      ? agentChannelIds
-      : [...agentChannelIds, option.channelId]
-    if (updatedChannelIds !== agentChannelIds) {
-      setAgentChannelIds(updatedChannelIds)
-    }
-
     // 同时更新全局默认值（新会话继承）
     setDefaultChannelId(option.channelId)
     setDefaultModelId(option.modelId)
@@ -1263,9 +1295,9 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
     window.electronAPI.updateSettings({
       agentChannelId: option.channelId,
       agentModelId: option.modelId,
-      agentChannelIds: updatedChannelIds,
+      agentChannelIds: availableAgentChannelIds,
     }).catch(console.error)
-  }, [sessionId, setSessionChannelMap, setSessionModelMap, setDefaultChannelId, setDefaultModelId, agentChannelIds, setAgentChannelIds])
+  }, [sessionId, setSessionChannelMap, setSessionModelMap, setDefaultChannelId, setDefaultModelId, availableAgentChannelIds])
 
   /** 构建 externalSelectedModel 给 ModelSelector */
   const externalSelectedModel = React.useMemo(() => {
@@ -1378,6 +1410,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
 
     // 1. 如果有 pending 文件，先保存到 session 目录
     let fileReferences = ''
+    let attachmentMetadata: AgentSendInput['attachments'] | undefined
     if (pendingFilesSnapshot.length > 0) {
       const workspace = workspaces.find((w) => w.id === currentWorkspaceId)
       if (!workspace) {
@@ -1475,6 +1508,14 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
 
       const refs = allRefs.map((f) => `- ${f.filename}: ${f.targetPath}`).join('\n')
       fileReferences += `<attached_files>\n${refs}\n</attached_files>\n\n`
+      attachmentMetadata = allRefs.map((ref) => {
+        const pending = pendingFilesSnapshot.find((file) => file.filename === ref.filename)
+        return {
+          filename: ref.filename,
+          path: ref.targetPath,
+          mediaType: pending?.mediaType,
+        }
+      })
 
       // 清理
       for (const f of pendingFilesSnapshot) {
@@ -1561,18 +1602,18 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       workspaceId: currentWorkspaceId || undefined,
       startedAt: streamStartedAt,
       permissionModeOverride: permissionMode,
+      ...(attachmentMetadata && attachmentMetadata.length > 0 && { attachments: attachmentMetadata }),
       ...(additionalDirectoriesForRun.size > 0 && { additionalDirectories: Array.from(additionalDirectoriesForRun) }),
-      // 解析用户消息中的 Skill/MCP/会话引用，传递结构化元数据给后端
+      // 解析用户消息中的 Skill/会话引用，传递结构化元数据给后端
       ...(() => {
-        const skills = [...effectiveText.matchAll(/\/skill:(\S+)/g)].map(m => m[1]).filter(Boolean) as string[]
-        const mcps = [...effectiveText.matchAll(/#mcp:(\S+)/g)].map(m => m[1]).filter(Boolean) as string[]
-        const sessionIds = [...effectiveText.matchAll(/&session:(\S+)/g)].map(m => m[1]).filter(Boolean) as string[]
+        const skills = [...effectiveText.matchAll(/\/skill:(\S+)/g)].map((m) => m[1]).filter(Boolean) as string[]
+        const sessionIds = [...effectiveText.matchAll(/&session:(\S+)/g)].map((m) => m[1]).filter(Boolean) as string[]
         return {
           ...(skills.length > 0 && { mentionedSkills: skills }),
-          ...(mcps.length > 0 && { mentionedMcpServers: mcps }),
           ...(sessionIds.length > 0 && { mentionedSessionIds: sessionIds }),
         }
       })(),
+      selectedMcpServers,
     }
 
     setInputContent('')
@@ -1588,7 +1629,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
         return map
       })
     })
-  }, [inputContent, attachedDirs, attachedFileDirectories, sessionId, agentChannelId, agentModelId, autoMode.enabled, currentWorkspaceId, workspaces, streaming, backgroundWaiting, suggestion, hasAvailableModel, currentAgentModelSupportsMultimodal, showBlockedPngToast, store, setStreamingStates, setPendingFiles, setAgentStreamErrors, setPromptSuggestions, setInputContent, setLiveMessagesMap, permissionMode, messagesLoaded])
+  }, [inputContent, attachedDirs, attachedFileDirectories, sessionId, agentChannelId, agentModelId, autoMode.enabled, currentWorkspaceId, workspaces, streaming, backgroundWaiting, suggestion, hasAvailableModel, currentAgentModelSupportsMultimodal, showBlockedPngToast, store, setStreamingStates, setPendingFiles, setAgentStreamErrors, setPromptSuggestions, setInputContent, setLiveMessagesMap, permissionMode, messagesLoaded, selectedMcpServers])
 
   /** 停止生成 */
   const handleStop = React.useCallback((): void => {
@@ -1654,6 +1695,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       workspaceId: currentWorkspaceId || undefined,
       startedAt: streamStartedAt,
       permissionModeOverride: permissionMode,
+      selectedMcpServers,
     }).catch((error) => {
       console.error('[AgentView] /compact 发送失败:', error)
       // 回滚：移除合成用户消息 + 清除 isCompacting flag
@@ -1673,7 +1715,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
         return map
       })
     })
-  }, [sessionId, agentChannelId, agentModelId, autoMode.enabled, currentWorkspaceId, streaming, setStreamingStates, store, permissionMode])
+  }, [sessionId, agentChannelId, agentModelId, autoMode.enabled, currentWorkspaceId, streaming, setStreamingStates, store, permissionMode, selectedMcpServers])
 
   /** 复制错误信息到剪贴板 */
   const handleCopyError = React.useCallback(async (): Promise<void> => {
@@ -1732,8 +1774,9 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       workspaceId: currentWorkspaceId || undefined,
       startedAt: streamStartedAt,
       permissionModeOverride: permissionMode,
+      selectedMcpServers,
     }).catch(console.error)
-  }, [persistedSDKMessages, sessionId, agentChannelId, agentModelId, autoMode.enabled, currentWorkspaceId, streaming, setAgentStreamErrors, setStreamingStates, permissionMode])
+  }, [persistedSDKMessages, sessionId, agentChannelId, agentModelId, autoMode.enabled, currentWorkspaceId, streaming, setAgentStreamErrors, setStreamingStates, permissionMode, selectedMcpServers])
 
   /** 在新对话继续：创建新会话 + 切换 tab + 使用 &session 引用旧会话 */
   const handleRetryInNewSession = React.useCallback(async (): Promise<void> => {
@@ -1774,11 +1817,12 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
         mentionedSessionIds: [sessionId],
         startedAt: streamStartedAt,
         permissionModeOverride: permissionMode,
+        selectedMcpServers,
       }).catch(console.error)
     } catch (error) {
       console.error('[AgentView] 在新会话中重试失败:', error)
     }
-  }, [sessionId, agentChannelId, agentModelId, autoMode.enabled, currentWorkspaceId, openSession, setAgentSessions, setStreamingStates, permissionMode])
+  }, [sessionId, agentChannelId, agentModelId, autoMode.enabled, currentWorkspaceId, openSession, setAgentSessions, setStreamingStates, permissionMode, selectedMcpServers])
 
   /** 分叉会话：从指定消息处创建新会话并自动切换 */
   const handleFork = React.useCallback(async (upToMessageUuid: string): Promise<void> => {
@@ -1904,21 +1948,72 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
 
   const hasTextInput = inputContent.trim().length > 0
   const canSend = messagesLoaded && (hasTextInput || pendingFiles.length > 0 || !!suggestion) && agentChannelId !== null && hasAvailableModel && (!streaming || hasTextInput)
+  const richTextInputRef = React.useRef<RichTextInputRef>(null)
 
-  const inputToolbarItems = React.useMemo<ToolbarItem[]>(() => [
+  const inputPrimaryToolbarItems = React.useMemo<ToolbarItem[]>(() => [
     { key: 'expert-group', node: <ExpertSummonButton variant="composer" sessionId={sessionId} /> },
     {
       key: 'model',
       node: (
         <ModelSelector
-          filterChannelIds={agentChannelIds}
+          filterChannelIds={availableAgentChannelIds}
           externalSelectedModel={externalSelectedModel}
           onModelSelect={handleModelSelect}
           autoModeConfig={autoMode.autoModeConfig}
+          compactTrigger
         />
       ),
     },
     { key: 'permission-mode', node: <PermissionModeSelector sessionId={sessionId} /> },
+    {
+      key: 'skill-picker',
+      node: (
+        <AgentSkillPicker
+          skills={workspaceSkills}
+          disabled={!agentChannelId || !hasAvailableModel}
+          onSelectSkill={(skill) => {
+            richTextInputRef.current?.insertSkillMention({ id: skill.slug, name: skill.name || skill.slug })
+          }}
+          onOpenSkillManager={() => {
+            setAgentSkillsInitialTab('skills')
+            setActiveView('agent-skills')
+          }}
+        />
+      ),
+    },
+    {
+      key: 'connector-picker',
+      node: (
+        <AgentConnectorPicker
+          workspaceSlug={workspaceSlug}
+          selectedNames={selectedMcpServers}
+          capabilitiesVersion={capabilitiesVersion}
+          onSelectedNamesChange={setSelectedMcpServers}
+          onOpenConnectorManager={() => {
+            setAgentSkillsInitialTab('mcp')
+            setActiveView('agent-skills')
+          }}
+        />
+      ),
+    },
+  ], [
+    availableAgentChannelIds,
+    agentChannelId,
+    hasAvailableModel,
+    workspaceSkills,
+    setActiveView,
+    setAgentSkillsInitialTab,
+    externalSelectedModel,
+    handleModelSelect,
+    autoMode.autoModeConfig,
+    sessionId,
+    workspaceSlug,
+    selectedMcpServers,
+    capabilitiesVersion,
+    setSelectedMcpServers,
+  ])
+
+  const inputActionToolbarItems = React.useMemo<ToolbarItem[]>(() => [
     {
       key: 'thinking',
       node: (
@@ -1934,7 +2029,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
         />
       ),
     },
-    { key: 'speech', node: <SpeechButton className="size-[36px] shrink-0 rounded-full" /> },
+    { key: 'speech', node: <SpeechButton className="size-8 shrink-0 rounded-full" /> },
     {
       key: 'attach-file',
       node: (
@@ -1944,10 +2039,10 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
               type="button"
               variant="ghost"
               size="icon"
-              className="size-[36px] shrink-0 rounded-full text-foreground/60 hover:text-foreground"
+              className="size-8 shrink-0 rounded-full text-foreground/60 hover:text-foreground"
               onClick={handleOpenFileDialog}
             >
-              <Paperclip className="size-5" />
+              <Paperclip className="size-4" />
             </Button>
           </TooltipTrigger>
           <TooltipContent side="top">
@@ -1965,10 +2060,10 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
               type="button"
               variant="ghost"
               size="icon"
-              className="size-[36px] shrink-0 rounded-full text-foreground/60 hover:text-foreground"
+              className="size-8 shrink-0 rounded-full text-foreground/60 hover:text-foreground"
               onClick={handleAttachFolder}
             >
-              <FolderPlus className="size-5" />
+              <FolderPlus className="size-4" />
             </Button>
           </TooltipTrigger>
           <TooltipContent side="top">
@@ -2004,11 +2099,6 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       ),
     },
   ], [
-    agentChannelIds,
-    externalSelectedModel,
-    handleModelSelect,
-    autoMode.autoModeConfig,
-    sessionId,
     agentThinking,
     setAgentThinking,
     handleOpenFileDialog,
@@ -2034,10 +2124,10 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
           type="button"
           variant="ghost"
           size="icon"
-          className="size-[36px] rounded-full text-destructive hover:!text-[hsl(0,75%,55%)] hover:!bg-[var(--stop-hover-bg)]"
+          className="size-8 rounded-full text-destructive hover:!text-[hsl(0,75%,55%)] hover:!bg-[var(--stop-hover-bg)]"
           onClick={handleStop}
         >
-          <Square className="size-[16px]" fill="currentColor" strokeWidth={0} />
+          <Square className="size-3.5" fill="currentColor" strokeWidth={0} />
         </Button>
       </TooltipTrigger>
       <TooltipContent side="top">
@@ -2050,7 +2140,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       variant="ghost"
       size="icon"
       className={cn(
-        'size-[36px] rounded-full',
+        'size-8 rounded-full',
         canSend
           ? 'text-primary hover:bg-primary/10'
           : 'text-foreground/30 cursor-not-allowed'
@@ -2058,14 +2148,14 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       onClick={handleSend}
       disabled={!canSend}
     >
-      <CornerDownLeft className="size-[22px]" />
+      <CornerDownLeft className="size-5" />
     </Button>
   )
 
   return (
     <>
     <AgentSessionProvider sessionId={sessionId}>
-      <div className="flex flex-col h-full flex-1 min-w-0 max-w-[min(72rem,100%)] mx-auto">
+      <div className="flex flex-col h-full flex-1 min-w-0 w-full max-w-[min(86rem,100%)] mx-auto">
         {/* Agent Header */}
         <AgentHeader sessionId={sessionId} />
 
@@ -2100,10 +2190,10 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
 
         {/* 输入区域 — 交互横幅显示时隐藏，由横幅替代 */}
         {!hasBannerOverlay && (
-        <div className="px-2.5 pb-2.5 md:px-[18px] md:pb-[18px]" data-input-mode="agent">
+        <div className="px-3 pb-3 md:px-7 md:pb-5" data-input-mode="agent">
           <div
             className={cn(
-              'rounded-[17px] border-[0.5px] border-border bg-background/70 backdrop-blur-sm transition-all duration-200',
+              'rounded-[18px] border-[0.5px] border-border bg-background/70 backdrop-blur-sm transition-all duration-200',
               (isPlanMode || isPermissionPlanMode) && !isDragOver && 'plan-mode-border',
               isDragOver && 'border-[2px] border-dashed border-[#2ecc71] bg-[#2ecc71]/[0.03]'
             )}
@@ -2116,7 +2206,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
             {(!agentChannelId || !hasAvailableModel) && (
               <div className="flex items-center gap-2 px-4 py-2 text-sm text-amber-600 dark:text-amber-400">
                 <Settings size={14} />
-                <span>{!agentChannelId ? '请在设置 → 模型设置中选择 Agent 供应商' : '暂无可用模型，请在设置 → 模型设置中配置 API Key 并启用 Agent 模型'}</span>
+                <span>{!agentChannelId ? '请在设置 → 模型配置中配置并启用 Anthropic 兼容模型' : '暂无可用模型，请在设置 → 模型配置中配置 API Key 并启用 Agent 模型'}</span>
                 <button
                   type="button"
                   className="text-xs underline underline-offset-2 hover:text-foreground transition-colors"
@@ -2177,6 +2267,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
             )}
 
             <RichTextInput
+              ref={richTextInputRef}
               value={inputContent}
               onChange={setInputContent}
               onSubmit={handleSend}
@@ -2186,11 +2277,11 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
               placeholder={
                 agentChannelId && hasAvailableModel
                   ? sendWithCmdEnter
-                    ? '输入消息... (⌘/Ctrl+Enter 发送，Enter 换行，@ 引用文件，/ 命令或 Skill，# 调用 MCP，& 引用会话)'
-                    : '输入消息... (Enter 发送，Shift+Enter 换行，@ 引用文件，/ 命令或 Skill，# 调用 MCP，& 引用会话)'
+                    ? '输入消息... (⌘/Ctrl+Enter 发送，Enter 换行，@ 引用文件，/ 命令或 Skill，& 引用会话)'
+                    : '输入消息... (Enter 发送，Shift+Enter 换行，@ 引用文件，/ 命令或 Skill，& 引用会话)'
                   : !agentChannelId
-                    ? '请先在设置 → 模型设置中选择 Agent 供应商'
-                    : '请先在设置 → 模型设置中配置 API Key 并启用 Agent 模型'
+                    ? '请先在设置 → 模型配置中配置并启用 Anthropic 兼容模型'
+                    : '请先在设置 → 模型配置中配置 API Key 并启用 Agent 模型'
               }
               disabled={!agentChannelId || !hasAvailableModel}
               autoFocusTrigger={sessionId}
@@ -2209,7 +2300,23 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
             />
 
             {/* Footer 工具栏 — 容器变窄时尾部按钮自动折叠进「更多」Popover */}
-            <InputToolbarOverflow items={inputToolbarItems} trailing={inputTrailingNode} />
+            <div className="flex h-11 items-center justify-between gap-3 px-3 py-1.5">
+              <InputToolbarOverflow
+                items={inputPrimaryToolbarItems}
+                pinnedEndCount={1}
+                gapPx={4}
+                moreButtonPx={32}
+                className="min-w-0 flex-1 justify-start px-0 py-0 h-auto gap-0"
+              />
+              <div className="flex shrink-0 items-center gap-1">
+                {inputActionToolbarItems.map((item) => (
+                  <div key={item.key} className="flex shrink-0 items-center">
+                    {item.node}
+                  </div>
+                ))}
+                <div className="ml-1 flex shrink-0 items-center">{inputTrailingNode}</div>
+              </div>
+            </div>
           </div>
         </div>
         )}

@@ -13,6 +13,10 @@ const CHANGE_LABELS: Record<CapabilityChange['type'], string> = {
   skill_disabled: 'Skill 已禁用',
 }
 
+export function getCapabilityToastId(change: CapabilityChange): string {
+  return `capability:${change.type}:${change.name}`
+}
+
 /**
  * 显示能力变化 toast 通知。
  *
@@ -27,9 +31,9 @@ export function showCapabilityChangeToasts(changes: CapabilityChange[]): void {
       const label = CHANGE_LABELS[change.type]
       const isPositive = change.type.endsWith('_added') || change.type.endsWith('_enabled')
       if (isPositive) {
-        toast.success(`${label}: ${change.name}`)
+        toast.success(`${label}: ${change.name}`, { id: getCapabilityToastId(change) })
       } else {
-        toast.info(`${label}: ${change.name}`)
+        toast.info(`${label}: ${change.name}`, { id: getCapabilityToastId(change) })
       }
     }
   } else {

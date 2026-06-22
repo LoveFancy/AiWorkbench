@@ -1,0 +1,76 @@
+name: Open Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  review:
+    name: Review PR with open-code-review
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, oprod, open-code-review]
+    timeout-minutes: 30
+    env:
+      PATH: /home/appadmin/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      OCR_LLM_URL: https://api.deepseek.com/anthropic
+      OCR_LLM_TOKEN: ${{ secrets.OCR_LLM_TOKEN }}
+      OCR_LLM_MODEL: deepseek-v4-pro
+      OCR_USE_ANTHROPIC: "true"
+      OCR_LLM_AUTH_HEADER: authorization
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 检查 OCR 环境
+        run: |
+          set -euo pipefail
+          command -v ocr
+          ocr version
+          python3 --version
+
+      - name: 拉取 base 分支
+        run: git fetch origin "${{ github.base_ref }}"
+
+      - name: 预览审查范围
+        run: |
+          set -euo pipefail
+          ocr review \
+            --from "origin/${{ github.base_ref }}" \
+            --to "${{ github.event.pull_request.head.sha }}" \
+            --preview \
+            --audience agent
+
+      - name: 执行 open-code-review
+        run: |
+          set -euo pipefail
+          ocr review \
+            --from "origin/${{ github.base_ref }}" \
+            --to "${{ github.event.pull_request.head.sha }}" \
+            --format json \
+            --audience agent \
+            --timeout 10 \
+            > ocr-review.json
+
+      - name: 严重问题通知飞书
+        env:
+          FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
+          FEISHU_SECRET: ${{ secrets.FEISHU_SECRET }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          REPO: ${{ github.repository }}
+        run: python3 scripts/notify_feishu_if_critical.py ocr-review.json
+
+      - name: 上传审查结果
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: open-code-review-result
+          path: ocr-review.json
+          if-no-files-found: ignore

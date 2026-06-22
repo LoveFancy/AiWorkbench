@@ -15,6 +15,8 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { ExpertCard } from '@/experts/card/ExpertCard'
 import { ExpertDetailDialog } from '@/experts/detail/ExpertDetailDialog'
 import { getExpertGroupSearchTerms } from '@/experts/card/subagents'
+import { ExpertCategoryFilter } from '@/experts/shared/ExpertCategoryFilter'
+import { expertCategoriesAtom } from '@/experts/atoms/expert-remote'
 import { followedExpertGroupsAtom, recentExpertGroupsAtom } from '@/experts/atoms/expert-follow'
 import { cn } from '@/lib/utils'
 
@@ -45,18 +47,22 @@ export function ExpertPicker({
   const recent = useAtomValue(recentExpertGroupsAtom)
   const [query, setQuery] = React.useState('')
   const [filter, setFilter] = React.useState<'all' | 'followed' | 'recent'>('all')
+  const [category, setCategory] = React.useState('all')
   const [selected, setSelected] = React.useState<AgentExpertGroupInfo | null>(null)
+
+  const categories = useAtomValue(expertCategoriesAtom)
 
   React.useEffect(() => {
     if (!open) {
       setQuery('')
       setFilter('all')
+      setCategory('all')
       setSelected(null)
     }
   }, [open])
 
   const visibleGroups = React.useMemo(() => {
-    // 先按筛选标签过滤，再按搜索词过滤
+    // 先按筛选标签过滤，再按分类过滤，再按搜索词过滤
     let filtered = groups
     if (filter === 'followed') {
       filtered = filtered.filter(g => followed[g.id])
@@ -64,8 +70,11 @@ export function ExpertPicker({
       const withRecent = filtered.filter(g => recent[g.id])
       filtered = withRecent.sort((a, b) => (recent[b.id] ?? 0) - (recent[a.id] ?? 0))
     }
+    if (category !== 'all') {
+      filtered = filtered.filter(g => g.categories?.includes(category))
+    }
     return filtered.filter((group) => matchesGroup(group, query))
-  }, [groups, query, filter, followed, recent])
+  }, [groups, query, filter, category, followed, recent])
 
   // 可召唤：状态正常，或远程条目（支持下载后召唤）
   const availableGroups = visibleGroups.filter(
@@ -144,6 +153,17 @@ export function ExpertPicker({
                 )
               })}
             </div>
+
+            {/* 分类筛选 */}
+            {categories.length > 0 && (
+              <div className="mt-2">
+                <ExpertCategoryFilter
+                  categories={categories}
+                  value={category}
+                  onChange={setCategory}
+                />
+              </div>
+            )}
           </div>
 
           <ScrollArea className="h-[500px] px-5 pb-5">

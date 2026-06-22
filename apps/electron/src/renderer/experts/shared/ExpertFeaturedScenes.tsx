@@ -13,12 +13,12 @@ interface ExpertFeaturedScenesProps {
 export function ExpertFeaturedScenes({ allGroups, activeScene, onSceneClick }: ExpertFeaturedScenesProps): React.ReactElement {
   const scenes = useAtomValue(featuredScenesAtom)
 
-  if (scenes.length === 0) return <div />
+  if (scenes.length === 0) return <></>
 
   const allGroupIds = new Set(allGroups.map(g => g.id))
 
   return (
-    <div className="space-y-3">
+    <div className="mb-8 space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium text-muted-foreground">精选场景</h3>
         {activeScene && (

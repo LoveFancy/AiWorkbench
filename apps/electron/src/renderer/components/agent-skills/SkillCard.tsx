@@ -20,6 +20,38 @@ interface SkillCardProps {
   onUpdate: () => void
 }
 
+function skillSourceLabel(skill: SkillMeta, isBuiltin: boolean): React.ReactElement {
+  if (skill.sourceKind === 'plugin') {
+    return (
+      <span className="truncate rounded-md bg-violet-500/10 px-1.5 py-0.5 text-[11px] font-medium text-violet-600 dark:text-violet-300">
+        {skill.sourcePluginName ?? '插件'}
+      </span>
+    )
+  }
+
+  if (skill.sourceKind === 'import' && skill.importSource) {
+    return (
+      <span className="truncate rounded-md bg-blue-500/10 px-1.5 py-0.5 text-[11px] font-medium text-blue-600 dark:text-blue-400">
+        来自 {skill.importSource.sourceWorkspaceName}
+      </span>
+    )
+  }
+
+  if (isBuiltin) {
+    return (
+      <span className="flex items-center gap-1 rounded-md bg-blue-500/10 px-1.5 py-0.5 text-[11px] font-medium text-blue-600 dark:text-blue-400">
+        <ShieldCheck size={12} /> WorkMate 内置
+      </span>
+    )
+  }
+
+  return (
+    <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+      本工作区
+    </span>
+  )
+}
+
 export function SkillCard({ skill, isBuiltin, updating, onOpen, onToggle, onUpdate }: SkillCardProps): React.ReactElement {
   return (
     <div
@@ -66,19 +98,7 @@ export function SkillCard({ skill, isBuiltin, updating, onOpen, onToggle, onUpda
       </p>
 
       <div className="mt-auto flex items-center gap-2">
-        {isBuiltin ? (
-          <span className="flex items-center gap-1 rounded-md bg-blue-500/10 px-1.5 py-0.5 text-[11px] font-medium text-blue-600 dark:text-blue-400">
-            <ShieldCheck size={12} /> PROMA 内置
-          </span>
-        ) : skill.importSource ? (
-          <span className="truncate rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-            来自 {skill.importSource.sourceWorkspaceName}
-          </span>
-        ) : (
-          <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-            本工作区
-          </span>
-        )}
+        {skillSourceLabel(skill, isBuiltin)}
 
         {skill.hasUpdate && (
           <Tooltip>

@@ -9,6 +9,7 @@ import type {
   AgentQueryInput,
   AgentProviderAdapter,
   SDKUserMessageInput,
+  AgentUserContentBlock,
   TypedError,
   ErrorCode,
   ThinkingConfig,
@@ -25,6 +26,7 @@ import {
   isThinkingSignatureError as matchesThinkingSignatureError,
 } from '@proma/shared'
 import type { CanUseToolOptions, PermissionResult } from '../agent-permission-service'
+import { buildPreToolUseMultimodalGuardOutput } from '../agent-tool-multimodal-guard'
 import { TRANSIENT_NETWORK_PATTERN } from '../error-patterns'
 import { spawn as spawnChild, execFileSync } from 'node:child_process'
 
@@ -33,6 +35,28 @@ type SDKQuery = ReturnType<typeof import('@anthropic-ai/claude-agent-sdk').query
 
 /** SDK 用户消息类型 */
 type SDKUserMessage = import('@anthropic-ai/claude-agent-sdk').SDKUserMessage
+
+const SUPPORTED_PROMPT_IMAGE_MEDIA_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
+
+/** 校验传给 SDK 的首条用户消息内容，避免非法图片块在 SDK 内部变成难定位的运行时错误 */
+export function isValidAgentPromptContent(input: unknown): input is string | AgentUserContentBlock[] {
+  if (typeof input === 'string') return true
+  if (!Array.isArray(input) || input.length === 0) return false
+
+  return input.every((block) => {
+    if (!block || typeof block !== 'object') return false
+    const record = block as Record<string, unknown>
+    if (record.type === 'text') return typeof record.text === 'string'
+    if (record.type !== 'image') return false
+
+    const source = record.source
+    if (!source || typeof source !== 'object') return false
+    const sourceRecord = source as Record<string, unknown>
+    return sourceRecord.type === 'base64' &&
+      typeof sourceRecord.data === 'string' &&
+      SUPPORTED_PROMPT_IMAGE_MEDIA_TYPES.has(String(sourceRecord.media_type))
+  })
+}
 
 // ============================================================================
 // 长生命周期消息通道
@@ -152,6 +176,8 @@ export interface ClaudeAgentQueryOptions extends AgentQueryInput {
   onModelResolved?: (model: string) => void
   /** 上下文窗口缓存回调 */
   onContextWindow?: (contextWindow: number) => void
+  /** 根据当前模型判断是否支持多模态，供 PreToolUse 拦截文件读取 */
+  getModelSupportsMultimodal?: (modelId: string | undefined) => boolean
 
   // ===== SDK 0.2.52 ~ 0.2.63 新增选项 =====
 
@@ -823,6 +849,26 @@ export class ClaudeAgentAdapter implements AgentProviderAdapter {
         // 在 result 消息发到 host 之前完成，故 result 处理时 backgroundTasksPending 已是最新。
         // 仅观察、绝不返回 decision:'block'（那会强制模型继续输出）。
         hooks: {
+          PreToolUse: [{
+            hooks: [async (input: unknown) => {
+              const hookInput = input as {
+                tool_name?: unknown
+                tool_input?: unknown
+              }
+              const toolName = typeof hookInput.tool_name === 'string' ? hookInput.tool_name : ''
+              const toolInput = hookInput.tool_input && typeof hookInput.tool_input === 'object'
+                ? hookInput.tool_input as Record<string, unknown>
+                : {}
+              const supportsMultimodal = options.getModelSupportsMultimodal?.(options.model) ?? true
+              const blocked = buildPreToolUseMultimodalGuardOutput({
+                toolName,
+                input: toolInput,
+                supportsMultimodal,
+              })
+              if (blocked) return blocked
+              return { continue: true }
+            }],
+          }],
           Stop: [{
             hooks: [async (input: unknown) => {
               const bt = (input as { background_tasks?: unknown[] }).background_tasks
@@ -874,6 +920,9 @@ export class ClaudeAgentAdapter implements AgentProviderAdapter {
       const channel = createMessageChannel(controller.signal)
 
       // 将初始 prompt 入队
+      if (!isValidAgentPromptContent(options.prompt)) {
+        throw new Error('[Claude 适配器] Agent 首条用户消息内容格式非法，无法发送给 SDK')
+      }
       channel.enqueue({
         type: 'user' as const,
         session_id: options.sessionId,

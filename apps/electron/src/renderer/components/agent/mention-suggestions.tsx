@@ -1,5 +1,5 @@
 /**
- * MentionSuggestions — Skill / MCP 的 TipTap Mention Suggestion 统一配置
+ * MentionSuggestions — Skill / Agent 会话的 TipTap Mention Suggestion 统一配置
  *
  * 泛型工厂 createMentionSuggestion 封装公共逻辑（渲染、定位、键盘导航），
  * 通过 MentionSuggestionConfig 注入差异部分（触发字符、数据获取、行渲染）。
@@ -9,7 +9,7 @@ import type React from 'react'
 import { ReactRenderer } from '@tiptap/react'
 import type { SuggestionOptions } from '@tiptap/suggestion'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
-import { MessageSquareText, Sparkles, Server, TerminalSquare } from 'lucide-react'
+import { MessageSquareText, Sparkles, TerminalSquare } from 'lucide-react'
 import { MentionList } from './MentionList'
 import type { MentionListRef } from './MentionList'
 import { createMentionPopup, positionPopup } from './mention-popup-utils'
@@ -38,7 +38,7 @@ interface MentionCommandProps {
   id: string
   label: string
   commandText?: string
-  mentionKind?: 'command' | 'skill' | 'mcp' | 'session' | 'file'
+  mentionKind?: 'command' | 'skill' | 'session' | 'file'
 }
 
 function insertMentionWithCurrentSchema(char: string): NonNullable<SuggestionOptions<unknown, MentionCommandProps>['command']> {
@@ -330,46 +330,6 @@ export function createSkillMentionSuggestion(
         )
       },
       toCommand: buildSlashMentionCommandProps,
-    },
-    workspaceSlugRef,
-    mentionActiveRef,
-    mentionItemCountRef,
-  )
-}
-
-// ===== MCP 配置 =====
-
-export interface McpMentionItem {
-  id: string
-  name: string
-  type: string
-}
-
-export function createMcpMentionSuggestion(
-  workspaceSlugRef: React.RefObject<string | null>,
-  mentionActiveRef: React.MutableRefObject<boolean>,
-  mentionItemCountRef: React.MutableRefObject<number>,
-) {
-  return createMentionSuggestion<McpMentionItem>(
-    {
-      char: '#',
-      emptyText: '无匹配 MCP 服务',
-      fetchItems: async (slug, q) => {
-        const caps = await window.electronAPI.getWorkspaceCapabilities(slug)
-        return caps.mcpServers
-          .filter((s) => s.enabled)
-          .filter((s) => !q || s.name.toLowerCase().includes(q))
-          .map((s) => ({ id: s.name, name: s.name, type: s.type }))
-      },
-      keyExtractor: (item) => item.id,
-      renderItem: (item) => (
-        <>
-          <Server className="size-3.5 text-emerald-500 flex-shrink-0" />
-          <span className="truncate font-medium flex-1 min-w-0">{item.name}</span>
-          <span className="truncate text-[10px] text-muted-foreground/50 max-w-[120px]">{item.type}</span>
-        </>
-      ),
-      toCommand: (item) => ({ id: item.id, label: item.name }),
     },
     workspaceSlugRef,
     mentionActiveRef,

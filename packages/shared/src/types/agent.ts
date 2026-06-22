@@ -253,7 +253,7 @@ export interface SDKResultMessage {
   session_id?: string
 }
 
-/** SDK system 消息（init / compact_boundary / permission_denied / task_started / task_progress / task_notification） */
+/** SDK system 消息（init / compact_boundary / permission_denied / task_started / task_progress / task_notification / model_switched） */
 export interface SDKSystemMessage {
   type: 'system'
   subtype?: string
@@ -274,6 +274,9 @@ export interface SDKSystemMessage {
   message?: string
   decision_reason_type?: string
   decision_reason?: string
+  /** model_switched 相关字段 */
+  from_model?: string
+  to_model?: string
   usage?: { total_tokens?: number; tool_uses?: number; duration_ms?: number }
   [key: string]: unknown
 }
@@ -365,6 +368,7 @@ export type ErrorCode =
   | 'mcp_unreachable'
   | 'billing_error'
   | 'model_no_tool_support'
+  | 'model_not_support_multimodal'
   | 'invalid_model'
   | 'data_policy_error'
   | 'invalid_request'
@@ -623,6 +627,8 @@ export interface AgentSessionMeta {
   sourceAutomationId?: string
   /** Auto Mode 下当前激活的模型 ID（跨轮记忆用） */
   activeModelId?: string
+  /** 会话历史是否已经包含图片上下文；为 true 时 Auto Mode 只能切换到多模态模型 */
+  requiresVisionContext?: boolean
   /** 创建时间戳 */
   createdAt: number
   /** 更新时间戳 */
@@ -799,6 +805,33 @@ export interface ConnectorsConfig {
   connectors: Record<string, ConnectorEntry>
 }
 
+// ===== 内置连接器初始化 =====
+
+export type DefaultConnectorId = 'personal-email' | 'feishu-cli' | 'hiagent-taiwei'
+
+export type DefaultConnectorInitStepId = 'check-python' | 'check-package' | 'install-package' | 'write-config' | 'self-check'
+
+export interface DefaultConnectorInitStep {
+  id: DefaultConnectorInitStepId
+  label: string
+  status: 'pending' | 'running' | 'success' | 'error' | 'skipped'
+  message?: string
+}
+
+export interface InitializeDefaultConnectorInput {
+  connectorId: DefaultConnectorId
+  emailAddress?: string
+  password?: string
+}
+
+export interface InitializeDefaultConnectorResult {
+  connectorId: DefaultConnectorId
+  serverName: string
+  success: boolean
+  steps: DefaultConnectorInitStep[]
+  message: string
+}
+
 // ===== Skill 元数据 =====
 
 /** 从其他工作区导入的 Skill 来源元数据 */
@@ -808,6 +841,8 @@ export interface SkillImportSource {
   importedAt: string        // ISO 8601
   sourceVersion: string     // 导入时源 Skill 的 version，无则 '0.0.0'
 }
+
+export type SkillSourceKind = 'plugin' | 'workspace' | 'import'
 
 /** 工作区 Skill 元数据 */
 export interface SkillMeta {
@@ -819,6 +854,12 @@ export interface SkillMeta {
   icon?: string
   version?: string
   enabled: boolean
+  /** Skill 来源类型 */
+  sourceKind: SkillSourceKind
+  /** 普通插件提供的 Skill 所属插件 ID */
+  sourcePluginId?: string
+  /** 普通插件提供的 Skill 所属插件展示名 */
+  sourcePluginName?: string
   /** 如果此 Skill 是从其他工作区导入的，则携带来源信息 */
   importSource?: SkillImportSource
   /** 是否有可用更新（源 Skill 版本 > importSource.sourceVersion） */
@@ -893,6 +934,10 @@ export type AgentPluginKind = 'builtin' | 'user' | 'remote'
 
 export type AgentPluginCapabilityType = 'skill' | 'command' | 'agent' | 'mcp' | 'expert-group'
 
+export type PluginCategory = 'expert-group' | 'general'
+
+export const EXPERT_GROUP_CAPABILITY_TYPE = 'expert-group'
+
 export type AgentPluginIssueLevel = 'warning' | 'error'
 
 export interface AgentPluginIdParts {
@@ -966,6 +1011,8 @@ export interface AgentExpertGroupManifest {
   toolsPolicy?: AgentExpertGroupToolsPolicy
   /** 从 plugin.json 传递的专家类型，'agent' = 单专家，'team' = 多专家团队 */
   expertType?: 'agent' | 'team'
+  /** 多分类标签 */
+  categories?: string[]
 }
 
 export interface AgentExpertGroupInfo extends AgentExpertGroupManifest {
@@ -1025,6 +1072,7 @@ export interface AgentPluginInfo {
   installedAt?: string
   updatedAt?: string
   sourceMarketplaceId?: string
+  category: PluginCategory
   capabilities: AgentPluginCapability[]
   issues: Array<{
     level: AgentPluginIssueLevel
@@ -1062,6 +1110,8 @@ export interface ServerExpertGroupSummary {
   sortWeight: number
   publishedAt: string
   updatedAt: string
+  /** 多分类标签 */
+  categories: string[]
 }
 
 export interface ServerExpertGroupListResponse {
@@ -1197,14 +1247,14 @@ export interface AgentSendInput {
   workspaceId?: string
   /** 附加的外部目录（绝对路径，传递给 SDK additionalDirectories） */
   additionalDirectories?: string[]
+  /** 本轮附件轻量元数据，用于后端判断 Auto Mode 是否需要视觉能力 */
+  attachments?: Array<{ filename: string; mediaType?: string; path?: string }>
   /** 动态注入的 MCP 服务器（仅在本次会话中生效，如飞书群聊工具） */
   customMcpServers?: Record<string, Record<string, unknown>>
   /** 强制覆盖权限模式（飞书等无 UI 交互场景下强制 'bypassPermissions'） */
   permissionModeOverride?: PromaPermissionMode
   /** 用户通过 /skill:xxx 引用的 Skill slug 列表 */
   mentionedSkills?: string[]
-  /** 用户通过 #mcp:xxx 引用的 MCP 服务器名称列表 */
-  mentionedMcpServers?: string[]
   /** 用户通过会话引用 mention 指定的 Agent 会话 ID 列表 */
   mentionedSessionIds?: string[]
   /** 渲染进程生成的流式开始时间戳，主进程原样回传到 STREAM_COMPLETE，确保竞态保护比较的是同一个值 */
@@ -1213,6 +1263,8 @@ export interface AgentSendInput {
   triggeredBy?: 'user' | 'automation'
   /** 定时任务执行上下文（注入到系统提示词，用户不可见） */
   automationContext?: string
+  /** 当前会话选择注入的 MCP 服务器名称列表 */
+  selectedMcpServers?: string[]
 }
 
 // ===== Agent 队列消息 =====
@@ -1410,6 +1462,8 @@ export interface AgentSaveFilesInput {
   workspaceSlug: string
   sessionId: string
   files: Array<{ filename: string; data: string }>
+  /** 可选目标目录；必须位于该 session 工作目录内，默认保存到 session 根目录 */
+  targetDir?: string
 }
 
 /** Agent 已保存文件信息 */
@@ -1422,6 +1476,8 @@ export interface AgentSavedFile {
 export interface AgentSaveWorkspaceFilesInput {
   workspaceSlug: string
   files: Array<{ filename: string; data: string }>
+  /** 可选目标目录；必须位于 workspace-files 内，默认保存到工作区文件根目录 */
+  targetDir?: string
 }
 
 /** 附加/分离目录的输入参数 */
@@ -1717,6 +1773,8 @@ export const AGENT_IPC_CHANNELS = {
   SAVE_CONNECTORS_CONFIG: 'agent:save-connectors-config',
   /** 同步预置连接器到工作区 */
   SYNC_DEFAULT_CONNECTORS: 'agent:sync-default-connectors',
+  /** 初始化内置连接器 */
+  INITIALIZE_DEFAULT_CONNECTOR: 'agent:initialize-default-connector',
   /** 获取工作区 Skill 列表 */
   GET_SKILLS: 'agent:get-skills',
   /** 获取工作区 Skills 目录绝对路径 */
@@ -1935,6 +1993,8 @@ export const EXPERT_IPC_CHANNELS = {
   DOWNLOAD_PROGRESS: 'expert:download-progress',
   /** 取消下载 */
   CANCEL_DOWNLOAD: 'expert:cancel-download',
+  /** 获取服务端专家团分类列表 */
+  FETCH_CATEGORIES: 'expert:fetch-categories',
 } as const
 
 /**

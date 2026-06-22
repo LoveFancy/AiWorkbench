@@ -7,7 +7,7 @@
 
 import { atom } from 'jotai'
 import { atomWithStorage } from 'jotai/utils'
-import type { ConversationMeta, ChatMessage, FileAttachment, ChatToolActivity, Channel } from '@proma/shared'
+import type { ConversationMeta, ChatMessage, FileAttachment, ChatToolActivity, Channel, ChatRetryAttempt } from '@proma/shared'
 
 /** 全局渠道列表缓存（启动时加载一次，设置变更时刷新） */
 export const channelsAtom = atom<Channel[]>([])
@@ -182,6 +182,34 @@ export const currentChatErrorAtom = atom<string | null>((get) => {
   const currentId = get(currentConversationIdAtom)
   if (!currentId) return null
   return get(chatStreamErrorsAtom).get(currentId) ?? null
+})
+
+/** Chat 重试状态 */
+export interface ChatRetryingState {
+  /** 当前第几次尝试 */
+  currentAttempt: number
+  /** 最大尝试次数 */
+  maxAttempts: number
+  /** 等待延迟（秒） */
+  delaySeconds: number
+  /** 失败原因简述 */
+  reason: string
+  /** 本次重试等待的开始时间戳（毫秒，用于倒计时） */
+  lastRetryStartedAt?: number
+  /** 重试历史 */
+  history: ChatRetryAttempt[]
+  /** 是否已失败 */
+  failed: boolean
+}
+
+/** Chat 重试状态 Map — 以 conversationId 为 key */
+export const chatRetryingAtom = atom<Map<string, ChatRetryingState>>(new Map())
+
+/** 当前对话的重试状态（派生只读原子） */
+export const currentChatRetryingAtom = atom<ChatRetryingState | null>((get) => {
+  const currentId = get(currentConversationIdAtom)
+  if (!currentId) return null
+  return get(chatRetryingAtom).get(currentId) ?? null
 })
 
 /**

@@ -58,6 +58,12 @@ import {
 } from './tree-row-layout'
 import { formatManagedPath, type ManagedPathRoots } from '@/lib/managed-path-display'
 
+export const FILE_TREE_DRAG_MIME = 'application/x-proma-file-tree-entry'
+
+type FileTreeDragPayload = {
+  paths: string[]
+}
+
 /** 计算目标路径相对 rootPath 的祖先目录集合（不含 rootPath 自身、含目标的所有上级） */
 export function computeRevealAncestors(rootPath: string, targetPath: string): Set<string> {
   const ancestors = new Set<string>()
@@ -87,6 +93,53 @@ export function isPathUnderRoot(rootPath: string, targetPath: string): boolean {
   return targetPath.startsWith(root + '/') || targetPath.startsWith(root + '\\')
 }
 
+export function normalizeFsPath(filePath: string): string {
+  return filePath.replace(/[/\\]+$/, '')
+}
+
+export function getParentPath(filePath: string): string {
+  const normalized = normalizeFsPath(filePath)
+  const index = Math.max(normalized.lastIndexOf('/'), normalized.lastIndexOf('\\'))
+  return index > 0 ? normalized.slice(0, index) : normalized
+}
+
+export function isSameOrChildPath(parentPath: string, childPath: string): boolean {
+  const parent = normalizeFsPath(parentPath)
+  const child = normalizeFsPath(childPath)
+  return child === parent || child.startsWith(parent + '/') || child.startsWith(parent + '\\')
+}
+
+export function readFileTreeDragPayload(event: React.DragEvent): FileTreeDragPayload | null {
+  const raw = event.dataTransfer.getData(FILE_TREE_DRAG_MIME)
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as Partial<FileTreeDragPayload>
+    const paths = Array.isArray(parsed.paths)
+      ? parsed.paths.filter((path): path is string => typeof path === 'string' && path.length > 0)
+      : []
+    return paths.length > 0 ? { paths } : null
+  } catch {
+    return null
+  }
+}
+
+export function eventHasFileTreeDrag(event: React.DragEvent): boolean {
+  return Array.from(event.dataTransfer.types).includes(FILE_TREE_DRAG_MIME)
+}
+
+export function eventHasExternalFiles(event: React.DragEvent): boolean {
+  return Array.from(event.dataTransfer.types).includes('Files')
+}
+
+function isPointerInsideElement(event: React.DragEvent, element: HTMLElement | null): boolean {
+  if (!element) return false
+  const rect = element.getBoundingClientRect()
+  return event.clientX >= rect.left
+    && event.clientX <= rect.right
+    && event.clientY >= rect.top
+    && event.clientY <= rect.bottom
+}
+
 interface FileBrowserProps {
   rootPath: string
   /** 隐藏内置顶部工具栏（面包屑 + 按钮），由外部自行渲染 */
@@ -107,9 +160,20 @@ interface FileBrowserProps {
   onSelectedDirectoryChange?: (dirPath: string | null) => void
   /** 在指定目录下新建文件或文件夹 */
   onCreateEntry?: (parentDir: string, type: 'directory' | 'file') => void
+  /** 右键菜单快捷转移到固定目录 */
+  transferTarget?: {
+    label: string
+    targetDir: string | null
+  }
+  /** 文件通过拖拽或菜单移动成功后通知外部刷新其它文件树 */
+  onFilesMoved?: () => void
+  /** 外部文件拖到具体目录行时保存到该目录 */
+  onExternalFilesDropToDirectory?: (files: File[], targetDir: string) => Promise<void> | void
+  /** 目录行成为拖拽目标时通知外层清理其它 drop target 状态 */
+  onDirectoryDropTargetActive?: () => void
 }
 
-export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displayRoots, clearSelectionSignal = 0, onAddToChat, onFilePreview, onSelectedDirectoryChange, onCreateEntry }: FileBrowserProps): React.ReactElement {
+export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displayRoots, clearSelectionSignal = 0, onAddToChat, onFilePreview, onSelectedDirectoryChange, onCreateEntry, transferTarget, onFilesMoved, onExternalFilesDropToDirectory, onDirectoryDropTargetActive }: FileBrowserProps): React.ReactElement {
   const [entries, setEntries] = React.useState<FileEntry[]>([])
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
@@ -308,13 +372,58 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
         await window.electronAPI.moveFile(entry.path, result.path)
       }
       setSelectedPaths(new Set())
+      onFilesMoved?.()
       await loadRoot()
     } catch (err) {
       console.error('[FileBrowser] 移动失败:', err)
     } finally {
       setMoving(false)
     }
-  }, [selectedPaths, loadRoot])
+  }, [selectedPaths, loadRoot, onFilesMoved])
+
+  const movePathsToDirectory = React.useCallback(async (paths: string[], targetDir: string): Promise<void> => {
+    const uniquePaths = Array.from(new Set(paths))
+    const movablePaths = uniquePaths.filter((path) => {
+      if (normalizeFsPath(getParentPath(path)) === normalizeFsPath(targetDir)) return false
+      if (isSameOrChildPath(path, targetDir)) return false
+      return true
+    })
+    if (movablePaths.length === 0) return
+
+    setMoving(true)
+    try {
+      for (const path of movablePaths) {
+        await window.electronAPI.moveFile(path, targetDir)
+      }
+      setSelectedPaths(new Set())
+      onSelectedDirectoryChange?.(null)
+      onFilesMoved?.()
+      await loadRoot()
+    } catch (err) {
+      console.error('[FileBrowser] 拖拽移动失败:', err)
+    } finally {
+      setMoving(false)
+    }
+  }, [loadRoot, onFilesMoved, onSelectedDirectoryChange])
+
+  const handleTransfer = React.useCallback(async (entry: FileEntry, targetDir: string): Promise<void> => {
+    const paths = selectedPaths.has(entry.path) ? Array.from(selectedPaths) : [entry.path]
+    await movePathsToDirectory(paths, targetDir)
+  }, [movePathsToDirectory, selectedPaths])
+
+  const handleRootDragOver = React.useCallback((event: React.DragEvent): void => {
+    if (!eventHasFileTreeDrag(event)) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+  }, [])
+
+  const handleRootDrop = React.useCallback((event: React.DragEvent): void => {
+    const payload = readFileTreeDragPayload(event)
+    if (!payload) return
+    event.preventDefault()
+    event.stopPropagation()
+    void movePathsToDirectory(payload.paths, rootPath)
+  }, [movePathsToDirectory, rootPath])
 
   const breadcrumb = React.useMemo(() => {
     if (displayRoots) return formatManagedPath(rootPath, displayRoots)
@@ -359,13 +468,23 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
           onAddToChat={onAddToChat}
           onFilePreview={onFilePreview}
           onCreateEntry={onCreateEntry}
+          transferTarget={transferTarget}
+          onTransfer={handleTransfer}
+          onMovePathsToDirectory={movePathsToDirectory}
+          onExternalFilesDropToDirectory={onExternalFilesDropToDirectory}
+          onDirectoryDropTargetActive={onDirectoryDropTargetActive}
         />
       ))}
     </div>
   )
 
   return (
-    <div className={cn('flex flex-col', embedded ? 'min-h-0' : 'h-full')} onClickCapture={handleRootClickCapture}>
+    <div
+      className={cn('flex flex-col', embedded ? 'min-h-0' : 'h-full')}
+      onClickCapture={handleRootClickCapture}
+      onDragOver={handleRootDragOver}
+      onDrop={handleRootDrop}
+    >
       {/* 顶部工具栏（可由外部接管） */}
       {!hideToolbar && (
         <div className="flex items-center gap-1 px-3 pr-10 h-[48px] border-b flex-shrink-0">
@@ -464,6 +583,14 @@ interface FileTreeItemProps {
   onAddToChat?: (entry: FileEntry) => void
   onFilePreview?: (filePath: string) => void
   onCreateEntry?: (parentDir: string, type: 'directory' | 'file') => void
+  transferTarget?: {
+    label: string
+    targetDir: string | null
+  }
+  onTransfer: (entry: FileEntry, targetDir: string) => Promise<void>
+  onMovePathsToDirectory: (paths: string[], targetDir: string) => Promise<void>
+  onExternalFilesDropToDirectory?: (files: File[], targetDir: string) => Promise<void> | void
+  onDirectoryDropTargetActive?: () => void
 }
 
 function FileTreeItem({
@@ -491,12 +618,49 @@ function FileTreeItem({
   onAddToChat,
   onFilePreview,
   onCreateEntry,
+  transferTarget,
+  onTransfer,
+  onMovePathsToDirectory,
+  onExternalFilesDropToDirectory,
+  onDirectoryDropTargetActive,
 }: FileTreeItemProps): React.ReactElement {
   const [expanded, setExpanded] = React.useState(false)
   const [children, setChildren] = React.useState<FileEntry[]>([])
   const [childrenLoaded, setChildrenLoaded] = React.useState(false)
   const [flash, setFlash] = React.useState(false)
+  const [isDropTarget, setIsDropTarget] = React.useState(false)
   const rowRef = React.useRef<HTMLDivElement>(null)
+  const dropExpandTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const autoExpandedByDragRef = React.useRef(false)
+  const autoCollapseTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const clearDropExpandTimer = React.useCallback((): void => {
+    if (!dropExpandTimerRef.current) return
+    clearTimeout(dropExpandTimerRef.current)
+    dropExpandTimerRef.current = null
+  }, [])
+
+  const clearAutoCollapseTimer = React.useCallback((): void => {
+    if (!autoCollapseTimerRef.current) return
+    clearTimeout(autoCollapseTimerRef.current)
+    autoCollapseTimerRef.current = null
+  }, [])
+
+  const scheduleAutoCollapse = React.useCallback((): void => {
+    if (!autoExpandedByDragRef.current) return
+    clearAutoCollapseTimer()
+    autoCollapseTimerRef.current = setTimeout(() => {
+      autoCollapseTimerRef.current = null
+      if (!autoExpandedByDragRef.current) return
+      setExpanded(false)
+      autoExpandedByDragRef.current = false
+    }, 320)
+  }, [clearAutoCollapseTimer])
+
+  React.useEffect(() => () => {
+    clearDropExpandTimer()
+    clearAutoCollapseTimer()
+  }, [clearDropExpandTimer, clearAutoCollapseTimer])
 
   // 当 refreshVersion 变化时，已展开的文件夹自动重新加载子项
   React.useEffect(() => {
@@ -576,25 +740,45 @@ function FileTreeItem({
   const isSelected = selectedPaths.has(entry.path)
   const isRenaming = renamingPath === entry.path
 
+  const loadChildren = async (): Promise<FileEntry[]> => {
+    const items = await window.electronAPI.listDirectory(entry.path)
+    setChildren(items)
+    setChildrenLoaded(true)
+
+    // 首次展开空目录时，延迟重试一次（应对 Agent 正在写入文件的时序问题）
+    if (items.length === 0) {
+      setTimeout(async () => {
+        try {
+          const retryItems = await window.electronAPI.listDirectory(entry.path)
+          if (retryItems.length > 0) setChildren(retryItems)
+        } catch { /* 静默忽略 */ }
+      }, 800)
+    }
+
+    return items
+  }
+
+  /** 只展开目录，不切换收起状态；用于拖拽 hover 和自动定位。 */
+  const expandDir = async (): Promise<void> => {
+    if (!entry.isDirectory) return
+    if (!childrenLoaded) {
+      try {
+        await loadChildren()
+      } catch (err) {
+        console.error('[FileTreeItem] 加载子目录失败:', err)
+        return
+      }
+    }
+    setExpanded(true)
+  }
+
   /** 展开/收起文件夹 */
   const toggleDir = async (): Promise<void> => {
     if (!entry.isDirectory) return
 
     if (!expanded && !childrenLoaded) {
       try {
-        const items = await window.electronAPI.listDirectory(entry.path)
-        setChildren(items)
-        setChildrenLoaded(true)
-
-        // 首次展开空目录时，延迟重试一次（应对 Agent 正在写入文件的时序问题）
-        if (items.length === 0) {
-          setTimeout(async () => {
-            try {
-              const retryItems = await window.electronAPI.listDirectory(entry.path)
-              if (retryItems.length > 0) setChildren(retryItems)
-            } catch { /* 静默忽略 */ }
-          }, 800)
-        }
+        await loadChildren()
       } catch (err) {
         console.error('[FileTreeItem] 加载子目录失败:', err)
       }
@@ -614,6 +798,118 @@ function FileTreeItem({
     } else {
       onFilePreview?.(entry.path)
     }
+  }
+
+  const handleDragStart = (event: React.DragEvent): void => {
+    if (isRenaming) {
+      event.preventDefault()
+      return
+    }
+    const paths = isSelected ? Array.from(selectedPaths) : [entry.path]
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData(FILE_TREE_DRAG_MIME, JSON.stringify({ paths }))
+    event.dataTransfer.setData('text/plain', paths.join('\n'))
+  }
+
+  const handleDragEnd = (): void => {
+    clearDropExpandTimer()
+    clearAutoCollapseTimer()
+    autoExpandedByDragRef.current = false
+    setIsDropTarget(false)
+  }
+
+  const handleDragOver = (event: React.DragEvent): void => {
+    if (!entry.isDirectory) return
+    if (!eventHasFileTreeDrag(event) && eventHasExternalFiles(event) && onExternalFilesDropToDirectory) {
+      event.preventDefault()
+      event.stopPropagation()
+      event.dataTransfer.dropEffect = 'copy'
+      onDirectoryDropTargetActive?.()
+      setIsDropTarget(true)
+      clearAutoCollapseTimer()
+      if (!expanded && !dropExpandTimerRef.current) {
+        dropExpandTimerRef.current = setTimeout(() => {
+          dropExpandTimerRef.current = null
+          autoExpandedByDragRef.current = true
+          void expandDir()
+        }, 450)
+      }
+      return
+    }
+    if (!eventHasFileTreeDrag(event)) return
+    const payload = readFileTreeDragPayload(event)
+    if (!payload) return
+    const canDrop = payload.paths.some((path) => {
+      if (normalizeFsPath(getParentPath(path)) === normalizeFsPath(entry.path)) return false
+      return !isSameOrChildPath(path, entry.path)
+    })
+    if (!canDrop) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.dataTransfer.dropEffect = 'move'
+    onDirectoryDropTargetActive?.()
+    setIsDropTarget(true)
+    clearAutoCollapseTimer()
+    if (!expanded && !dropExpandTimerRef.current) {
+      dropExpandTimerRef.current = setTimeout(() => {
+        dropExpandTimerRef.current = null
+        autoExpandedByDragRef.current = true
+        void expandDir()
+      }, 450)
+    }
+  }
+
+  const handleDragLeave = (event: React.DragEvent): void => {
+    const related = event.relatedTarget as Node | null
+    if (related && rowRef.current?.contains(related)) return
+    if (!related && isPointerInsideElement(event, rowRef.current)) return
+    clearDropExpandTimer()
+    setIsDropTarget(false)
+    scheduleAutoCollapse()
+  }
+
+  const handleDrop = (event: React.DragEvent): void => {
+    if (!entry.isDirectory) return
+    if (!eventHasFileTreeDrag(event) && event.dataTransfer.files.length > 0 && onExternalFilesDropToDirectory) {
+      event.preventDefault()
+      event.stopPropagation()
+      clearDropExpandTimer()
+      clearAutoCollapseTimer()
+      setIsDropTarget(false)
+      autoExpandedByDragRef.current = false
+      const files = Array.from(event.dataTransfer.files)
+      void (async () => {
+        await expandDir()
+        await onExternalFilesDropToDirectory(files, entry.path)
+        try {
+          const items = await window.electronAPI.listDirectory(entry.path)
+          setChildren(items)
+          setChildrenLoaded(true)
+        } catch (err) {
+          console.error('[FileTreeItem] 外部文件保存后刷新目录失败:', err)
+        }
+      })()
+      return
+    }
+    const payload = readFileTreeDragPayload(event)
+    if (!payload) return
+    event.preventDefault()
+    event.stopPropagation()
+    clearDropExpandTimer()
+    clearAutoCollapseTimer()
+    setIsDropTarget(false)
+    autoExpandedByDragRef.current = false
+    void (async () => {
+      await expandDir()
+      await onMovePathsToDirectory(payload.paths, entry.path)
+      try {
+        const items = await window.electronAPI.listDirectory(entry.path)
+        setChildren(items)
+        setChildrenLoaded(true)
+      } catch (err) {
+        console.error('[FileTreeItem] 拖拽移动后刷新目录失败:', err)
+      }
+    })()
   }
 
   /** 删除后刷新子目录 */
@@ -764,6 +1060,19 @@ function FileTreeItem({
         <FolderInput />
         {menuSelectedCount > 1 ? `移动选中 (${menuSelectedCount})` : '移动到...'}
       </ContextMenuItem>
+      {transferTarget && (
+        <ContextMenuItem
+          className="text-xs py-1 [&>svg]:size-3.5"
+          disabled={moving || !transferTarget.targetDir}
+          onSelect={() => {
+            if (!transferTarget.targetDir) return
+            void onTransfer(entry, transferTarget.targetDir)
+          }}
+        >
+          <FolderInput />
+          {menuSelectedCount > 1 ? `${transferTarget.label} (${menuSelectedCount})` : transferTarget.label}
+        </ContextMenuItem>
+      )}
       {menuSelectedCount === 1 && (
         <ContextMenuItem
           className="text-xs py-1 [&>svg]:size-3.5"
@@ -802,6 +1111,7 @@ function FileTreeItem({
                   ? 'hover:bg-accent'
                   : 'hover:bg-accent/50',
               flash && 'file-browser-row-flash',
+              isDropTarget && 'bg-primary/15 text-foreground shadow-sm ring-2 ring-primary/60 ring-inset',
             )}
             style={{
               paddingLeft,
@@ -809,11 +1119,23 @@ function FileTreeItem({
               zIndex: isSticky ? stickyZIndex : undefined,
             }}
             onClick={handleClick}
+            draggable={!isRenaming}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
             onContextMenu={(event) => {
               if (!isSelected) onSelect(entry, event)
             }}
           >
         {/* sticky 行祖先链竖线，逻辑见 tree-row-layout.tsx 的 AncestorGuides */}
+        {isDropTarget && (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-y-0 left-0 right-0 bg-primary/10"
+          />
+        )}
         {isSticky && <AncestorGuides depth={depth} isSelected={isSelected} />}
         {recentlyModifiedSet.has(entry.path) && (
           <span
@@ -915,6 +1237,11 @@ function FileTreeItem({
               onAddToChat={onAddToChat}
               onFilePreview={onFilePreview}
               onCreateEntry={onCreateEntry}
+              transferTarget={transferTarget}
+              onTransfer={onTransfer}
+              onMovePathsToDirectory={onMovePathsToDirectory}
+              onExternalFilesDropToDirectory={onExternalFilesDropToDirectory}
+              onDirectoryDropTargetActive={onDirectoryDropTargetActive}
             />
           ))}
         </div>

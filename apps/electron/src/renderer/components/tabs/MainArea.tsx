@@ -19,7 +19,7 @@ import { TabContent } from './TabContent'
 import { AutomationFormView } from '@/components/automation/AutomationFormView'
 import { AutomationsListView } from '@/components/automation/AutomationsListView'
 import { automationFormAtom } from '@/atoms/automation-atoms'
-import { activeViewAtom } from '@/atoms/active-view'
+import { activeViewAtom, agentSkillsInitialTabAtom } from '@/atoms/active-view'
 import { AgentSkillsView } from '@/components/agent-skills/AgentSkillsView'
 
 const MIN_CONVERSATION_WIDTH = 360
@@ -37,6 +37,7 @@ export function MainArea(): React.ReactElement {
   const activeTab = useAtomValue(activeTabAtom)
   const automationFormOpen = useAtomValue(automationFormAtom).open
   const activeView = useAtomValue(activeViewAtom)
+  const agentSkillsInitialTab = useAtomValue(agentSkillsInitialTabAtom)
 
   // Tab 内容渲染降级为非紧急：TabBar 立即高亮新 tab，主区域昂贵渲染（含 PreviewPanel 中
   // DiffTabContent → ProseMirror editor mount + Shiki tokenize）让出主线程，避免点击 tab
@@ -172,7 +173,7 @@ export function MainArea(): React.ReactElement {
             ) : activeView === 'expert-all' ? (
               <AgentSkillsView initialTab="experts" />
             ) : activeView === 'agent-skills' ? (
-              <AgentSkillsView />
+              <AgentSkillsView initialTab={agentSkillsInitialTab} />
             ) : (
               <>
                 <TabBar />

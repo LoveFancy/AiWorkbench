@@ -216,7 +216,7 @@ export function buildHelpCard(): Record<string, unknown> {
   return {
     config: { wide_screen_mode: true },
     header: {
-      title: { tag: 'plain_text', content: 'WorkMate Bot 命令' },
+      title: { tag: 'plain_text', content: 'WorkMate 机器人命令' },
       template: 'blue',
     },
     elements: [

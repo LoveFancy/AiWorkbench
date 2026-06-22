@@ -10,8 +10,8 @@
  * 所有业务逻辑已委托给 AgentOrchestrator。
  */
 
-import { join, dirname } from 'node:path'
-import { writeFileSync, mkdirSync, existsSync } from 'node:fs'
+import { join, dirname, isAbsolute, relative, resolve } from 'node:path'
+import { writeFileSync, mkdirSync, existsSync, statSync } from 'node:fs'
 import { BrowserWindow } from 'electron'
 import type { WebContents } from 'electron'
 import { AGENT_IPC_CHANNELS, MAX_ATTACHMENT_SIZE } from '@proma/shared'
@@ -432,6 +432,23 @@ export async function queueAgentMessage(
 
 // ===== 文件操作 =====
 
+function isPathInsideRoot(path: string, root: string): boolean {
+  const relativePath = relative(root, path)
+  return relativePath === '' || (!relativePath.startsWith('..') && !isAbsolute(relativePath))
+}
+
+function resolveManagedSaveDir(rootDir: string, targetDir?: string): string {
+  const resolvedRoot = resolve(rootDir)
+  const resolvedTarget = targetDir ? resolve(targetDir) : resolvedRoot
+  if (!isPathInsideRoot(resolvedTarget, resolvedRoot)) {
+    throw new Error('目标目录不在托管文件目录内')
+  }
+  if (!existsSync(resolvedTarget) || !statSync(resolvedTarget).isDirectory()) {
+    throw new Error('目标目录不存在')
+  }
+  return resolvedTarget
+}
+
 /**
  * 保存文件到 Agent session 工作目录
  *
@@ -439,11 +456,12 @@ export async function queueAgentMessage(
  */
 export function saveFilesToAgentSession(input: AgentSaveFilesInput): AgentSavedFile[] {
   const sessionDir = getAgentSessionWorkspacePath(input.workspaceSlug, input.sessionId)
+  const targetDir = resolveManagedSaveDir(sessionDir, input.targetDir)
   const results: AgentSavedFile[] = []
   const usedPaths = new Set<string>()
 
   for (const file of input.files) {
-    let targetPath = join(sessionDir, file.filename)
+    let targetPath = join(targetDir, file.filename)
 
     // 防止同名文件覆盖
     if (usedPaths.has(targetPath) || existsSync(targetPath)) {
@@ -487,11 +505,12 @@ export function saveFilesToAgentSession(input: AgentSaveFilesInput): AgentSavedF
  */
 export function saveFilesToWorkspaceFiles(input: AgentSaveWorkspaceFilesInput): AgentSavedFile[] {
   const wsFilesDir = getWorkspaceFilesDir(input.workspaceSlug)
+  const targetDir = resolveManagedSaveDir(wsFilesDir, input.targetDir)
   const results: AgentSavedFile[] = []
   const usedPaths = new Set<string>()
 
   for (const file of input.files) {
-    let targetPath = join(wsFilesDir, file.filename)
+    let targetPath = join(targetDir, file.filename)
 
     // 防止同名文件覆盖
     if (usedPaths.has(targetPath) || existsSync(targetPath)) {

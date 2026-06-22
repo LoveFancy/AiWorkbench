@@ -35,6 +35,23 @@ export function ExpertCard({ group, onOpen, onSummon, compact = false }: ExpertC
         compact && 'gap-2 p-2.5',
       )}
     >
+      <button
+        className={cn(
+          'absolute right-0 top-0 z-[2] flex size-[26px] shrink-0 items-center justify-center rounded-bl-lg rounded-tr-xl bg-background/90 text-muted-foreground/45 shadow-sm transition-all duration-200 hover:bg-yellow-50 hover:text-yellow-500 active:scale-95 dark:hover:bg-yellow-500/10',
+          isFollowed && 'text-yellow-500',
+        )}
+        onClick={handleToggleFollow}
+        title={isFollowed ? '取消关注' : '关注'}
+      >
+        <Star
+          size={13}
+          className={cn(
+            'transition-transform duration-200',
+            isFollowed && 'fill-yellow-500 text-yellow-500',
+          )}
+        />
+      </button>
+
       <div className={cn('flex items-start justify-between gap-3', compact && 'gap-2')}>
         <button className="min-w-0 flex-1 text-left" onClick={() => onOpen(group)}>
           <div className={cn('flex items-start gap-3', compact && 'gap-2')}>
@@ -67,24 +84,14 @@ export function ExpertCard({ group, onOpen, onSummon, compact = false }: ExpertC
             ))}
           </div>
         </button>
-        <div className="pointer-events-none absolute right-4 top-4 flex items-center gap-2 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100">
-          <button
-            className="flex size-9 shrink-0 items-center justify-center rounded-md bg-background/90 text-muted-foreground/45 shadow-sm transition-all duration-200 hover:bg-yellow-50 hover:text-yellow-500 active:scale-90 dark:hover:bg-yellow-500/10"
-            onClick={handleToggleFollow}
-            title={isFollowed ? '取消关注' : '关注'}
-          >
-            <Star
-              size={18}
-              className={cn(
-                'transition-transform duration-200',
-                isFollowed && 'fill-yellow-500 text-yellow-500',
-              )}
-            />
-          </button>
+        <div className="absolute right-4 top-4 flex items-center gap-2 pr-5">
           {onSummon && (
             <Button
               size="sm"
-              className={cn('h-9 px-4 shadow-sm', compact && 'h-8 px-3')}
+              className={cn(
+                'pointer-events-none h-9 px-4 opacity-0 shadow-sm transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100',
+                compact && 'h-8 px-3',
+              )}
               disabled={group.status !== 'available' && group.status !== 'remote_not_downloaded' && group.status !== 'remote_downloading'}
               onClick={() => onSummon(group)}
             >

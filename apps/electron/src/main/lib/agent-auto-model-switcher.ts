@@ -15,6 +15,11 @@ import { getSettings } from './settings-service'
 import { listChannels, decryptApiKey } from './channel-manager'
 import { getAgentSessionMeta, updateAgentSessionMeta } from './agent-session-manager'
 import type { ProviderType } from '@proma/shared'
+import {
+  candidateSatisfiesCapabilities,
+  filterCandidatePoolByCapabilities,
+  type AutoModeCapabilityFilter,
+} from './agent-auto-model-capabilities'
 
 // ===== 常量 =====
 
@@ -35,6 +40,7 @@ const DEFAULT_MODEL_ID = 'claude-sonnet-4-6'
 export interface CandidateModelRef {
   modelId: string
   channelId?: string
+  supportsMultimodal?: boolean
 }
 
 export interface AutoModeConfig {
@@ -75,6 +81,7 @@ export function selectNextCandidateModel(
   candidatePool: CandidateModelRef[],
   excludeModelIds: Set<string>,
   availableModels: Set<string>,
+  requiredCapabilities: AutoModeCapabilityFilter = {},
 ): CandidateModelRef | null {
   const n = candidatePool.length
   if (n === 0) return null
@@ -92,12 +99,18 @@ export function selectNextCandidateModel(
     if (!candidate) continue
     if (excludeModelIds.has(candidate.modelId)) { skipped.push(`${candidate.modelId}(已尝试)`); continue }
     if (!availableModels.has(candidate.modelId)) { skipped.push(`${candidate.modelId}(不可用)`); continue }
+    if (!candidateSatisfiesCapabilities(candidate, requiredCapabilities)) {
+      skipped.push(`${candidate.modelId}(非多模态)`)
+      continue
+    }
     return candidate
   }
 
   console.log(`[Auto Mode] selectNextCandidateModel 未找到下一个候选: current=${currentModelId}, pool=[${candidatePool.map(c => c.modelId).join(', ')}], tried=[${[...excludeModelIds].join(', ')}], availableCount=${availableModels.size}, skipped=[${skipped.join(', ') || '无'}]`)
   return null
 }
+
+export { filterCandidatePoolByCapabilities }
 
 // ===== 配置解析 =====
 
@@ -119,11 +132,17 @@ export async function resolveAutoModeConfig(): Promise<AutoModeConfig> {
   })
 
   const availableModelIds = new Set<string>()
+  const modelCapabilities = new Map<string, boolean>()
   const channels = listChannels()
   for (const c of channels) {
     if (c.enabled) {
       for (const m of c.models) {
-        if (m.enabled) availableModelIds.add(m.id)
+        if (m.enabled) {
+          availableModelIds.add(m.id)
+          if (!modelCapabilities.has(m.id) || m.supportsMultimodal === true) {
+            modelCapabilities.set(m.id, m.supportsMultimodal === true)
+          }
+        }
       }
     }
   }
@@ -134,20 +153,30 @@ export async function resolveAutoModeConfig(): Promise<AutoModeConfig> {
     const platformCh = getPlatformChannel()
     if (platformCh) {
       for (const m of platformCh.models) {
-        if (m.enabled) availableModelIds.add(m.id)
+        if (m.enabled) {
+          availableModelIds.add(m.id)
+          if (!modelCapabilities.has(m.id) || m.supportsMultimodal === true) {
+            modelCapabilities.set(m.id, m.supportsMultimodal === true)
+          }
+        }
       }
     }
   } catch { /* model-service 不可用则跳过 */ }
 
+  const candidatePoolWithCapabilities = candidatePool.map((candidate) => ({
+    ...candidate,
+    supportsMultimodal: candidate.supportsMultimodal ?? modelCapabilities.get(candidate.modelId) ?? false,
+  }))
+
   // 诊断：候选池中有哪些模型不在可用集合中
   if (enabled && candidatePool.length > 0) {
-    const missing = candidatePool.filter((c) => !availableModelIds.has(c.modelId))
+    const missing = candidatePoolWithCapabilities.filter((c) => !availableModelIds.has(c.modelId))
     if (missing.length > 0) {
-      console.log(`[Auto Mode] 候选池中 ${missing.length}/${candidatePool.length} 个模型不可用: [${missing.map(c => c.modelId).join(', ')}]`)
+      console.log(`[Auto Mode] 候选池中 ${missing.length}/${candidatePoolWithCapabilities.length} 个模型不可用: [${missing.map(c => c.modelId).join(', ')}]`)
     }
   }
 
-  return { enabled, candidatePool, availableModelIds }
+  return { enabled, candidatePool: candidatePoolWithCapabilities, availableModelIds }
 }
 
 // ===== 模型 → 渠道映射 =====
@@ -191,9 +220,10 @@ export function resolveInitialModel(
   sessionId: string,
   userModelId: string | undefined,
   config: AutoModeConfig,
+  requiredCapabilities: AutoModeCapabilityFilter = {},
 ): { activeModelId: string; state: AutoModeState } {
   const defaultId = userModelId || DEFAULT_MODEL_ID
-  const pool = config.candidatePool
+  const pool = filterCandidatePoolByCapabilities(config.candidatePool, requiredCapabilities)
 
   if (!config.enabled || pool.length === 0) {
     return {

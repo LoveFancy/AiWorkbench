@@ -83,7 +83,7 @@ export const PROVIDER_DEFAULT_MODELS: Partial<Record<ProviderType, ChannelModel[
     { id: 'saas-kimi-k26', name: 'saas-kimi-k26', enabled: false, supportsMultimodal: true },
     { id: 'saas-qwen35-397b', name: 'saas-qwen35-397b', enabled: false, supportsMultimodal: true },
     { id: 'local-qwen3-vl-30b', name: 'local-qwen3-vl-30b', enabled: false, supportsMultimodal: true },
-    { id: 'saas-glm-51', name: 'saas-glm-51', enabled: false, supportsMultimodal: true },
+    { id: 'saas-glm-51', name: 'saas-glm-51', enabled: false, supportsMultimodal: false },
     { id: 'saas-qwen36-plus', name: 'saas-qwen36-plus', enabled: false, supportsMultimodal: false },
     { id: 'saas-deepseek-v4-flash', name: 'saas-deepseek-v4-flash', enabled: false, supportsMultimodal: false },
     { id: 'saas-deepseek-v4-pro', name: 'saas-deepseek-v4-pro', enabled: false, supportsMultimodal: false },

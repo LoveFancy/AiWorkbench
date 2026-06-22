@@ -25,8 +25,27 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
-import { FileBrowser, FileDropZone, FileTypeIcon, FileSearchBar, computeRevealAncestors, isPathUnderRoot, computeTreeRowLayout, AncestorGuides, STICKY_ROW_BASE_CLASS, canBeSticky } from '@/components/file-browser'
+import { fileToBase64, formatFileNames } from '@/lib/file-utils'
+import {
+  FileBrowser,
+  FileDropZone,
+  FileTypeIcon,
+  FileSearchBar,
+  computeRevealAncestors,
+  isPathUnderRoot,
+  computeTreeRowLayout,
+  AncestorGuides,
+  STICKY_ROW_BASE_CLASS,
+  canBeSticky,
+  eventHasFileTreeDrag,
+  eventHasExternalFiles,
+  getParentPath,
+  isSameOrChildPath,
+  normalizeFsPath,
+  readFileTreeDragPayload,
+} from '@/components/file-browser'
 import { DiffPanelTabBar } from '@/components/diff/DiffPanelTabBar'
 import { DiffChangesList } from '@/components/diff/DiffChangesList'
 import { WorktreeSelector } from '@/components/diff/WorktreeSelector'
@@ -49,13 +68,15 @@ import { previewPanelOpenMapAtom, previewFileMapAtom, PREVIEW_KIND, type Preview
 import { detectIsWindows } from '@/lib/platform'
 import { formatManagedPath } from '@/lib/managed-path-display'
 import { isHtmlPreviewPath } from '@/components/diff/html-preview-utils'
-import type { CreateFileEntryInput, FileEntry, AgentPendingFile } from '@proma/shared'
+import { MAX_ATTACHMENT_SIZE, type CreateFileEntryInput, type FileEntry, type AgentPendingFile } from '@proma/shared'
 
 type CreateEntryTarget = {
   parentDir: string
   type: CreateFileEntryInput['type']
   scope: 'session' | 'workspace'
 }
+
+type RootDropTarget = 'session' | 'workspace'
 
 function getPathBasename(filePath: string): string {
   return filePath.split(/[\\/]/).filter(Boolean).pop() || filePath
@@ -457,6 +478,9 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
   const [workspaceCreateDir, setWorkspaceCreateDir] = React.useState<string | null>(null)
   const [sessionSelectionClearSignal, setSessionSelectionClearSignal] = React.useState(0)
   const [workspaceSelectionClearSignal, setWorkspaceSelectionClearSignal] = React.useState(0)
+  const [rootDropTarget, setRootDropTarget] = React.useState<RootDropTarget | null>(null)
+  const [focusedFileArea, setFocusedFileArea] = React.useState<RootDropTarget | null>(null)
+  const [dropZoneClearSignal, setDropZoneClearSignal] = React.useState(0)
   // 折叠状态
   const [sessionCollapsed, setSessionCollapsed] = React.useState(false)
   const [workspaceCollapsed, setWorkspaceCollapsed] = React.useState(false)
@@ -511,6 +535,194 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
     setWorkspaceCreateDir(null)
     setWorkspaceSelectionClearSignal((signal) => signal + 1)
   }, [])
+
+  const movePathsToRootDirectory = React.useCallback(async (paths: string[], targetDir: string): Promise<void> => {
+    const uniquePaths = Array.from(new Set(paths))
+    const movablePaths = uniquePaths.filter((path) => {
+      if (normalizeFsPath(getParentPath(path)) === normalizeFsPath(targetDir)) return false
+      if (isSameOrChildPath(path, targetDir)) return false
+      return true
+    })
+    if (movablePaths.length === 0) return
+
+    try {
+      for (const path of movablePaths) {
+        await window.electronAPI.moveFile(path, targetDir)
+      }
+      setSessionCreateDir(null)
+      setWorkspaceCreateDir(null)
+      setSessionSelectionClearSignal((signal) => signal + 1)
+      setWorkspaceSelectionClearSignal((signal) => signal + 1)
+      handleFilesUploaded()
+    } catch (error) {
+      console.error('[SidePanel] 拖拽到根目录失败:', error)
+    }
+  }, [handleFilesUploaded])
+
+  const saveExternalFilesToRoot = React.useCallback(async (files: File[], target: RootDropTarget, targetDir?: string): Promise<void> => {
+    if (files.length === 0) return
+    if (!workspaceSlug) return
+    if (target === 'session' && !sessionPath) return
+    if (target === 'workspace' && !workspaceFilesPath) return
+
+    const oversized: string[] = []
+    const okFiles: File[] = []
+
+    for (const file of files) {
+      if (file.size > MAX_ATTACHMENT_SIZE) {
+        oversized.push(file.name)
+      } else {
+        okFiles.push(file)
+      }
+    }
+
+    if (oversized.length > 0) {
+      toast.error(`以下文件超过 100MB，未复制到工作文件夹：${formatFileNames(oversized)}`, {
+        description: '可改用「附加文件夹」或在输入框中作为文件引用发送。',
+      })
+    }
+    if (okFiles.length === 0) return
+
+    try {
+      const fileEntries: Array<{ filename: string; data: string }> = []
+      for (const file of okFiles) {
+        fileEntries.push({
+          filename: file.name,
+          data: await fileToBase64(file),
+        })
+      }
+
+      if (target === 'session') {
+        await window.electronAPI.saveFilesToAgentSession({
+          workspaceSlug,
+          sessionId,
+          files: fileEntries,
+          targetDir,
+        })
+      } else {
+        await window.electronAPI.saveFilesToWorkspaceFiles({
+          workspaceSlug,
+          files: fileEntries,
+          targetDir,
+        })
+      }
+
+      handleFilesUploaded()
+      toast.success(`已添加 ${okFiles.length} 个文件到${target === 'session' ? '会话文件' : '工作区文件'}`)
+    } catch (error) {
+      console.error('[SidePanel] 保存外部文件失败:', error)
+      toast.error('文件添加失败')
+    }
+  }, [handleFilesUploaded, sessionId, sessionPath, workspaceFilesPath, workspaceSlug])
+
+  const clearDropZoneHighlight = React.useCallback((): void => {
+    setDropZoneClearSignal((signal) => signal + 1)
+  }, [])
+
+  const handleExternalRootDrop = React.useCallback(async (event: React.DragEvent<HTMLDivElement>, target: RootDropTarget): Promise<void> => {
+    const droppedFiles = Array.from(event.dataTransfer.files)
+    if (droppedFiles.length === 0) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    setRootDropTarget(null)
+
+    const pathMap = new Map<string, File>()
+    const paths: string[] = []
+    for (const file of droppedFiles) {
+      try {
+        const path = window.electronAPI.getPathForFile(file)
+        if (path) {
+          paths.push(path)
+          pathMap.set(path, file)
+        }
+      } catch { /* 无法获取路径时忽略 */ }
+    }
+
+    if (paths.length === 0) {
+      await saveExternalFilesToRoot(droppedFiles, target)
+      return
+    }
+
+    try {
+      const { directories, files } = await window.electronAPI.checkPathsType(paths)
+      const regularFiles = files.flatMap((path) => {
+        const file = pathMap.get(path)
+        return file ? [file] : []
+      })
+
+      await saveExternalFilesToRoot(regularFiles, target)
+
+      if (directories.length > 0) {
+        if (target === 'session') {
+          await handleSessionFoldersDropped(directories)
+        } else {
+          await handleWorkspaceFoldersDropped(directories)
+        }
+        toast.success(`已附加 ${directories.length} 个文件夹`)
+      }
+    } catch (error) {
+      console.error('[SidePanel] 外部拖拽路径检测失败:', error)
+      await saveExternalFilesToRoot(droppedFiles, target)
+    }
+  }, [handleSessionFoldersDropped, handleWorkspaceFoldersDropped, saveExternalFilesToRoot])
+
+  const getRootDropDir = React.useCallback((target: RootDropTarget): string | null => {
+    return target === 'session' ? sessionPath : workspaceFilesPath
+  }, [sessionPath, workspaceFilesPath])
+
+  const handleRootDragOver = React.useCallback((event: React.DragEvent<HTMLDivElement>, target: RootDropTarget): void => {
+    const targetDir = getRootDropDir(target)
+    if (!targetDir) return
+    if (!eventHasFileTreeDrag(event) && eventHasExternalFiles(event)) {
+      event.preventDefault()
+      event.dataTransfer.dropEffect = 'copy'
+      clearDropZoneHighlight()
+      setRootDropTarget(target)
+      return
+    }
+    if (!eventHasFileTreeDrag(event)) return
+    const payload = readFileTreeDragPayload(event)
+    if (!payload) return
+    const canDrop = payload.paths.some((path) => {
+      if (normalizeFsPath(getParentPath(path)) === normalizeFsPath(targetDir)) return false
+      return !isSameOrChildPath(path, targetDir)
+    })
+    if (!canDrop) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    clearDropZoneHighlight()
+    setRootDropTarget(target)
+  }, [clearDropZoneHighlight, getRootDropDir])
+
+  const handleRootDragLeave = React.useCallback((event: React.DragEvent<HTMLDivElement>, target: RootDropTarget): void => {
+    const related = event.relatedTarget as Node | null
+    if (related && event.currentTarget.contains(related)) return
+    setRootDropTarget((current) => current === target ? null : current)
+  }, [])
+
+  const handleRootDrop = React.useCallback((event: React.DragEvent<HTMLDivElement>, target: RootDropTarget): void => {
+    const isExternalFileDrop = !eventHasFileTreeDrag(event) && event.dataTransfer.files.length > 0
+    if (isExternalFileDrop) {
+      void handleExternalRootDrop(event, target)
+      return
+    }
+    const targetDir = getRootDropDir(target)
+    const payload = readFileTreeDragPayload(event)
+    if (!targetDir || !payload) return
+    event.preventDefault()
+    event.stopPropagation()
+    setRootDropTarget(null)
+    void movePathsToRootDirectory(payload.paths, targetDir)
+  }, [getRootDropDir, handleExternalRootDrop, movePathsToRootDirectory])
+
+  const handleFileAreaPaste = React.useCallback((event: React.ClipboardEvent<HTMLDivElement>, target: RootDropTarget): void => {
+    const files = Array.from(event.clipboardData.files ?? [])
+    if (files.length === 0) return
+    event.preventDefault()
+    event.stopPropagation()
+    void saveExternalFilesToRoot(files, target)
+  }, [saveExternalFilesToRoot])
 
   const closeCreateDialog = React.useCallback(() => {
     if (creatingEntry) return
@@ -720,7 +932,21 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                       sessionId={sessionId}
                       onFilePreview={handleFilePreview}
                     />
-                    <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin" onClick={handleSessionFilesBlankClick}>
+                    <div
+                      tabIndex={0}
+                      className={cn(
+                        'flex-1 min-h-0 overflow-y-auto scrollbar-thin rounded-lg transition-colors outline-none',
+                        rootDropTarget === 'session' && 'bg-accent/40 ring-1 ring-primary/35 ring-inset',
+                        focusedFileArea === 'session' && rootDropTarget !== 'session' && 'ring-1 ring-border/50 ring-inset',
+                      )}
+                      onClick={handleSessionFilesBlankClick}
+                      onFocus={() => setFocusedFileArea('session')}
+                      onBlur={() => setFocusedFileArea((current) => current === 'session' ? null : current)}
+                      onDragOver={(event) => handleRootDragOver(event, 'session')}
+                      onDragLeave={(event) => handleRootDragLeave(event, 'session')}
+                      onDrop={(event) => handleRootDrop(event, 'session')}
+                      onPaste={(event) => handleFileAreaPaste(event, 'session')}
+                    >
                       {attachedFiles.length > 0 && (
                         <AttachedFilesSection
                           attachedFiles={attachedFiles}
@@ -736,6 +962,8 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                           attachedDirs={attachedDirs}
                           onDetach={handleDetachDirectory}
                           refreshVersion={filesVersion}
+                          onFilesMoved={handleFilesUploaded}
+                          onDirectoryDropTargetActive={clearDropZoneHighlight}
                           onAddToChat={handleAddToChat}
                           onFilePreview={handleFilePreview}
                           allowedPaths={basePathsRef.current}
@@ -757,6 +985,13 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                           onFilePreview={handleFilePreview}
                           onSelectedDirectoryChange={setSessionCreateDir}
                           onCreateEntry={(parentDir, type) => openCreateDialog({ parentDir, type, scope: 'session' })}
+                          transferTarget={{ label: '转移到工作区', targetDir: workspaceFilesPath }}
+                          onFilesMoved={handleFilesUploaded}
+                          onDirectoryDropTargetActive={clearDropZoneHighlight}
+                          onExternalFilesDropToDirectory={(files, targetDir) => {
+                            clearDropZoneHighlight()
+                            return saveExternalFilesToRoot(files, 'session', targetDir)
+                          }}
                         />
                       </>
                       <FileDropZone
@@ -767,6 +1002,8 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                         onFilesAttached={handleSessionFilesAttached}
                         onAttachFolder={handleAttachFolder}
                         onFoldersDropped={handleSessionFoldersDropped}
+                        clearDragOverSignal={dropZoneClearSignal}
+                        passiveDuringDrag
                       />
                     </div>
                   </div>
@@ -860,7 +1097,21 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                     sessionId={sessionId}
                     onFilePreview={handleFilePreview}
                   />
-                  <div className="flex-1 min-h-0 overflow-y-auto pb-1 scrollbar-thin" onClick={handleWorkspaceFilesBlankClick}>
+                  <div
+                    tabIndex={0}
+                    className={cn(
+                      'flex-1 min-h-0 overflow-y-auto pb-1 scrollbar-thin rounded-lg transition-colors outline-none',
+                      rootDropTarget === 'workspace' && 'bg-accent/40 ring-1 ring-primary/35 ring-inset',
+                      focusedFileArea === 'workspace' && rootDropTarget !== 'workspace' && 'ring-1 ring-border/50 ring-inset',
+                    )}
+                    onClick={handleWorkspaceFilesBlankClick}
+                    onFocus={() => setFocusedFileArea('workspace')}
+                    onBlur={() => setFocusedFileArea((current) => current === 'workspace' ? null : current)}
+                    onDragOver={(event) => handleRootDragOver(event, 'workspace')}
+                    onDragLeave={(event) => handleRootDragLeave(event, 'workspace')}
+                    onDrop={(event) => handleRootDrop(event, 'workspace')}
+                    onPaste={(event) => handleFileAreaPaste(event, 'workspace')}
+                  >
                     {wsAttachedFiles.length > 0 && (
                       <AttachedFilesSection
                         attachedFiles={wsAttachedFiles}
@@ -876,6 +1127,8 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                         attachedDirs={wsAttachedDirs}
                         onDetach={handleDetachWorkspaceDirectory}
                         refreshVersion={filesVersion}
+                        onFilesMoved={handleFilesUploaded}
+                        onDirectoryDropTargetActive={clearDropZoneHighlight}
                         onAddToChat={handleAddToChat}
                         onFilePreview={handleFilePreview}
                         allowedPaths={basePathsRef.current}
@@ -898,6 +1151,13 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                           onFilePreview={handleFilePreview}
                           onSelectedDirectoryChange={setWorkspaceCreateDir}
                           onCreateEntry={(parentDir, type) => openCreateDialog({ parentDir, type, scope: 'workspace' })}
+                          transferTarget={{ label: '转移到当前会话', targetDir: sessionPath }}
+                          onFilesMoved={handleFilesUploaded}
+                          onDirectoryDropTargetActive={clearDropZoneHighlight}
+                          onExternalFilesDropToDirectory={(files, targetDir) => {
+                            clearDropZoneHighlight()
+                            return saveExternalFilesToRoot(files, 'workspace', targetDir)
+                          }}
                         />
                       </>
                     )}
@@ -908,6 +1168,8 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                       onFilesAttached={handleWorkspaceFilesAttached}
                       onAttachFolder={handleAttachWorkspaceFolder}
                       onFoldersDropped={handleWorkspaceFoldersDropped}
+                      clearDragOverSignal={dropZoneClearSignal}
+                      passiveDuringDrag
                     />
                   </div>
                   </>
@@ -1052,6 +1314,8 @@ interface AttachedDirsSectionProps {
   onDetach: (dirPath: string) => void
   /** 文件版本号，用于自动刷新已展开的目录 */
   refreshVersion: number
+  onFilesMoved?: () => void
+  onDirectoryDropTargetActive?: () => void
   onAddToChat?: (entry: FileEntry) => void
   onFilePreview?: (filePath: string) => void
   /** 所有允许访问的路径（传给 IPC 做路径校验） */
@@ -1060,7 +1324,7 @@ interface AttachedDirsSectionProps {
 }
 
 /** 附加目录区域：统一管理所有子项的选中状态 */
-function AttachedDirsSection({ attachedDirs, onDetach, refreshVersion, onAddToChat, onFilePreview, allowedPaths, sessionId }: AttachedDirsSectionProps): React.ReactElement {
+function AttachedDirsSection({ attachedDirs, onDetach, refreshVersion, onFilesMoved, onDirectoryDropTargetActive, onAddToChat, onFilePreview, allowedPaths, sessionId }: AttachedDirsSectionProps): React.ReactElement {
   const [selectedPaths, setSelectedPaths] = React.useState<Set<string>>(new Set())
 
   // ===== 接入搜索点击触发的 reveal：附加目录文件搜到后，需要展开/选中目标 =====
@@ -1119,6 +1383,8 @@ function AttachedDirsSection({ attachedDirs, onDetach, refreshVersion, onAddToCh
             selectedPaths={selectedPaths}
             onSelect={handleSelect}
             refreshVersion={refreshVersion}
+            onFilesMoved={onFilesMoved}
+            onDirectoryDropTargetActive={onDirectoryDropTargetActive}
             onAddToChat={onAddToChat}
             onFilePreview={onFilePreview}
             allowedPaths={allowedPaths}
@@ -1140,6 +1406,8 @@ interface AttachedDirTreeProps {
   selectedPaths: Set<string>
   onSelect: (path: string, ctrlKey: boolean) => void
   refreshVersion: number
+  onFilesMoved?: () => void
+  onDirectoryDropTargetActive?: () => void
   onAddToChat?: (entry: FileEntry) => void
   onFilePreview?: (filePath: string) => void
   allowedPaths?: string[]
@@ -1150,12 +1418,45 @@ interface AttachedDirTreeProps {
   revealTs?: number
 }
 
-function AttachedDirTree({ dirPath, onDetach, selectedPaths, onSelect, refreshVersion, onAddToChat, onFilePreview, allowedPaths, sessionId, revealTarget = null, revealTs = 0 }: AttachedDirTreeProps): React.ReactElement {
+function AttachedDirTree({ dirPath, onDetach, selectedPaths, onSelect, refreshVersion, onFilesMoved, onDirectoryDropTargetActive, onAddToChat, onFilePreview, allowedPaths, sessionId, revealTarget = null, revealTs = 0 }: AttachedDirTreeProps): React.ReactElement {
   const [expanded, setExpanded] = React.useState(false)
   const [children, setChildren] = React.useState<FileEntry[]>([])
   const [loaded, setLoaded] = React.useState(false)
+  const [isDropTarget, setIsDropTarget] = React.useState(false)
+  const rowRef = React.useRef<HTMLDivElement>(null)
+  const dropExpandTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const autoExpandedByDragRef = React.useRef(false)
+  const autoCollapseTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const dirName = dirPath.split('/').filter(Boolean).pop() || dirPath
+
+  const clearDropExpandTimer = React.useCallback((): void => {
+    if (!dropExpandTimerRef.current) return
+    clearTimeout(dropExpandTimerRef.current)
+    dropExpandTimerRef.current = null
+  }, [])
+
+  const clearAutoCollapseTimer = React.useCallback((): void => {
+    if (!autoCollapseTimerRef.current) return
+    clearTimeout(autoCollapseTimerRef.current)
+    autoCollapseTimerRef.current = null
+  }, [])
+
+  const scheduleAutoCollapse = React.useCallback((): void => {
+    if (!autoExpandedByDragRef.current) return
+    clearAutoCollapseTimer()
+    autoCollapseTimerRef.current = setTimeout(() => {
+      autoCollapseTimerRef.current = null
+      if (!autoExpandedByDragRef.current) return
+      setExpanded(false)
+      autoExpandedByDragRef.current = false
+    }, 320)
+  }, [clearAutoCollapseTimer])
+
+  React.useEffect(() => () => {
+    clearDropExpandTimer()
+    clearAutoCollapseTimer()
+  }, [clearDropExpandTimer, clearAutoCollapseTimer])
 
   // 计算从 dirPath 到 revealTarget 之间的祖先目录集合（用于子项决定是否自动展开）
   const revealAncestors = React.useMemo(
@@ -1195,12 +1496,29 @@ function AttachedDirTree({ dirPath, onDetach, selectedPaths, onSelect, refreshVe
     return () => { cancelled = true }
   }, [revealTs]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const loadChildren = async (): Promise<FileEntry[]> => {
+    const items = await window.electronAPI.listAttachedDirectory(dirPath, { sessionId, candidateBasePaths: allowedPaths })
+    setChildren(items)
+    setLoaded(true)
+    return items
+  }
+
+  const expandDir = async (): Promise<void> => {
+    if (!loaded) {
+      try {
+        await loadChildren()
+      } catch (err) {
+        console.error('[AttachedDirTree] 加载失败:', err)
+        return
+      }
+    }
+    setExpanded(true)
+  }
+
   const toggleExpand = async (): Promise<void> => {
     if (!expanded && !loaded) {
       try {
-        const items = await window.electronAPI.listAttachedDirectory(dirPath, { sessionId, candidateBasePaths: allowedPaths })
-        setChildren(items)
-        setLoaded(true)
+        await loadChildren()
       } catch (err) {
         console.error('[AttachedDirTree] 加载失败:', err)
       }
@@ -1212,19 +1530,87 @@ function AttachedDirTree({ dirPath, onDetach, selectedPaths, onSelect, refreshVe
   const { paddingLeft, guideLeft } = computeTreeRowLayout(0)
   const isSticky = expanded
 
+  const handleDragOver = (event: React.DragEvent): void => {
+    if (!eventHasFileTreeDrag(event)) return
+    const payload = readFileTreeDragPayload(event)
+    if (!payload) return
+    const canDrop = payload.paths.some((path) => {
+      if (normalizeFsPath(getParentPath(path)) === normalizeFsPath(dirPath)) return false
+      return !isSameOrChildPath(path, dirPath)
+    })
+    if (!canDrop) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.dataTransfer.dropEffect = 'move'
+    onDirectoryDropTargetActive?.()
+    setIsDropTarget(true)
+    clearAutoCollapseTimer()
+    if (!expanded && !dropExpandTimerRef.current) {
+      dropExpandTimerRef.current = setTimeout(() => {
+        dropExpandTimerRef.current = null
+        autoExpandedByDragRef.current = true
+        void expandDir()
+      }, 450)
+    }
+  }
+
+  const handleDragLeave = (event: React.DragEvent): void => {
+    const related = event.relatedTarget as Node | null
+    if (related && rowRef.current?.contains(related)) return
+    clearDropExpandTimer()
+    setIsDropTarget(false)
+    scheduleAutoCollapse()
+  }
+
+  const handleDrop = (event: React.DragEvent): void => {
+    const payload = readFileTreeDragPayload(event)
+    if (!payload) return
+    event.preventDefault()
+    event.stopPropagation()
+    clearDropExpandTimer()
+    clearAutoCollapseTimer()
+    setIsDropTarget(false)
+    autoExpandedByDragRef.current = false
+    void (async () => {
+      await expandDir()
+      for (const path of Array.from(new Set(payload.paths))) {
+        if (normalizeFsPath(getParentPath(path)) === normalizeFsPath(dirPath)) continue
+        if (isSameOrChildPath(path, dirPath)) continue
+        await window.electronAPI.moveAttachedFile(path, dirPath, { sessionId, candidateBasePaths: allowedPaths })
+      }
+      try {
+        await loadChildren()
+      } catch (err) {
+        console.error('[AttachedDirTree] 拖拽移动后刷新失败:', err)
+      }
+      onFilesMoved?.()
+    })().catch((err) => console.error('[AttachedDirTree] 拖拽移动失败:', err))
+  }
+
   return (
     <div className="relative">
       <div
+        ref={rowRef}
         data-sticky-row={isSticky ? 'true' : undefined}
         className={cn(
           'relative flex h-8 items-center gap-1 pr-2 text-sm cursor-pointer group transition-colors',
           isSticky && cn(STICKY_ROW_BASE_CLASS, 'top-0 z-10'),
           // sticky 行 hover 用不透明色，避免下方滚动内容透出；普通行保持半透明柔和感
           isSticky ? 'hover:bg-accent' : 'hover:bg-accent/50',
+          isDropTarget && 'bg-primary/15 text-foreground shadow-sm ring-2 ring-primary/60 ring-inset',
         )}
         style={{ paddingLeft }}
         onClick={toggleExpand}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
       >
+        {isDropTarget && (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-y-0 left-0 right-0 bg-primary/10"
+          />
+        )}
         <ChevronRight
           className={cn(
             'size-3.5 text-muted-foreground flex-shrink-0 transition-transform duration-150',
@@ -1261,7 +1647,7 @@ function AttachedDirTree({ dirPath, onDetach, selectedPaths, onSelect, refreshVe
             </div>
           )}
           {children.map((child) => (
-            <AttachedDirItem key={child.path} entry={child} depth={1} selectedPaths={selectedPaths} onSelect={onSelect} refreshVersion={refreshVersion} onAddToChat={onAddToChat} onFilePreview={onFilePreview} allowedPaths={allowedPaths} sessionId={sessionId} revealTarget={revealTarget} revealTs={revealTs} revealAncestors={revealAncestors} />
+            <AttachedDirItem key={child.path} entry={child} depth={1} selectedPaths={selectedPaths} onSelect={onSelect} refreshVersion={refreshVersion} onFilesMoved={onFilesMoved} onDirectoryDropTargetActive={onDirectoryDropTargetActive} onAddToChat={onAddToChat} onFilePreview={onFilePreview} allowedPaths={allowedPaths} sessionId={sessionId} revealTarget={revealTarget} revealTs={revealTs} revealAncestors={revealAncestors} />
           ))}
         </div>
       )}
@@ -1275,6 +1661,8 @@ interface AttachedDirItemProps {
   selectedPaths: Set<string>
   onSelect: (path: string, ctrlKey: boolean) => void
   refreshVersion: number
+  onFilesMoved?: () => void
+  onDirectoryDropTargetActive?: () => void
   onAddToChat?: (entry: FileEntry) => void
   onFilePreview?: (filePath: string) => void
   allowedPaths?: string[]
@@ -1287,10 +1675,11 @@ interface AttachedDirItemProps {
   revealAncestors?: Set<string>
 }
 
-function AttachedDirItem({ entry, depth, selectedPaths, onSelect, refreshVersion, onAddToChat, onFilePreview, allowedPaths, sessionId, revealTarget = null, revealTs = 0, revealAncestors }: AttachedDirItemProps): React.ReactElement {
+function AttachedDirItem({ entry, depth, selectedPaths, onSelect, refreshVersion, onFilesMoved, onDirectoryDropTargetActive, onAddToChat, onFilePreview, allowedPaths, sessionId, revealTarget = null, revealTs = 0, revealAncestors }: AttachedDirItemProps): React.ReactElement {
   const [expanded, setExpanded] = React.useState(false)
   const [children, setChildren] = React.useState<FileEntry[]>([])
   const [loaded, setLoaded] = React.useState(false)
+  const [isDropTarget, setIsDropTarget] = React.useState(false)
   // 重命名状态
   const [isRenaming, setIsRenaming] = React.useState(false)
   const [renameValue, setRenameValue] = React.useState(entry.name)
@@ -1299,8 +1688,39 @@ function AttachedDirItem({ entry, depth, selectedPaths, onSelect, refreshVersion
   const [currentName, setCurrentName] = React.useState(entry.name)
   const [currentPath, setCurrentPath] = React.useState(entry.path)
   const rowRef = React.useRef<HTMLDivElement>(null)
+  const dropExpandTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const autoExpandedByDragRef = React.useRef(false)
+  const autoCollapseTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const isSelected = selectedPaths.has(currentPath)
+
+  const clearDropExpandTimer = React.useCallback((): void => {
+    if (!dropExpandTimerRef.current) return
+    clearTimeout(dropExpandTimerRef.current)
+    dropExpandTimerRef.current = null
+  }, [])
+
+  const clearAutoCollapseTimer = React.useCallback((): void => {
+    if (!autoCollapseTimerRef.current) return
+    clearTimeout(autoCollapseTimerRef.current)
+    autoCollapseTimerRef.current = null
+  }, [])
+
+  const scheduleAutoCollapse = React.useCallback((): void => {
+    if (!autoExpandedByDragRef.current) return
+    clearAutoCollapseTimer()
+    autoCollapseTimerRef.current = setTimeout(() => {
+      autoCollapseTimerRef.current = null
+      if (!autoExpandedByDragRef.current) return
+      setExpanded(false)
+      autoExpandedByDragRef.current = false
+    }, 320)
+  }, [clearAutoCollapseTimer])
+
+  React.useEffect(() => () => {
+    clearDropExpandTimer()
+    clearAutoCollapseTimer()
+  }, [clearDropExpandTimer, clearAutoCollapseTimer])
 
   // 当 refreshVersion 变化时，已展开的文件夹自动重新加载子项
   React.useEffect(() => {
@@ -1355,13 +1775,31 @@ function AttachedDirItem({ entry, depth, selectedPaths, onSelect, refreshVersion
     if (isTarget) scrollToTarget()
   }, [revealTs]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const loadChildren = async (): Promise<FileEntry[]> => {
+    const items = await window.electronAPI.listAttachedDirectory(currentPath, { sessionId, candidateBasePaths: allowedPaths })
+    setChildren(items)
+    setLoaded(true)
+    return items
+  }
+
+  const expandDir = async (): Promise<void> => {
+    if (!entry.isDirectory) return
+    if (!loaded) {
+      try {
+        await loadChildren()
+      } catch (err) {
+        console.error('[AttachedDirItem] 加载子目录失败:', err)
+        return
+      }
+    }
+    setExpanded(true)
+  }
+
   const toggleDir = async (): Promise<void> => {
     if (!entry.isDirectory) return
     if (!expanded && !loaded) {
       try {
-        const items = await window.electronAPI.listAttachedDirectory(currentPath, { sessionId, candidateBasePaths: allowedPaths })
-        setChildren(items)
-        setLoaded(true)
+        await loadChildren()
       } catch (err) {
         console.error('[AttachedDirItem] 加载子目录失败:', err)
       }
@@ -1433,6 +1871,64 @@ function AttachedDirItem({ entry, depth, selectedPaths, onSelect, refreshVersion
   const { paddingLeft, guideLeft, stickyTop, stickyZIndex } = computeTreeRowLayout(depth)
   const isSticky = entry.isDirectory && expanded && canBeSticky(depth)
 
+  const handleDragOver = (event: React.DragEvent): void => {
+    if (!entry.isDirectory || !eventHasFileTreeDrag(event)) return
+    const payload = readFileTreeDragPayload(event)
+    if (!payload) return
+    const canDrop = payload.paths.some((path) => {
+      if (normalizeFsPath(getParentPath(path)) === normalizeFsPath(currentPath)) return false
+      return !isSameOrChildPath(path, currentPath)
+    })
+    if (!canDrop) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.dataTransfer.dropEffect = 'move'
+    onDirectoryDropTargetActive?.()
+    setIsDropTarget(true)
+    clearAutoCollapseTimer()
+    if (!expanded && !dropExpandTimerRef.current) {
+      dropExpandTimerRef.current = setTimeout(() => {
+        dropExpandTimerRef.current = null
+        autoExpandedByDragRef.current = true
+        void expandDir()
+      }, 450)
+    }
+  }
+
+  const handleDragLeave = (event: React.DragEvent): void => {
+    const related = event.relatedTarget as Node | null
+    if (related && rowRef.current?.contains(related)) return
+    clearDropExpandTimer()
+    setIsDropTarget(false)
+    scheduleAutoCollapse()
+  }
+
+  const handleDrop = (event: React.DragEvent): void => {
+    if (!entry.isDirectory) return
+    const payload = readFileTreeDragPayload(event)
+    if (!payload) return
+    event.preventDefault()
+    event.stopPropagation()
+    clearDropExpandTimer()
+    clearAutoCollapseTimer()
+    setIsDropTarget(false)
+    autoExpandedByDragRef.current = false
+    void (async () => {
+      await expandDir()
+      for (const path of Array.from(new Set(payload.paths))) {
+        if (normalizeFsPath(getParentPath(path)) === normalizeFsPath(currentPath)) continue
+        if (isSameOrChildPath(path, currentPath)) continue
+        await window.electronAPI.moveAttachedFile(path, currentPath, { sessionId, candidateBasePaths: allowedPaths })
+      }
+      try {
+        await loadChildren()
+      } catch (err) {
+        console.error('[AttachedDirItem] 拖拽移动后刷新失败:', err)
+      }
+      onFilesMoved?.()
+    })().catch((err) => console.error('[AttachedDirItem] 拖拽移动失败:', err))
+  }
+
   return (
     <>
       <div
@@ -1447,6 +1943,7 @@ function AttachedDirItem({ entry, depth, selectedPaths, onSelect, refreshVersion
             : isSticky
               ? 'hover:bg-accent'
               : 'hover:bg-accent/50',
+          isDropTarget && 'bg-primary/15 text-foreground shadow-sm ring-2 ring-primary/60 ring-inset',
         )}
         style={{
           paddingLeft,
@@ -1454,7 +1951,16 @@ function AttachedDirItem({ entry, depth, selectedPaths, onSelect, refreshVersion
           zIndex: isSticky ? stickyZIndex : undefined,
         }}
         onClick={handleClick}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
       >
+        {isDropTarget && (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-y-0 left-0 right-0 bg-primary/10"
+          />
+        )}
         {/* sticky 行祖先链竖线，逻辑见 tree-row-layout.tsx 的 AncestorGuides。
             选中态下 bg-accent 不透明背景会盖住原 border 色，组件内部已切到 accent-foreground。 */}
         {isSticky && <AncestorGuides depth={depth} isSelected={isSelected} />}
@@ -1575,7 +2081,7 @@ function AttachedDirItem({ entry, depth, selectedPaths, onSelect, refreshVersion
             </div>
           )}
           {children.map((child) => (
-            <AttachedDirItem key={child.path} entry={child} depth={depth + 1} selectedPaths={selectedPaths} onSelect={onSelect} refreshVersion={refreshVersion} onAddToChat={onAddToChat} onFilePreview={onFilePreview} allowedPaths={allowedPaths} sessionId={sessionId} revealTarget={revealTarget} revealTs={revealTs} revealAncestors={revealAncestors} />
+            <AttachedDirItem key={child.path} entry={child} depth={depth + 1} selectedPaths={selectedPaths} onSelect={onSelect} refreshVersion={refreshVersion} onFilesMoved={onFilesMoved} onDirectoryDropTargetActive={onDirectoryDropTargetActive} onAddToChat={onAddToChat} onFilePreview={onFilePreview} allowedPaths={allowedPaths} sessionId={sessionId} revealTarget={revealTarget} revealTs={revealTs} revealAncestors={revealAncestors} />
           ))}
         </div>
       )}
