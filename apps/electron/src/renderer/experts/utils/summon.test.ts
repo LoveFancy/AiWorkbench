@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
-import type { AgentExpertGroupInfo } from '@proma/shared'
-import { isRemoteSourced, isSummonableLocal } from './summon'
+import type { AgentExpertGroupInfo, AgentExpertGroupStatus } from '@proma/shared'
+import { isCardSummonActionable, isRemoteSourced, isSummonableLocal } from './summon'
 
 function makeGroup(overrides: Partial<AgentExpertGroupInfo> = {}): AgentExpertGroupInfo {
   return {
@@ -43,4 +43,27 @@ test('remote_update_available 状态可进入召唤流程（不被拦截）', ()
 test('其它异常状态不进入本地召唤流程', () => {
   expect(isSummonableLocal(makeGroup({ status: 'plugin_disabled' }))).toBe(false)
   expect(isSummonableLocal(makeGroup({ status: 'remote_not_downloaded' }))).toBe(false)
+})
+
+test('卡片召唤按钮：本地可召唤 + 可下载状态均可点击', () => {
+  expect(isCardSummonActionable('available')).toBe(true)
+  // 回归用例：已下载有更新的专家「召唤」按钮必须可点击
+  expect(isCardSummonActionable('remote_update_available')).toBe(true)
+  expect(isCardSummonActionable('remote_not_downloaded')).toBe(true)
+  expect(isCardSummonActionable('remote_downloading')).toBe(true)
+})
+
+test('卡片召唤按钮：异常/不可召唤状态禁用', () => {
+  const disabled: AgentExpertGroupStatus[] = [
+    'plugin_disabled',
+    'plugin_uninstalled',
+    'invalid_manifest',
+    'missing_subagent',
+    'missing_skill',
+    'mcp_conflict',
+    'remote_download_failed',
+  ]
+  for (const status of disabled) {
+    expect(isCardSummonActionable(status)).toBe(false)
+  }
 })

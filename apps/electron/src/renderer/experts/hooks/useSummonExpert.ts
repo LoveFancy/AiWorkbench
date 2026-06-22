@@ -34,16 +34,18 @@ export function useSummonExpert(): UseSummonExpertResult {
         toast('正在下载中，请稍候')
         return
       }
-      setSummoningGroup(group)
       try {
+        // 下载阶段不显示全屏遮罩，避免下载耗时/卡住时阻塞整个界面
         const installed = await window.electronAPI.downloadRemoteExpert(group.id)
         await loadGroups()
         toast.success(`已下载 ${group.name}，正在召唤...`)
+        // 仅在创建会话阶段显示召唤遮罩
+        setSummoningGroup(group)
         const session = await createExpertSession({
           ...group,
           status: 'available',
           sourcePluginKind: 'user',
-          sourcePluginId: installed.name,
+          sourcePluginId: installed.id,
           sourcePluginVersion: installed.version,
         })
         recordRecent(group.id)
