@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { ChevronDown, Plug, Settings } from 'lucide-react'
+import { Bot, Check, ChevronDown, Mail, MessageSquare, Plug, Settings } from 'lucide-react'
 import type { McpServerEntry, WorkspaceMcpConfig } from '@proma/shared'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -22,6 +22,15 @@ export interface ConnectorPickerItem {
   statusLabel: string
 }
 
+export type ConnectorVisualKind = 'email' | 'feishu' | 'hiagent' | 'custom'
+
+export function getConnectorVisualKind(connector: Pick<ConnectorPickerItem, 'name' | 'displayName' | 'defaultConnector'>): ConnectorVisualKind {
+  if (connector.defaultConnector?.id === 'personal-email' || connector.displayName.includes('邮箱')) return 'email'
+  if (connector.defaultConnector?.id === 'feishu-cli' || connector.displayName.includes('飞书')) return 'feishu'
+  if (connector.defaultConnector?.id === 'hiagent-taiwei' || connector.displayName.toLowerCase().includes('hiagent')) return 'hiagent'
+  return 'custom'
+}
+
 function getConnectorTarget(entry: McpServerEntry): string {
   if (entry.type === 'stdio') return entry.command ?? ''
   return entry.url ?? ''
@@ -42,7 +51,7 @@ export function getAvailableConnectorsForPicker(config: WorkspaceMcpConfig, quer
       defaultConnector: connector,
       selectable,
       selectedName: connector.serverName,
-      statusLabel: selectable ? '连接' : connector.status === 'coming-soon' ? '敬请期待' : initialized ? '未启用' : '配置',
+      statusLabel: selectable ? '可连接' : connector.status === 'coming-soon' ? '敬请期待' : initialized ? '未启用' : '配置',
     }
   })
 
@@ -55,7 +64,7 @@ export function getAvailableConnectorsForPicker(config: WorkspaceMcpConfig, quer
       target: getConnectorTarget(entry),
       selectable: true,
       selectedName: name,
-      statusLabel: '连接',
+      statusLabel: '可连接',
     }))
 
   return [...defaultItems, ...customItems]
@@ -169,34 +178,35 @@ export function AgentConnectorPicker({
         side="top"
         align="center"
         sideOffset={10}
-        className="w-[430px] overflow-hidden rounded-xl border bg-popover p-0 shadow-2xl"
+        className="w-[360px] overflow-hidden rounded-[14px] border border-border/50 bg-popover/95 p-1.5 shadow-xl backdrop-blur"
         onOpenAutoFocus={(event) => event.preventDefault()}
       >
-        <div className="max-h-[420px] overflow-y-auto py-1.5 scrollbar-thin">
+        <div className="max-h-[360px] space-y-1 overflow-y-auto scrollbar-thin">
           {connectors.length > 0 ? (
             connectors.map((connector) => {
               const checked = connector.selectedName ? selectedSet.has(connector.selectedName) : false
+              const subtitle = connector.defaultConnector?.category ?? connector.target
               return (
                 <button
                   key={connector.name}
                   type="button"
                   className={cn(
-                    'flex h-12 w-full items-center gap-3 px-3 text-left transition-colors hover:bg-accent',
-                    !connector.selectable && 'text-muted-foreground',
+                    'group flex min-h-[58px] w-full items-center gap-3 rounded-[10px] px-2.5 py-2 text-left transition-colors hover:bg-muted/70',
+                    checked && 'bg-blue-500/8 hover:bg-blue-500/10',
+                    !connector.selectable && 'text-muted-foreground hover:bg-muted/45',
                   )}
                   onClick={() => handleConnectorClick(connector)}
                 >
-                  <ConnectorAppIcon name={connector.displayName} selected={checked} unavailable={!connector.selectable} />
-                  <span className="min-w-0 flex-1 truncate text-[15px] font-medium text-foreground">
-                    {connector.displayName}
+                  <ConnectorAppIcon connector={connector} selected={checked} unavailable={!connector.selectable} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[14px] font-medium leading-5 text-foreground">
+                      {connector.displayName}
+                    </span>
+                    <span className="block truncate text-[12px] leading-4 text-muted-foreground">
+                      {subtitle}
+                    </span>
                   </span>
-                  <span className={cn(
-                    'shrink-0 text-[14px] font-medium',
-                    checked ? 'text-blue-600 dark:text-blue-300' : 'text-foreground/70',
-                  )}
-                  >
-                    {checked ? '已选择' : connector.statusLabel}
-                  </span>
+                  <ConnectorStatusBadge checked={checked} label={connector.statusLabel} selectable={connector.selectable} />
                 </button>
               )
             })
@@ -207,33 +217,68 @@ export function AgentConnectorPicker({
           )}
         </div>
 
-        <button
-          type="button"
-          className="flex h-11 w-full items-center gap-3 border-t px-3 text-left text-[15px] font-medium text-foreground transition-colors hover:bg-accent"
-          onClick={handleOpenConnectorManager}
-        >
-          <Settings className="size-5 text-muted-foreground" />
-          <span>更多连接器</span>
-        </button>
+        <div className="mt-1 border-t border-border/50 pt-1">
+          <button
+            type="button"
+            className="flex h-10 w-full items-center gap-2.5 rounded-[10px] px-2.5 text-left text-[13px] font-medium text-foreground transition-colors hover:bg-muted/70"
+            onClick={handleOpenConnectorManager}
+          >
+            <span className="flex size-7 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+              <Settings className="size-4" />
+            </span>
+            <span>更多连接器</span>
+          </button>
+        </div>
       </PopoverContent>
     </Popover>
   )
 }
 
-function ConnectorAppIcon({ name, selected, unavailable }: { name: string; selected: boolean; unavailable: boolean }): React.ReactElement {
-  const initial = (name.trim()[0] ?? 'C').toUpperCase()
+function ConnectorStatusBadge({ checked, label, selectable }: { checked: boolean; label: string; selectable: boolean }): React.ReactElement {
   return (
     <span className={cn(
-      'flex size-8 shrink-0 items-center justify-center rounded-lg text-sm font-semibold',
-      selected
-        ? 'bg-blue-500/12 text-blue-600 dark:text-blue-300'
-        : unavailable
-          ? 'bg-muted/70 text-muted-foreground/60'
-          : 'bg-muted text-muted-foreground',
+      'inline-flex h-6 shrink-0 items-center gap-1 rounded-full px-2 text-[12px] font-medium',
+      checked
+        ? 'bg-blue-500 text-white shadow-sm shadow-blue-500/20'
+        : !selectable
+          ? 'bg-muted text-muted-foreground'
+          : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
     )}
     >
-      <Plug className="size-4" />
-      <span className="sr-only">{initial}</span>
+      {checked && <Check className="size-3" />}
+      {checked ? '已选择' : label}
+    </span>
+  )
+}
+
+function ConnectorAppIcon({ connector, selected, unavailable }: { connector: ConnectorPickerItem; selected: boolean; unavailable: boolean }): React.ReactElement {
+  const visualKind = getConnectorVisualKind(connector)
+  const Icon = visualKind === 'email'
+    ? Mail
+    : visualKind === 'feishu'
+      ? MessageSquare
+      : visualKind === 'hiagent'
+        ? Bot
+        : Plug
+
+  return (
+    <span className={cn(
+      'flex size-9 shrink-0 items-center justify-center rounded-[10px] transition-colors',
+      selected
+        ? 'bg-blue-500 text-white shadow-sm shadow-blue-500/20'
+        : unavailable
+          ? 'bg-muted/70 text-muted-foreground/55'
+          : visualKind === 'email'
+            ? 'bg-cyan-500/12 text-cyan-700 dark:text-cyan-300'
+            : visualKind === 'feishu'
+              ? 'bg-sky-500/12 text-sky-700 dark:text-sky-300'
+              : visualKind === 'hiagent'
+                ? 'bg-violet-500/12 text-violet-700 dark:text-violet-300'
+                : 'bg-muted text-muted-foreground',
+    )}
+    >
+      <Icon className="size-4.5" />
+      <span className="sr-only">{connector.displayName}</span>
     </span>
   )
 }

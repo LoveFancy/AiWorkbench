@@ -287,6 +287,7 @@ import {
   removeFeishuBot,
   getDecryptedBotAppSecret,
 } from './lib/feishu-config'
+import { configureFeishuDefaultHttpInstance } from './lib/feishu-http-client'
 import { feishuBridgeManager } from './lib/feishu-bridge-manager'
 import { syncFeishuSyncSleepBlocker } from './lib/feishu-sleep-blocker'
 import { presenceService } from './lib/feishu-presence'
@@ -2374,7 +2375,7 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(
     AGENT_IPC_CHANNELS.ADD_PLUGIN_MARKETPLACE,
-    async (_, input: { id: string; name: string; source: string; type: AgentPluginMarketplaceType; branch?: string }): Promise<AgentPluginMarketplace> => {
+    async (_, input: { id: string; name: string; source: string; type: AgentPluginMarketplaceType; branch?: string; auth?: { type: 'none' | 'token'; token?: string } }): Promise<AgentPluginMarketplace> => {
       const { addPluginMarketplace } = await import('./lib/plugin-marketplace-service')
       return addPluginMarketplace(input)
     }
@@ -4128,6 +4129,7 @@ export function registerIpcHandlers(): void {
       try {
         const lark = await import('@larksuiteoapi/node-sdk')
         const QRCode = (await import('qrcode')).default
+        await configureFeishuDefaultHttpInstance(lark.defaultHttpInstance)
         const result = await lark.registerApp({
           source: 'proma',
           signal: abort.signal,

@@ -117,14 +117,15 @@ export function ExpertPicker({
             </div>
           </DialogHeader>
 
-          <div className="overflow-hidden px-5">
-            <div className="relative max-w-xl">
+          <div className="px-5 pr-12">
+            <div className="relative w-full min-w-0">
+
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="搜索专家团、角色、技能"
-                className="pl-9"
+                className="w-full pl-9"
               />
             </div>
 

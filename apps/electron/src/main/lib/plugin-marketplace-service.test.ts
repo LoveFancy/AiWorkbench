@@ -397,6 +397,42 @@ describe('插件市场服务', () => {
     }
   })
 
+  test('重复添加同 ID 插件市场且未传认证配置时保留已有 Token', () => {
+    const temp = tempRoot()
+    try {
+      const marketplacesPath = join(temp.root, 'plugin-marketplaces.json')
+      const servicePaths = {
+        marketplacesPath,
+        cacheDir: join(temp.root, 'cache'),
+        userPluginsDir: join(temp.root, 'user-plugins'),
+        pluginsConfigPath: join(temp.root, 'plugins.json'),
+        encryptToken: (token: string) => `encrypted:${token}`,
+        decryptToken: (token: string) => token.replace(/^encrypted:/, ''),
+      }
+
+      addPluginMarketplace({
+        id: 'private-market',
+        name: 'Private Market',
+        source: 'https://github.com/org/private-market',
+        type: 'github',
+        auth: { type: 'token', token: 'persist-secret' },
+      }, servicePaths)
+      addPluginMarketplace({
+        id: 'private-market',
+        name: 'Private Market Updated',
+        source: 'https://github.com/org/private-market',
+        type: 'github',
+      }, servicePaths)
+
+      const marketplace = listPluginMarketplaces({ marketplacesPath })[0]
+      expect(marketplace?.auth).toEqual({ type: 'token', tokenConfigured: true })
+      const stored = readFileSync(marketplacesPath, 'utf-8')
+      expect(stored).toContain('encrypted:persist-secret')
+    } finally {
+      temp.cleanup()
+    }
+  })
+
   test('远端插件市场返回 HTML 时提示选择 GitHub 类型或 raw JSON URL', async () => {
     const temp = tempRoot()
     try {
@@ -686,10 +722,13 @@ describe('插件市场服务', () => {
         cacheDir: join(temp.root, 'cache'),
         userPluginsDir: join(temp.root, 'user-plugins'),
         pluginsConfigPath: join(temp.root, 'plugins.json'),
+        encryptToken: (token: string) => `encrypted:${token}`,
+        decryptToken: (token: string) => token.replace(/^encrypted:/, ''),
       }
-      const requestedUrls: string[] = []
-      globalThis.fetch = (async (input: Parameters<typeof fetch>[0]) => {
-        requestedUrls.push(String(input))
+      const requests: Array<{ url: string; authorization?: string }> = []
+      globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+        const headers = new Headers(init?.headers)
+        requests.push({ url: String(input), authorization: headers.get('authorization') ?? undefined })
         return new Response(JSON.stringify({
           name: 'ECC',
           plugins: [{ name: 'frontend-design', source: './plugins/frontend-design' }],
@@ -704,12 +743,149 @@ describe('插件市场服务', () => {
         name: '',
         source: 'https://gitee.com/topsecwp/ECC',
         type: 'gitee',
+        auth: { type: 'token', token: 'market-secret' },
       }, servicePaths)
 
       await refreshPluginMarketplace('ecc', servicePaths)
 
-      expect(requestedUrls).toEqual(['https://gitee.com/topsecwp/ECC/raw/main/.claude-plugin/marketplace.json'])
-      expect(listPluginMarketplaces({ marketplacesPath })[0]?.type).toBe('gitee')
+      expect(requests).toEqual([{
+        url: 'https://gitee.com/topsecwp/ECC/raw/main/.claude-plugin/marketplace.json',
+        authorization: 'Bearer market-secret',
+      }])
+      const marketplace = listPluginMarketplaces({ marketplacesPath })[0]
+      expect(marketplace?.type).toBe('gitee')
+      expect(marketplace?.auth).toEqual({ type: 'token', tokenConfigured: true })
+      expect(JSON.stringify(marketplace)).not.toContain('encrypted:market-secret')
+      const stored = readFileSync(marketplacesPath, 'utf-8')
+      expect(stored).toContain('encrypted:market-secret')
+      expect(stored).not.toContain('"market-secret"')
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('安装远端市场插件时使用市场 Token 执行 git clone', async () => {
+    const temp = tempRoot()
+    try {
+      const marketplacesPath = join(temp.root, 'plugin-marketplaces.json')
+      const cacheDir = join(temp.root, 'cache')
+      const userPluginsDir = join(temp.root, 'user-plugins')
+      const pluginsConfigPath = join(temp.root, 'plugins.json')
+      const sourceRepo = join(temp.root, 'source-repo')
+      mkdirSync(join(sourceRepo, 'plugins', 'frontend-design', '.claude-plugin'), { recursive: true })
+      mkdirSync(join(sourceRepo, 'plugins', 'frontend-design', 'skills', 'frontend-design'), { recursive: true })
+      writeFileSync(
+        join(sourceRepo, 'plugins', 'frontend-design', '.claude-plugin', 'plugin.json'),
+        JSON.stringify({ name: 'frontend-design', version: '1.0.0' }),
+        'utf-8',
+      )
+      writeFileSync(join(sourceRepo, 'plugins', 'frontend-design', 'skills', 'frontend-design', 'SKILL.md'), '# Frontend Design', 'utf-8')
+
+      const cloneCalls: Array<{ source: string; authHeader?: string }> = []
+      const servicePaths = {
+        marketplacesPath,
+        cacheDir,
+        userPluginsDir,
+        pluginsConfigPath,
+        encryptToken: (token: string) => `encrypted:${token}`,
+        decryptToken: (token: string) => token.replace(/^encrypted:/, ''),
+        cloneRepo: async (source: string, targetDir: string, _branch?: string, authHeader?: string) => {
+          cloneCalls.push({ source, authHeader })
+          mkdirSync(targetDir, { recursive: true })
+        },
+        copyClonedFixture: sourceRepo,
+      }
+
+      addPluginMarketplace({
+        id: 'github-private',
+        name: 'GitHub Private',
+        source: 'https://github.com/org/private-market',
+        type: 'github',
+        auth: { type: 'token', token: 'clone-secret' },
+      }, servicePaths)
+      mkdirSync(join(cacheDir, 'github-private'), { recursive: true })
+      writeFileSync(
+        join(cacheDir, 'github-private', 'manifest.json'),
+        JSON.stringify({
+          name: 'GitHub Private',
+          plugins: [{ name: 'frontend-design', source: './plugins/frontend-design', version: '1.0.0' }],
+        }),
+        'utf-8',
+      )
+
+      await installMarketplacePlugin({
+        marketplaceId: 'github-private',
+        pluginName: 'frontend-design',
+        enable: true,
+      }, servicePaths)
+
+      expect(cloneCalls).toEqual([{
+        source: 'https://github.com/org/private-market',
+        authHeader: 'Authorization: Bearer clone-secret',
+      }])
+      expect(existsSync(join(userPluginsDir, 'github-private', 'frontend-design', 'skills', 'frontend-design', 'SKILL.md'))).toBe(true)
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('安装 Gitee 私有市场插件时使用 Git HTTPS 可识别的 Token 认证头', async () => {
+    const temp = tempRoot()
+    try {
+      const marketplacesPath = join(temp.root, 'plugin-marketplaces.json')
+      const cacheDir = join(temp.root, 'cache')
+      const userPluginsDir = join(temp.root, 'user-plugins')
+      const pluginsConfigPath = join(temp.root, 'plugins.json')
+      const sourceRepo = join(temp.root, 'source-repo')
+      mkdirSync(join(sourceRepo, 'plugins', 'ppt-master', '.claude-plugin'), { recursive: true })
+      writeFileSync(
+        join(sourceRepo, 'plugins', 'ppt-master', '.claude-plugin', 'plugin.json'),
+        JSON.stringify({ name: 'ppt-master', version: '2.7.0' }),
+        'utf-8',
+      )
+
+      const cloneCalls: Array<{ source: string; authHeader?: string }> = []
+      const servicePaths = {
+        marketplacesPath,
+        cacheDir,
+        userPluginsDir,
+        pluginsConfigPath,
+        encryptToken: (token: string) => `encrypted:${token}`,
+        decryptToken: (token: string) => token.replace(/^encrypted:/, ''),
+        cloneRepo: async (source: string, targetDir: string, _branch?: string, authHeader?: string) => {
+          cloneCalls.push({ source, authHeader })
+          mkdirSync(targetDir, { recursive: true })
+        },
+        copyClonedFixture: sourceRepo,
+      }
+
+      addPluginMarketplace({
+        id: 'gitee-private',
+        name: 'Gitee Private',
+        source: 'https://gitee.com/lovefancy315/cc-plugins-marketplace',
+        type: 'gitee',
+        branch: 'master',
+        auth: { type: 'token', token: 'gitee-secret' },
+      }, servicePaths)
+      mkdirSync(join(cacheDir, 'gitee-private'), { recursive: true })
+      writeFileSync(
+        join(cacheDir, 'gitee-private', 'manifest.json'),
+        JSON.stringify({
+          plugins: [{ name: 'ppt-master', source: './plugins/ppt-master', version: '2.7.0' }],
+        }),
+        'utf-8',
+      )
+
+      await installMarketplacePlugin({
+        marketplaceId: 'gitee-private',
+        pluginName: 'ppt-master',
+        enable: true,
+      }, servicePaths)
+
+      expect(cloneCalls).toEqual([{
+        source: 'https://gitee.com/lovefancy315/cc-plugins-marketplace',
+        authHeader: `Authorization: Basic ${Buffer.from('oauth2:gitee-secret').toString('base64')}`,
+      }])
     } finally {
       temp.cleanup()
     }

@@ -115,6 +115,16 @@ function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
 }
 
+function manifestSkills(value: unknown): string | string[] | undefined {
+  if (typeof value === 'string' && value.trim()) return value.trim()
+  if (!Array.isArray(value)) return undefined
+  const skills = value
+    .filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim())
+    .filter(Boolean)
+  return skills.length > 0 ? skills : undefined
+}
+
 function stringRecord(value: unknown): Record<string, string> | undefined {
   if (!isRecord(value)) return undefined
   const result: Record<string, string> = {}
@@ -127,6 +137,7 @@ function stringRecord(value: unknown): Record<string, string> | undefined {
 function normalizeManifest(raw: unknown, fallbackName: string): AgentPluginManifest {
   const record = isRecord(raw) ? raw : {}
   const author = isRecord(record.author) ? record.author : {}
+  const skills = manifestSkills(record.skills)
   return {
     name: typeof record.name === 'string' && record.name.trim() ? record.name.trim() : fallbackName,
     version: typeof record.version === 'string' && record.version.trim() ? record.version.trim() : '0.0.0',
@@ -141,6 +152,7 @@ function normalizeManifest(raw: unknown, fallbackName: string): AgentPluginManif
     ...(typeof record.repository === 'string' && { repository: record.repository }),
     ...(typeof record.license === 'string' && { license: record.license }),
     keywords: stringArray(record.keywords),
+    ...(skills && { skills }),
     ...(typeof record.expertGroup === 'string' && record.expertGroup.trim() && { expertGroup: record.expertGroup.trim() }),
     expertGroups: stringArray(record.expertGroups),
   }
@@ -173,11 +185,24 @@ function readDescriptionFromMarkdown(filePath: string): string | undefined {
     const content = readFileSync(filePath, 'utf-8')
     const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---/)
     if (fmMatch?.[1]) {
-      for (const line of fmMatch[1].split('\n')) {
+      const lines = fmMatch[1].split('\n')
+      for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+        const line = lines[lineIndex] ?? ''
         const index = line.indexOf(':')
         if (index <= 0) continue
         const key = line.slice(0, index).trim()
         const value = line.slice(index + 1).trim().replace(/^['"]|['"]$/g, '')
+        if (key === 'description' && (value === '>' || value === '|')) {
+          const blockLines: string[] = []
+          for (const blockLine of lines.slice(lineIndex + 1)) {
+            if (!/^\s+/.test(blockLine) && blockLine.trim()) break
+            blockLines.push(blockLine.trim())
+          }
+          const description = value === '>'
+            ? blockLines.filter(Boolean).join(' ').trim()
+            : blockLines.join('\n').trim()
+          if (description) return description
+        }
         if (key === 'description' && value) return value
       }
     }
@@ -205,20 +230,57 @@ function collectMarkdownFiles(dir: string): string[] {
   return files
 }
 
-function discoverSkills(pluginPath: string, pluginId: string, sourceLabel: string, enabled: boolean): AgentPluginCapability[] {
-  const skillsDir = join(pluginPath, 'skills')
-  if (!existsSync(skillsDir)) return []
-  return readdirSync(skillsDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && existsSync(join(skillsDir, entry.name, 'SKILL.md')))
+function manifestSkillPaths(manifest: AgentPluginManifest): string[] {
+  if (manifest.skills === undefined) return ['skills']
+  return Array.isArray(manifest.skills) ? manifest.skills : [manifest.skills]
+}
+
+function safePluginRelativePath(pluginPath: string, targetPath: string): string | null {
+  const relativePath = relative(pluginPath, targetPath)
+  if (relativePath.startsWith('..') || isAbsolute(relativePath)) return null
+  return relativePath ? relativePath.split(sep).join('/') : '.'
+}
+
+function discoverSkillDirs(pluginPath: string, skillPath: string): Array<{ name: string; dir: string; relativePath: string }> {
+  const root = resolve(pluginPath, skillPath)
+  const rootRelativePath = safePluginRelativePath(pluginPath, root)
+  if (!rootRelativePath || !existsSync(root)) return []
+
+  if (existsSync(join(root, 'SKILL.md'))) {
+    return [{
+      name: basename(root),
+      dir: root,
+      relativePath: rootRelativePath,
+    }]
+  }
+
+  return readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && existsSync(join(root, entry.name, 'SKILL.md')))
     .map((entry) => ({
-      type: 'skill' as const,
       name: entry.name,
-      sourcePluginId: pluginId,
-      sourceLabel,
-      relativePath: `skills/${entry.name}`,
-      description: readDescriptionFromMarkdown(join(skillsDir, entry.name, 'SKILL.md')),
-      enabled,
+      dir: join(root, entry.name),
+      relativePath: [rootRelativePath, entry.name]
+        .filter((part) => part && part !== '.')
+        .join('/'),
     }))
+}
+
+function discoverSkills(pluginPath: string, pluginId: string, sourceLabel: string, enabled: boolean, manifest: AgentPluginManifest): AgentPluginCapability[] {
+  const capabilities = new Map<string, AgentPluginCapability>()
+  for (const skillPath of manifestSkillPaths(manifest)) {
+    for (const skill of discoverSkillDirs(pluginPath, skillPath)) {
+      capabilities.set(skill.relativePath, {
+        type: 'skill' as const,
+        name: skill.name,
+        sourcePluginId: pluginId,
+        sourceLabel,
+        relativePath: skill.relativePath,
+        description: readDescriptionFromMarkdown(join(skill.dir, 'SKILL.md')),
+        enabled,
+      })
+    }
+  }
+  return [...capabilities.values()]
 }
 
 function commandName(commandsDir: string, filePath: string): string {
@@ -466,9 +528,10 @@ function pluginInfoFromPath(kind: 'builtin' | 'user', pluginPath: string, plugin
   const { manifest, issues } = readManifest(pluginPath)
   const enabled = defaultEnabledFor(pluginId, config)
   const state = config.plugins[pluginId]
+  const version = manifest.version === '0.0.0' && state?.version ? state.version : manifest.version
   const sourceLabel = manifest.name || basename(pluginPath)
   const capabilities = [
-    ...discoverSkills(pluginPath, pluginId, sourceLabel, enabled),
+    ...discoverSkills(pluginPath, pluginId, sourceLabel, enabled, manifest),
     ...discoverMarkdownCapabilities(pluginPath, 'commands', 'command', pluginId, sourceLabel, enabled),
     ...discoverMarkdownCapabilities(pluginPath, 'agents', 'agent', pluginId, sourceLabel, enabled),
     ...discoverMcp(pluginPath, pluginId, sourceLabel, enabled, config),
@@ -480,7 +543,7 @@ function pluginInfoFromPath(kind: 'builtin' | 'user', pluginPath: string, plugin
     id: pluginId,
     kind,
     name: manifest.name,
-    version: manifest.version,
+    version,
     ...(manifest.description && { description: manifest.description }),
     ...(manifest.author?.name && { author: manifest.author.name }),
     ...(manifest.homepage && { homepage: manifest.homepage }),

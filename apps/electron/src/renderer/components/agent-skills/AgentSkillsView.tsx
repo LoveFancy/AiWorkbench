@@ -226,8 +226,12 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
       return
     }
     bumpCapabilities((v) => v + 1)
-    if (tab === 'skills') void loadInstalledPlugins()
-    toast.success(tab === 'skills' ? '技能列表已刷新' : '连接器列表已刷新')
+    toast.success('连接器列表已刷新')
+  }
+
+  const handleRefreshInstalledSkills = async (): Promise<void> => {
+    bumpCapabilities((v) => v + 1)
+    await loadInstalledPlugins()
   }
 
   const handleTogglePlugin = async (plugin: AgentPluginInfo, enabled: boolean): Promise<void> => {
@@ -368,16 +372,18 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
           />
         )}
 
-        {/* 统一刷新 */}
-        <button
-          type="button"
-          onClick={() => void handleRefreshCurrentTab()}
-          disabled={tab === 'experts' && isRefreshingExperts}
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-border/60 bg-content-area text-foreground/80 shadow-sm transition-colors hover:bg-foreground/[0.04] disabled:cursor-not-allowed disabled:opacity-60"
-          title={tab === 'experts' ? '刷新专家' : tab === 'skills' ? '刷新技能' : '刷新连接器'}
-        >
-          <RefreshCw size={14} className={tab === 'experts' && isRefreshingExperts ? 'animate-spin' : undefined} />
-        </button>
+        {/* 顶层刷新只处理没有二级来源的页面；技能页由市场/已安装区域各自刷新。 */}
+        {tab !== 'skills' && (
+          <button
+            type="button"
+            onClick={() => void handleRefreshCurrentTab()}
+            disabled={tab === 'experts' && isRefreshingExperts}
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-border/60 bg-content-area text-foreground/80 shadow-sm transition-colors hover:bg-foreground/[0.04] disabled:cursor-not-allowed disabled:opacity-60"
+            title={tab === 'experts' ? '刷新专家' : '刷新连接器'}
+          >
+            <RefreshCw size={14} className={tab === 'experts' && isRefreshingExperts ? 'animate-spin' : undefined} />
+          </button>
+        )}
 
         {/* Experts：添加专家 */}
         {tab === 'experts' && <ExpertImportButton label="添加专家" />}
@@ -432,12 +438,14 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
                 onInstalled={async () => {
                   bumpCapabilities((v) => v + 1)
                   await loadInstalledPlugins()
+                  setSkillView('installed')
                 }}
                 onOpen={setSelectedSkillSlug}
                 onOpenPlugin={setSelectedPluginId}
                 onToggle={data.toggleSkill}
                 onUpdate={data.updateSkill}
                 onSkillViewChange={setSkillView}
+                onRefreshInstalled={handleRefreshInstalledSkills}
               />
             ) : (
               <McpTab
@@ -611,22 +619,37 @@ interface SkillsTabProps {
   onToggle: (slug: string, enabled: boolean) => void
   onUpdate: (slug: string) => void
   onSkillViewChange: (view: 'market' | 'installed') => void
+  onRefreshInstalled: () => void | Promise<void>
 }
 
-function SkillsTab({ skillView, skills, total, installedPlugins, pluginTotal, pluginLoading, updateCount, updatingSkill, isBuiltin, workspaceSlug, query, installedSkillNames, onInstalled, onOpen, onOpenPlugin, onToggle, onUpdate, onSkillViewChange }: SkillsTabProps): React.ReactElement {
+function SkillsTab({ skillView, skills, total, installedPlugins, pluginTotal, pluginLoading, updateCount, updatingSkill, isBuiltin, workspaceSlug, query, installedSkillNames, onInstalled, onOpen, onOpenPlugin, onToggle, onUpdate, onSkillViewChange, onRefreshInstalled }: SkillsTabProps): React.ReactElement {
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex items-center gap-8 border-b border-border/60">
-        <SkillViewTab
-          active={skillView === 'market'}
-          label="技能市场"
-          onClick={() => onSkillViewChange('market')}
-        />
-        <SkillViewTab
-          active={skillView === 'installed'}
-          label="已安装"
-          onClick={() => onSkillViewChange('installed')}
-        />
+      <div className="flex items-center justify-between gap-3 border-b border-border/60">
+        <div className="flex items-center gap-8">
+          <SkillViewTab
+            active={skillView === 'market'}
+            label="技能市场"
+            onClick={() => onSkillViewChange('market')}
+          />
+          <SkillViewTab
+            active={skillView === 'installed'}
+            label="已安装"
+            onClick={() => onSkillViewChange('installed')}
+          />
+        </div>
+        {skillView === 'installed' && (
+          <button
+            type="button"
+            onClick={() => void onRefreshInstalled()}
+            disabled={pluginLoading}
+            className="mb-2 flex h-8 items-center gap-1.5 rounded-lg border border-border/60 bg-content-area px-3 text-[13px] font-medium text-foreground/75 shadow-sm transition-colors hover:bg-foreground/[0.04] disabled:cursor-not-allowed disabled:opacity-60"
+            title="刷新已安装技能"
+          >
+            <RefreshCw size={14} className={pluginLoading ? 'animate-spin' : undefined} />
+            <span>刷新已安装</span>
+          </button>
+        )}
       </div>
 
       {skillView === 'market' ? (

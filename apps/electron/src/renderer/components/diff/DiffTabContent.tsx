@@ -25,6 +25,7 @@ import { MarkdownToc } from './MarkdownToc'
 import { PIERRE_FILE_CSS } from '@/components/agent/tool-result-renderers/pierre-styles'
 import { formatManagedPath } from '@/lib/managed-path-display'
 import type { FilePreviewReadResult } from '@proma/shared'
+import { DEFAULT_IMAGE_ZOOM, getInitialImageZoom } from './image-preview-zoom'
 
 const MD_EXTS = new Set(['.md', '.markdown'])
 const PLAIN_TEXT_EDIT_EXTS = new Set(['.txt', '.text', '.log'])
@@ -284,8 +285,8 @@ export function DiffTabContent({ filePath, dirPath, sessionId, gitRoot, previewO
       })
   }, [filePath, dirPath, gitRoot, basePaths, sessionId])
   const [imageDataUrl, setImageDataUrl] = React.useState('')
-  // 默认 25%：预览面板空间有限，先展示缩略全貌，用户可手动放大查看细节
-  const [imageZoom, setImageZoom] = React.useState(0.25)
+  // 普通图片默认 25%；SVG 加载完成后会按预览容器尺寸自适应。
+  const [imageZoom, setImageZoom] = React.useState(DEFAULT_IMAGE_ZOOM)
   const [imageNaturalSize, setImageNaturalSize] = React.useState({ w: 0, h: 0 })
   const imageContainerRef = React.useRef<HTMLDivElement>(null)
   const imageDragging = React.useRef(false)
@@ -549,7 +550,7 @@ export function DiffTabContent({ filePath, dirPath, sessionId, gitRoot, previewO
     setPdfZoom(100)
     setImagePath('')
     setImageDataUrl('')
-    setImageZoom(0.25)
+    setImageZoom(DEFAULT_IMAGE_ZOOM)
     setImageNaturalSize({ w: 0, h: 0 })
     setLoading(!isLegacyOffice)
     setMarkdownEditing(false)
@@ -617,7 +618,7 @@ export function DiffTabContent({ filePath, dirPath, sessionId, gitRoot, previewO
       setPdfZoom(100)
       setImagePath(cached.imagePath ?? '')
       setImageDataUrl(cached.imageDataUrl ?? '')
-      setImageZoom(0.25)
+      setImageZoom(DEFAULT_IMAGE_ZOOM)
       setImageNaturalSize({ w: 0, h: 0 })
       setLoading(false)
       return // 缓存命中，直接返回，不执行 load()
@@ -633,7 +634,7 @@ export function DiffTabContent({ filePath, dirPath, sessionId, gitRoot, previewO
       setPdfZoom(100)
       setImagePath('')
       setImageDataUrl('')
-      setImageZoom(0.25)
+      setImageZoom(DEFAULT_IMAGE_ZOOM)
       setImageNaturalSize({ w: 0, h: 0 })
       lastNewContentRef.current = ''
       lastOldContentRef.current = ''
@@ -1229,6 +1230,21 @@ export function DiffTabContent({ filePath, dirPath, sessionId, gitRoot, previewO
                       onLoad={(e) => {
                         const img = e.currentTarget
                         setImageNaturalSize({ w: img.naturalWidth, h: img.naturalHeight })
+                        const container = imageContainerRef.current
+                        const styles = container ? window.getComputedStyle(container) : null
+                        const horizontalPadding = styles
+                          ? Number.parseFloat(styles.paddingLeft) + Number.parseFloat(styles.paddingRight)
+                          : 0
+                        const verticalPadding = styles
+                          ? Number.parseFloat(styles.paddingTop) + Number.parseFloat(styles.paddingBottom)
+                          : 0
+                        setImageZoom(getInitialImageZoom({
+                          ext,
+                          imageWidth: img.naturalWidth,
+                          imageHeight: img.naturalHeight,
+                          viewportWidth: container ? Math.max(0, container.clientWidth - horizontalPadding) : 0,
+                          viewportHeight: container ? Math.max(0, container.clientHeight - verticalPadding) : 0,
+                        }))
                       }}
                       style={{ width: imageNaturalSize.w > 0 ? imageNaturalSize.w * imageZoom : '100%', height: imageNaturalSize.h > 0 ? imageNaturalSize.h * imageZoom : 'auto', maxWidth: imageZoom <= 1 ? '100%' : 'none' }}
                     />
