@@ -10,6 +10,7 @@ export {
   getJobId,
   getEipGatewayBase,
   isLoggedIn,
+  hasValidSession,
   getAuthInfo,
   needsReauth,
   logout,

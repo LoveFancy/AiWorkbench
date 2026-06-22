@@ -1,6 +1,8 @@
 import { describe, it, expect, mock } from 'bun:test'
 
 mock.module('electron', () => ({
+  // app 供同进程内其他测试文件（如 observability）共享 electron mock 时使用
+  app: { getVersion: () => '1.0.0' },
   safeStorage: {
     isEncryptionAvailable: () => true,
     encryptString: (value: string) => Buffer.from(value, 'utf-8'),

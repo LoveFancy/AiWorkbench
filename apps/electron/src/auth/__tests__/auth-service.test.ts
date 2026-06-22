@@ -9,6 +9,8 @@ const mockEncryptStore = new Map<string, string>()
 let encryptCounter = 0
 
 mock.module('electron', () => ({
+  // app 供同进程内其他测试文件（如 observability）共享 electron mock 时使用
+  app: { getVersion: () => '1.0.0' },
   safeStorage: {
     isEncryptionAvailable: () => true,
     encryptString: (s: string) => {
@@ -246,6 +248,41 @@ describe('auth-service 集成测试', () => {
 
       expect(getToken()).toBeNull()
       expect(getJobId()).toBeNull()
+    })
+  })
+
+  describe('hasValidSession - 轻量会话校验（不解密/不解析 JWT）', () => {
+    it('无 auth.json → false', async () => {
+      const { hasValidSession } = await import('../auth-service')
+      expect(hasValidSession()).toBe(false)
+    })
+
+    it('登录后 → true', async () => {
+      setMockFetch(mockEipGateway())
+      const { loginWithEipGateway, hasValidSession } = await import('../auth-service')
+      await loginWithEipGateway('022480', 'pass')
+      expect(hasValidSession()).toBe(true)
+    })
+
+    it('expiresAt 已过期 → false', async () => {
+      setMockFetch(mockEipGateway())
+      const { loginWithEipGateway, hasValidSession } = await import('../auth-service')
+      await loginWithEipGateway('022480', 'pass')
+
+      const authPath = join(tempDir, 'auth.json')
+      const authFile = JSON.parse(readFileSync(authPath, 'utf-8'))
+      authFile.expiresAt = Date.now() - 1000
+      writeFileSync(authPath, JSON.stringify(authFile))
+
+      expect(hasValidSession()).toBe(false)
+    })
+
+    it('logout 后（空文件）→ false', async () => {
+      setMockFetch(mockEipGateway())
+      const { loginWithEipGateway, logout, hasValidSession } = await import('../auth-service')
+      await loginWithEipGateway('022480', 'pass')
+      logout()
+      expect(hasValidSession()).toBe(false)
     })
   })
 })
