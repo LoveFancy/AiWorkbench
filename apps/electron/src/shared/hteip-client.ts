@@ -227,7 +227,7 @@ export function httpDelete<T = unknown>(
  * const fd = new FormData()
  * fd.append('file', new Blob([buf], { type: 'application/zip' }), 'log.zip')
  * fd.append('userId', '022480')
- * const res = await httpUpload('/workmate/console/logs/upload', { formData: fd })
+ * const res = await httpUpload('/workmate/logs/upload', { formData: fd })
  */
 export async function httpUpload<T = unknown>(
   urlOrPath: string,

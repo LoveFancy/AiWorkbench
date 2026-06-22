@@ -2,7 +2,7 @@
  * 日志上报模块
  *
  * 将本地 main.log / renderer.log 打包为 zip，通过 httpUpload
- * 上传到服务端 POST /workmate/console/logs/upload。
+ * 上传到服务端 POST /workmate/logs/upload。
  *
  * URL 域名由 hteip-client 内部自动拼接，调用方只需传路径。
  */
@@ -19,7 +19,7 @@ import type { UserProfile } from '../../types'
 // ── 常量 ──
 
 /** 上传接口路径（域名由 hteip-client 内部拼接） */
-const UPLOAD_PATH = '/workmate/console/logs/upload'
+const UPLOAD_PATH = '/workmate/logs/upload'
 
 /** jobId 禁止字符（与后端保持一致） */
 const JOB_ID_FORBIDDEN = '/\\:?*"<>|'
