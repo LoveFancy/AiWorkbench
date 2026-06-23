@@ -61,6 +61,8 @@ export class DownloadCancelledError extends Error {
 interface InstallAsyncOptions extends InstallUserPluginZipOptions {
   /** 安装期可取消信号；abort 后解压循环抛 DownloadCancelledError */
   signal?: AbortSignal
+  /** 覆盖 manifest 中的版本号写入 plugins.json（服务端下载时 manifest 可能无 version） */
+  version?: string
 }
 
 interface PluginMcpServerDefinition {
@@ -1038,7 +1040,7 @@ export async function installUserPluginZipAsync(
       installedAt: previous?.installedAt ?? now,
       updatedAt: status === 'overwritten' ? now : previous?.updatedAt,
       sourceMarketplaceId: marketplaceId,
-      version: manifest.version,
+      version: options.version ?? manifest.version,
     }
     writePluginsConfig(config, { configPath: resolved.configPath })
 

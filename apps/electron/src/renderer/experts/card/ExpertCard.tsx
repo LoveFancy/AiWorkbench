@@ -71,6 +71,11 @@ export function ExpertCard({ group, onOpen, onSummon, compact = false }: ExpertC
             <div className="min-w-0 flex-1">
               <div className="flex min-w-0 items-center justify-between gap-2">
                 <h3 className="truncate text-sm font-medium text-foreground">{group.name}</h3>
+                {group.sourcePluginVersion && group.sourcePluginVersion !== '0.0.0' && (
+                  <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                    v{group.sourcePluginVersion}
+                  </span>
+                )}
               </div>
               <p className="mt-0.5 truncate text-xs text-muted-foreground">主角色：{group.mainRole.name || '未配置'}</p>
             </div>
