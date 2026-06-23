@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -14,17 +15,6 @@ import urllib.request
 CRITICAL_LEVELS = {"critical", "blocker", "security-critical", "严重", "致命", "阻塞"}
 MAX_FINDINGS_IN_MESSAGE = 8
 
-
-def normalize_text(value):
-    if value is None:
-        return ""
-    if isinstance(value, str):
-        return value.strip()
-    return str(value).strip()
-
-
-import re
-
 _CONTENT_SEVERITY_RE = re.compile(
     r"\*{1,2}"  # ** or * prefix
     r"\s*"
@@ -33,6 +23,14 @@ _CONTENT_SEVERITY_RE = re.compile(
     r"(?::|：|\*)",  # colon or closing * or literal *
     re.IGNORECASE,
 )
+
+
+def normalize_text(value):
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    return str(value).strip()
 
 
 def _extract_severity_from_content(content: str) -> str:
@@ -170,27 +168,35 @@ def feishu_sign(timestamp, secret):
 def build_feishu_payload(findings, repo, pr_title, pr_url, secret="", timestamp=None):
     timestamp = timestamp or str(int(time.time()))
     lines = [
-        "AiWorkbench PR 发现严重代码风险",
+        "AiWorkbench PR 审查完成",
         "",
         f"仓库：{repo}",
         f"PR：{pr_title}",
         f"链接：{pr_url}",
-        "",
-        "问题摘要：",
     ]
 
-    for index, item in enumerate(findings[:MAX_FINDINGS_IN_MESSAGE], 1):
-        location = item.get("file") or "未知文件"
-        if item.get("line"):
-            location = f"{location}:{item['line']}"
-        lines.append(f"{index}. [{item.get('severity', 'critical')}] {location}")
-        lines.append(f"   {item.get('title') or '严重代码风险'}")
-        if item.get("detail"):
-            lines.append(f"   {item['detail']}")
+    if not findings:
+        lines += [
+            "",
+            "结果：未发现严重代码风险",
+        ]
+    else:
+        lines += [
+            "",
+            "问题摘要：",
+        ]
+        for index, item in enumerate(findings[:MAX_FINDINGS_IN_MESSAGE], 1):
+            location = item.get("file") or "未知文件"
+            if item.get("line"):
+                location = f"{location}:{item['line']}"
+            lines.append(f"{index}. [{item.get('severity', 'critical')}] {location}")
+            lines.append(f"   {item.get('title') or '严重代码风险'}")
+            if item.get("detail"):
+                lines.append(f"   {item['detail']}")
 
-    if len(findings) > MAX_FINDINGS_IN_MESSAGE:
-        lines.append("")
-        lines.append(f"还有 {len(findings) - MAX_FINDINGS_IN_MESSAGE} 个严重问题，请查看 GitHub Actions artifact。")
+        if len(findings) > MAX_FINDINGS_IN_MESSAGE:
+            lines.append("")
+            lines.append(f"还有 {len(findings) - MAX_FINDINGS_IN_MESSAGE} 个严重问题，请查看 GitHub Actions artifact。")
 
     payload = {
         "msg_type": "text",
@@ -226,13 +232,8 @@ def load_json(path):
 
 
 def parse_args(argv):
-    parser = argparse.ArgumentParser(description="Notify Feishu when OCR review has critical findings.")
+    parser = argparse.ArgumentParser(description="Notify Feishu about OCR review results.")
     parser.add_argument("review_json", help="Path to ocr-review.json")
-    parser.add_argument(
-        "--fail-on-notify-error",
-        action="store_true",
-        help="Return non-zero if Feishu notification fails.",
-    )
     return parser.parse_args(argv)
 
 
@@ -241,15 +242,12 @@ def main(argv=None):
     webhook = os.environ.get("FEISHU_WEBHOOK", "").strip()
     secret = os.environ.get("FEISHU_SECRET", "").strip()
 
-    review_data = load_json(args.review_json)
-    findings = extract_critical_findings(review_data)
-    if not findings:
-        print("No critical issues found.")
+    if not webhook:
+        print("FEISHU_WEBHOOK is not configured, skipping notification.", file=sys.stderr)
         return 0
 
-    if not webhook:
-        print("Critical issues found, but FEISHU_WEBHOOK is not configured.", file=sys.stderr)
-        return 2 if args.fail_on_notify_error else 0
+    review_data = load_json(args.review_json)
+    findings = extract_critical_findings(review_data)
 
     payload = build_feishu_payload(
         findings,
@@ -263,7 +261,7 @@ def main(argv=None):
         status, body = post_feishu(webhook, payload)
     except (urllib.error.URLError, TimeoutError) as exc:
         print(f"Failed to notify Feishu: {exc}", file=sys.stderr)
-        return 2 if args.fail_on_notify_error else 0
+        return 0
 
     print(f"Feishu notification sent. status={status} body={body}")
     return 0
