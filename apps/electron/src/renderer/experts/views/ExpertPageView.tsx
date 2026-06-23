@@ -10,7 +10,6 @@ import {
   recentExpertGroupsAtom,
 } from '@/experts/atoms/expert-follow'
 import { useSummonExpert } from '@/experts/hooks/useSummonExpert'
-import { useExpertDownloadProgressBridge } from '@/experts/hooks/useExpertDownloadProgressBridge'
 import { loadRemoteExpertDataAtom, expertCategoriesAtom } from '@/experts/atoms/expert-remote'
 import { ExpertSearchBar } from '@/experts/shared/ExpertSearchBar'
 import { ExpertFilterPills, type FilterTag } from '@/experts/shared/ExpertFilterPills'
@@ -36,7 +35,6 @@ export function ExpertPageView({ embedded = false, query: externalQuery, filterT
   const loadGroups = useSetAtom(loadAgentExpertGroupsAtom)
   const loadRemote = useSetAtom(loadRemoteExpertDataAtom)
   const { summon } = useSummonExpert()
-  useExpertDownloadProgressBridge()
   const followed = useAtomValue(followedExpertGroupsAtom)
   const recent = useAtomValue(recentExpertGroupsAtom)
 

@@ -13,6 +13,7 @@ import { conversationsAtom, channelsAtom } from './atoms/chat-atoms'
 import { environmentCheckDialogOpenAtom } from './atoms/environment'
 import { tabsAtom, activeTabIdAtom, openTab } from './atoms/tab-atoms'
 import { platformModelsAtom, platformApiKeyAtom } from '@/platform-models/renderer'
+import { useExpertDownloadProgressBridge } from '@/experts/hooks/useExpertDownloadProgressBridge'
 import { agentChannelIdAtom, agentModelIdAtom, agentChannelIdsAtom } from '@/atoms/agent-atoms'
 import { getAgentAvailableChannelIds, resolveAgentSelectedModel } from '@/lib/model-selection'
 import type { Channel } from '@proma/shared'
@@ -134,6 +135,7 @@ export default function App(): React.ReactElement {
   // 显示主界面
   return (
     <TooltipProvider delayDuration={200}>
+      <GlobalDownloadProgressBridge />
       <AppShell contextValue={contextValue} />
       <SettingsDialog />
       <IssueReportDialog />
@@ -144,6 +146,12 @@ export default function App(): React.ReactElement {
       {loginOverlay}
     </TooltipProvider>
   )
+}
+
+/** 全局下载进度订阅：挂载在 App 根节点，确保切 tab 后仍能接收主进程进度事件、正确清理终态 */
+function GlobalDownloadProgressBridge(): React.ReactElement {
+  useExpertDownloadProgressBridge()
+  return <></>
 }
 
 interface AuthStateLike {
