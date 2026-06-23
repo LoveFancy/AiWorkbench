@@ -10,7 +10,7 @@
  */
 
 import * as React from 'react'
-import { useAtomValue } from 'jotai'
+import { useAtomValue, useStore } from 'jotai'
 import { AlertCircle, Pencil, RotateCcw, Trash2 } from 'lucide-react'
 import {
   Message,
@@ -37,7 +37,15 @@ import { UserAvatar } from './UserAvatar'
 import { getModelLogo, resolveModelDisplayName } from '@/lib/model-logo'
 import { userProfileAtom } from '@/atoms/user-profile'
 import { channelsAtom } from '@/atoms/chat-atoms'
-import type { ChatMessage } from '@proma/shared'
+import {
+  tabsAtom,
+  activeTabIdAtom,
+  openTab,
+  MANUAL_TAB_ID,
+  MANUAL_TAB_TITLE,
+} from '@/atoms/tab-atoms'
+import { WELCOME_TUTORIAL_ATTACHMENT_FILENAME } from '@proma/shared'
+import type { ChatMessage, FileAttachment } from '@proma/shared'
 import type { InlineEditSubmitPayload } from './InlineEditForm'
 import { ChatToolActivityIndicator } from './ChatToolActivityIndicator'
 
@@ -112,6 +120,27 @@ export const ChatMessageItem = React.memo(function ChatMessageItem({
   const [isDeleting, setIsDeleting] = React.useState(false)
   const userProfile = useAtomValue(userProfileAtom)
   const channels = useAtomValue(channelsAtom)
+  const store = useStore()
+
+  /**
+   * 解析附件点击动作：内置使用教程附件点击后打开「使用手册」Tab，
+   * 其他附件返回 undefined（保持不可点击）。
+   */
+  const resolveAttachmentAction = React.useCallback(
+    (attachment: FileAttachment): (() => void) | undefined => {
+      if (attachment.filename !== WELCOME_TUTORIAL_ATTACHMENT_FILENAME) return undefined
+      return () => {
+        const result = openTab(store.get(tabsAtom), {
+          type: 'manual',
+          sessionId: MANUAL_TAB_ID,
+          title: MANUAL_TAB_TITLE,
+        })
+        store.set(tabsAtom, result.tabs)
+        store.set(activeTabIdAtom, result.activeTabId)
+      }
+    },
+    [store],
+  )
 
   /** 确认删除消息 */
   const handleDeleteConfirm = async (): Promise<void> => {
@@ -207,14 +236,20 @@ export const ChatMessageItem = React.memo(function ChatMessageItem({
 
               {/* 生成的图片附件（如 Nano Banana 生图结果） */}
               {message.attachments && message.attachments.length > 0 && (
-                <MessageAttachments attachments={message.attachments} />
+                <MessageAttachments
+                  attachments={message.attachments}
+                  resolveAttachmentAction={resolveAttachmentAction}
+                />
               )}
             </>
           ) : (
             /* 用户消息 - 附件 + 可折叠文本 / 原地编辑 */
             <>
               {!isInlineEditing && message.attachments && message.attachments.length > 0 && (
-                <MessageAttachments attachments={message.attachments} />
+                <MessageAttachments
+                  attachments={message.attachments}
+                  resolveAttachmentAction={resolveAttachmentAction}
+                />
               )}
               {isInlineEditing ? (
                 <InlineEditForm

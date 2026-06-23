@@ -234,7 +234,7 @@ export function CandidateModelDialog({
           {/* 安全提示 */}
           <div className="mx-4 mt-3 p-2.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
             <Shield className="size-3.5 mt-0.5 flex-shrink-0" />
-            <span>为保障数据安全，建议仅勾选本地模型。勾选 SaaS 模型可能导致敏感数据在自动切换时被发送至第三方服务。</span>
+            <span>敏感数据请勿使用 SaaS 模型。建议仅勾选本地模型，勾选 SaaS 模型可能导致敏感数据在自动切换时被发送至第三方服务。</span>
           </div>
 
           {/* 搜索栏 */}
@@ -325,7 +325,7 @@ export function CandidateModelDialog({
           <DialogHeader>
             <DialogTitle>添加 SaaS 模型？</DialogTitle>
             <DialogDescription>
-              该模型为云端服务，自动切换时可能将对话上下文发送至第三方服务器，存在数据泄露风险。确定要添加吗？
+              敏感数据请勿使用 SaaS 模型。该模型为云端服务，自动切换时可能将对话上下文发送至第三方服务器，存在数据泄露风险。确定要添加吗？
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2 pt-2">

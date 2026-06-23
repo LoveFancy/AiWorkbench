@@ -927,6 +927,12 @@ export interface ElectronAPI {
   /** 在系统文件管理器中打开插件目录 */
   showPluginInFolder: (pluginPath: string) => Promise<void>
 
+  /** 打开用户插件本地命名空间目录（user-plugins/local），供手动放入自定义专家 */
+  openUserPluginsLocalDir: () => Promise<void>
+
+  /** 打开默认 Skill 模板目录（default-skills），供手动放入自定义技能 */
+  openDefaultSkillsDir: () => Promise<void>
+
   /** 解析文件路径并读取内容（供内联预览使用） */
   resolveAndReadFile: (filePath: string, access?: import('@proma/shared').FileAccessOptions) => Promise<import('@proma/shared').FilePreviewReadResult>
 
@@ -2315,6 +2321,13 @@ const electronAPI: ElectronAPI = {
   },
   showPluginInFolder: (pluginPath: string) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.SHOW_PLUGIN_IN_FOLDER, pluginPath)
+  },
+
+  openUserPluginsLocalDir: () => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.OPEN_USER_PLUGINS_LOCAL_DIR)
+  },
+  openDefaultSkillsDir: () => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.OPEN_DEFAULT_SKILLS_DIR)
   },
 
   resolveAndReadFile: (filePath: string, access?: import('@proma/shared').FileAccessOptions) => {

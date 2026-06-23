@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto'
 import { getBuiltInManual } from './manual-service'
 import { createConversation, appendMessage } from './conversation-manager'
 import { getConversationAttachmentsDir } from './config-paths'
+import { WELCOME_TUTORIAL_ATTACHMENT_FILENAME } from '@proma/shared'
 import type { ConversationMeta, FileAttachment, ChatMessage } from '@proma/shared'
 
 /**
@@ -49,7 +50,7 @@ export function createWelcomeConversation(): ConversationMeta | null {
 
     // 2. 保存教程文件为附件
     const attachmentId = randomUUID()
-    const attachmentFilename = 'WorkMate 伴行使用教程.md'
+    const attachmentFilename = WELCOME_TUTORIAL_ATTACHMENT_FILENAME
     const localPath = `${meta.id}/${attachmentId}.md`
     const dir = getConversationAttachmentsDir(meta.id)
     const fullPath = join(dir, `${attachmentId}.md`)

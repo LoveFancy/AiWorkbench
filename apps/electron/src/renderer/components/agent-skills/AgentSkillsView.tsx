@@ -395,10 +395,30 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
           </button>
         )}
 
-        {/* Experts：添加专家 */}
+        {/* Experts：打开本地目录 + 添加专家 */}
+        {tab === 'experts' && (
+          <button
+            type="button"
+            onClick={() => void window.electronAPI.openUserPluginsLocalDir().catch(() => toast.error('打开目录失败'))}
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-border/60 bg-content-area text-foreground/80 shadow-sm transition-colors hover:bg-foreground/[0.04]"
+            title="打开目录（手动放入自定义专家）"
+          >
+            <FolderOpen size={14} />
+          </button>
+        )}
         {tab === 'experts' && <ExpertImportButton label="添加专家" />}
 
-        {/* Skills：添加 Skill */}
+        {/* Skills：打开默认 Skill 目录 + 添加 Skill */}
+        {tab === 'skills' && (
+          <button
+            type="button"
+            onClick={() => void window.electronAPI.openDefaultSkillsDir().catch(() => toast.error('打开目录失败'))}
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-border/60 bg-content-area text-foreground/80 shadow-sm transition-colors hover:bg-foreground/[0.04]"
+            title="打开目录（手动放入自定义技能）"
+          >
+            <FolderOpen size={14} />
+          </button>
+        )}
         {tab === 'skills' && (
           <button
             type="button"

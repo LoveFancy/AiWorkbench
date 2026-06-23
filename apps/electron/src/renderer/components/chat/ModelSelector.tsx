@@ -7,7 +7,7 @@
 
 import * as React from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
-import { ChevronDown, Cpu, Search, Settings2 } from 'lucide-react'
+import { ChevronDown, Cpu, Search, Settings2, Shield } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Button } from '@/components/ui/button'
@@ -23,8 +23,13 @@ import { useConversationIdOptional } from '@/contexts/session-context'
 import { getModelLogo, getChannelLogo, DefaultLogo } from '@/lib/model-logo'
 import { hasConfiguredApiKey } from '@/lib/model-selection'
 import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
 import type { Channel, ModelOption } from '@proma/shared'
 
+/** 判定模型是否为 SaaS 云端模型（数据经第三方处理，存在泄露风险） */
+export function isSaasModel(modelId: string): boolean {
+  return modelId.toLowerCase().startsWith('saas-')
+}
 const MODEL_NAME_TRIGGER_CLASS = 'truncate text-xs'
 const MODEL_NAME_OPTION_CLASS = 'flex-1 text-xs truncate'
 
@@ -215,6 +220,11 @@ export function ModelSelector({
 
   /** 选择模型并持久化 */
   const handleSelect = (option: ModelOption): void => {
+    if (isSaasModel(option.modelId)) {
+      toast.warning('已切换到 SaaS 云端模型', {
+        description: '敏感数据请勿使用 SaaS 模型，数据将经第三方云服务处理。',
+      })
+    }
     if (onModelSelect) {
       onModelSelect(option)
       setOpen(false)
@@ -304,8 +314,14 @@ export function ModelSelector({
         align="start"
         side="bottom"
         sideOffset={6}
-        className="p-0 gap-0 max-h-[480px] max-w-[340px] overflow-hidden"
+        className="p-0 gap-0 max-h-[480px] w-[346px] max-w-[90vw] overflow-hidden flex flex-col"
       >
+        {/* SaaS 安全提示（始终可见） */}
+        <div className="px-3.5 py-2.5 border-b border-border/60 bg-amber-500/10 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+          <Shield className="size-3.5 mt-0.5 flex-shrink-0" />
+          <span>敏感数据请勿使用 SaaS 模型，建议优先选择本地（local）模型。</span>
+        </div>
+
         {/* Auto Mode 开关区 */}
         {autoModeConfig && (
           <div className="px-3.5 py-2.5 border-b border-border/60">
@@ -341,11 +357,6 @@ export function ModelSelector({
                 </Tooltip>
               </TooltipProvider>
             </div>
-            {editingCandidates && (
-              <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                勾选作为自动切换候补的模型，完成后点击下方「确定」
-              </p>
-            )}
           </div>
         )}
 
@@ -364,7 +375,7 @@ export function ModelSelector({
         </div>
 
         {/* 模型列表 */}
-        <div className="max-h-[320px] overflow-y-auto scrollbar-thin">
+        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin">
           {filteredGrouped.size === 0 ? (
             <div className="py-10 text-center text-sm text-muted-foreground/50">
               未找到模型
@@ -450,13 +461,14 @@ export function ModelSelector({
                           )}>
                             {option.modelName}
                           </span>
-                          {option.supportsMultimodal ? (
+                          {option.supportsMultimodal && (
                             <span className="inline-flex h-5 shrink-0 items-center rounded px-1.5 text-[10px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
                               多模态
                             </span>
-                          ) : (
-                            <span className="inline-flex h-5 shrink-0 items-center rounded px-1.5 text-[10px] font-medium bg-muted text-muted-foreground">
-                              文本
+                          )}
+                          {isSaasModel(option.modelId) && (
+                            <span className="inline-flex h-5 shrink-0 items-center rounded px-1.5 text-[10px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                              SaaS
                             </span>
                           )}
                           {!editingCandidates && autoModeConfig?.candidateModelIds?.includes(option.modelId) && (
@@ -476,7 +488,7 @@ export function ModelSelector({
 
         {/* 编辑模式底部操作栏 */}
         {editingCandidates && (
-          <div className="px-3 py-2 border-t border-border/60 flex items-center justify-end gap-2">
+          <div className="px-3 py-2 border-t border-border/60 flex items-center justify-end gap-2 shrink-0">
             <Button
               variant="ghost"
               size="sm"

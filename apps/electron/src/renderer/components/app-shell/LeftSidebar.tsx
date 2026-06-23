@@ -192,15 +192,18 @@ function SkillsSidebarEntry({ count, active, onClick }: SkillsSidebarEntryProps)
         </span>
         <span className="truncate">Agent 技能</span>
       </span>
-      <span
-        className={cn(
-          'ml-2 flex h-5 min-w-[22px] flex-shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-medium tabular-nums',
-          active
-            ? 'bg-accent-foreground/[0.26] text-primary-foreground'
-            : 'bg-foreground/[0.045] text-foreground/[0.42] group-hover:text-foreground/65',
-        )}
-      >
-        {formatAutomationCount(count)}
+      <span className="ml-2 flex flex-shrink-0 items-center gap-1.5">
+        <span className="text-[11px] text-foreground/35">专家·技能·连接器</span>
+        <span
+          className={cn(
+            'flex h-5 min-w-[22px] items-center justify-center rounded-full px-1.5 text-[11px] font-medium tabular-nums',
+            active
+              ? 'bg-accent-foreground/[0.26] text-primary-foreground'
+              : 'bg-foreground/[0.045] text-foreground/[0.42] group-hover:text-foreground/65',
+          )}
+        >
+          {formatAutomationCount(count)}
+        </span>
       </span>
     </button>
   )

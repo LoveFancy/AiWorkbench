@@ -108,9 +108,7 @@ export function getModels(): PlatformModelInfo[] {
  */
 export function getPlatformChannel(): import('@proma/shared').Channel | null {
   if (!l1ApiKey || l1Models.length === 0) return null
-  const allEnabled = l1Models.filter((m) => m.enabled)
-  if (allEnabled.length === 0) return null
-  const firstBaseUrl = allEnabled.find((m) => m.baseUrl)?.baseUrl ?? ''
+  const firstBaseUrl = l1Models.find((m) => m.baseUrl)?.baseUrl ?? ''
   return {
     id: '__platform__',
     name: '泰为平台模型',
@@ -118,7 +116,7 @@ export function getPlatformChannel(): import('@proma/shared').Channel | null {
     baseUrl: firstBaseUrl,
     apiKey: l1ApiKey,
     apiKeyConfigured: true,
-    models: allEnabled.map((m) => ({
+    models: l1Models.map((m) => ({
       id: m.id,
       name: m.name,
       enabled: true,
