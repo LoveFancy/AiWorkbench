@@ -893,6 +893,33 @@ function copyPluginAtomically(sourceDir: string, targetDir: string, overwrite: b
   return existed ? 'overwritten' : 'installed'
 }
 
+async function assertNoDuplicateExpertGroupsAsync(
+  pluginPath: string,
+  pluginId: string,
+  manifest: AgentPluginManifest,
+  paths: Required<PluginRegistryPaths>,
+  _signal?: AbortSignal,
+): Promise<void> {
+  const uploadedGroups = discoverExpertGroups(pluginPath, pluginId, manifest.name, true, manifest)
+  if (uploadedGroups.length === 0) return
+
+  const existingGroups = new Map<string, AgentPluginCapability>()
+  const plugins = await listInstalledPluginsAsync(paths)
+  for (const plugin of plugins) {
+    for (const capability of plugin.capabilities) {
+      if (capability.type === 'expert-group' && capability.sourcePluginId !== pluginId) {
+        existingGroups.set(capability.name, capability)
+      }
+    }
+  }
+
+  for (const group of uploadedGroups) {
+    const existing = existingGroups.get(group.name)
+    if (!existing) continue
+    throw new Error(`已存在相同专家团 ID: ${group.name}（来源: ${existing.sourceLabel}）`)
+  }
+}
+
 function assertNoDuplicateExpertGroups(
   pluginPath: string,
   pluginId: string,
@@ -999,7 +1026,7 @@ export async function installUserPluginZipAsync(
     if (targetRel.startsWith('..') || isAbsolute(targetRel)) {
       throw new Error('插件名称包含不安全路径')
     }
-    assertNoDuplicateExpertGroups(pluginRoot, pluginId, manifest, resolved)
+    await assertNoDuplicateExpertGroupsAsync(pluginRoot, pluginId, manifest, resolved, options.signal)
 
     const status = await copyPluginAtomicallyAsync(pluginRoot, targetDir, options.overwrite ?? false, options.signal)
     const config = readPluginsConfig({ configPath: resolved.configPath })
