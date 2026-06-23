@@ -1818,6 +1818,8 @@ export const AGENT_IPC_CHANNELS = {
   GET_CONNECTORS_CONFIG: 'agent:get-connectors-config',
   /** 保存工作区连接器配置 */
   SAVE_CONNECTORS_CONFIG: 'agent:save-connectors-config',
+  /** 注册用户创建的连接器（创建目录 + connector.json + mcp.json + connectors.json） */
+  REGISTER_USER_CONNECTOR: 'agent:register-user-connector',
   /** 同步预置连接器到工作区 */
   SYNC_DEFAULT_CONNECTORS: 'agent:sync-default-connectors',
   /** 初始化内置连接器 */

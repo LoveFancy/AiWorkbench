@@ -28,7 +28,7 @@ import {
 } from './config-paths'
 import { listInstalledPlugins } from './plugin-registry-service'
 import type { AgentPluginInfo } from '@proma/shared'
-import type { AgentWorkspace, WorkspaceMcpConfig, SkillMeta, SkillImportSource, OtherWorkspaceSkillsGroup, WorkspaceCapabilities, SkillFileNode, SkillFileContent, ConnectorsConfig, ConnectorEntry } from '@proma/shared'
+import type { AgentWorkspace, WorkspaceMcpConfig, McpServerEntry, SkillMeta, SkillImportSource, OtherWorkspaceSkillsGroup, WorkspaceCapabilities, SkillFileNode, SkillFileContent, ConnectorsConfig, ConnectorEntry } from '@proma/shared'
 import { isGeneralPlugin } from '@proma/shared'
 
 interface AgentWorkspacesIndex {
@@ -621,6 +621,64 @@ export function saveWorkspaceConnectorsConfig(workspaceSlug: string, config: Con
     console.error('[Agent 工作区] 保存连接器配置失败:', error)
     throw new Error('保存连接器配置失败')
   }
+}
+
+/**
+ * 注册用户创建的连接器
+ *
+ * 同时完成：
+ * 1. 创建 connectors/{name}/ 目录
+ * 2. 写入 connector.json 元数据
+ * 3. 写入 mcp.json 中的 MCP 配置
+ * 4. 注册到 connectors.json
+ */
+export function registerUserConnector(
+  workspaceSlug: string,
+  name: string,
+  entry: McpServerEntry,
+  displayName?: string,
+): void {
+  const connectorsDir = getConnectorsDir(workspaceSlug)
+  const connectorDir = join(connectorsDir, name)
+
+  // 1. 创建 connectors/{name}/ 目录
+  if (!existsSync(connectorDir)) {
+    mkdirSync(connectorDir, { recursive: true })
+  }
+
+  // 2. 写入 connector.json 元数据（仅新建时，编辑不覆盖已有文件）
+  const connectorJsonPath = join(connectorDir, 'connector.json')
+  if (!existsSync(connectorJsonPath)) {
+    const connectorJson: Record<string, unknown> = {
+      type: 'mcp',
+      source: 'user',
+      displayName: displayName || name,
+      category: '用户自定义',
+      status: 'available',
+      serverName: name,
+    }
+    writeFileSync(connectorJsonPath, JSON.stringify(connectorJson, null, 2), 'utf-8')
+  }
+
+  // 3. 写入 mcp.json
+  const mcpConfig = getWorkspaceMcpConfig(workspaceSlug)
+  mcpConfig.servers[name] = entry
+  saveWorkspaceMcpConfig(workspaceSlug, mcpConfig)
+
+  // 4. 注册到 connectors.json
+  const config = getWorkspaceConnectorsConfig(workspaceSlug)
+  config.connectors[name] = {
+    type: 'mcp',
+    enabled: entry.enabled ?? false,
+    source: 'user',
+    displayName: displayName || name,
+    category: '用户自定义',
+    status: 'available',
+    serverName: name,
+  }
+  saveWorkspaceConnectorsConfig(workspaceSlug, config)
+
+  console.log(`[Agent 工作区] 已注册用户连接器: ${name} (workspace: ${workspaceSlug})`)
 }
 
 /**

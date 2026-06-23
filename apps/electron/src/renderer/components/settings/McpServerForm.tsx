@@ -9,7 +9,7 @@ import * as React from 'react'
 import { ArrowLeft, Loader2, CheckCircle2, XCircle, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import type { McpServerEntry, McpTransportType, WorkspaceMcpConfig } from '@proma/shared'
+import type { McpServerEntry, McpTransportType } from '@proma/shared'
 import {
   SettingsSection,
   SettingsCard,
@@ -202,23 +202,15 @@ export function McpServerForm({ server, workspaceSlug, onSaved, onCancel }: McpS
 
     setSaving(true)
     try {
-      // 读取现有配置
-      const config = await window.electronAPI.getWorkspaceMcpConfig(workspaceSlug)
       const entry = buildEntry(true) // 保存时包含测试结果
 
       // 日志记录实际保存的状态
-      console.log(`[MCP 表单] 保存 MCP: ${serverName}, enabled: ${entry.enabled}, testResult: ${testResult?.success}`)
+      console.log(`[MCP 表单] 注册用户连接器: ${serverName}, enabled: ${entry.enabled}, testResult: ${testResult?.success}`)
 
-      const newConfig: WorkspaceMcpConfig = {
-        servers: {
-          ...config.servers,
-          [serverName]: entry,
-        },
-      }
-      await window.electronAPI.saveWorkspaceMcpConfig(workspaceSlug, newConfig)
+      await window.electronAPI.registerUserConnector(workspaceSlug, serverName, entry, serverName)
       onSaved()
     } catch (error) {
-      console.error('[MCP 表单] 保存失败:', error)
+      console.error('[MCP 表单] 注册连接器失败:', error)
     } finally {
       setSaving(false)
     }
