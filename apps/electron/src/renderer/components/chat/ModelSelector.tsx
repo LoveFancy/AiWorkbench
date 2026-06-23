@@ -25,6 +25,11 @@ import { hasConfiguredApiKey } from '@/lib/model-selection'
 import { cn } from '@/lib/utils'
 import type { Channel, ModelOption } from '@proma/shared'
 
+/** 判定模型是否为 SaaS 云端模型（数据经第三方处理，存在泄露风险） */
+export function isSaasModel(modelId: string): boolean {
+  return modelId.toLowerCase().startsWith('saas-')
+}
+
 /** 从渠道列表构建扁平化的模型选项 */
 function buildModelOptions(channels: Channel[], filterChannelId?: string, filterChannelIds?: string[]): ModelOption[] {
   const options: ModelOption[] = []
