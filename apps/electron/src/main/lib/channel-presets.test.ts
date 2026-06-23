@@ -39,7 +39,7 @@ describe('渠道预置配置', () => {
     ])
     expect(result.channels[0]).toMatchObject({
       id: 'preset-huatai-anthropic',
-      name: '华泰（Anthropic）',
+      name: 'pic）',
       provider: 'huatai-anthropic',
       baseUrl: PROVIDER_DEFAULT_URLS['huatai-anthropic'],
       models: PROVIDER_DEFAULT_MODELS['huatai-anthropic'],
