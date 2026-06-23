@@ -585,6 +585,42 @@ export function writePluginsConfig(config: AgentPluginsConfig, paths?: Pick<Plug
   writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8')
 }
 
+export async function listInstalledPluginsAsync(paths?: PluginRegistryPaths): Promise<AgentPluginInfo[]> {
+  const resolved = registryPaths(paths)
+  const config = readPluginsConfig({ configPath: resolved.configPath })
+  const plugins: AgentPluginInfo[] = []
+
+  if (existsSync(resolved.builtinDir)) {
+    const builtinEntries = await fsp.readdir(resolved.builtinDir, { withFileTypes: true })
+    for (const entry of builtinEntries) {
+      if (!entry.isDirectory()) continue
+      plugins.push(pluginInfoFromPath('builtin', join(resolved.builtinDir, entry.name), `builtin:${entry.name}`, config))
+      await new Promise((resolve) => setImmediate(resolve))
+    }
+  }
+
+  if (existsSync(resolved.userDir)) {
+    const marketEntries = await fsp.readdir(resolved.userDir, { withFileTypes: true })
+    for (const market of marketEntries) {
+      if (!market.isDirectory()) continue
+      const marketDir = join(resolved.userDir, market.name)
+      const userEntries = await fsp.readdir(marketDir, { withFileTypes: true })
+      for (const entry of userEntries) {
+        if (!entry.isDirectory()) continue
+        const pluginId = `user:${market.name}/${entry.name}`
+        const plugin = pluginInfoFromPath('user', join(marketDir, entry.name), pluginId, config)
+        plugins.push({
+          ...plugin,
+          sourceMarketplaceId: plugin.sourceMarketplaceId ?? market.name,
+        })
+        await new Promise((resolve) => setImmediate(resolve))
+      }
+    }
+  }
+
+  return plugins.sort((a, b) => a.id.localeCompare(b.id))
+}
+
 export function listInstalledPlugins(paths?: PluginRegistryPaths): AgentPluginInfo[] {
   const resolved = registryPaths(paths)
   const config = readPluginsConfig({ configPath: resolved.configPath })
