@@ -999,6 +999,8 @@ export interface AgentExpertGroupInfo extends AgentExpertGroupManifest {
   sourceLabel: string
   /** 来源插件版本 */
   sourcePluginVersion: string
+  /** 服务端接口返回的版本号，仅用于展示（本地文件版本可能不准）；无服务端匹配时为 undefined */
+  serverVersion?: string
   sourcePluginKind: AgentPluginKind
   sourcePluginPath: string
   filePath: string

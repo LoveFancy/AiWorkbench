@@ -27,6 +27,9 @@ export function ExpertCard({ group, onOpen, onSummon, compact = false }: ExpertC
   const downloadProgress = useAtomValue(expertDownloadProgressFamily(group.id))
   const isDownloading = downloadProgress?.status === 'downloading' || downloadProgress?.status === 'installing'
 
+  // 展示版本号优先用服务端接口版本（本地文件版本可能不准），回退本地版本
+  const displayVersion = group.serverVersion ?? group.sourcePluginVersion
+
   const handleCancelDownload = React.useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
     void window.electronAPI.cancelRemoteDownload(group.id)
@@ -69,11 +72,11 @@ export function ExpertCard({ group, onOpen, onSummon, compact = false }: ExpertC
               {isTeam ? <Users size={compact ? 16 : 18} /> : <Bot size={compact ? 16 : 18} />}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2">
                 <h3 className="truncate text-sm font-medium text-foreground">{group.name}</h3>
-                {group.sourcePluginVersion && group.sourcePluginVersion !== '0.0.0' && (
+                {displayVersion && displayVersion !== '0.0.0' && (
                   <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-                    v{group.sourcePluginVersion}
+                    v{displayVersion}
                   </span>
                 )}
               </div>

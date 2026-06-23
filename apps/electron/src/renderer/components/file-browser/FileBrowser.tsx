@@ -170,11 +170,13 @@ interface FileBrowserProps {
   onFilesMoved?: () => void
   /** 外部文件拖到具体目录行时保存到该目录（paths 为同步解析出的磁盘路径，unresolvedFiles 为无法解析路径的文件） */
   onExternalFilesDropToDirectory?: (payload: { paths: string[]; unresolvedFiles: File[] }, targetDir: string) => Promise<void> | void
+  /** 从系统剪贴板粘贴外部文件到目标目录（Ctrl/Cmd+V，仅在应用内虚拟剪贴板为空时生效） */
+  onExternalFilesPaste?: (payload: { paths: string[]; unresolvedFiles: File[] }, targetDir: string) => Promise<void> | void
   /** 目录行成为拖拽目标时通知外层清理其它 drop target 状态 */
   onDirectoryDropTargetActive?: () => void
 }
 
-export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displayRoots, clearSelectionSignal = 0, onAddToChat, onFilePreview, onSelectedDirectoryChange, onCreateEntry, transferTarget, onFilesMoved, onExternalFilesDropToDirectory, onDirectoryDropTargetActive }: FileBrowserProps): React.ReactElement {
+export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displayRoots, clearSelectionSignal = 0, onAddToChat, onFilePreview, onSelectedDirectoryChange, onCreateEntry, transferTarget, onFilesMoved, onExternalFilesDropToDirectory, onExternalFilesPaste, onDirectoryDropTargetActive }: FileBrowserProps): React.ReactElement {
   const [entries, setEntries] = React.useState<FileEntry[]>([])
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
@@ -433,18 +435,19 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
   }, [movePathsToDirectory, selectedPaths])
 
   // ===== 键盘粘贴处理 =====
-  const handlePaste = React.useCallback(async (clipboard: FileClipboard) => {
-    let targetDir = rootPath
+  // 计算粘贴目标目录：单选文件夹→该文件夹；单选文件→其父目录；其它→根目录
+  const getPasteTargetDir = React.useCallback((): string => {
     if (selectedPaths.size === 1) {
       const selectedPath = [...selectedPaths][0]!
       const meta = entryMetaMapRef.current.get(selectedPath)
-      if (meta?.isDirectory) {
-        targetDir = selectedPath
-      } else if (meta) {
-        targetDir = getParentPath(selectedPath)
-      }
+      if (meta?.isDirectory) return selectedPath
+      if (meta) return getParentPath(selectedPath)
     }
+    return rootPath
+  }, [selectedPaths, rootPath])
 
+  const handlePaste = React.useCallback(async (clipboard: FileClipboard) => {
+    const targetDir = getPasteTargetDir()
     if (clipboard.mode === 'cut') {
       try {
         await movePathsToDirectory(clipboard.paths, targetDir)
@@ -466,7 +469,42 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
       await loadRoot()
       onFilesMoved?.()
     }
-  }, [rootPath, selectedPaths, loadRoot, onFilesMoved, movePathsToDirectory, setFileClipboard])
+  }, [getPasteTargetDir, loadRoot, onFilesMoved, movePathsToDirectory, setFileClipboard])
+
+  // ===== 系统剪贴板外部文件粘贴 =====
+  // 仅当应用内虚拟剪贴板为空时生效（不影响内部 Ctrl+C/X/V），
+  // 用 DOM clipboardData + 同步解析磁盘路径，复用与拖拽一致的复制链路。
+  const handleExternalPaste = React.useCallback((e: ClipboardEvent): void => {
+    if (!onExternalFilesPaste) return
+    // 内部虚拟剪贴板优先；重命名输入态下交给原生粘贴
+    if (fileClipboard || renamingPath) return
+    // 仅当本文件树当前持有焦点时才处理，避免多个实例重复响应或抢占输入框粘贴
+    const container = containerRef.current
+    if (!container || !container.contains(document.activeElement)) return
+
+    const files = Array.from(e.clipboardData?.files ?? [])
+    if (files.length === 0) return
+
+    // 必须在事件同步执行期内调用 getPathForFile：await 之后 File 句柄失效会崩溃渲染进程
+    const paths: string[] = []
+    const unresolvedFiles: File[] = []
+    for (const file of files) {
+      let path: string | null = null
+      try { path = window.electronAPI.getPathForFile(file) } catch { path = null }
+      if (path) paths.push(path)
+      else unresolvedFiles.push(file)
+    }
+    if (paths.length === 0 && unresolvedFiles.length === 0) return
+
+    e.preventDefault()
+    e.stopPropagation()
+    void onExternalFilesPaste({ paths, unresolvedFiles }, getPasteTargetDir())
+  }, [onExternalFilesPaste, fileClipboard, renamingPath, getPasteTargetDir])
+
+  React.useEffect(() => {
+    document.addEventListener('paste', handleExternalPaste, true)
+    return () => document.removeEventListener('paste', handleExternalPaste, true)
+  }, [handleExternalPaste])
 
   // ===== 键盘快捷键处理 =====
   const handleKeyDown = React.useCallback((e: React.KeyboardEvent) => {

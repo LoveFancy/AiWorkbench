@@ -1045,6 +1045,9 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                             clearDropZoneHighlight()
                             return saveExternalItemsToDirectory(payload, 'session', targetDir)
                           }}
+                          onExternalFilesPaste={(payload, targetDir) =>
+                            saveExternalItemsToDirectory(payload, 'session', targetDir)
+                          }
                         />
                       </>
                       <FileDropZone
@@ -1211,6 +1214,9 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                             clearDropZoneHighlight()
                             return saveExternalItemsToDirectory(payload, 'workspace', targetDir)
                           }}
+                          onExternalFilesPaste={(payload, targetDir) =>
+                            saveExternalItemsToDirectory(payload, 'workspace', targetDir)
+                          }
                         />
                       </>
                     )}
