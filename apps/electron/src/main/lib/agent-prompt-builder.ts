@@ -202,6 +202,21 @@ ${ctx.expertRuntime.mainPrompt}`)
 - 读取 docx、pdf、pptx、xlsx 等文档内容时，必须优先通过对应 Skill 读取或转换，不要直接把二进制文件或不可读内容交给模型猜测
 - 如果缺少对应 Skill 或 Skill 读取失败，应说明失败原因，并请用户提供可读取的文本版本或允许安装/启用对应 Skill`)
 
+  sections.push(`## 内容块类型黑名单
+
+当前网关**不支持以下内容块类型**，任何包含该类型的请求都会被拒绝：
+
+- **\`document\`** — 文档二进制块（base64），不可使用。
+
+因此：
+
+- 读取 PDF/Office 文档时，**禁止**直接使用 \`Read\` 工具把文件内容作为 \`document\`（base64）块塞入对话。应改为：
+  - 优先使用文档解析 Skill（pdfkit / docx / xlsx 等）提取纯文本；
+  - 或使用 bash 命令（如 \`pdftotext\`、\`python\` 脚本）提取文本；
+  - PDF 如需要视觉理解，可转换为图片后以 \`image\` 块（base64）提供。
+- 读取图片时，**必须**使用 \`image\` 块类型，**不可**使用 \`document\` 类型。
+- 如果上述方式均不可用，请告知用户并提供替代方案，**不要**尝试直接 Read 文档文件。`)
+
   // 联网检索策略：让 Agent 在外部事实可能变化时主动使用 WorkMate 内置联网检索。
   sections.push(`## 联网检索策略
 

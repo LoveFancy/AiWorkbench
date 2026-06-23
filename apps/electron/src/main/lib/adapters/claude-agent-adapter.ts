@@ -27,6 +27,7 @@ import {
 } from '@proma/shared'
 import type { CanUseToolOptions, PermissionResult } from '../agent-permission-service'
 import { buildPreToolUseMultimodalGuardOutput } from '../agent-tool-multimodal-guard'
+import { buildPostToolUseDocumentScrubOutput, scrubDocumentBlocks } from '../agent-tool-document-scrub'
 import { TRANSIENT_NETWORK_PATTERN } from '../error-patterns'
 import { spawn as spawnChild, execFileSync } from 'node:child_process'
 
@@ -871,6 +872,21 @@ export class ClaudeAgentAdapter implements AgentProviderAdapter {
                 supportsMultimodal,
               })
               if (blocked) return blocked
+              return { continue: true }
+            }],
+          }],
+          PostToolUse: [{
+            hooks: [async (input: unknown) => {
+              const hookInput = input as {
+                tool_response?: unknown
+              }
+              const scrubbed = scrubDocumentBlocks(hookInput.tool_response)
+              const output = buildPostToolUseDocumentScrubOutput(scrubbed)
+              if (output) {
+                // 一次性诊断日志：取证 tool_response 结构，确认后移除
+                console.log('[PostToolUse document guard] 命中 document 块，已剥离并替换')
+                return output
+              }
               return { continue: true }
             }],
           }],
