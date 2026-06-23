@@ -8,13 +8,12 @@
 
 import * as React from 'react'
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
-import { Zap, Compass, Map as MapIcon, ChevronDown } from 'lucide-react'
+import { Zap, Compass, Map as MapIcon, ChevronDown, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
+  DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { agentPermissionModeMapAtom, agentDefaultPermissionModeAtom, sessionPersistedPermissionModeAtom, sessionExistsAtom, agentPlanModeSessionsAtom } from '@/atoms/agent-atoms'
@@ -86,9 +85,9 @@ export function PermissionModeSelector({ sessionId }: PermissionModeSelectorProp
     }
   }, [mode, sessionId, setModeMap, setPlanModeSessions])
 
-  const handleModeChange = React.useCallback((value: string): void => {
-    if (!isPromaPermissionMode(value)) return
-    void selectMode(value)
+  const handleModeChange = React.useCallback((nextMode: PromaPermissionMode): void => {
+    if (!isPromaPermissionMode(nextMode)) return
+    void selectMode(nextMode)
     requestAnimationFrame(() => document.querySelector<HTMLElement>('.ProseMirror')?.focus())
   }, [selectMode])
 
@@ -114,31 +113,33 @@ export function PermissionModeSelector({ sessionId }: PermissionModeSelectorProp
         </Button>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent side="top" align="center" sideOffset={10} className="z-[10060] w-64 p-1.5">
-        <DropdownMenuRadioGroup value={mode} onValueChange={handleModeChange}>
-          {PROMA_PERMISSION_MODE_ORDER.map((permissionMode) => {
-            const itemConfig = PROMA_PERMISSION_MODE_CONFIG[permissionMode]
-            const ItemIcon = MODE_ICONS[permissionMode]
+      <DropdownMenuContent side="top" align="center" sideOffset={10} className="z-[10060] w-60 p-1.5">
+        {PROMA_PERMISSION_MODE_ORDER.map((permissionMode) => {
+          const itemConfig = PROMA_PERMISSION_MODE_CONFIG[permissionMode]
+          const ItemIcon = MODE_ICONS[permissionMode]
+          const isSelected = permissionMode === mode
 
-            return (
-              <DropdownMenuRadioItem
-                key={permissionMode}
-                value={permissionMode}
-                className="items-start gap-2 rounded-md py-2 pl-8 pr-2"
-              >
-                <ItemIcon className="mt-0.5 size-4 text-muted-foreground" />
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[13px] font-medium leading-5 text-foreground">
-                    {itemConfig.label}
-                  </span>
-                  <span className="block text-xs leading-5 text-muted-foreground">
-                    {itemConfig.description}
-                  </span>
+          return (
+            <DropdownMenuItem
+              key={permissionMode}
+              onSelect={() => handleModeChange(permissionMode)}
+              className="items-start gap-2 rounded-md px-2 py-2 data-[highlighted]:bg-accent"
+            >
+              <ItemIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13px] font-medium leading-5 text-foreground">
+                  {itemConfig.label}
                 </span>
-              </DropdownMenuRadioItem>
-            )
-          })}
-        </DropdownMenuRadioGroup>
+                <span className="block text-xs leading-5 text-muted-foreground">
+                  {itemConfig.description}
+                </span>
+              </span>
+              <span className="flex size-4 shrink-0 items-center justify-center">
+                {isSelected && <Check className="size-3.5 text-primary" />}
+              </span>
+            </DropdownMenuItem>
+          )
+        })}
       </DropdownMenuContent>
     </DropdownMenu>
   )

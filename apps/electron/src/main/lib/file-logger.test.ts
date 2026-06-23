@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { DEFAULT_MAX_LOG_BYTES, attachRendererLogCapture, flushFileLoggerSync, installFileLogger, resetFileLoggerForTests } from './file-logger.ts'
+import { DEFAULT_MAX_LOG_BYTES, attachRendererLogCapture, flushFileLoggerForTests, installFileLogger, resetFileLoggerForTests } from './file-logger.ts'
 
 interface ConsoleMessageDetails {
   level: 'debug' | 'error' | 'info' | 'warning'
@@ -31,15 +31,15 @@ describe('文件日志', () => {
     expect(DEFAULT_MAX_LOG_BYTES).toBe(10 * 1024 * 1024)
   })
 
-  test('主进程 console 会异步缓冲写入 main.log（flush 后可读）', () => {
+  test('主进程 console 会异步写入 main.log', async () => {
     const temp = createTempLogsDir()
     try {
       installFileLogger(temp.dir, { mirrorToConsole: false })
 
       console.log('[测试] 主进程日志', { ok: true })
       console.error('[测试] 主进程错误', new Error('boom'))
+      await flushFileLoggerForTests()
 
-      flushFileLoggerSync()
       const content = readFileSync(join(temp.dir, 'main.log'), 'utf-8')
       expect(content).toContain('[INFO] [测试] 主进程日志')
       expect(content).toContain('ok: true')
@@ -50,15 +50,30 @@ describe('文件日志', () => {
     }
   })
 
-  test('重复初始化不会重复写入同一条 console 日志', () => {
+  test('console 调用只入队，不同步创建日志文件', async () => {
+    const temp = createTempLogsDir()
+    try {
+      installFileLogger(temp.dir, { mirrorToConsole: false })
+
+      console.info('[测试] 异步日志')
+
+      expect(existsSync(join(temp.dir, 'main.log'))).toBe(false)
+      await flushFileLoggerForTests()
+      expect(readFileSync(join(temp.dir, 'main.log'), 'utf-8')).toContain('[测试] 异步日志')
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('重复初始化不会重复写入同一条 console 日志', async () => {
     const temp = createTempLogsDir()
     try {
       installFileLogger(temp.dir, { mirrorToConsole: false })
       installFileLogger(temp.dir, { mirrorToConsole: false })
 
       console.warn('[测试] 单条警告')
+      await flushFileLoggerForTests()
 
-      flushFileLoggerSync()
       const content = readFileSync(join(temp.dir, 'main.log'), 'utf-8')
       expect(content.match(/\[测试\] 单条警告/g)?.length).toBe(1)
     } finally {
@@ -66,15 +81,15 @@ describe('文件日志', () => {
     }
   })
 
-  test('主进程只写入 INFO 及以上级别', () => {
+  test('主进程只写入 INFO 及以上级别', async () => {
     const temp = createTempLogsDir()
     try {
       installFileLogger(temp.dir, { mirrorToConsole: false })
 
       console.debug('[测试] debug 不落盘')
       console.info('[测试] info 落盘')
+      await flushFileLoggerForTests()
 
-      flushFileLoggerSync()
       const content = readFileSync(join(temp.dir, 'main.log'), 'utf-8')
       expect(content).not.toContain('debug 不落盘')
       expect(content).toContain('[INFO] [测试] info 落盘')
@@ -83,15 +98,15 @@ describe('文件日志', () => {
     }
   })
 
-  test('日志文件超过上限时只保留最近内容', () => {
+  test('日志文件超过上限时只保留最近内容', async () => {
     const temp = createTempLogsDir()
     try {
       installFileLogger(temp.dir, { maxBytes: 120, mirrorToConsole: false })
 
       console.log('第一条日志'.repeat(8))
       console.log('第二条日志'.repeat(8))
+      await flushFileLoggerForTests()
 
-      flushFileLoggerSync()
       const content = readFileSync(join(temp.dir, 'main.log'), 'utf-8')
       expect(Buffer.byteLength(content)).toBeLessThanOrEqual(120)
       expect(content).toContain('第二条日志')
@@ -115,7 +130,7 @@ describe('文件日志', () => {
     }
   })
 
-  test('renderer console-message 会写入 renderer.log', () => {
+  test('renderer console-message 会异步写入 renderer.log', async () => {
     const temp = createTempLogsDir()
     try {
       const listeners = new Map<string, ConsoleMessageListener>()
@@ -134,8 +149,8 @@ describe('文件日志', () => {
         lineNumber: 42,
         sourceId: 'renderer.js',
       })
+      await flushFileLoggerForTests()
 
-      flushFileLoggerSync()
       const content = readFileSync(join(temp.dir, 'renderer.log'), 'utf-8')
       expect(content).toContain('[ERROR] 渲染进程错误')
       expect(content).toContain('renderer.js:42')
@@ -144,7 +159,7 @@ describe('文件日志', () => {
     }
   })
 
-  test('renderer 只写入 INFO 及以上级别', () => {
+  test('renderer 只写入 INFO 及以上级别', async () => {
     const temp = createTempLogsDir()
     try {
       const listeners = new Map<string, ConsoleMessageListener>()
@@ -163,6 +178,7 @@ describe('文件日志', () => {
         lineNumber: 10,
         sourceId: 'renderer.js',
       })
+      await flushFileLoggerForTests()
 
       expect(existsSync(join(temp.dir, 'renderer.log'))).toBe(false)
     } finally {

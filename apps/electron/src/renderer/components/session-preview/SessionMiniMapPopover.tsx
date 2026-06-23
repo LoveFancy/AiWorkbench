@@ -16,6 +16,7 @@ import { tabMinimapCacheAtom, type TabMinimapItem } from '@/atoms/tab-atoms'
 import { userProfileAtom } from '@/atoms/user-profile'
 import { getModelLogo } from '@/lib/model-logo'
 import { cn } from '@/lib/utils'
+import { getAgentUserDisplayText } from '@/lib/bridge-message-display'
 import type {
   ChatMessage,
   SDKAssistantMessage,
@@ -143,7 +144,7 @@ export function useSessionMiniMapHover(delayMs = 600, disabled = false): UseSess
 }
 
 function normalizePreviewText(text: string): string {
-  return text
+  return getAgentUserDisplayText(text)
     .replace(/<attached_files>[\s\S]*?<\/attached_files>\n*/g, '')
     .replace(/<quoted_file[^>]*>[\s\S]*?<\/quoted_file>\n*/g, '')
     .replace(/\r\n/g, '\n')

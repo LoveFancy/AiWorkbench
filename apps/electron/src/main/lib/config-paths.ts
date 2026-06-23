@@ -233,6 +233,15 @@ export function getProxySettingsPath(): string {
 }
 
 /**
+ * 获取本地 API 服务配置文件路径
+ *
+ * @returns ~/.workmate/local-api-settings.json
+ */
+export function getLocalApiSettingsPath(): string {
+  return join(getConfigDir(), 'local-api-settings.json')
+}
+
+/**
  * 获取系统提示词配置文件路径
  *
  * @returns ~/.workmate/system-prompts.json

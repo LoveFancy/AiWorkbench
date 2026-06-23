@@ -54,3 +54,28 @@ test('华泰个人邮箱绑定文案提示输入密码且仅本地保存', () =>
   expect(agentSkillsViewSource).not.toContain('授权码 *')
   expect(agentSkillsViewSource).not.toContain('请输入华泰邮箱授权码')
 })
+
+test('华泰个人邮箱绑定只需输入账号前缀并固定 htsc.com 后缀', () => {
+  expect(agentSkillsViewSource).toContain("const HUATAI_EMAIL_DOMAIN = 'htsc.com'")
+  expect(agentSkillsViewSource).toContain('getHuataiEmailLocalPart')
+  expect(agentSkillsViewSource).toContain('fullEmailAddress')
+  expect(agentSkillsViewSource).toContain('@{HUATAI_EMAIL_DOMAIN}')
+  expect(agentSkillsViewSource).toContain('请输入邮箱前缀')
+  expect(agentSkillsViewSource).not.toContain('请输入华泰邮箱账号')
+})
+
+test('华泰个人邮箱绑定表单宽度适中且输入框边界清晰', () => {
+  expect(agentSkillsViewSource).toContain('mx-auto w-full max-w-[420px]')
+  expect(agentSkillsViewSource).toContain('border-border/80 bg-content-area')
+  expect(agentSkillsViewSource).toContain('focus-within:border-primary/60')
+  expect(agentSkillsViewSource).toContain('focus:border-primary/60')
+  expect(agentSkillsViewSource).toContain('className="h-11 w-full rounded-full"')
+  expect(agentSkillsViewSource).not.toContain('className="mt-4 h-11 w-full max-w-[420px] rounded-full"')
+  expect(agentSkillsViewSource).not.toContain('h-11 w-full rounded-lg border border-input bg-background')
+})
+
+test('华泰个人邮箱初始化日志不会撑宽弹窗', () => {
+  expect(agentSkillsViewSource).toContain('min-w-0 overflow-hidden')
+  expect(agentSkillsViewSource).toContain('className="min-w-0 flex-1 truncate"')
+  expect(agentSkillsViewSource).not.toContain('className="truncate">{step.message}</span>')
+})

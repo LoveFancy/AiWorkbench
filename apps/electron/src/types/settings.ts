@@ -285,6 +285,14 @@ export const SETTINGS_IPC_CHANNELS = {
   ON_THEME_SETTINGS_CHANGED: 'settings:theme-settings-changed',
 } as const
 
+/** 本地 API 服务 IPC 通道 */
+export const LOCAL_API_IPC_CHANNELS = {
+  GET_SETTINGS: 'local-api:get-settings',
+  UPDATE_SETTINGS: 'local-api:update-settings',
+  RESET_TOKEN: 'local-api:reset-token',
+  GET_STATUS: 'local-api:get-status',
+} as const
+
 /** Scratch Pad IPC 通道 */
 export const SCRATCH_PAD_IPC_CHANNELS = {
   /** 从磁盘加载 scratch-pad.md 内容 */

@@ -36,6 +36,7 @@ import { UsageLogSettings } from "./UsageLogSettings";
 import { SystemLogSettings } from "./SystemLogSettings";
 import { ShortcutSettings } from "./ShortcutSettings";
 import { BotHubSettings } from "./BotHubSettings";
+import { LocalApiSettings } from "./LocalApiSettings";
 import type { TabItem } from "./settings-tabs";
 import { getSettingsTabs } from "./settings-tabs";
 
@@ -56,6 +57,8 @@ function renderTabContent(tab: SettingsTab): React.ReactElement {
       return <SystemLogSettings />;
     case "bots":
       return <BotHubSettings />;
+    case "local-api":
+      return <LocalApiSettings />;
     case "appearance":
       return <AppearanceSettings />;
     case "about":

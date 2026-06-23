@@ -155,3 +155,8 @@ test('技能市场详情抽屉展示元信息并避免重复描述正文', () =>
   expect(skillMarketDetailSheetSource).toContain("value: '华泰 SkillHub'")
   expect(skillMarketDetailSheetSource).toContain('暂无更多详情')
 })
+
+test('技能市场详情抽屉宽度对齐专家团和已安装详情', () => {
+  expect(skillMarketDetailSheetSource).toContain('w-full sm:w-[46vw] sm:min-w-[520px] sm:max-w-[760px]')
+  expect(skillMarketDetailSheetSource).not.toContain('sm:w-[62vw] sm:min-w-[680px] sm:max-w-[1100px]')
+})

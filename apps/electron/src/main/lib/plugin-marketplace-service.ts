@@ -9,6 +9,7 @@ import { spawn } from 'node:child_process'
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import type {
   AgentPluginInstallInput,
+  AgentPluginInstallProgress,
   AgentPluginInstallResult,
   AgentPluginMarketplace,
   AgentPluginMarketplaceAuth,
@@ -37,6 +38,7 @@ interface PluginMarketplacePaths {
   decryptToken?: (token: string) => string
   /** 测试专用：cloneRepo stub 完成后用该目录内容作为克隆结果 */
   copyClonedFixture?: string
+  onProgress?: (event: { stage: AgentPluginInstallProgress['stage']; message: string; progress: number }) => void
 }
 
 interface AddMarketplaceInput {
@@ -81,6 +83,7 @@ function paths(input?: PluginMarketplacePaths): Required<PluginMarketplacePaths>
     encryptToken: input?.encryptToken ?? encryptMarketplaceToken,
     decryptToken: input?.decryptToken ?? decryptMarketplaceToken,
     copyClonedFixture: input?.copyClonedFixture ?? '',
+    onProgress: input?.onProgress ?? (() => undefined),
   }
 }
 
@@ -336,6 +339,17 @@ function marketplaceGitAuthHeader(marketplace: AgentPluginMarketplace, input: Re
     return `Authorization: Basic ${Buffer.from(`oauth2:${token}`).toString('base64')}`
   }
   return `Authorization: Bearer ${token}`
+}
+
+export function getMarketplaceInstallToken(marketplaceId: string, input?: PluginMarketplacePaths): { encryptedToken: string; token: string } | null {
+  const resolved = paths(input)
+  const config = readPluginMarketplacesConfig({ marketplacesPath: resolved.marketplacesPath })
+  const marketplace = config.marketplaces.find((item) => item.id === marketplaceId)
+  if (!marketplace?.authToken) return null
+  return {
+    encryptedToken: marketplace.authToken,
+    token: resolved.decryptToken(marketplace.authToken),
+  }
 }
 
 export function readPluginMarketplacesConfig(input?: Pick<PluginMarketplacePaths, 'marketplacesPath'>): AgentPluginMarketplacesConfig {
@@ -769,6 +783,7 @@ async function cloneGitRepo(source: string, targetDir: string, branch?: string, 
 
 async function preparePluginSource(source: PluginInstallSource, pluginName: string, input: Required<PluginMarketplacePaths>, authHeader?: string): Promise<{ sourceDir: string; cleanup: () => void }> {
   if (source.localSource) {
+    input.onProgress({ stage: 'preparing', message: '正在读取本地插件目录', progress: 20 })
     return { sourceDir: source.localSource, cleanup: () => undefined }
   }
 
@@ -779,7 +794,9 @@ async function preparePluginSource(source: PluginInstallSource, pluginName: stri
   const tmpRoot = join(input.cacheDir, '.installing', `${pluginName}-${Date.now()}`)
   rmSync(tmpRoot, { recursive: true, force: true })
   mkdirSync(dirname(tmpRoot), { recursive: true })
+  input.onProgress({ stage: 'cloning', message: '正在下载插件仓库', progress: 20 })
   await input.cloneRepo(source.cloneSource, tmpRoot, source.branch, authHeader)
+  input.onProgress({ stage: 'installing', message: '正在准备插件文件', progress: 55 })
   if (input.copyClonedFixture) {
     rmSync(tmpRoot, { recursive: true, force: true })
     cpSync(input.copyClonedFixture, tmpRoot, { recursive: true })
@@ -866,6 +883,7 @@ export async function installMarketplacePlugin(input: AgentPluginInstallInput, p
   const targetDir = join(resolved.userPluginsDir, marketplaceId, pluginName)
   let status: 'installed' | 'overwritten'
   try {
+    resolved.onProgress({ stage: 'installing', message: '正在安装插件文件', progress: 65 })
     if (plugin.strict === false && (plugin.skills?.length ?? 0) > 0) {
       const existed = existsSync(targetDir)
       if (existed && !(input.overwrite ?? false)) throw new Error(`插件已安装: ${targetDir}`)
@@ -876,8 +894,10 @@ export async function installMarketplacePlugin(input: AgentPluginInstallInput, p
       status = copyOrMoveAtomically(prepared.sourceDir, targetDir, input.overwrite ?? false)
     }
   } finally {
+    resolved.onProgress({ stage: 'installing', message: '正在清理临时文件', progress: 85 })
     prepared.cleanup()
   }
+  resolved.onProgress({ stage: 'scanning', message: '正在写入插件配置', progress: 92 })
   const pluginId = installedPluginId(marketplaceId, pluginName)
   const config = readPluginsConfig({ configPath: resolved.pluginsConfigPath })
   const now = new Date().toISOString()

@@ -53,7 +53,7 @@ describe('initializeDefaultConnector', () => {
     })
 
     expect(result.success).toBe(true)
-    expect(calls).toContain('pip3 install mcp-email-server')
+    expect(calls).toContain('python3 -m pip install --disable-pip-version-check --timeout 120 --retries 5 mcp-email-server')
     expect(result.steps.map((step) => [step.id, step.status])).toEqual([
       ['check-python', 'success'],
       ['check-package', 'success'],
@@ -101,5 +101,94 @@ describe('initializeDefaultConnector', () => {
     expect(result.success).toBe(true)
     expect(calls).toEqual([])
     expect(result.steps.find((step) => step.id === 'install-package')?.status).toBe('skipped')
+  })
+
+  test('安装 mcp-email-server 超时时使用镜像源重试', async () => {
+    const calls: string[] = []
+    const result = await initializeDefaultConnector('default', {
+      connectorId: 'personal-email',
+      emailAddress: 'qinxiao@htsc.com',
+      password: 'secret',
+    }, {
+      commandExists: async (command) => command === 'python3' || command === 'pip3',
+      runCommand: async (command, args) => {
+        calls.push([command, ...args].join(' '))
+        if (calls.length === 1) {
+          return {
+            ok: false,
+            stdout: '',
+            stderr: "WARNING: Retrying after connection broken by 'ReadTimeoutError'",
+          }
+        }
+        return { ok: true, stdout: '', stderr: '' }
+      },
+      validateMcpServer: async () => ({ success: true, message: '连接成功' }),
+    })
+
+    expect(result.success).toBe(true)
+    expect(calls).toEqual([
+      'python3 -m pip install --disable-pip-version-check --timeout 120 --retries 5 mcp-email-server',
+      'python3 -m pip install --disable-pip-version-check --timeout 120 --retries 5 -i https://pypi.tuna.tsinghua.edu.cn/simple mcp-email-server',
+    ])
+    expect(result.steps.find((step) => step.id === 'install-package')?.message).toBe('安装完成（已切换镜像源）')
+  })
+
+  test('安装失败时输出排查日志且不泄露密码', async () => {
+    const originalInfo = console.info
+    const logs: string[] = []
+    console.info = (...args: unknown[]) => {
+      logs.push(args.map((arg) => typeof arg === 'string' ? arg : JSON.stringify(arg)).join(' '))
+    }
+    try {
+      const result = await initializeDefaultConnector('default', {
+        connectorId: 'personal-email',
+        emailAddress: 'qinxiao@htsc.com',
+        password: 'secret-password',
+      }, {
+        commandExists: async (command) => command === 'python3' || command === 'pip3',
+        runCommand: async () => ({
+          ok: false,
+          stdout: '',
+          stderr: 'WARNING: The repository located at repo.htzq.htsc.com.cn is not a trusted or secure host and is being ignored.',
+        }),
+        validateMcpServer: async () => ({ success: true, message: '连接成功' }),
+      })
+
+      const joinedLogs = logs.join('\n')
+      expect(result.success).toBe(false)
+      expect(joinedLogs).toContain('[连接器:华泰邮箱]')
+      expect(joinedLogs).toContain('workspaceSlug')
+      expect(joinedLogs).toContain('python3 -m pip install')
+      expect(joinedLogs).toContain('repo.htzq.htsc.com.cn')
+      expect(joinedLogs).not.toContain('secret-password')
+    } finally {
+      console.info = originalInfo
+    }
+  })
+
+  test('安装命令成功但无输出时日志不误报失败', async () => {
+    const originalInfo = console.info
+    const logs: string[] = []
+    console.info = (...args: unknown[]) => {
+      logs.push(args.map((arg) => typeof arg === 'string' ? arg : JSON.stringify(arg)).join(' '))
+    }
+    try {
+      const result = await initializeDefaultConnector('default', {
+        connectorId: 'personal-email',
+        emailAddress: 'qinxiao@htsc.com',
+        password: 'secret-password',
+      }, {
+        commandExists: async (command) => command === 'python3' || command === 'pip3',
+        runCommand: async () => ({ ok: true, stdout: '', stderr: '' }),
+        validateMcpServer: async () => ({ success: true, message: '连接成功' }),
+      })
+
+      const joinedLogs = logs.join('\n')
+      expect(result.success).toBe(true)
+      expect(joinedLogs).toContain('命令执行成功（无输出）')
+      expect(joinedLogs).not.toContain('安装失败')
+    } finally {
+      console.info = originalInfo
+    }
   })
 })

@@ -71,8 +71,15 @@ test('未登录触发器使用账户中心语义而不是重复登录动作', ()
 
 test('未登录弹窗只保留一个登录主动作', () => {
   expect(guestMenuSource.match(/登录 OA 账号/g)?.length).toBe(1)
-  expect(guestMenuSource).toContain('onClick={onLogin}')
+  expect(guestMenuSource).toContain('onLogin()')
   expect(guestMenuSource).not.toContain('label="登录 OA 账号"')
+})
+
+test('未登录登录主按钮打开登录弹窗前关闭账户菜单', () => {
+  expect(guestMenuSource).toContain('const [open, setOpen] = React.useState(false)')
+  expect(guestMenuSource).toContain('<DropdownMenu open={open} onOpenChange={setOpen}>')
+  expect(guestMenuSource).toContain('setOpen(false)')
+  expect(guestMenuSource).toContain('onClick={handleLogin')
 })
 
 test('未登录登录主按钮使用主题主色而不是硬编码前景色', () => {

@@ -46,6 +46,7 @@ import { PluginDetailSheet } from './PluginDetailSheet'
 import { McpDetailSheet } from './McpDetailSheet'
 import { ImportSkillDialog } from './ImportSkillDialog'
 import { SkillMarketPanel } from './SkillMarketPanel'
+import { sortInstalledCapabilities } from './installed-capabilities'
 import {
   DEFAULT_CONNECTOR_DEFINITIONS,
   getDefaultConnectorServerNames,
@@ -54,6 +55,15 @@ import {
 } from './default-connectors'
 
 const DEFAULT_CONNECTOR_SERVER_NAMES = getDefaultConnectorServerNames()
+const HUATAI_EMAIL_DOMAIN = 'htsc.com'
+
+function getHuataiEmailLocalPart(emailAddress: string): string {
+  const trimmed = emailAddress.trim()
+  const withoutDomain = trimmed.endsWith(`@${HUATAI_EMAIL_DOMAIN}`)
+    ? trimmed.slice(0, -(`@${HUATAI_EMAIL_DOMAIN}`.length))
+    : trimmed
+  return withoutDomain.split('@')[0] ?? ''
+}
 
 interface AgentSkillsViewProps {
   initialTab?: CapabilityTab
@@ -709,22 +719,29 @@ function InstalledCapabilityGrid({
   onToggleSkill: (slug: string, enabled: boolean) => void
   onUpdateSkill: (slug: string) => void
 }): React.ReactElement {
+  const capabilities = React.useMemo(() => sortInstalledCapabilities(plugins, skills), [plugins, skills])
+
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {plugins.map((plugin) => (
-        <InstalledPluginCard key={plugin.id} plugin={plugin} onOpen={() => onOpenPlugin(plugin.id)} />
-      ))}
-      {skills.map((skill) => (
-        <SkillCard
-          key={skill.slug}
-          skill={skill}
-          isBuiltin={isBuiltin(skill.slug)}
-          updating={updatingSkill === skill.slug}
-          onOpen={() => onOpenSkill(skill.slug)}
-          onToggle={(enabled) => onToggleSkill(skill.slug, enabled)}
-          onUpdate={() => onUpdateSkill(skill.slug)}
-        />
-      ))}
+      {capabilities.map((capability) => {
+        if (capability.type === 'plugin') {
+          const { plugin } = capability
+          return <InstalledPluginCard key={`plugin:${plugin.id}`} plugin={plugin} onOpen={() => onOpenPlugin(plugin.id)} />
+        }
+
+        const { skill } = capability
+        return (
+          <SkillCard
+            key={`skill:${skill.slug}`}
+            skill={skill}
+            isBuiltin={isBuiltin(skill.slug)}
+            updating={updatingSkill === skill.slug}
+            onOpen={() => onOpenSkill(skill.slug)}
+            onToggle={(enabled) => onToggleSkill(skill.slug, enabled)}
+            onUpdate={() => onUpdateSkill(skill.slug)}
+          />
+        )
+      })}
     </div>
   )
 }
@@ -984,7 +1001,7 @@ function HuataiEmailConnectorDialog({
   onOpenChange: (open: boolean) => void
   onSaved: () => void
 }): React.ReactElement {
-  const [emailAddress, setEmailAddress] = React.useState('')
+  const [emailLocalPart, setEmailLocalPart] = React.useState('')
   const [password, setPassword] = React.useState('')
   const [saving, setSaving] = React.useState(false)
   const [editing, setEditing] = React.useState(false)
@@ -994,17 +1011,18 @@ function HuataiEmailConnectorDialog({
 
   React.useEffect(() => {
     if (!open) {
-      setEmailAddress('')
+      setEmailLocalPart('')
       setPassword('')
       setSaving(false)
       setEditing(false)
       setInitSteps([])
       return
     }
-    setEmailAddress(currentEmail)
+    setEmailLocalPart(getHuataiEmailLocalPart(currentEmail))
   }, [currentEmail, open])
 
-  const canSave = emailAddress.trim().length > 0 && password.trim().length > 0
+  const fullEmailAddress = `${emailLocalPart.trim()}@${HUATAI_EMAIL_DOMAIN}`
+  const canSave = emailLocalPart.trim().length > 0 && password.trim().length > 0
 
   const handleSave = async (): Promise<void> => {
     if (!canSave || saving) return
@@ -1019,7 +1037,7 @@ function HuataiEmailConnectorDialog({
     try {
       const result = await window.electronAPI.initializeDefaultConnector(workspaceSlug, {
         connectorId: 'personal-email',
-        emailAddress,
+        emailAddress: fullEmailAddress,
         password,
       })
       setInitSteps(result.steps)
@@ -1040,7 +1058,7 @@ function HuataiEmailConnectorDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[560px] rounded-2xl border-0 p-8 shadow-2xl">
+      <DialogContent className="w-[min(calc(100vw-48px),560px)] max-w-none overflow-hidden rounded-2xl border-0 p-8 shadow-2xl">
         <DialogTitle className="text-2xl font-semibold tracking-normal">邮箱绑定</DialogTitle>
         <DialogDescription className="sr-only">绑定华泰邮箱并写入当前工作区 MCP 配置。</DialogDescription>
 
@@ -1048,7 +1066,7 @@ function HuataiEmailConnectorDialog({
           <div className="flex size-16 shrink-0 items-center justify-center rounded-2xl bg-amber-500/12 text-amber-500">
             <Mail size={28} />
           </div>
-          <div className="space-y-2">
+          <div className="min-w-0 space-y-2">
             <div className="text-[15px] font-medium text-foreground">绑定华泰邮箱</div>
             <p className="text-[13px] leading-relaxed text-muted-foreground">
               绑定时会检查环境、安装 <span className="font-mono text-foreground/70">mcp-email-server</span>，并写入当前工作区的 <span className="font-mono text-foreground/70">email</span> MCP 配置。默认只启用 IMAP 读取能力。
@@ -1084,61 +1102,64 @@ function HuataiEmailConnectorDialog({
         )}
 
         {(!isInitialized || editing) && (
-        <div className="mt-6 space-y-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">邮箱账号 *</label>
-            <input
-              value={emailAddress}
-              onChange={(event) => setEmailAddress(event.target.value)}
-              placeholder="请输入华泰邮箱账号"
-              className="h-11 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/30"
-            />
+          <div className="mx-auto w-full max-w-[420px] mt-6 space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">邮箱账号 *</label>
+              <div className="flex h-11 overflow-hidden rounded-lg border border-border/80 bg-content-area shadow-sm transition-colors focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-primary/15">
+                <input
+                  value={emailLocalPart}
+                  onChange={(event) => setEmailLocalPart(getHuataiEmailLocalPart(event.target.value))}
+                  placeholder="请输入邮箱前缀"
+                  className="min-w-0 flex-1 bg-transparent px-3 text-sm outline-none placeholder:text-muted-foreground"
+                />
+                <span className="flex shrink-0 items-center border-l border-border/60 bg-muted/45 px-3 text-sm text-muted-foreground">
+                  @{HUATAI_EMAIL_DOMAIN}
+                </span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">密码 *</label>
+              <input
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="请输入华泰邮箱密码"
+                type="password"
+                className="h-11 w-full rounded-lg border border-border/80 bg-content-area px-3 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary/60 focus:ring-2 focus:ring-primary/15"
+              />
+              <p className="text-xs text-muted-foreground">密码只保存在本地 MCP 配置中，不会上传到云端。</p>
+            </div>
+            <Button
+              type="button"
+              size="lg"
+              className="h-11 w-full rounded-full"
+              disabled={!canSave || saving}
+              onClick={() => void handleSave()}
+            >
+              {saving ? '保存中...' : isInitialized ? '保存并覆盖配置' : '完成连接'}
+            </Button>
           </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">密码 *</label>
-            <input
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="请输入华泰邮箱密码"
-              type="password"
-              className="h-11 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/30"
-            />
-            <p className="text-xs text-muted-foreground">密码只保存在本地 MCP 配置中，不会上传到云端。</p>
-          </div>
-        </div>
         )}
 
         {initSteps.length > 0 && (
-          <div className="mt-5 space-y-2 rounded-xl bg-muted/45 p-3">
+          <div className="mt-5 min-w-0 overflow-hidden space-y-2 rounded-xl bg-muted/45 p-3">
             {initSteps.map((step) => (
-              <div key={step.id} className="flex items-center gap-2 text-xs text-muted-foreground">
+              <div key={step.id} className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
                 {step.status === 'running' ? (
-                  <Loader2 size={14} className="animate-spin text-primary" />
+                  <Loader2 size={14} className="shrink-0 animate-spin text-primary" />
                 ) : step.status === 'success' || step.status === 'skipped' ? (
-                  <Check size={14} className="text-emerald-500" />
+                  <Check size={14} className="shrink-0 text-emerald-500" />
                 ) : step.status === 'error' ? (
-                  <XCircle size={14} className="text-destructive" />
+                  <XCircle size={14} className="shrink-0 text-destructive" />
                 ) : (
-                  <span className="size-3.5 rounded-full border border-border" />
+                  <span className="size-3.5 shrink-0 rounded-full border border-border" />
                 )}
-                <span className="font-medium text-foreground/80">{step.label}</span>
-                {step.message && <span className="truncate">{step.message}</span>}
+                <span className="shrink-0 font-medium text-foreground/80">{step.label}</span>
+                {step.message && <span className="min-w-0 flex-1 truncate">{step.message}</span>}
               </div>
             ))}
           </div>
         )}
 
-        {(!isInitialized || editing) && (
-          <Button
-            type="button"
-            size="lg"
-            className="mt-4 h-11 rounded-full"
-            disabled={!canSave || saving}
-            onClick={() => void handleSave()}
-          >
-            {saving ? '保存中...' : isInitialized ? '保存并覆盖配置' : '完成连接'}
-          </Button>
-        )}
       </DialogContent>
     </Dialog>
   )
