@@ -2470,8 +2470,8 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     AGENT_IPC_CHANNELS.LIST_EXPERT_GROUPS,
     async (): Promise<AgentExpertGroupInfo[]> => {
-      const { listAgentExpertGroups } = await import('./lib/agent-expert-group-manager')
-      return listAgentExpertGroups()
+      const { listAgentExpertGroupsAsync } = await import('./lib/agent-expert-group-manager')
+      return listAgentExpertGroupsAsync()
     }
   )
 
