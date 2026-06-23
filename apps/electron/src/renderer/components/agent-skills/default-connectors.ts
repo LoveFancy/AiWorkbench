@@ -25,8 +25,9 @@ export function getPresetConnectorDefinitions(
   if (!connectorsConfig) return []
 
   const definitions: PresetConnectorDefinition[] = []
+  const entryMap = new Map(Object.entries(connectorsConfig.connectors))
 
-  for (const [id, entry] of Object.entries(connectorsConfig.connectors)) {
+  for (const [id, entry] of entryMap) {
     if (entry.source !== 'preset') continue
     definitions.push({
       id,
@@ -38,6 +39,12 @@ export function getPresetConnectorDefinitions(
       connectorType: entry.type,
     })
   }
+
+  definitions.sort((a, b) => {
+    const aOrder = (entryMap.get(a.id)?.sortOrder) ?? 999
+    const bOrder = (entryMap.get(b.id)?.sortOrder) ?? 999
+    return aOrder - bOrder
+  })
 
   return definitions
 }
