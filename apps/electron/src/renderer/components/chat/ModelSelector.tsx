@@ -312,7 +312,7 @@ export function ModelSelector({
         align="start"
         side="bottom"
         sideOffset={6}
-        className="p-0 gap-0 max-h-[480px] max-w-[340px] overflow-hidden"
+        className="p-0 gap-0 max-h-[480px] w-[346px] max-w-[90vw] overflow-hidden flex flex-col"
       >
         {/* SaaS 安全提示（始终可见） */}
         <div className="px-3.5 py-2.5 border-b border-border/60 bg-amber-500/10 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
@@ -355,11 +355,6 @@ export function ModelSelector({
                 </Tooltip>
               </TooltipProvider>
             </div>
-            {editingCandidates && (
-              <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                勾选作为自动切换候补的模型，完成后点击下方「确定」
-              </p>
-            )}
           </div>
         )}
 
@@ -378,7 +373,7 @@ export function ModelSelector({
         </div>
 
         {/* 模型列表 */}
-        <div className="max-h-[320px] overflow-y-auto scrollbar-thin">
+        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin">
           {filteredGrouped.size === 0 ? (
             <div className="py-10 text-center text-sm text-muted-foreground/50">
               未找到模型
@@ -464,13 +459,9 @@ export function ModelSelector({
                           )}>
                             {option.modelName}
                           </span>
-                          {option.supportsMultimodal ? (
+                          {option.supportsMultimodal && (
                             <span className="inline-flex h-5 shrink-0 items-center rounded px-1.5 text-[10px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
                               多模态
-                            </span>
-                          ) : (
-                            <span className="inline-flex h-5 shrink-0 items-center rounded px-1.5 text-[10px] font-medium bg-muted text-muted-foreground">
-                              文本
                             </span>
                           )}
                           {isSaasModel(option.modelId) && (
@@ -495,7 +486,7 @@ export function ModelSelector({
 
         {/* 编辑模式底部操作栏 */}
         {editingCandidates && (
-          <div className="px-3 py-2 border-t border-border/60 flex items-center justify-end gap-2">
+          <div className="px-3 py-2 border-t border-border/60 flex items-center justify-end gap-2 shrink-0">
             <Button
               variant="ghost"
               size="sm"
