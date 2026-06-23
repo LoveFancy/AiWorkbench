@@ -53,6 +53,8 @@ import type {
   AgentGenerateTitleInput,
   AgentSaveFilesInput,
   AgentSaveWorkspaceFilesInput,
+  AgentCopyExternalPathsInput,
+  AgentCopyExternalPathsResult,
   AgentSavedFile,
   AgentAttachDirectoryInput,
   AgentAttachFileInput,
@@ -83,6 +85,7 @@ import type {
   ServerExpertGroupSummary,
   FeaturedScene,
   RemoteDownloadProgress,
+  EnsureExpertGroupLatestResult,
   FileEntry,
   CreateFileEntryInput,
   FileSearchResult,
@@ -637,6 +640,8 @@ export interface ElectronAPI {
   fetchServerExpertGroupCategories: () => Promise<string[]>
   /** 订阅下载进度事件（返回清理函数） */
   onExpertDownloadProgress: (callback: (progress: RemoteDownloadProgress) => void) => () => void
+  /** 召唤前确保专家团为最新版（静默检查 group-detail 版本，按需覆盖下载；失败降级本地版） */
+  ensureExpertGroupLatest: (groupId: string, localVersion: string) => Promise<EnsureExpertGroupLatestResult>
 
   // ===== Agent 工作区管理相关 =====
 
@@ -826,6 +831,9 @@ export interface ElectronAPI {
   /** 保存文件到工作区文件目录 */
   saveFilesToWorkspaceFiles: (input: AgentSaveWorkspaceFilesInput) => Promise<AgentSavedFile[]>
 
+  /** 复制外部文件/文件夹到托管目录（支持文件夹递归） */
+  copyExternalPathsIntoManagedDir: (input: AgentCopyExternalPathsInput) => Promise<AgentCopyExternalPathsResult>
+
   /** 获取工作区文件目录路径 */
   getWorkspaceFilesPath: (workspaceSlug: string) => Promise<string>
 
@@ -935,6 +943,9 @@ export interface ElectronAPI {
 
   /** 移动文件/目录到目标目录 */
   moveFile: (filePath: string, targetDir: string) => Promise<void>
+
+  /** 复制文件/目录到目标目录（返回新文件路径） */
+  copyFile: (sourcePath: string, targetDir: string) => Promise<string>
 
   /** 列出附加目录内容 */
   listAttachedDirectory: (dirPath: string, access?: import('@proma/shared').FileAccessOptions) => Promise<FileEntry[]>
@@ -1890,6 +1901,10 @@ const electronAPI: ElectronAPI = {
     return ipcRenderer.invoke(EXPERT_IPC_CHANNELS.FETCH_CATEGORIES)
   },
 
+  ensureExpertGroupLatest: (groupId: string, localVersion: string) => {
+    return ipcRenderer.invoke(EXPERT_IPC_CHANNELS.ENSURE_LATEST, groupId, localVersion)
+  },
+
   onExpertDownloadProgress: (callback: (progress: RemoteDownloadProgress) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, progress: RemoteDownloadProgress) => callback(progress)
     ipcRenderer.on(EXPERT_IPC_CHANNELS.DOWNLOAD_PROGRESS, listener)
@@ -2156,6 +2171,10 @@ const electronAPI: ElectronAPI = {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.SAVE_FILES_TO_WORKSPACE, input)
   },
 
+  copyExternalPathsIntoManagedDir: (input: AgentCopyExternalPathsInput) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.COPY_EXTERNAL_PATHS, input)
+  },
+
   getWorkspaceFilesPath: (workspaceSlug: string) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_WORKSPACE_FILES_PATH, workspaceSlug)
   },
@@ -2302,6 +2321,10 @@ const electronAPI: ElectronAPI = {
 
   moveFile: (filePath: string, targetDir: string) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.MOVE_FILE, filePath, targetDir)
+  },
+
+  copyFile: (sourcePath: string, targetDir: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.COPY_FILE, sourcePath, targetDir)
   },
 
   listAttachedDirectory: (dirPath: string, access?: import('@proma/shared').FileAccessOptions) => {

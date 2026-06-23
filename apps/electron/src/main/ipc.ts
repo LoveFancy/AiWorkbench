@@ -49,6 +49,8 @@ import type {
   AgentGenerateTitleInput,
   AgentSaveFilesInput,
   AgentSaveWorkspaceFilesInput,
+  AgentCopyExternalPathsInput,
+  AgentCopyExternalPathsResult,
   AgentSavedFile,
   AgentAttachDirectoryInput,
   AgentAttachFileInput,
@@ -129,6 +131,7 @@ import type {
   AgentExpertGroupInfo,
   ServerExpertGroupSummary,
   FeaturedScene,
+  EnsureExpertGroupLatestResult,
   Automation,
   CreateAutomationInput,
   UpdateAutomationInput,
@@ -211,7 +214,7 @@ import {
   searchAgentSessionMessages,
   searchAgentSessionReferences,
 } from './lib/agent-session-manager'
-import { runAgent, stopAgent, generateAgentTitle, saveFilesToAgentSession, saveFilesToWorkspaceFiles, isAgentSessionActive, queueAgentMessage, updateAgentPermissionMode, rewindAgentSession } from './lib/agent-service'
+import { runAgent, stopAgent, generateAgentTitle, saveFilesToAgentSession, saveFilesToWorkspaceFiles, copyExternalPathsIntoManagedDir, isAgentSessionActive, queueAgentMessage, updateAgentPermissionMode, rewindAgentSession } from './lib/agent-service'
 import { permissionService } from './lib/agent-permission-service'
 import { askUserService } from './lib/agent-ask-user-service'
 import { exitPlanService } from './lib/agent-exit-plan-service'
@@ -2496,15 +2499,24 @@ export function registerIpcHandlers(): void {
     EXPERT_IPC_CHANNELS.DOWNLOAD_REMOTE_EXPERT,
     async (_, groupId: string): Promise<AgentPluginInfo> => {
       const { downloadAndInstallRemoteExpert } = await import('./lib/expert-download-service')
-      return downloadAndInstallRemoteExpert(groupId)
+      // 下载语义为"安装/覆盖为最新"；目标目录已存在时需覆盖，避免抛出"插件已存在"
+      return downloadAndInstallRemoteExpert(groupId, { overwrite: true })
     }
   )
 
   ipcMain.handle(
     EXPERT_IPC_CHANNELS.CANCEL_DOWNLOAD,
     async (_, groupId: string): Promise<void> => {
-      // 初版不实现断点续传/取消，预留通道
-      console.log('[IPC] 取消下载请求（初版未实现）:', groupId)
+      const { cancelRemoteDownload } = await import('./lib/expert-download-service')
+      cancelRemoteDownload(groupId)
+    }
+  )
+
+  ipcMain.handle(
+    EXPERT_IPC_CHANNELS.ENSURE_LATEST,
+    async (_, groupId: string, localVersion: string): Promise<EnsureExpertGroupLatestResult> => {
+      const { ensureExpertGroupLatest } = await import('./lib/expert-upgrade-service')
+      return ensureExpertGroupLatest(groupId, localVersion)
     }
   )
 
@@ -2858,6 +2870,14 @@ export function registerIpcHandlers(): void {
     AGENT_IPC_CHANNELS.SAVE_FILES_TO_WORKSPACE,
     async (_, input: AgentSaveWorkspaceFilesInput): Promise<AgentSavedFile[]> => {
       return saveFilesToWorkspaceFiles(input)
+    }
+  )
+
+  // 复制外部文件/文件夹到托管目录（支持文件夹递归）
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.COPY_EXTERNAL_PATHS,
+    async (_, input: AgentCopyExternalPathsInput): Promise<AgentCopyExternalPathsResult> => {
+      return copyExternalPathsIntoManagedDir(input)
     }
   )
 
@@ -3409,6 +3429,62 @@ export function registerIpcHandlers(): void {
       const newPath = join(safeTarget, basename(safePath))
       renameSync(safePath, newPath)
       console.log(`[Agent 文件] 已移动: ${safePath} → ${newPath}`)
+    }
+  )
+
+  // 复制文件/目录到目标目录
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.COPY_FILE,
+    async (_, sourcePath: string, targetDir: string): Promise<string> => {
+      const fs = await import('node:fs')
+      const fsPromises = (await import('node:fs/promises'))
+      const { resolve, basename, join, extname, relative, isAbsolute } = await import('node:path')
+
+      const safePath = resolve(sourcePath)
+      const safeTarget = resolve(targetDir)
+      const workspacesRoot = resolve(getAgentWorkspacesDir())
+
+      const isInsideWorkspaces = (candidate: string): boolean => {
+        const rel = relative(workspacesRoot, candidate)
+        return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+      }
+
+      if (!isInsideWorkspaces(safePath) || !isInsideWorkspaces(safeTarget)) {
+        throw new Error('访问路径超出 Agent 工作区范围')
+      }
+
+      const sourceStat = await fsPromises.stat(safePath)
+
+      // 防止复制目录到自身或子目录
+      if (sourceStat.isDirectory()) {
+        const rel = relative(safePath, safeTarget)
+        if (rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))) {
+          throw new Error('不能复制目录到自身或子目录')
+        }
+      }
+
+      const name = basename(safePath)
+      let destPath = join(safeTarget, name)
+
+      // 同名冲突处理
+      if (fs.existsSync(destPath)) {
+        const ext = extname(name)
+        const nameWithoutExt = ext ? name.slice(0, -ext.length) : name
+        let counter = 1
+        while (fs.existsSync(destPath)) {
+          destPath = join(safeTarget, `${nameWithoutExt} (${counter})${ext}`)
+          counter++
+        }
+      }
+
+      if (sourceStat.isDirectory()) {
+        await fsPromises.cp(safePath, destPath, { recursive: true })
+      } else {
+        await fsPromises.copyFile(safePath, destPath)
+      }
+
+      console.log(`[Agent 文件] 已复制: ${safePath} → ${destPath}`)
+      return destPath
     }
   )
 

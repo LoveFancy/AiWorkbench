@@ -10,8 +10,8 @@
  * 所有业务逻辑已委托给 AgentOrchestrator。
  */
 
-import { join, dirname, isAbsolute, relative, resolve } from 'node:path'
-import { writeFileSync, mkdirSync, existsSync, statSync } from 'node:fs'
+import { join, dirname, isAbsolute, relative, resolve, basename } from 'node:path'
+import { writeFileSync, mkdirSync, existsSync, statSync, cpSync } from 'node:fs'
 import { BrowserWindow } from 'electron'
 import type { WebContents } from 'electron'
 import { AGENT_IPC_CHANNELS, MAX_ATTACHMENT_SIZE } from '@proma/shared'
@@ -20,6 +20,8 @@ import type {
   AgentGenerateTitleInput,
   AgentSaveFilesInput,
   AgentSaveWorkspaceFilesInput,
+  AgentCopyExternalPathsInput,
+  AgentCopyExternalPathsResult,
   AgentSavedFile,
   AgentStreamEvent,
   AgentStreamPayload,
@@ -120,12 +122,14 @@ export async function runAgent(
   input: AgentSendInput,
   webContents: WebContents,
 ): Promise<void> {
+  console.log(`[DIAG][Agent 服务] runAgent 入口: sessionId=${input.sessionId}, channelId=${input.channelId}, modelId=${input.modelId}, workspaceId=${input.workspaceId}, ts=${Date.now()}`)
   // 更新 webContents 映射（允许覆盖 — 由 orchestrator.activeSessions 处理真正的并发保护）
   registerWebContents(input.sessionId, webContents)
   // 开始新一轮执行时清除"完成未确认"标记
   try {
     updateAgentSessionMeta(input.sessionId, { completedButUnconfirmed: false })
   } catch { /* 新会话可能尚未写入索引 */ }
+  console.log(`[DIAG][Agent 服务] 即将调用 orchestrator.sendMessage, ts=${Date.now()}`)
   try {
     await orchestrator.sendMessage(input, {
       onError: (error) => {
@@ -187,7 +191,9 @@ export async function runAgent(
         }
       },
     })
+    console.log(`[DIAG][Agent 服务] orchestrator.sendMessage 正常返回, sessionId=${input.sessionId}, ts=${Date.now()}`)
   } catch (err) {
+    console.error(`[DIAG][Agent 服务] orchestrator.sendMessage 异常, sessionId=${input.sessionId}, ts=${Date.now()}`, err)
     console.error('[Agent 服务] runAgent 未处理异常:', err)
     const errorMessage = err instanceof Error ? err.message : '未知错误'
     if (!webContents.isDestroyed()) {
@@ -543,4 +549,77 @@ export function saveFilesToWorkspaceFiles(input: AgentSaveWorkspaceFilesInput): 
   }
 
   return results
+}
+
+/**
+ * 复制外部文件/文件夹到托管目录（会话文件或工作区文件）
+ *
+ * 与 saveFilesToWorkspaceFiles 不同：直接在主进程用 fs.cpSync 按磁盘路径复制，
+ * 支持文件夹递归复制，避免把大文件读进 renderer 内存。
+ * 逐项处理，单项失败不影响整批；返回成功/跳过明细供前端提示。
+ */
+export function copyExternalPathsIntoManagedDir(
+  input: AgentCopyExternalPathsInput,
+): AgentCopyExternalPathsResult {
+  const rootDir = input.scope === 'session'
+    ? getAgentSessionWorkspacePath(input.workspaceSlug, input.sessionId ?? '')
+    : getWorkspaceFilesDir(input.workspaceSlug)
+  // 校验目标目录在托管根内且存在（不存在会抛错，由前端兜底提示）
+  const targetDir = resolveManagedSaveDir(rootDir, input.targetDir)
+
+  const copied: AgentCopyExternalPathsResult['copied'] = []
+  const skipped: AgentCopyExternalPathsResult['skipped'] = []
+  const usedPaths = new Set<string>()
+
+  for (const sourcePath of input.sourcePaths) {
+    try {
+      const src = resolve(sourcePath)
+
+      if (!existsSync(src)) {
+        skipped.push({ path: sourcePath, reason: '源文件不存在' })
+        continue
+      }
+
+      // 防止把目录复制进它自身或其子目录（cpSync 递归会无限循环）
+      if (src === targetDir || isPathInsideRoot(targetDir, src)) {
+        skipped.push({ path: sourcePath, reason: '无法复制到自身或其子目录' })
+        continue
+      }
+
+      const name = basename(src)
+      if (!name) {
+        skipped.push({ path: sourcePath, reason: '无效的路径' })
+        continue
+      }
+
+      const isDir = statSync(src).isDirectory()
+
+      // 同名冲突自动改名（文件保留扩展名，文件夹整体加后缀）
+      let destPath = join(targetDir, name)
+      if (usedPaths.has(destPath) || existsSync(destPath)) {
+        const dotIdx = name.lastIndexOf('.')
+        const baseName = !isDir && dotIdx > 0 ? name.slice(0, dotIdx) : name
+        const ext = !isDir && dotIdx > 0 ? name.slice(dotIdx) : ''
+        let counter = 1
+        let candidate = join(targetDir, `${baseName}-${counter}${ext}`)
+        while (usedPaths.has(candidate) || existsSync(candidate)) {
+          counter++
+          candidate = join(targetDir, `${baseName}-${counter}${ext}`)
+        }
+        destPath = candidate
+      }
+      usedPaths.add(destPath)
+
+      cpSync(src, destPath, { recursive: true, errorOnExist: false, force: false })
+
+      copied.push({ name: destPath.slice(targetDir.length + 1), targetPath: destPath })
+      console.log(`[Agent 服务] 外部路径已复制: ${src} -> ${destPath}`)
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      console.error(`[Agent 服务] 复制外部路径失败: ${sourcePath}`, error)
+      skipped.push({ path: sourcePath, reason })
+    }
+  }
+
+  return { copied, skipped }
 }

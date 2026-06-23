@@ -1,17 +1,16 @@
 import * as React from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
-import type { AgentExpertGroupInfo } from '@proma/shared'
 import { toast } from 'sonner'
 import { RefreshCw } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
-import { agentExpertGroupsAtom, createExpertSessionAtom, loadAgentExpertGroupsAtom } from '@/atoms/agent-atoms'
-import { useOpenSession } from '@/hooks/useOpenSession'
+import { agentExpertGroupsAtom, loadAgentExpertGroupsAtom } from '@/atoms/agent-atoms'
 import {
   followedExpertGroupsAtom,
   recentExpertGroupsAtom,
-  recordRecentExpertGroupAtom,
 } from '@/experts/atoms/expert-follow'
+import { useSummonExpert } from '@/experts/hooks/useSummonExpert'
+import { useExpertDownloadProgressBridge } from '@/experts/hooks/useExpertDownloadProgressBridge'
 import { loadRemoteExpertDataAtom, expertCategoriesAtom } from '@/experts/atoms/expert-remote'
 import { ExpertSearchBar } from '@/experts/shared/ExpertSearchBar'
 import { ExpertFilterPills, type FilterTag } from '@/experts/shared/ExpertFilterPills'
@@ -28,21 +27,22 @@ interface ExpertPageViewProps {
   query?: string
   filterTag?: FilterTag
   onFilterTagChange?: (tag: FilterTag) => void
+  category?: string
+  onCategoryChange?: (category: string) => void
 }
 
-export function ExpertPageView({ embedded = false, query: externalQuery, filterTag: externalFilterTag, onFilterTagChange }: ExpertPageViewProps): React.ReactElement {
+export function ExpertPageView({ embedded = false, query: externalQuery, filterTag: externalFilterTag, onFilterTagChange, category: externalCategory, onCategoryChange }: ExpertPageViewProps): React.ReactElement {
   const allGroups = useAtomValue(agentExpertGroupsAtom)
   const loadGroups = useSetAtom(loadAgentExpertGroupsAtom)
   const loadRemote = useSetAtom(loadRemoteExpertDataAtom)
-  const createExpertSession = useSetAtom(createExpertSessionAtom)
-  const openSession = useOpenSession()
+  const { summon } = useSummonExpert()
+  useExpertDownloadProgressBridge()
   const followed = useAtomValue(followedExpertGroupsAtom)
   const recent = useAtomValue(recentExpertGroupsAtom)
-  const recordRecent = useSetAtom(recordRecentExpertGroupAtom)
 
   const [query, setQuery] = React.useState('')
   const [internalFilterTag, setInternalFilterTag] = React.useState<FilterTag>('all')
-  const [category, setCategory] = React.useState('all')
+  const [internalCategory, setInternalCategory] = React.useState('all')
   const [sceneFilter, setSceneFilter] = React.useState<Set<string> | null>(null)
   const [activeSceneId, setActiveSceneId] = React.useState<string | null>(null)
   const [refreshing, setRefreshing] = React.useState(false)
@@ -74,6 +74,8 @@ export function ExpertPageView({ embedded = false, query: externalQuery, filterT
   const activeQuery = embedded ? (externalQuery ?? '') : query
   const filterTag = externalFilterTag ?? internalFilterTag
   const setFilterTag = onFilterTagChange ?? setInternalFilterTag
+  const category = externalCategory ?? internalCategory
+  const setCategory = onCategoryChange ?? setInternalCategory
 
   const displayGroups = React.useMemo(() => {
     let result = allGroups
@@ -87,45 +89,6 @@ export function ExpertPageView({ embedded = false, query: externalQuery, filterT
     result = searchByName(result, activeQuery)
     return result
   }, [allGroups, filterTag, category, activeQuery, followed, recent, sceneFilter])
-
-  const handleSummon = React.useCallback(async (group: AgentExpertGroupInfo) => {
-    // 远程专家团需先下载
-    if (group.sourcePluginKind === 'remote' && group.status !== 'available') {
-      if (group.status === 'remote_downloading') {
-        toast('正在下载中，请稍候')
-        return
-      }
-      try {
-        const installed = await window.electronAPI.downloadRemoteExpert(group.id)
-        await loadGroups()
-        toast.success(`已下载 ${group.name}，正在召唤...`)
-        const session = await createExpertSession({
-          ...group,
-          status: 'available',
-          sourcePluginKind: 'user',
-          sourcePluginId: installed.name,
-          sourcePluginVersion: installed.version,
-        })
-        recordRecent(group.id)
-        openSession('agent', session.id, session.title)
-      } catch (err) {
-        console.error('[专家团] 下载远程专家团失败:', err)
-        toast.error(`下载 ${group.name} 失败`)
-      }
-      return
-    }
-
-    if (group.status !== 'available') return
-    try {
-      const session = await createExpertSession(group)
-      recordRecent(group.id)
-      openSession('agent', session.id, session.title)
-      toast.success(`已召唤${group.name}`)
-    } catch (error) {
-      console.error('[专家团] 召唤失败:', error)
-      toast.error('召唤专家团失败')
-    }
-  }, [createExpertSession, openSession, recordRecent, loadGroups])
 
   const emptyType: 'followed' | 'recent' | 'search' | 'all' = React.useMemo(() => {
     if (filterTag === 'followed') return 'followed'
@@ -199,7 +162,7 @@ export function ExpertPageView({ embedded = false, query: externalQuery, filterT
           {/* 卡片网格 */}
           <ExpertCardGrid
             groups={displayGroups}
-            onSummon={handleSummon}
+            onSummon={(group) => void summon(group)}
             emptyState={
               <ExpertEmptyState
                 type={emptyType}

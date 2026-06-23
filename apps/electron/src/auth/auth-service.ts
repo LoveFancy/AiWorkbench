@@ -207,6 +207,21 @@ export function isLoggedIn(): boolean {
   return parseJobId(token) !== null
 }
 
+/**
+ * 轻量会话校验：仅读 auth.json + 比对 expiresAt，跳过 safeStorage 解密与 JWT 解析。
+ * 用于高频路径（如观测上报前置拦截）判断「是否存在未过期的有效凭证」。
+ */
+export function hasValidSession(): boolean {
+  const filePath = getAuthFilePath()
+  if (!existsSync(filePath)) return false
+
+  try {
+    const data: PersistedAuthData = JSON.parse(readFileSync(filePath, 'utf-8'))
+    if (!data.expiresAt || Date.now() > data.expiresAt) return false
+    return Boolean(data.encryptedToken || data.token)
+  } catch { return false }
+}
+
 /** 统一对外接口：一次性读取 token + 工号 + 登录时间 + 过期时间 + 是否需要重登 */
 export function getAuthInfo(): AuthInfo | null {
   const filePath = getAuthFilePath()

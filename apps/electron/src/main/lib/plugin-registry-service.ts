@@ -6,6 +6,7 @@
  */
 
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { promises as fsp } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import AdmZip from 'adm-zip'
@@ -47,6 +48,19 @@ interface InstallUserPluginZipOptions extends PluginRegistryPaths {
   tempRoot?: string
   /** 插件市场 ID，默认 'local'；远程下载的专家团传入 'remote' */
   marketplaceId?: string
+}
+
+/** 下载/安装被用户取消时抛出，调用方据此区分取消与真实失败 */
+export class DownloadCancelledError extends Error {
+  constructor() {
+    super('下载已取消')
+    this.name = 'DownloadCancelledError'
+  }
+}
+
+interface InstallAsyncOptions extends InstallUserPluginZipOptions {
+  /** 安装期可取消信号；abort 后解压循环抛 DownloadCancelledError */
+  signal?: AbortSignal
 }
 
 interface PluginMcpServerDefinition {
@@ -346,6 +360,19 @@ function validateExpertGroupFile(filePath: string): { issue?: AgentPluginCapabil
   }
 }
 
+/**
+ * 归一化插件 manifest 中声明的专家团 id。
+ *
+ * 兼容个别插件把 `expertGroup` 误写成相对路径（如
+ * `./expert-groups/legal-compliance-reviewer.json`）的情况：剥离目录前缀与
+ * `.json` 后缀，得到裸 id（`legal-compliance-reviewer`），保证与服务端列表 id 对齐。
+ */
+export function normalizeDeclaredExpertGroupId(declared: string): string {
+  const trimmed = declared.trim()
+  const base = trimmed.split(/[\\/]/).filter(Boolean).at(-1) ?? trimmed
+  return base.replace(/\.json$/i, '')
+}
+
 function discoverExpertGroups(
   pluginPath: string,
   pluginId: string,
@@ -354,9 +381,10 @@ function discoverExpertGroups(
   manifest: AgentPluginManifest,
 ): AgentPluginCapability[] {
   const groupsDir = join(pluginPath, 'expert-groups')
-  const declaredGroups = manifest.expertGroup
+  const declaredGroups = (manifest.expertGroup
     ? [manifest.expertGroup]
     : manifest.expertGroups ?? []
+  ).map(normalizeDeclaredExpertGroupId)
   const discoveredGroups = existsSync(groupsDir)
     ? readdirSync(groupsDir, { withFileTypes: true })
       .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
@@ -728,6 +756,34 @@ function extractPluginZipSafely(zipPath: string, extractDir: string): void {
   }
 }
 
+async function extractPluginZipAsync(
+  zipPath: string,
+  extractDir: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const zip = new AdmZip(zipPath)
+
+  for (const entry of zip.getEntries()) {
+    if (signal?.aborted) throw new DownloadCancelledError()
+
+    const entryName = entry.entryName
+    const targetPath = resolve(extractDir, entryName)
+    const rel = relative(extractDir, targetPath)
+
+    if (!entryName || entryName.startsWith('/') || rel.startsWith('..') || isAbsolute(rel)) {
+      throw new Error('插件 zip 包包含不安全路径')
+    }
+
+    if (entry.isDirectory) {
+      await fsp.mkdir(targetPath, { recursive: true })
+      continue
+    }
+
+    await fsp.mkdir(dirname(targetPath), { recursive: true })
+    await fsp.writeFile(targetPath, entry.getData())
+  }
+}
+
 function resolveExtractedPluginRoot(extractDir: string): string {
   const rootManifestPath = join(extractDir, '.claude-plugin', 'plugin.json')
   if (existsSync(rootManifestPath)) return extractDir
@@ -841,6 +897,61 @@ export function installUserPluginZip(zipPath: string, options: InstallUserPlugin
     }
   } finally {
     rmSync(extractDir, { recursive: true, force: true })
+  }
+}
+
+export async function installUserPluginZipAsync(
+  zipPath: string,
+  options: InstallAsyncOptions = {},
+): Promise<AgentPluginInfo> {
+  if (!zipPath.toLowerCase().endsWith('.zip')) {
+    throw new Error('请选择 .zip 格式的插件包')
+  }
+  if (!existsSync(zipPath)) {
+    throw new Error(`插件 zip 包不存在: ${zipPath}`)
+  }
+
+  const resolved = registryPaths(options)
+  const tempRoot = options.tempRoot ?? tmpdir()
+  const extractDir = join(tempRoot, `proma-plugin-${Date.now()}`)
+
+  try {
+    await fsp.mkdir(extractDir, { recursive: true })
+    await extractPluginZipAsync(zipPath, extractDir, options.signal)
+    if (options.signal?.aborted) throw new DownloadCancelledError()
+
+    const pluginRoot = resolveExtractedPluginRoot(extractDir)
+    const manifest = normalizeManifest(readJsonFile(join(pluginRoot, '.claude-plugin', 'plugin.json')), basename(pluginRoot))
+    const installSlug = resolvePluginInstallSlug(pluginRoot, extractDir, manifest)
+    const marketplaceId = options.marketplaceId ?? 'local'
+    const pluginId = `user:${marketplaceId}/${installSlug}`
+    const targetDir = join(resolved.userDir, marketplaceId, installSlug)
+    const targetRel = relative(resolved.userDir, targetDir)
+    if (targetRel.startsWith('..') || isAbsolute(targetRel)) {
+      throw new Error('插件名称包含不安全路径')
+    }
+    assertNoDuplicateExpertGroups(pluginRoot, pluginId, manifest, resolved)
+
+    const status = copyPluginAtomically(pluginRoot, targetDir, options.overwrite ?? false)
+    const config = readPluginsConfig({ configPath: resolved.configPath })
+    const previous = config.plugins[pluginId]
+    const now = new Date().toISOString()
+    config.plugins[pluginId] = {
+      ...previous,
+      enabled: previous?.enabled ?? true,
+      installedAt: previous?.installedAt ?? now,
+      updatedAt: status === 'overwritten' ? now : previous?.updatedAt,
+      sourceMarketplaceId: marketplaceId,
+      version: manifest.version,
+    }
+    writePluginsConfig(config, { configPath: resolved.configPath })
+
+    return {
+      ...pluginInfoFromPath('user', targetDir, pluginId, config),
+      sourceMarketplaceId: marketplaceId,
+    }
+  } finally {
+    await fsp.rm(extractDir, { recursive: true, force: true })
   }
 }
 

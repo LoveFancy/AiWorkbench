@@ -186,6 +186,19 @@ export class AgentOrchestrator {
    * 通过 EventBus 分发 AgentEvent，通过 callbacks 发送控制信号。
    */
   async sendMessage(input: AgentSendInput, callbacks: SessionCallbacks): Promise<void> {
+    const _diagStart = Date.now()
+    const _diag = (tag: string) => console.log(`[DIAG][Agent 编排] [${tag}] sessionId=${input.sessionId}, elapsed=${Date.now() - _diagStart}ms, ts=${Date.now()}`)
+    _diag('sendMessage 入口')
+    // Event Loop 健康检查：setImmediate 回调延迟反映主线程拥堵程度
+    const _elCheckStart = Date.now()
+    setImmediate(() => {
+      const elDelay = Date.now() - _elCheckStart
+      if (elDelay > 50) {
+        console.warn(`[DIAG][Agent 编排] ⚠️ Event Loop 延迟: ${elDelay}ms (>50ms 表示主线程拥堵)`)
+      } else {
+        console.log(`[DIAG][Agent 编排] Event Loop 延迟: ${elDelay}ms (正常)`)
+      }
+    })
     const { sessionId, userMessage, channelId, modelId, workspaceId, additionalDirectories, attachments, customMcpServers, permissionModeOverride, mentionedSkills, mentionedSessionIds, automationContext, selectedMcpServers } = input
     const stderrChunks: string[] = []
 
@@ -283,6 +296,7 @@ export class AgentOrchestrator {
 
     // 诊断日志：输出渠道认证信息，方便排查 403/401 问题
     console.log(`[Agent 编排] 渠道信息: channelId=${channelId}, modelId=${modelId}, provider=${channel.provider}, baseUrl="${channel.baseUrl || '(default)'}", apiKey=${apiKey ? apiKey.slice(0, 8) + '...' + apiKey.slice(-4) : '(empty)'}`)
+    _diag('渠道/apiKey 解密完成')
 
     // 2.1 立即抢占会话槽位（在所有同步检查通过后、第一个 await 之前）
     // 防止 buildSdkEnv 等 await 期间并发调用绕过上方的检查，导致多条重复消息写入 JSONL
@@ -354,11 +368,14 @@ export class AgentOrchestrator {
       process.env.ANTHROPIC_BASE_URL = normalizeAnthropicBaseUrlForSdk(channel.baseUrl)
     }
 
+    _diag('开始构建 sdkEnv (await buildSdkEnv)')
     const modelRouting = resolveAgentModelRouting({ modelId: modelId || DEFAULT_MODEL_ID, provider: channel.provider })
     let sdkEnv = await buildSdkEnv(apiKey, channel.baseUrl, channel.provider)
     applyAgentModelRoutingToEnv(sdkEnv, modelRouting)
+    _diag('sdkEnv 构建完成')
 
     // 4. 读取已有的 SDK session ID（用于 resume）
+    _diag('读取 sessionMeta')
     const sessionMeta = getAgentSessionMeta(sessionId)
     let existingSdkSessionId = sessionMeta?.sdkSessionId
     const runHasImageInput = (attachments ?? []).some(isImageAttachment)
@@ -386,6 +403,7 @@ export class AgentOrchestrator {
     } as unknown as SDKMessage
     appendSDKMessages(sessionId, [userSDKMsg])
     callbacks.onRunStarted?.({ startedAt: streamStartedAt })
+    _diag('用户消息已持久化, onRunStarted 已触发')
 
     // 6. 状态初始化
     const accumulatedMessages: SDKMessage[] = []
@@ -395,7 +413,9 @@ export class AgentOrchestrator {
     let currentChannelId = channelId
 
     // Auto Mode 配置解析与初始模型确定
+    _diag('开始 resolveAutoModeConfig (await)')
     const autoModeConfig = await resolveAutoModeConfig()
+    _diag('resolveAutoModeConfig 完成')
     if (autoModeConfig.enabled && runRequiresVision) {
       const multimodalPool = filterCandidatePoolByCapabilities(autoModeConfig.candidatePool, { requiresMultimodal: true })
       const availableMultimodalPool = multimodalPool.filter((candidate) => autoModeConfig.availableModelIds.has(candidate.modelId))
@@ -458,10 +478,14 @@ export class AgentOrchestrator {
 
     try {
       // 8. 动态导入 SDK
+      _diag('开始动态导入 SDK (await import)')
       const sdk = await import('@anthropic-ai/claude-agent-sdk')
+      _diag('SDK 动态导入完成')
 
       // 9. 构建 SDK query
+      _diag('开始 resolveSDKCliPath')
       const cliPath = resolveSDKCliPath()
+      _diag(`resolveSDKCliPath 完成: ${cliPath}`)
 
       if (!existsSync(cliPath)) {
         const subpkg = `@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}`
@@ -499,6 +523,7 @@ export class AgentOrchestrator {
       )
 
       // 确定 Agent 工作目录
+      _diag('开始确定 Agent 工作目录')
       agentCwd = homedir()
       workspaceSlug = undefined
       workspace = undefined
@@ -525,6 +550,7 @@ export class AgentOrchestrator {
       // forkSourceDir 仅作为备用参考字段保留，不再影响 agentCwd。
 
       // 9.5 确保 SDK 项目设置（plansDirectory → .context）
+      _diag('开始写入 SDK 项目设置 (.claude/settings.json)')
       {
         const claudeSettingsDir = join(agentCwd, '.claude')
         if (!existsSync(claudeSettingsDir)) mkdirSync(claudeSettingsDir, { recursive: true })
@@ -558,10 +584,15 @@ export class AgentOrchestrator {
       }
 
       // 10. 构建 MCP 服务器配置 + 记忆工具 + 生图工具 + 自定义工具
+      _diag('开始构建 MCP 服务器配置')
       const mcpServers = buildMcpServers(workspaceSlug, selectedMcpServers)
+       _diag('buildMcpServers 完成, 开始 injectMemoryTools (await)')
       await injectMemoryTools(sdk, mcpServers)
+      _diag('injectMemoryTools 完成, 开始 injectNanoBananaTools (await)')
       await injectNanoBananaTools(sdk, mcpServers, sessionId, agentCwd)
+      _diag('injectNanoBananaTools 完成, 开始 injectWebSearchTools (await)')
       await injectWebSearchTools(sdk, mcpServers)
+      _diag('injectWebSearchTools 完成, 开始 injectAutomationMcpServer (await)')
       await injectAutomationMcpServer(sdk, mcpServers, {
         sessionId,
         channelId,
@@ -569,6 +600,7 @@ export class AgentOrchestrator {
         workspaceId,
         triggeredBy: input.triggeredBy,
       })
+      _diag('injectAutomationMcpServer 完成')
 
       const expertRuntime = resolveExpertGroupRuntime({
         expertGroupId: sessionMeta?.expertGroupId,
@@ -587,6 +619,7 @@ export class AgentOrchestrator {
       }
 
       // 11. 构建动态上下文和最终 prompt
+      _diag('开始 buildDynamicContext')
       const dynamicCtx = buildDynamicContext({
         workspaceName: workspace?.name,
         workspaceSlug,
@@ -615,6 +648,7 @@ export class AgentOrchestrator {
       const contextualMessage = `${dynamicCtx}\n\n${enrichedMessage}`
 
       const isCompactCommand = userMessage.trim() === '/compact'
+      _diag('开始 buildContextPrompt')
       const finalPrompt = isCompactCommand
         ? '/compact'
         : existingSdkSessionId
@@ -641,6 +675,7 @@ export class AgentOrchestrator {
       // 注册到 Map，支持运行中动态切换
       this.sessionPermissionModes.set(sessionId, initialPermissionMode)
       console.log(`[Agent 编排] 权限模式: ${initialPermissionMode}${permissionModeOverride ? '（外部覆盖）' : ''}`)
+      _diag('权限模式已确定, 开始构建 canUseTool 回调')
 
       const emitPlanModeChanged = (active: boolean, source: 'initial' | 'tool' | 'permission'): void => {
         this.eventBus.emit(sessionId, {
@@ -1008,6 +1043,7 @@ export class AgentOrchestrator {
       }
 
       console.log(`[Agent 编排] 开始通过 Adapter 遍历事件流...`)
+      _diag('queryOptions 构建完成, 即将进入重试循环')
 
       // 14. 遍历 Adapter 产出的 AgentEvent 流（含自动重试）
       let lastRetryableError: string | undefined
@@ -1184,7 +1220,9 @@ export class AgentOrchestrator {
             query: (opts: ClaudeAgentQueryOptions) => this.adapter.query(opts),
           }
 
+          _diag(`即将调用 sdkRunSingleAttempt, attempt=${attempt}, model=${ctx.resolvedModel}, resume=${ctx.existingSdkSessionId || '无'}`)
           const result = await sdkRunSingleAttempt(ctx, sdkDeps, sdkCallbacks, attempt, queryStartedAt)
+          _diag(`sdkRunSingleAttempt 返回, kind=${result.kind}, shouldRetry=${result.shouldRetryFromError}, recoveryType=${result.recoveryType}`)
 
           // 同步回 mutable 状态
           capturedSdkSessionId = ctx.capturedSdkSessionId
@@ -1373,6 +1411,7 @@ export class AgentOrchestrator {
 
     } finally {
       // 只在 generation 匹配时才清理，防止旧流的 finally 误删新流的注册
+      _diag('sendMessage finally 块执行, 清理资源')
       releaseActiveRun()
       permissionService.clearSessionPending(sessionId)
       // askUserService 不在 turn 结束时清理——AskUserQuestion 的生命周期由用户交互决定，

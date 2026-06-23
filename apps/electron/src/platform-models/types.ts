@@ -17,3 +17,13 @@ export interface PlatformModelsResponse {
   models: PlatformModelInfo[]
   total: number
 }
+
+/** 磁盘缓存结构 */
+export interface ModelsCache {
+  encryptedApiKey?: string
+  apiKey?: string
+  models: PlatformModelInfo[]
+  total: number
+  cachedAt: number
+  jobId?: string
+}

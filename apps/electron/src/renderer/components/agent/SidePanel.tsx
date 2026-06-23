@@ -615,6 +615,59 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
     }
   }, [handleFilesUploaded, sessionId, sessionPath, workspaceFilesPath, workspaceSlug])
 
+  /**
+   * 将外部拖入的文件/文件夹复制进文件树里的某个目录。
+   *
+   * paths 必须由调用方在 drop 事件同步执行期内解析（见 FileBrowser.handleDrop），
+   * 此处不能再调用 getPathForFile——经过 await 后 File 的 native 资源已释放，调用会导致渲染进程崩溃。
+   * 无法解析磁盘路径的文件（如剪贴板虚拟文件）通过 unresolvedFiles 走 base64 兜底保存。
+   */
+  const saveExternalItemsToDirectory = React.useCallback(async (
+    payload: { paths: string[]; unresolvedFiles: File[] },
+    target: RootDropTarget,
+    targetDir: string,
+  ): Promise<void> => {
+    const { paths: sourcePaths, unresolvedFiles } = payload
+    if (sourcePaths.length === 0 && unresolvedFiles.length === 0) return
+    if (!workspaceSlug) return
+
+    // 全部无法解析磁盘路径 → 走原有纯文件保存逻辑
+    if (sourcePaths.length === 0) {
+      await saveExternalFilesToRoot(unresolvedFiles, target, targetDir)
+      return
+    }
+
+    try {
+      const result = await window.electronAPI.copyExternalPathsIntoManagedDir({
+        workspaceSlug,
+        scope: target,
+        sessionId,
+        targetDir,
+        sourcePaths,
+      })
+
+      // 极少数无法解析磁盘路径的文件，走旧逻辑兜底复制
+      if (unresolvedFiles.length > 0) {
+        await saveExternalFilesToRoot(unresolvedFiles, target, targetDir)
+      }
+
+      handleFilesUploaded()
+
+      if (result.copied.length > 0) {
+        toast.success(`已复制 ${result.copied.length} 个项目到${target === 'session' ? '会话文件' : '工作区文件'}`)
+      }
+      if (result.skipped.length > 0) {
+        toast.error(`${result.skipped.length} 个项目未复制`, {
+          description: formatFileNames(result.skipped.map((item) => item.reason)),
+        })
+      }
+    } catch (error) {
+      console.error('[SidePanel] 复制外部文件/文件夹失败:', error)
+      toast.error('文件添加失败', { description: '目标目录可能已被删除，请刷新后重试。' })
+      handleFilesUploaded()
+    }
+  }, [handleFilesUploaded, saveExternalFilesToRoot, sessionId, workspaceSlug])
+
   const clearDropZoneHighlight = React.useCallback((): void => {
     setDropZoneClearSignal((signal) => signal + 1)
   }, [])
@@ -988,9 +1041,9 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                           transferTarget={{ label: '转移到工作区', targetDir: workspaceFilesPath }}
                           onFilesMoved={handleFilesUploaded}
                           onDirectoryDropTargetActive={clearDropZoneHighlight}
-                          onExternalFilesDropToDirectory={(files, targetDir) => {
+                          onExternalFilesDropToDirectory={(payload, targetDir) => {
                             clearDropZoneHighlight()
-                            return saveExternalFilesToRoot(files, 'session', targetDir)
+                            return saveExternalItemsToDirectory(payload, 'session', targetDir)
                           }}
                         />
                       </>
@@ -1154,9 +1207,9 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                           transferTarget={{ label: '转移到当前会话', targetDir: sessionPath }}
                           onFilesMoved={handleFilesUploaded}
                           onDirectoryDropTargetActive={clearDropZoneHighlight}
-                          onExternalFilesDropToDirectory={(files, targetDir) => {
+                          onExternalFilesDropToDirectory={(payload, targetDir) => {
                             clearDropZoneHighlight()
-                            return saveExternalFilesToRoot(files, 'workspace', targetDir)
+                            return saveExternalItemsToDirectory(payload, 'workspace', targetDir)
                           }}
                         />
                       </>
@@ -1264,10 +1317,10 @@ function AttachedFilesSection({ attachedFiles, onDetach, onAddToChat, onFilePrev
                     <MoreHorizontal className="size-3.5" />
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-40 z-[9999] min-w-0 p-0.5">
+                <DropdownMenuContent align="start" className="w-48 z-[9999] min-w-0 p-1.5">
                   {onAddToChat && (
                     <DropdownMenuItem
-                      className="text-xs py-1 [&>svg]:size-3.5"
+                      className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
                       onSelect={() => onAddToChat(entry)}
                     >
                       <MessageSquarePlus />
@@ -1275,7 +1328,7 @@ function AttachedFilesSection({ attachedFiles, onDetach, onAddToChat, onFilePrev
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuItem
-                    className="text-xs py-1 [&>svg]:size-3.5"
+                    className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
                     onSelect={() => window.electronAPI.showAttachedInFolder(filePath, { sessionId, candidateBasePaths: allowedPaths }).catch(console.error)}
                   >
                     <FolderSearch />
@@ -1283,7 +1336,7 @@ function AttachedFilesSection({ attachedFiles, onDetach, onAddToChat, onFilePrev
                   </DropdownMenuItem>
                   {onFilePreview && (
                     <DropdownMenuItem
-                      className="text-xs py-1 [&>svg]:size-3.5"
+                      className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
                       onSelect={() => onFilePreview(filePath)}
                     >
                       <ExternalLink />
@@ -1291,7 +1344,7 @@ function AttachedFilesSection({ attachedFiles, onDetach, onAddToChat, onFilePrev
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuItem
-                    className="text-xs py-1 text-destructive focus:text-destructive [&>svg]:size-3.5"
+                    className="text-[13px] py-2 gap-3 rounded-md text-destructive focus:text-destructive [&>svg]:size-4"
                     onSelect={() => onDetach(filePath)}
                   >
                     <X />
@@ -2020,10 +2073,10 @@ function AttachedDirItem({ entry, depth, selectedPaths, onSelect, refreshVersion
                 <MoreHorizontal className="size-3.5" />
               </button>
             </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-40 z-[9999] min-w-0 p-0.5">
+              <DropdownMenuContent align="start" className="w-48 z-[9999] min-w-0 p-1.5">
                 {onAddToChat && !entry.isDirectory && (
                   <DropdownMenuItem
-                    className="text-xs py-1 [&>svg]:size-3.5"
+                    className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
                     onSelect={() => onAddToChat({ ...entry, path: currentPath, name: currentName })}
                   >
                     <MessageSquarePlus />
@@ -2031,7 +2084,7 @@ function AttachedDirItem({ entry, depth, selectedPaths, onSelect, refreshVersion
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem
-                  className="text-xs py-1 [&>svg]:size-3.5"
+                  className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
                   onSelect={() => window.electronAPI.showAttachedInFolder(currentPath, { sessionId, candidateBasePaths: allowedPaths }).catch(console.error)}
                 >
                   <FolderSearch />
@@ -2039,7 +2092,7 @@ function AttachedDirItem({ entry, depth, selectedPaths, onSelect, refreshVersion
                 </DropdownMenuItem>
                 {!entry.isDirectory && onFilePreview && (
                   <DropdownMenuItem
-                    className="text-xs py-1 [&>svg]:size-3.5"
+                    className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
                     onSelect={() => onFilePreview(currentPath)}
                   >
                     <ExternalLink />
@@ -2047,14 +2100,14 @@ function AttachedDirItem({ entry, depth, selectedPaths, onSelect, refreshVersion
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem
-                  className="text-xs py-1 [&>svg]:size-3.5"
+                  className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
                   onSelect={startRename}
                 >
                   <Pencil />
                   重命名
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  className="text-xs py-1 [&>svg]:size-3.5"
+                  className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
                   onSelect={handleMove}
                 >
                   <FolderInput />

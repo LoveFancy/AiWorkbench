@@ -1110,11 +1110,19 @@ export interface FeaturedScenesResponse {
 
 export interface RemoteDownloadProgress {
   groupId: string
-  status: 'downloading' | 'installing' | 'done' | 'error'
+  status: 'downloading' | 'installing' | 'done' | 'error' | 'cancelled'
   progress: number
   downloadedBytes: number
   totalBytes: number
   error?: string
+}
+
+/** 召唤前确保专家团为最新版的结果 */
+export interface EnsureExpertGroupLatestResult {
+  /** 是否实际下载安装了新版本 */
+  updated: boolean
+  /** 升级后的插件信息（仅 updated 为 true 时存在） */
+  plugin?: AgentPluginInfo
 }
 
 export interface AgentPluginsConfig {
@@ -1465,6 +1473,27 @@ export interface AgentSaveWorkspaceFilesInput {
   files: Array<{ filename: string; data: string }>
   /** 可选目标目录；必须位于 workspace-files 内，默认保存到工作区文件根目录 */
   targetDir?: string
+}
+
+/** 复制外部文件/文件夹到托管目录的输入 */
+export interface AgentCopyExternalPathsInput {
+  workspaceSlug: string
+  /** 目标作用域：会话文件 或 工作区文件 */
+  scope: 'session' | 'workspace'
+  /** scope 为 'session' 时必填 */
+  sessionId?: string
+  /** 目标目录绝对路径；必须位于对应托管根目录内 */
+  targetDir: string
+  /** 源文件/文件夹的绝对磁盘路径 */
+  sourcePaths: string[]
+}
+
+/** 复制外部文件/文件夹的结果 */
+export interface AgentCopyExternalPathsResult {
+  /** 成功复制的项目（name 为相对目标目录的名称） */
+  copied: Array<{ name: string; targetPath: string }>
+  /** 被跳过的项目及原因 */
+  skipped: Array<{ path: string; reason: string }>
 }
 
 /** 附加/分离目录的输入参数 */
@@ -1856,6 +1885,8 @@ export const AGENT_IPC_CHANNELS = {
   SAVE_FILES_TO_SESSION: 'agent:save-files-to-session',
   /** 保存文件到工作区文件目录 */
   SAVE_FILES_TO_WORKSPACE: 'agent:save-files-to-workspace',
+  /** 复制外部文件/文件夹到托管目录（支持文件夹递归） */
+  COPY_EXTERNAL_PATHS: 'agent:copy-external-paths',
   /** 获取工作区文件目录路径 */
   GET_WORKSPACE_FILES_PATH: 'agent:get-workspace-files-path',
   /** 打开文件夹选择对话框 */
@@ -1906,6 +1937,8 @@ export const AGENT_IPC_CHANNELS = {
   RENAME_FILE: 'agent:rename-file',
   /** 移动文件/目录到目标目录 */
   MOVE_FILE: 'agent:move-file',
+  /** 复制文件/目录到目标目录 */
+  COPY_FILE: 'agent:copy-file',
   /** 列出附加目录内容（无工作区路径限制） */
   LIST_ATTACHED_DIRECTORY: 'agent:list-attached-directory',
   /** 在文件管理器中显示附加目录文件（无工作区路径限制） */
@@ -1976,6 +2009,8 @@ export const EXPERT_IPC_CHANNELS = {
   CANCEL_DOWNLOAD: 'expert:cancel-download',
   /** 获取服务端专家团分类列表 */
   FETCH_CATEGORIES: 'expert:fetch-categories',
+  /** 召唤前确保专家团为最新版（检查 group-detail 版本并按需下载） */
+  ENSURE_LATEST: 'expert:ensure-latest',
 } as const
 
 /**

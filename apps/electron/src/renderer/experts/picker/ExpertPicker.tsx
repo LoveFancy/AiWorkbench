@@ -119,6 +119,7 @@ export function ExpertPicker({
 
           <div className="px-5 pr-12">
             <div className="relative w-full min-w-0">
+
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={query}
