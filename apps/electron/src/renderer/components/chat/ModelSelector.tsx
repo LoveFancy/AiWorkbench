@@ -7,7 +7,7 @@
 
 import * as React from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
-import { ChevronDown, Cpu, Search, Settings2 } from 'lucide-react'
+import { ChevronDown, Cpu, Search, Settings2, Shield } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Button } from '@/components/ui/button'
@@ -308,6 +308,12 @@ export function ModelSelector({
         sideOffset={6}
         className="p-0 gap-0 max-h-[480px] max-w-[340px] overflow-hidden"
       >
+        {/* SaaS 安全提示（始终可见） */}
+        <div className="px-3.5 py-2.5 border-b border-border/60 bg-amber-500/10 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+          <Shield className="size-3.5 mt-0.5 flex-shrink-0" />
+          <span>敏感数据请勿使用 SaaS 模型，建议优先选择本地（local）模型。</span>
+        </div>
+
         {/* Auto Mode 开关区 */}
         {autoModeConfig && (
           <div className="px-3.5 py-2.5 border-b border-border/60">
