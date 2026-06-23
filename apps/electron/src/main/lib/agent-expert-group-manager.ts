@@ -8,7 +8,7 @@ import type {
   AgentPluginIssueLevel,
   McpServerEntry,
 } from '@proma/shared'
-import { listInstalledPlugins } from './plugin-registry-service'
+import { listInstalledPlugins, listInstalledPluginsAsync } from './plugin-registry-service'
 import { getDefaultSkillsDir } from './config-paths'
 
 const SUPPORTED_BUILTIN_TOOLS = new Set(['web-search'])
@@ -208,6 +208,56 @@ function validateExpertReferences(pluginPath: string, manifest: AgentExpertGroup
 export function listAgentExpertGroups(paths?: ExpertGroupRegistryPaths): AgentExpertGroupInfo[] {
   const groups: AgentExpertGroupInfo[] = []
   for (const plugin of listInstalledPlugins(paths)) {
+    const capabilities = plugin.capabilities.filter((capability) => capability.type === 'expert-group' && capability.relativePath)
+    for (const capability of capabilities) {
+      const filePath = join(plugin.path, capability.relativePath!)
+      const { manifest, issues } = readExpertManifest(filePath, plugin.name)
+      if (!manifest) {
+        groups.push({
+          id: capability.name,
+          name: plugin.name,
+          mainRole: { name: '', prompt: '' },
+          expertType: capability.expertType,
+          sourcePluginId: plugin.id,
+          sourceLabel: plugin.name,
+          sourcePluginVersion: plugin.version,
+          sourcePluginKind: plugin.kind,
+          sourcePluginPath: plugin.path,
+          filePath,
+          enabled: plugin.enabled,
+          status: statusFor(plugin.enabled, issues),
+          issues,
+        })
+        continue
+      }
+
+      const allIssues = [
+        ...issues,
+        ...validateExpertReferences(plugin.path, manifest, paths),
+        ...(capability.issue ? [capability.issue] : []),
+      ]
+      groups.push({
+        ...manifest,
+        expertType: manifest.expertType ?? capability.expertType,
+        sourcePluginId: plugin.id,
+        sourceLabel: plugin.name,
+        sourcePluginVersion: plugin.version,
+        sourcePluginKind: plugin.kind,
+        sourcePluginPath: plugin.path,
+        filePath,
+        enabled: plugin.enabled,
+        status: statusFor(plugin.enabled, allIssues),
+        issues: allIssues,
+      })
+    }
+  }
+  return groups.sort((a, b) => a.name.localeCompare(b.name))
+}
+
+export async function listAgentExpertGroupsAsync(paths?: ExpertGroupRegistryPaths): Promise<AgentExpertGroupInfo[]> {
+  const groups: AgentExpertGroupInfo[] = []
+  const plugins = await listInstalledPluginsAsync(paths)
+  for (const plugin of plugins) {
     const capabilities = plugin.capabilities.filter((capability) => capability.type === 'expert-group' && capability.relativePath)
     for (const capability of capabilities) {
       const filePath = join(plugin.path, capability.relativePath!)
