@@ -965,7 +965,7 @@ export async function installUserPluginZipAsync(
     }
     assertNoDuplicateExpertGroups(pluginRoot, pluginId, manifest, resolved)
 
-    const status = copyPluginAtomically(pluginRoot, targetDir, options.overwrite ?? false)
+    const status = await copyPluginAtomicallyAsync(pluginRoot, targetDir, options.overwrite ?? false, options.signal)
     const config = readPluginsConfig({ configPath: resolved.configPath })
     const previous = config.plugins[pluginId]
     const now = new Date().toISOString()
