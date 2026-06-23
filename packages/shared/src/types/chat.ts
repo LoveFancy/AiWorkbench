@@ -12,6 +12,9 @@ import type { ProviderType } from './channel'
 /** 附件文件大小上限：100MB */
 export const MAX_ATTACHMENT_SIZE = 100 * 1024 * 1024
 
+/** 欢迎对话中内置使用教程附件的固定文件名（前后端共用，点击可打开使用手册） */
+export const WELCOME_TUTORIAL_ATTACHMENT_FILENAME = 'WorkMate 伴行使用教程.md'
+
 /** 文件附件 */
 export interface FileAttachment {
   /** 附件唯一标识 */
