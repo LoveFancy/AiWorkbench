@@ -14,6 +14,7 @@
 import { writeFileSync, readFileSync, existsSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { execSync } from 'node:child_process'
+import axios, { type AxiosInstance } from 'axios'
 import { protectData, LARK_CLI_DIR } from './dpapi'
 import { getEffectiveProxyUrl } from './proxy-settings-service'
 import { HttpsProxyAgent } from 'https-proxy-agent'
@@ -26,20 +27,35 @@ const CONFIG_PATH = join(LARK_CLI_DIR, 'config.json')
 const REG_PATH = 'HKCU\\Software\\LarkCli\\keychain\\lark-cli'
 const REG_FULL = 'HKEY_CURRENT_USER\\Software\\LarkCli\\keychain\\lark-cli'
 
-// ===== 代理感知的 fetch =====
+// ===== 代理感知的 axios 实例 =====
 
-/**
- * 带系统代理的 fetch，用于飞书 CLI OAuth 请求。
- * Electron 原生 fetch 不走系统代理，这里通过 HttpsProxyAgent 补偿。
- */
-async function proxyFetch(url: string, init?: RequestInit): Promise<Response> {
+let _axiosInstance: AxiosInstance | null = null
+
+async function getAxiosInstance(): Promise<AxiosInstance> {
+  if (_axiosInstance) return _axiosInstance
+
+  const instance = axios.create({
+    proxy: false,
+    validateStatus: () => true, // OAuth 端点返回 400 表示 pending/slow_down，不是异常
+  })
   const proxyUrl = await getEffectiveProxyUrl()
+
   if (proxyUrl) {
-    console.log('[飞书 CLI 认证] 使用代理:', proxyUrl)
+    try {
+      const safe = new URL(proxyUrl)
+      safe.password = safe.password ? '***' : ''
+      safe.username = safe.username ? '***' : ''
+      console.log('[飞书 CLI 认证] 使用代理:', safe.toString())
+    } catch {
+      console.log('[飞书 CLI 认证] 使用代理（URL 解析失败）')
+    }
     const agent = new HttpsProxyAgent(proxyUrl)
-    return fetch(url, { ...init, dispatcher: agent } as RequestInit & { dispatcher?: unknown })
+    instance.defaults.httpAgent = agent
+    instance.defaults.httpsAgent = agent
   }
-  return fetch(url, init)
+
+  _axiosInstance = instance
+  return instance
 }
 
 const DEVICE_AUTH_SCOPE = [
@@ -112,7 +128,9 @@ function regSet(account: string, value: string): void {
   const regFile = join(LARK_CLI_DIR, '.r.reg')
   writeFileSync(regFile, `Windows Registry Editor Version 5.00\r\n\r\n[${REG_FULL}]\r\n"${regName}"="${encryptedB64}"\r\n`, 'utf-8')
   execSync(`reg import "${regFile}"`, { stdio: 'ignore' })
-  try { rmSync(regFile, { force: true }) } catch { /* ignore */ }
+  try { rmSync(regFile, { force: true }) } catch (err) {
+    console.warn('[飞书 CLI] 删除临时注册表文件失败:', err instanceof Error ? err.message : err)
+  }
 }
 
 /** 检查 Registry 中是否存在指定 key */
@@ -129,23 +147,31 @@ export async function startFeishuDeviceAuth(appId: string, appSecret: string): P
   regSet(`appsecret:${appId}`, appSecret)
   writeConfig(appId, '', '')
 
-  const resp = await proxyFetch(`${FEISHU_ACCOUNTS}/oauth/v1/device_authorization`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ client_id: appId, client_secret: appSecret, grant_type: 'urn:ietf:params:oauth:grant-type:device_code', scope: DEVICE_AUTH_SCOPE }),
+  const http = await getAxiosInstance()
+  const { data } = await http.post(`${FEISHU_ACCOUNTS}/oauth/v1/device_authorization`, {
+    client_id: appId, client_secret: appSecret,
+    grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+    scope: DEVICE_AUTH_SCOPE,
   })
-  const data = await resp.json()
   if (!data.device_code) throw new Error('设备授权响应缺少 device_code')
-  return { deviceCode: data.device_code, verificationUri: data.verification_uri_complete || data.verification_uri, expiresIn: data.expires_in ?? 600, interval: data.interval ?? 5 }
+  return {
+    deviceCode: data.device_code,
+    verificationUri: data.verification_uri_complete || data.verification_uri,
+    expiresIn: data.expires_in ?? 600,
+    interval: data.interval ?? 5,
+  }
 }
 
 export async function pollFeishuDeviceAuth(
   appId: string, appSecret: string, deviceCode: string, phase = 1,
 ): Promise<FeishuCliPollResult> {
-  const resp = await proxyFetch(`${FEISHU_BASE}/open-apis/authen/v2/oauth/token`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ grant_type: 'urn:ietf:params:oauth:grant-type:device_code', device_code: deviceCode, client_id: appId, client_secret: appSecret }),
+  const http = await getAxiosInstance()
+  const { data: body } = await http.post(`${FEISHU_BASE}/open-apis/authen/v2/oauth/token`, {
+    grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+    device_code: deviceCode,
+    client_id: appId,
+    client_secret: appSecret,
   })
-  const body = await resp.json()
   if (body.error === 'authorization_pending' || body.error === 'slow_down') return { pending: true, phase }
   if (body.error === 'expired_token') throw new Error('device_code 已过期')
 
@@ -155,17 +181,25 @@ export async function pollFeishuDeviceAuth(
 
   if (phase === 1 && !rt) {
     await new Promise((r) => setTimeout(r, 5000))
-    const r2 = await proxyFetch(`${FEISHU_ACCOUNTS}/oauth/v1/device_authorization`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ client_id: appId, client_secret: appSecret, grant_type: 'urn:ietf:params:oauth:grant-type:device_code', scope: DEVICE_AUTH_SCOPE }),
+    const { data: b2 } = await http.post(`${FEISHU_ACCOUNTS}/oauth/v1/device_authorization`, {
+      client_id: appId, client_secret: appSecret,
+      grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+      scope: DEVICE_AUTH_SCOPE,
     })
-    const b2 = await r2.json()
-    return { pending: true, phase: 2, deviceCode: b2.device_code, verificationUri: b2.verification_uri_complete || b2.verification_uri, expiresIn: b2.expires_in ?? 600, interval: b2.interval ?? 5 }
+    return {
+      pending: true, phase: 2,
+      deviceCode: b2.device_code,
+      verificationUri: b2.verification_uri_complete || b2.verification_uri,
+      expiresIn: b2.expires_in ?? 600,
+      interval: b2.interval ?? 5,
+    }
   }
 
   let openId = '', userName = ''
   try {
-    const u = await (await proxyFetch(`${FEISHU_BASE}/open-apis/authen/v1/user_info`, { headers: { Authorization: `Bearer ${at}` } })).json()
+    const { data: u } = await http.get(`${FEISHU_BASE}/open-apis/authen/v1/user_info`, {
+      headers: { Authorization: `Bearer ${at}` },
+    })
     if (u.code === 0 && u.data) { openId = u.data.open_id; userName = u.data.name }
   } catch { /* ignore */ }
   if (!openId) { openId = appId; userName = appId.slice(0, 12) }
@@ -183,7 +217,13 @@ export async function pollFeishuDeviceAuth(
   writeConfig(appId, openId, userName)
 
   console.log(`[飞书 CLI] 认证完成 (user: ${userName})`)
-  return { pending: false, phase, accessToken: at, refreshToken: rt, expiresIn: body.data?.expires_in ?? body.expires_in ?? 6900, scope: body.data?.scope || body.scope || '', userName, openId }
+  return {
+    pending: false, phase,
+    accessToken: at, refreshToken: rt,
+    expiresIn: body.data?.expires_in ?? body.expires_in ?? 6900,
+    scope: body.data?.scope || body.scope || '',
+    userName, openId,
+  }
 }
 
 export function getFeishuCliAuthStatus(): FeishuCliAuthState {

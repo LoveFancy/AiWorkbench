@@ -718,7 +718,7 @@ function RegisterFeishuDialog({ open, onOpenChange, onSuccess }: RegisterFeishuD
       .then((result) => {
         if (cancelled) return
         setPhase('success')
-        onSuccessRef.current({ appId: result.appId, appSecret: result.appSecret })
+        onSuccessRef.current({ appId: result.appId })
       })
       .catch((err: unknown) => {
         if (cancelled) return
@@ -1287,13 +1287,12 @@ function FeishuConfigTab(): React.ReactElement {
   const [registerOpen, setRegisterOpen] = React.useState(false)
 
   /** 扫码成功后：保存配置 + 自动启动 Bot */
-  const handleRegisterSuccess = React.useCallback(async (result: { appId: string; appSecret: string }) => {
+  const handleRegisterSuccess = React.useCallback(async (result: { appId: string }) => {
     try {
       const saved = await window.electronAPI.saveFeishuBotConfig({
         name: defaultBotName(bots.length),
         enabled: true,
         appId: result.appId,
-        appSecret: result.appSecret,
         defaultWorkspaceId: undefined,
         defaultChannelId: undefined,
         defaultModelId: undefined,

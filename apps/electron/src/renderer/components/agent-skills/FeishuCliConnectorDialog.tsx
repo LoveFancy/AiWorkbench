@@ -40,6 +40,7 @@ export function FeishuCliConnectorDialog({
   const [loading, setLoading] = React.useState(false)
 
   const pollingRef = React.useRef<ReturnType<typeof setInterval> | null>(null)
+  const cancelledRef = React.useRef(false)
   const curPhaseRef = React.useRef(1)
   const curDeviceCodeRef = React.useRef('')
   const curAppIdRef = React.useRef('')
@@ -51,6 +52,7 @@ export function FeishuCliConnectorDialog({
       resetState()
       return
     }
+    cancelledRef.current = false
     window.electronAPI.getFeishuCliAuthStatus().then((state) => {
       if (state.status === 'connected') {
         setStep('done')
@@ -64,9 +66,11 @@ export function FeishuCliConnectorDialog({
   }, [open])
 
   const resetState = (): void => {
+    cancelledRef.current = true
     stopPolling()
     cleanupListenersRef.current?.()
     cleanupListenersRef.current = null
+    window.electronAPI.cancelFeishuCliRegister().catch(() => {})
     setStep('idle')
     setVerificationUri('')
     setStepLabel('')
@@ -116,6 +120,7 @@ export function FeishuCliConnectorDialog({
 
         if (!r.pending) {
           stopPolling()
+          if (cancelledRef.current) return
           setStep('done')
           setUserName(r.userName ?? null)
           setLoading(false)
@@ -126,6 +131,7 @@ export function FeishuCliConnectorDialog({
 
         if (r.phase === 2 && r.deviceCode && r.verificationUri) {
           stopPolling()
+          if (cancelledRef.current) return
           setStep('authorizing')
           setStepLabel('请在浏览器中再次确认授权（已自动打开链接）')
           setVerificationUri(r.verificationUri)
@@ -142,11 +148,13 @@ export function FeishuCliConnectorDialog({
 
   /** 发起设备授权 */
   const startOAuthFlow = async (appId: string, appSecret: string): Promise<void> => {
+    if (cancelledRef.current) return
     setStep('authorizing')
     setStepLabel('正在生成授权链接...')
 
     try {
       const dc = await window.electronAPI.startFeishuDeviceAuth(appId, appSecret)
+      if (cancelledRef.current) return
       setVerificationUri(dc.verificationUri)
       setStepLabel('已自动打开浏览器，请在浏览器中确认授权飞书权限')
       // 自动打开链接
@@ -160,12 +168,14 @@ export function FeishuCliConnectorDialog({
   /** 开始连接：先检测本地配置，已有则跳过 */
   const startConnect = async (): Promise<void> => {
     resetState()
+    cancelledRef.current = false
     setLoading(true)
 
     // 先检测是否已有有效配置
     try {
       const status = await window.electronAPI.getFeishuCliAuthStatus()
       if (status.status === 'connected') {
+        if (cancelledRef.current) return
         setStep('done')
         setUserName(status.userName ?? null)
         setLoading(false)
@@ -174,6 +184,8 @@ export function FeishuCliConnectorDialog({
         return
       }
     } catch { /* 继续正常流程 */ }
+
+    if (cancelledRef.current) return
 
     setStep('registering')
     setStepLabel('正在初始化...')
@@ -203,6 +215,7 @@ export function FeishuCliConnectorDialog({
 
       // 调用 SDK registerApp（阻塞直至用户扫码完成）
       const reg = await window.electronAPI.registerFeishuCliApp()
+      if (cancelledRef.current) return
       curAppIdRef.current = reg.appId
       curAppSecretRef.current = reg.appSecret
 
@@ -218,8 +231,11 @@ export function FeishuCliConnectorDialog({
   }
 
   const fail = (msg: string): void => {
+    if (cancelledRef.current) return
+    // 脱敏：隐藏可能包含的 appSecret/token 等敏感信息
+    const safe = msg.length > 200 ? msg.slice(0, 200) + '...' : msg
     setStep('error')
-    setErrorMessage(msg)
+    setErrorMessage(safe)
     setLoading(false)
   }
 
