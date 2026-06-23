@@ -801,6 +801,7 @@ export function syncDefaultConnectorsToWorkspace(workspaceSlug: string): void {
       if (entry.status) existing.status = entry.status
       if (entry.serverName) existing.serverName = entry.serverName
       if (entry.version) existing.version = entry.version
+      if (entry.sortOrder !== undefined) existing.sortOrder = entry.sortOrder
       existing.enabled = preservedEnabled
       changed = true
       continue
@@ -873,6 +874,7 @@ function getDefaultConnectorEntries(): Record<string, ConnectorEntry> {
       if (raw.status) entry.status = raw.status
       if (raw.serverName) entry.serverName = raw.serverName
       if (raw.version) entry.version = raw.version
+      if (raw.sortOrder !== undefined) entry.sortOrder = raw.sortOrder
       // skillDirs / disabledTools 不写入 connectors.json，
       // 由运行时从 connectors/{name}/connector.json 读取
 

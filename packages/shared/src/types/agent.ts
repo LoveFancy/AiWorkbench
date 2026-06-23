@@ -801,6 +801,8 @@ export interface ConnectorEntry {
   skillDirs?: string[]
   /** 版本号（用于预置连接器升级判断） */
   version?: string
+  /** 排序权重（越小越靠前，预置连接器 UI 排序用） */
+  sortOrder?: number
   /** MCP 类型专用：禁用的工具名列表（不暴露给 Agent） */
   disabledTools?: string[]
 }

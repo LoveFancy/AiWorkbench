@@ -6,6 +6,7 @@
   "status": "available",
   "serverName": "huatai-email",
   "version": "1.0.1",
+  "sortOrder": 1,
   "disabledTools": ["send_email", "delete_email"],
   "mcpServer": {
     "type": "stdio",
