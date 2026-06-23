@@ -341,7 +341,12 @@ export function getAgentWorkspacesDir(): string {
  * @returns ~/.workmate/agent-workspaces/{slug}/
  */
 export function getAgentWorkspacePath(slug: string): string {
-  const dir = join(getAgentWorkspacesDir(), slug)
+  // 路径穿越防护
+  const trimmed = slug.trim()
+  if (!trimmed || trimmed === '.' || trimmed === '..' || trimmed.includes('/') || trimmed.includes('\\')) {
+    throw new Error('无效的工作区 slug')
+  }
+  const dir = join(getAgentWorkspacesDir(), trimmed)
 
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true })

@@ -50,6 +50,12 @@ export function buildMcpServers(
     if (connector.type !== 'mcp') continue
     if (selectedNames.size > 0 && !selectedNames.has(name)) continue
 
+    // 路径穿越防护
+    if (!/^[a-zA-Z0-9._-]+$/.test(name)) {
+      console.warn(`[Agent 编排] 跳过非法连接器名称: ${name}`)
+      continue
+    }
+
     // 优先从 connectors/{name}/mcp.json 加载
     const mcpPath = join(getConnectorsDir(workspaceSlug), name, 'mcp.json')
     if (existsSync(mcpPath)) {

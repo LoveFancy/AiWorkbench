@@ -77,19 +77,24 @@ function readConfig(): LarkCliConfig | null {
   try { return JSON.parse(readFileSync(CONFIG_PATH, 'utf-8')) } catch { return null }
 }
 
+// 防止并发写入竞争：writeConfig 先读后写，多调用方同时写入会丢数据
+let writeConfigLock: Promise<void> = Promise.resolve()
+
 function writeConfig(appId: string, openId: string, userName: string): void {
-  const existing = readConfig()
-  const apps = [...(existing?.apps ?? [])]
-  const idx = apps.findIndex((a) => a.appId === appId)
-  const entry: LarkCliAppEntry = {
-    appId, brand: 'feishu', lang: 'zh', defaultAs: 'user',
-    appSecret: { source: 'keychain', id: `appsecret:${appId}` },
-    users: openId ? [{ userOpenId: openId, userName }] : [],
-  }
-  if (idx >= 0) apps[idx] = entry
-  else apps.push(entry)
-  if (!existsSync(LARK_CLI_DIR)) mkdirSync(LARK_CLI_DIR, { recursive: true })
-  writeFileSync(CONFIG_PATH, JSON.stringify({ apps, currentApp: appId }, null, 2), 'utf-8')
+  writeConfigLock = writeConfigLock.then(() => {
+    const existing = readConfig()
+    const apps = [...(existing?.apps ?? [])]
+    const idx = apps.findIndex((a) => a.appId === appId)
+    const entry: LarkCliAppEntry = {
+      appId, brand: 'feishu', lang: 'zh', defaultAs: 'user',
+      appSecret: { source: 'keychain', id: `appsecret:${appId}` },
+      users: openId ? [{ userOpenId: openId, userName }] : [],
+    }
+    if (idx >= 0) apps[idx] = entry
+    else apps.push(entry)
+    if (!existsSync(LARK_CLI_DIR)) mkdirSync(LARK_CLI_DIR, { recursive: true })
+    writeFileSync(CONFIG_PATH, JSON.stringify({ apps, currentApp: appId }, null, 2), 'utf-8')
+  })
 }
 
 // ===== Registry（只用 reg import，不解密） =====

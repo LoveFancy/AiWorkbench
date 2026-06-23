@@ -249,7 +249,7 @@ export async function initializeDefaultConnector(
       [serverName]: entry,
     },
   })
-  logConnectorInfo('已写入 MCP 配置', { workspaceSlug, serverName: 'email' })
+  logConnectorInfo('已写入 MCP 配置', { workspaceSlug, serverName })
 
   // 启用 connectors.json 中的连接器条目（并补齐 serverName）
   if (connectorDef) {

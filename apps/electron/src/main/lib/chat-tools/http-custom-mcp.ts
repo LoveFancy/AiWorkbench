@@ -95,11 +95,11 @@ function buildMcpTool(
         return { content: [{ type: 'text' as const, text }] }
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error)
-        console.error(`[HTTP Custom MCP] ${meta.id} 执行失败:`, error)
+        console.error(`[HTTP Custom MCP] ${meta.id} 执行失败:`, msg)
         return { content: [{ type: 'text' as const, text: `HTTP 请求失败: ${msg}` }] }
       }
     },
-    { annotations: { readOnlyHint: true } },
+    { annotations: { readOnlyHint: meta.method === 'GET' } },
   )
 }
 

@@ -697,21 +697,21 @@ export interface ElectronAPI {
   /** 初始化内置连接器 */
   initializeDefaultConnector: (workspaceSlug: string, input: InitializeDefaultConnectorInput) => Promise<InitializeDefaultConnectorResult>
   /** 获取飞书 CLI 授权状态 */
-   getFeishuCliAuthStatus: () => Promise<FeishuCliAuthState>
-   /** 注册飞书 CLI 应用（SDK registerApp，阻塞直至用户扫码完成） */
-   registerFeishuCliApp: () => Promise<{ appId: string; appSecret: string }>
-   /** 取消飞书 CLI 注册 */
-   cancelFeishuCliRegister: () => Promise<void>
-   /** 监听注册 QR 码就绪 */
-   onFeishuCliRegisterQrcode: (callback: (payload: { url: string; expireIn: number }) => void) => () => void
-   /** 监听注册状态变更 */
-   onFeishuCliRegisterStatus: (callback: (payload: { status: string; interval?: number }) => void) => () => void
-   /** 发起设备授权（获取 device_code + verification_uri） */
-   startFeishuDeviceAuth: (appId: string, appSecret: string) => Promise<FeishuCliDeviceCodeData>
-   /** 轮询设备授权 Token（含两阶段认证） */
-   pollFeishuDeviceAuth: (appId: string, appSecret: string, deviceCode: string, phase: number) => Promise<FeishuCliPollResult>
-   /** 解绑飞书 CLI（清除凭据） */
-   unbindFeishuCli: () => Promise<boolean>
+  getFeishuCliAuthStatus: () => Promise<FeishuCliAuthState>
+  /** 注册飞书 CLI 应用（SDK registerApp，阻塞直至用户扫码完成） */
+  registerFeishuCliApp: () => Promise<{ appId: string; appSecret: string }>
+  /** 取消飞书 CLI 注册 */
+  cancelFeishuCliRegister: () => Promise<void>
+  /** 监听注册 QR 码就绪 */
+  onFeishuCliRegisterQrcode: (callback: (payload: { url: string; expireIn: number }) => void) => () => void
+  /** 监听注册状态变更 */
+  onFeishuCliRegisterStatus: (callback: (payload: { status: string; interval?: number }) => void) => () => void
+  /** 发起设备授权（获取 device_code + verification_uri） */
+  startFeishuDeviceAuth: (appId: string, appSecret: string) => Promise<FeishuCliDeviceCodeData>
+  /** 轮询设备授权 Token（含两阶段认证） */
+  pollFeishuDeviceAuth: (appId: string, appSecret: string, deviceCode: string, phase: number) => Promise<FeishuCliPollResult>
+  /** 解绑飞书 CLI（清除凭据） */
+  unbindFeishuCli: () => Promise<boolean>
 
   /** 获取工作区连接器配置 */
   getConnectorsConfig: (workspaceSlug: string) => Promise<ConnectorsConfig>

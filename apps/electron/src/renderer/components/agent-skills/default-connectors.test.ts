@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
+import { buildHuataiEmailMcpEntry } from '@proma/shared'
 import {
-  buildHuataiEmailMcpEntry,
   getPresetConnectorDefinitions,
   getPresetConnectorServerNames,
 } from './default-connectors'

@@ -10,6 +10,7 @@ export interface HuataiEmailInput {
  * 不包含 SMTP 环境变量，仅暴露读信能力
  */
 export function buildHuataiEmailMcpEntry(input: HuataiEmailInput): McpServerEntry {
+  if (!input) throw new Error('邮箱配置不能为空')
   const emailAddress = input.emailAddress.trim()
   return {
     type: 'stdio',

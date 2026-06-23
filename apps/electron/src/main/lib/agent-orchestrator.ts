@@ -998,7 +998,6 @@ export class AgentOrchestrator {
         // 连接器 CLI Skill 扫描：外层 connectors.json 拿 enabled/type，
         // 内层 connectors/{name}/connector.json 拿 skillDirs
         ...(() => {
-          const { getConnectorsDir } = require('./config-paths')
           const connectorsDir = workspaceSlug ? getConnectorsDir(workspaceSlug) : ''
           if (!connectorsDir) return {}
 
@@ -1013,6 +1012,10 @@ export class AgentOrchestrator {
               // 兜底从 connectors.json 的 skillDirs 字段读取（旧格式兼容）
               const dirs = readSkillDirsFromConnectorJson(connectorsDir, name) ?? connector.skillDirs ?? []
               for (const d of dirs) {
+                if (!/^[a-zA-Z0-9._-]+$/.test(d)) {
+                  console.warn(`[Agent 编排] 跳过非法 skill 目录: ${name}/${d}`)
+                  continue
+                }
                 skillDirs.push(join(connectorsDir, name, d))
               }
             }

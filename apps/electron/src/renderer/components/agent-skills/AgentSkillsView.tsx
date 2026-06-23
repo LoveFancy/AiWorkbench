@@ -145,7 +145,11 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
     try {
       const config = await window.electronAPI.getConnectorsConfig(data.workspaceSlug)
       const connector = config.connectors[connectorId]
-      if (!connector) return
+      if (!connector) {
+        // 回滚乐观 UI 更新
+        setConnectorEnabledMap((prev) => ({ ...prev, [connectorId]: !enabled }))
+        return
+      }
       await window.electronAPI.saveConnectorsConfig(data.workspaceSlug, {
         ...config,
         connectors: {

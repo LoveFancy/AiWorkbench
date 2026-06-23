@@ -678,8 +678,8 @@ function CliRecommendationCard(): React.ReactElement {
 interface RegisterFeishuDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** 注册成功后回调，返回主进程拿到的 App ID/Secret；上层应在此处保存配置并启动 Bot */
-  onSuccess: (result: { appId: string; appSecret: string }) => void
+  /** 注册成功后回调，返回主进程拿到的 App ID；上层应在此处保存配置并启动 Bot（appSecret 由主进程暂存） */
+  onSuccess: (result: { appId: string }) => void
 }
 
 /** 扫码注册飞书 Bot：弹窗内全程引导，扫码成功后自动保存配置并启动 Bot */

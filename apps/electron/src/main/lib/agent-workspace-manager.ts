@@ -638,8 +638,9 @@ export function registerUserConnector(
   entry: McpServerEntry,
   displayName?: string,
 ): void {
+  const safeName = assertValidSlug(name)
   const connectorsDir = getConnectorsDir(workspaceSlug)
-  const connectorDir = join(connectorsDir, name)
+  const connectorDir = join(connectorsDir, safeName)
 
   // 1. 创建 connectors/{name}/ 目录
   if (!existsSync(connectorDir)) {
@@ -703,10 +704,11 @@ export function migrateMcpJsonToConnectors(workspaceSlug: string): void {
     const connectors: Record<string, ConnectorEntry> = {}
 
     for (const [name, entry] of Object.entries(oldConfig.servers ?? {})) {
-      if (name === 'memos-cloud') continue // 系统保留
+      const safeName = assertValidSlug(name)
+      if (safeName === 'memos-cloud') continue // 系统保留
       if (!entry.command && !entry.url) continue // 无有效配置跳过
 
-      const mcpDir = join(getConnectorsDir(workspaceSlug), name)
+      const mcpDir = join(getConnectorsDir(workspaceSlug), safeName)
       if (!existsSync(mcpDir)) {
         mkdirSync(mcpDir, { recursive: true })
       }
@@ -814,6 +816,27 @@ export function syncDefaultConnectorsToWorkspace(workspaceSlug: string): void {
 }
 
 /**
+ * 启动时将预置连接器同步到所有已有工作区。
+ *
+ * 只同步不存在 connectors/ 目录的工作区（新建工作区已在 createAgentWorkspace 中同步）。
+ */
+export function syncDefaultConnectorsToAllWorkspaces(): void {
+  const index = readIndex()
+  for (const workspace of index.workspaces) {
+    try {
+      const connectorsDir = getConnectorsDir(workspace.slug)
+      // 如果 connectors 目录不存在或为空，执行初始同步
+      if (!existsSync(connectorsDir)) {
+        syncDefaultConnectorsToWorkspace(workspace.slug)
+        console.log(`[Agent 工作区] 为已有工作区同步预置连接器: ${workspace.slug}`)
+      }
+    } catch (err) {
+      console.warn(`[Agent 工作区] 同步预置连接器到 ${workspace.slug} 失败:`, err)
+    }
+  }
+}
+
+/**
  * 读取所有预置连接器的默认条目
  *
  * 从 default-connectors/{name}/connector.json 读取元数据，
@@ -875,7 +898,8 @@ function getDefaultConnectorEntries(): Record<string, ConnectorEntry> {
  * @returns skillDirs 数组，文件不存在或读取失败返回 null
  */
 export function readSkillDirsFromConnectorJson(connectorsDir: string, name: string): string[] | null {
-  const metaPath = join(connectorsDir, name, 'connector.json')
+  const safeName = assertValidSlug(name)
+  const metaPath = join(connectorsDir, safeName, 'connector.json')
   if (!existsSync(metaPath)) return null
 
   try {
@@ -898,7 +922,8 @@ export function readSkillDirsFromConnectorJson(connectorsDir: string, name: stri
  * @returns disabledTools 数组，文件不存在或读取失败返回 null
  */
 export function readDisabledToolsFromConnectorJson(connectorsDir: string, name: string): string[] | null {
-  const metaPath = join(connectorsDir, name, 'connector.json')
+  const safeName = assertValidSlug(name)
+  const metaPath = join(connectorsDir, safeName, 'connector.json')
   if (!existsSync(metaPath)) return null
 
   try {
@@ -1057,7 +1082,7 @@ interface DeleteWorkspaceSkillOptions {
 }
 
 export function deleteWorkspaceSkill(workspaceSlug: string, skillSlug: string, options: DeleteWorkspaceSkillOptions = {}): void {
-  const normalizedSkillSlug = normalizeSkillSlug(skillSlug)
+  const normalizedSkillSlug = assertValidSlug(skillSlug)
   const activeDir = options.activeDir ?? getWorkspaceSkillsDir(workspaceSlug)
   const inactiveDir = options.inactiveDir ?? getInactiveSkillsDir(workspaceSlug)
   const activePath = join(activeDir, normalizedSkillSlug)
@@ -1168,7 +1193,7 @@ export function installSkillZipToWorkspace(
     extractSkillZipSafely(zipPath, extractDir)
 
     const skillRoot = resolveExtractedSkillRoot(extractDir, zipPath)
-    const slug = normalizeSkillSlug(skillRoot.slug)
+    const slug = assertValidSlug(skillRoot.slug)
     const targetPath = join(activeDir, slug)
     const inactivePath = join(inactiveDir, slug)
 
@@ -1227,10 +1252,10 @@ function resolveExtractedSkillRoot(extractDir: string, zipPath: string): { path:
   throw new Error('Skill zip 包必须在根目录或唯一顶层目录中包含 SKILL.md')
 }
 
-function normalizeSkillSlug(slug: string): string {
+function assertValidSlug(slug: string): string {
   const trimmed = slug.trim()
   if (!trimmed || trimmed === '.' || trimmed === '..' || trimmed.includes('/') || trimmed.includes('\\')) {
-    throw new Error('Skill 名称包含不安全路径')
+    throw new Error(`非法名称: ${slug}`)
   }
   return trimmed
 }

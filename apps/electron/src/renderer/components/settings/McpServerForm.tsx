@@ -207,7 +207,14 @@ export function McpServerForm({ server, workspaceSlug, onSaved, onCancel }: McpS
       // 日志记录实际保存的状态
       console.log(`[MCP 表单] 注册用户连接器: ${serverName}, enabled: ${entry.enabled}, testResult: ${testResult?.success}`)
 
-      await window.electronAPI.registerUserConnector(workspaceSlug, serverName, entry, serverName)
+      // 路径穿越防护
+      const safeName = serverName.trim()
+      if (!safeName || safeName.includes('..') || safeName.includes('/') || safeName.includes('\\')) {
+        console.error('[MCP 表单] 非法连接器名称:', safeName)
+        return
+      }
+
+      await window.electronAPI.registerUserConnector(workspaceSlug, safeName, entry, safeName)
       onSaved()
     } catch (error) {
       console.error('[MCP 表单] 注册连接器失败:', error)

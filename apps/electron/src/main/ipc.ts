@@ -2137,6 +2137,8 @@ export function registerIpcHandlers(): void {
 
   // 注册飞书 CLI 应用（SDK registerApp）
   let activeFeishuCliRegisterAbort: AbortController | null = null
+  /** 注册成功后暂存 appSecret，避免返回到渲染进程，由 SAVE_BOT_CONFIG 消费后清除 */
+  let pendingFeishuAppSecret: string | null = null
 
   ipcMain.handle(
     AGENT_IPC_CHANNELS.REGISTER_FEISHU_APP,
@@ -2167,6 +2169,7 @@ export function registerIpcHandlers(): void {
             })
           },
         })
+        pendingFeishuAppSecret = result.client_secret
         return {
           appId: result.client_id,
           appSecret: result.client_secret,
@@ -4174,6 +4177,11 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     FEISHU_IPC_CHANNELS.SAVE_BOT_CONFIG,
     async (_, input: import('@proma/shared').FeishuBotConfigInput) => {
+      // 如果注册流程刚完成，用暂存的 appSecret 填充
+      if (!input.appSecret && pendingFeishuAppSecret) {
+        input = { ...input, appSecret: pendingFeishuAppSecret }
+        pendingFeishuAppSecret = null
+      }
       const saved = saveFeishuBotConfig(input)
       // 配置变更后自动重启或停止（不阻塞保存结果）
       if (saved.enabled && saved.appId && saved.appSecret) {

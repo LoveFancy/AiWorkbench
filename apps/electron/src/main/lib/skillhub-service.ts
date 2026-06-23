@@ -23,6 +23,7 @@ export interface HtSkillHubSkill {
   downloadCount?: number
   installed?: boolean
   files: string[]
+  canDownload?: boolean
 }
 
 export interface HtSkillHubSkillWithStatus extends HtSkillHubSkill {

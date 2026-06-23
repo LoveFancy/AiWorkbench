@@ -1,8 +1,5 @@
 import type { ConnectorEntry, ConnectorsConfig } from '@proma/shared'
 
-export { buildHuataiEmailMcpEntry } from '@proma/shared'
-export type { HuataiEmailInput } from '@proma/shared'
-
 /* 连接器元数据均从 default-connectors/{name}/connector.json 动态读取 */
 /** 预设连接器展示信息（从 ConnectorEntry 派生） */
 export interface PresetConnectorDefinition {
