@@ -3414,6 +3414,30 @@ export function registerIpcHandlers(): void {
     }
   )
 
+  // 打开用户插件本地命名空间目录（user-plugins/local），供手动放入自定义专家
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.OPEN_USER_PLUGINS_LOCAL_DIR,
+    async (): Promise<void> => {
+      const { join } = await import('node:path')
+      const { mkdirSync } = await import('node:fs')
+      const { getUserPluginsDir } = await import('./lib/config-paths')
+
+      const dir = join(getUserPluginsDir(), 'local')
+      mkdirSync(dir, { recursive: true })
+      await shell.openPath(dir)
+    }
+  )
+
+  // 打开默认 Skill 模板目录（default-skills），供手动放入自定义技能
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.OPEN_DEFAULT_SKILLS_DIR,
+    async (): Promise<void> => {
+      const { getDefaultSkillsDir } = await import('./lib/config-paths')
+
+      await shell.openPath(getDefaultSkillsDir())
+    }
+  )
+
   // 解析文件路径并读取内容（供内联预览使用）
   ipcMain.handle(
     'file:resolve-and-read',

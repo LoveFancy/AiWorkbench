@@ -2052,6 +2052,10 @@ export const AGENT_IPC_CHANNELS = {
   SHOW_IN_FOLDER: 'agent:show-in-folder',
   /** 在系统文件管理器中打开插件目录 */
   SHOW_PLUGIN_IN_FOLDER: 'agent:show-plugin-in-folder',
+  /** 打开用户插件本地命名空间目录（user-plugins/local），供手动放入自定义专家 */
+  OPEN_USER_PLUGINS_LOCAL_DIR: 'agent:open-user-plugins-local-dir',
+  /** 打开默认 Skill 模板目录（default-skills），供手动放入自定义技能 */
+  OPEN_DEFAULT_SKILLS_DIR: 'agent:open-default-skills-dir',
   /** 重命名文件/目录 */
   RENAME_FILE: 'agent:rename-file',
   /** 移动文件/目录到目标目录 */

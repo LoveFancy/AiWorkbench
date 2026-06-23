@@ -13,6 +13,8 @@ import { conversationsAtom, channelsAtom } from './atoms/chat-atoms'
 import { environmentCheckDialogOpenAtom } from './atoms/environment'
 import { tabsAtom, activeTabIdAtom, openTab } from './atoms/tab-atoms'
 import { platformModelsAtom, platformApiKeyAtom } from '@/platform-models/renderer'
+import { agentChannelIdAtom, agentModelIdAtom, agentChannelIdsAtom } from '@/atoms/agent-atoms'
+import { getAgentAvailableChannelIds, resolveAgentSelectedModel } from '@/lib/model-selection'
 import type { Channel } from '@proma/shared'
 import type { AppShellContextType } from './contexts/AppShellContext'
 
@@ -224,13 +226,19 @@ function PlatformChannelSync(): React.ReactElement {
   const [platformApiKey, setPlatformApiKey] = useAtom(platformApiKeyAtom)
   const channels = useAtomValue(channelsAtom)
   const setGlobalChannels = useSetAtom(channelsAtom)
+  const store = useStore()
+  const setAgentChannelId = useSetAtom(agentChannelIdAtom)
+  const setAgentModelId = useSetAtom(agentModelIdAtom)
+  const setAgentChannelIds = useSetAtom(agentChannelIdsAtom)
   const hasFetchedRef = React.useRef(false)
   const restoringRef = React.useRef(false)
+  const hasAutoSelectedRef = React.useRef(false)
 
   // 登录后自动拉取
   React.useEffect(() => {
     if (authState.isLoggedIn && !hasFetchedRef.current) {
       hasFetchedRef.current = true
+      hasAutoSelectedRef.current = false // 重新登录后重置标记
       window.electronAPI.platformModels.fetchModels(true).then((result: any) => {
         setPlatformModels(result.models ?? [])
         setPlatformApiKey(result.apiKey || null)
@@ -238,6 +246,7 @@ function PlatformChannelSync(): React.ReactElement {
     }
     if (!authState.isLoggedIn) {
       hasFetchedRef.current = false
+      hasAutoSelectedRef.current = false
       setPlatformModels([])
       setPlatformApiKey(null)
     }
@@ -252,11 +261,10 @@ function PlatformChannelSync(): React.ReactElement {
       return
     }
 
-    const allEnabled = platformModels.filter((m) => m.enabled)
     const hasPlatform = channels.some((c) => c.id === '__platform__')
 
     // 无平台数据：移除虚拟渠道（如果存在）
-    if (allEnabled.length === 0 || !platformApiKey) {
+    if (platformModels.length === 0 || !platformApiKey) {
       if (hasPlatform) {
         restoringRef.current = true
         setGlobalChannels((prev) => prev.filter((c) => c.id !== '__platform__'))
@@ -269,10 +277,10 @@ function PlatformChannelSync(): React.ReactElement {
       id: '__platform__',
       name: '泰为平台模型',
       provider: 'anthropic',
-      baseUrl: allEnabled.find((m) => m.baseUrl)?.baseUrl ?? '',
+      baseUrl: platformModels.find((m) => m.baseUrl)?.baseUrl ?? '',
       apiKey: platformApiKey,
       apiKeyConfigured: true,
-      models: allEnabled.map((m) => ({
+      models: platformModels.map((m) => ({
         id: m.id,
         name: m.name,
         enabled: true,
@@ -286,7 +294,27 @@ function PlatformChannelSync(): React.ReactElement {
       const others = prev.filter((c) => c.id !== '__platform__')
       return [platformChannel, ...others]
     })
-  }, [platformModels, platformApiKey, channels, setGlobalChannels])
+  
+    // 自动选择 Agent 模型：当 __platform__ 可用但 agentChannelId 尚未设置时
+    const nextChannels = [platformChannel, ...channels.filter((c) => c.id !== '__platform__')]
+    const validAgentChannelIds = getAgentAvailableChannelIds(nextChannels)
+    setAgentChannelIds(validAgentChannelIds)
+
+    const currentAgentChannelId = store.get(agentChannelIdAtom)
+    if (!currentAgentChannelId && !hasAutoSelectedRef.current && validAgentChannelIds.length > 0) {
+      const resolved = resolveAgentSelectedModel(nextChannels, null)
+      if (resolved) {
+        hasAutoSelectedRef.current = true
+        setAgentChannelId(resolved.channelId)
+        setAgentModelId(resolved.modelId)
+        window.electronAPI.updateSettings({
+          agentChannelId: resolved.channelId,
+          agentModelId: resolved.modelId,
+          agentChannelIds: validAgentChannelIds,
+        }).catch(console.error)
+      }
+    }
+  }, [platformModels, platformApiKey, channels, setGlobalChannels, store, setAgentChannelId, setAgentModelId, setAgentChannelIds])
 
   return <></>
 }

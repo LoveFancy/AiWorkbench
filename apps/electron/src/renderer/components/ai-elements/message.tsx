@@ -697,11 +697,17 @@ export function MessageStopped({ className, ...props }: MessageStoppedProps): Re
 interface MessageAttachmentsProps extends HTMLAttributes<HTMLDivElement> {
   /** 附件列表 */
   attachments: FileAttachment[]
+  /**
+   * 解析单个附件的点击动作。返回函数则该文件附件可点击并执行该动作；
+   * 返回 undefined 则不可点击。仅作用于非图片的文件附件。
+   */
+  resolveAttachmentAction?: (attachment: FileAttachment) => (() => void) | undefined
 }
 
 /** 消息附件容器 */
 export function MessageAttachments({
   attachments,
+  resolveAttachmentAction,
   className,
   ...props
 }: MessageAttachmentsProps): React.ReactElement {
@@ -723,7 +729,11 @@ export function MessageAttachments({
       {fileAttachments.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {fileAttachments.map((att) => (
-            <MessageAttachmentFile key={att.id} attachment={att} />
+            <MessageAttachmentFile
+              key={att.id}
+              attachment={att}
+              onClick={resolveAttachmentAction?.(att)}
+            />
           ))}
         </div>
       )}
@@ -814,17 +824,33 @@ function MessageAttachmentImage({ attachment, isSingle = false }: MessageAttachm
 
 interface MessageAttachmentFileProps {
   attachment: FileAttachment
+  /** 点击动作，存在时附件可点击（光标、键盘、hover 高亮） */
+  onClick?: () => void
 }
 
-/** 文件附件展示（标签样式，teal 色调） */
-function MessageAttachmentFile({ attachment }: MessageAttachmentFileProps): React.ReactElement {
+/** 文件附件展示（标签样式，teal 色调），传入 onClick 时可点击 */
+function MessageAttachmentFile({ attachment, onClick }: MessageAttachmentFileProps): React.ReactElement {
   /** 截断文件名 */
   const displayName = attachment.filename.length > 20
     ? attachment.filename.slice(0, 17) + '...'
     : attachment.filename
 
   return (
-    <div className="flex items-center gap-2 rounded-lg bg-[#37a5aa]/10 border border-[#37a5aa]/20 px-3 py-1.5 text-[13px] text-[#37a5aa] shrink-0">
+    <div
+      className={cn(
+        'flex items-center gap-2 rounded-lg bg-[#37a5aa]/10 border border-[#37a5aa]/20 px-3 py-1.5 text-[13px] text-[#37a5aa] shrink-0',
+        onClick && 'cursor-pointer transition-colors hover:bg-[#37a5aa]/15'
+      )}
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onClick()
+        }
+      } : undefined}
+    >
       <Paperclip className="size-4" />
       <span>{displayName}</span>
     </div>

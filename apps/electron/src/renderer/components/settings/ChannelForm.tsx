@@ -85,7 +85,7 @@ interface ChannelFormProps {
 }
 
 /** 所有可选供应商 */
-const PROVIDER_OPTIONS: ProviderType[] = ['anthropic', 'anthropic-compatible', 'openai', 'huatai-anthropic', 'deepseek', 'google', 'kimi-api', 'kimi-coding', 'zhipu', 'zhipu-coding', 'minimax', 'doubao', 'qwen', 'xiaomi', 'xiaomi-token-plan', 'custom']
+const PROVIDER_OPTIONS: ProviderType[] = ['huatai-anthropic', 'anthropic', 'anthropic-compatible', 'openai', 'deepseek', 'google', 'kimi-api', 'kimi-coding', 'zhipu', 'zhipu-coding', 'minimax', 'doubao', 'qwen', 'xiaomi', 'xiaomi-token-plan', 'custom']
 
 /** 供应商选项（用于 SettingsSelect） */
 const PROVIDER_SELECT_OPTIONS = PROVIDER_OPTIONS.map((p) => ({
@@ -202,11 +202,11 @@ export function ChannelForm({ channel, onSaved, onAutoSaved, onAgentEligibilityC
 
   // 表单状态
   const [name, setName] = React.useState(channel?.name ?? '')
-  const [provider, setProvider] = React.useState<ProviderType>(channel?.provider ?? 'anthropic')
+  const [provider, setProvider] = React.useState<ProviderType>(channel?.provider ?? 'huatai-anthropic')
   const [baseUrl, setBaseUrl] = React.useState(
     channel?.provider.startsWith('huatai-')
       ? PROVIDER_DEFAULT_URLS[channel.provider]
-      : (channel?.baseUrl ?? PROVIDER_DEFAULT_URLS.anthropic)
+      : (channel?.baseUrl ?? PROVIDER_DEFAULT_URLS['huatai-anthropic'])
   )
   const [apiKey, setApiKey] = React.useState('')
   const [showApiKey, setShowApiKey] = React.useState(false)
