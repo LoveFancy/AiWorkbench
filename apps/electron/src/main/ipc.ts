@@ -49,6 +49,8 @@ import type {
   AgentGenerateTitleInput,
   AgentSaveFilesInput,
   AgentSaveWorkspaceFilesInput,
+  AgentCopyExternalPathsInput,
+  AgentCopyExternalPathsResult,
   AgentSavedFile,
   AgentAttachDirectoryInput,
   AgentAttachFileInput,
@@ -64,6 +66,7 @@ import type {
   SkillMeta,
   WorkspaceCapabilities,
   HtSkillHubSkill,
+  HtSkillHubSkillPage,
   HtSkillHubInstallResult,
   FileEntry,
   CreateFileEntryInput,
@@ -114,6 +117,7 @@ import type {
   DetachedPreviewWindowInput,
   RevertFileInput,
   FileAccessOptions,
+  FilePreviewReadResult,
   ResolvedFileUrl,
   HtmlPreviewResult,
   AgentPluginInfo,
@@ -127,6 +131,7 @@ import type {
   AgentExpertGroupInfo,
   ServerExpertGroupSummary,
   FeaturedScene,
+  EnsureExpertGroupLatestResult,
   Automation,
   CreateAutomationInput,
   UpdateAutomationInput,
@@ -209,7 +214,7 @@ import {
   searchAgentSessionMessages,
   searchAgentSessionReferences,
 } from './lib/agent-session-manager'
-import { runAgent, stopAgent, generateAgentTitle, saveFilesToAgentSession, saveFilesToWorkspaceFiles, isAgentSessionActive, queueAgentMessage, updateAgentPermissionMode, rewindAgentSession } from './lib/agent-service'
+import { runAgent, stopAgent, generateAgentTitle, saveFilesToAgentSession, saveFilesToWorkspaceFiles, copyExternalPathsIntoManagedDir, isAgentSessionActive, queueAgentMessage, updateAgentPermissionMode, rewindAgentSession } from './lib/agent-service'
 import { permissionService } from './lib/agent-permission-service'
 import { askUserService } from './lib/agent-ask-user-service'
 import { exitPlanService } from './lib/agent-exit-plan-service'
@@ -287,6 +292,7 @@ import {
   removeFeishuBot,
   getDecryptedBotAppSecret,
 } from './lib/feishu-config'
+import { configureFeishuDefaultHttpInstance } from './lib/feishu-http-client'
 import { feishuBridgeManager } from './lib/feishu-bridge-manager'
 import { syncFeishuSyncSleepBlocker } from './lib/feishu-sleep-blocker'
 import { presenceService } from './lib/feishu-presence'
@@ -374,6 +380,7 @@ function normalizeFileAccessOptions(value?: FileAccessOptions | string[]): FileA
   return {
     sessionId: typeof value.sessionId === 'string' ? value.sessionId : undefined,
     workspaceSlug: typeof value.workspaceSlug === 'string' ? value.workspaceSlug : undefined,
+    allowTempPreviewPath: value.allowTempPreviewPath === true,
     candidateBasePaths: Array.isArray(value.candidateBasePaths)
       ? value.candidateBasePaths.filter((p): p is string => typeof p === 'string' && p.length > 0)
       : undefined,
@@ -389,6 +396,21 @@ function ensurePathAllowed(filePath: string, options?: FileAccessOptions): boole
   if (isPathAllowed(filePath, options)) return true
   console.warn('[IPC] 拒绝越界路径:', filePath)
   return false
+}
+
+function isTempPreviewPathAllowed(filePath: string, options?: FileAccessOptions): boolean {
+  if (options?.allowTempPreviewPath !== true) return false
+  let resolved: string
+  try {
+    resolved = realpathSync(resolve(filePath))
+  } catch {
+    return false
+  }
+  return isUnderRoot(resolved, tmpdir())
+}
+
+function isPathAllowedForExternalOpen(filePath: string, options?: FileAccessOptions): boolean {
+  return isPathAllowed(filePath, options) || isTempPreviewPathAllowed(filePath, options)
 }
 
 /**
@@ -981,7 +1003,7 @@ export function registerIpcHandlers(): void {
       const { resolve } = await import('node:path')
       const absPath = resolve(filePath)
       const options = normalizeFileAccessOptions(access)
-      if (!isPathAllowed(absPath, options)) {
+      if (!isPathAllowedForExternalOpen(absPath, options)) {
         console.warn('[IPC] shell:system-open-file 拒绝越界路径:', absPath)
         return
       }
@@ -2344,9 +2366,9 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(
     AGENT_IPC_CHANNELS.GET_HT_SKILLHUB_SKILLS,
-    async (_, workspaceSlug: string, page?: number, keyword?: string, category?: string): Promise<HtSkillHubSkill[]> => {
-      const { fetchHtSkillHubIndex } = await import('./lib/skillhub-service')
-      return fetchHtSkillHubIndex(workspaceSlug, page, keyword, category)
+    async (_, workspaceSlug: string, page?: number, keyword?: string, category?: string, pageSize?: number): Promise<HtSkillHubSkillPage> => {
+      const { fetchHtSkillHubIndexPage } = await import('./lib/skillhub-service')
+      return fetchHtSkillHubIndexPage(workspaceSlug, page, keyword, category, pageSize)
     }
   )
 
@@ -2480,7 +2502,7 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(
     AGENT_IPC_CHANNELS.ADD_PLUGIN_MARKETPLACE,
-    async (_, input: { id: string; name: string; source: string; type: AgentPluginMarketplaceType; branch?: string }): Promise<AgentPluginMarketplace> => {
+    async (_, input: { id: string; name: string; source: string; type: AgentPluginMarketplaceType; branch?: string; auth?: { type: 'none' | 'token'; token?: string } }): Promise<AgentPluginMarketplace> => {
       const { addPluginMarketplace } = await import('./lib/plugin-marketplace-service')
       return addPluginMarketplace(input)
     }
@@ -2604,15 +2626,24 @@ export function registerIpcHandlers(): void {
     EXPERT_IPC_CHANNELS.DOWNLOAD_REMOTE_EXPERT,
     async (_, groupId: string): Promise<AgentPluginInfo> => {
       const { downloadAndInstallRemoteExpert } = await import('./lib/expert-download-service')
-      return downloadAndInstallRemoteExpert(groupId)
+      // 下载语义为"安装/覆盖为最新"；目标目录已存在时需覆盖，避免抛出"插件已存在"
+      return downloadAndInstallRemoteExpert(groupId, { overwrite: true })
     }
   )
 
   ipcMain.handle(
     EXPERT_IPC_CHANNELS.CANCEL_DOWNLOAD,
     async (_, groupId: string): Promise<void> => {
-      // 初版不实现断点续传/取消，预留通道
-      console.log('[IPC] 取消下载请求（初版未实现）:', groupId)
+      const { cancelRemoteDownload } = await import('./lib/expert-download-service')
+      cancelRemoteDownload(groupId)
+    }
+  )
+
+  ipcMain.handle(
+    EXPERT_IPC_CHANNELS.ENSURE_LATEST,
+    async (_, groupId: string, localVersion: string): Promise<EnsureExpertGroupLatestResult> => {
+      const { ensureExpertGroupLatest } = await import('./lib/expert-upgrade-service')
+      return ensureExpertGroupLatest(groupId, localVersion)
     }
   )
 
@@ -2966,6 +2997,14 @@ export function registerIpcHandlers(): void {
     AGENT_IPC_CHANNELS.SAVE_FILES_TO_WORKSPACE,
     async (_, input: AgentSaveWorkspaceFilesInput): Promise<AgentSavedFile[]> => {
       return saveFilesToWorkspaceFiles(input)
+    }
+  )
+
+  // 复制外部文件/文件夹到托管目录（支持文件夹递归）
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.COPY_EXTERNAL_PATHS,
+    async (_, input: AgentCopyExternalPathsInput): Promise<AgentCopyExternalPathsResult> => {
+      return copyExternalPathsIntoManagedDir(input)
     }
   )
 
@@ -3341,14 +3380,14 @@ export function registerIpcHandlers(): void {
   // 解析文件路径并读取内容（供内联预览使用）
   ipcMain.handle(
     'file:resolve-and-read',
-    async (_, filePath: string, access?: FileAccessOptions | string[]): Promise<{ resolvedPath: string; content: string } | null> => {
+    async (_, filePath: string, access?: FileAccessOptions | string[]): Promise<FilePreviewReadResult> => {
       const { resolveAndReadFile, resolveFilePath } = await import('./lib/file-preview-service')
       const options = normalizeFileAccessOptions(access)
       const allowedBasePaths = getAllowedCandidateBasePaths(options)
       const resolved = resolveFilePath(filePath, allowedBasePaths)
       if (!resolved || !isPathAllowed(resolved, options)) {
         console.warn('[IPC] file:resolve-and-read 拒绝越界路径:', resolved ?? filePath)
-        return null
+        return { status: 'unauthorized', resolvedPath: resolved ?? '', content: '' }
       }
       const result = resolveAndReadFile(resolved)
       return result
@@ -3520,6 +3559,62 @@ export function registerIpcHandlers(): void {
     }
   )
 
+  // 复制文件/目录到目标目录
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.COPY_FILE,
+    async (_, sourcePath: string, targetDir: string): Promise<string> => {
+      const fs = await import('node:fs')
+      const fsPromises = (await import('node:fs/promises'))
+      const { resolve, basename, join, extname, relative, isAbsolute } = await import('node:path')
+
+      const safePath = resolve(sourcePath)
+      const safeTarget = resolve(targetDir)
+      const workspacesRoot = resolve(getAgentWorkspacesDir())
+
+      const isInsideWorkspaces = (candidate: string): boolean => {
+        const rel = relative(workspacesRoot, candidate)
+        return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+      }
+
+      if (!isInsideWorkspaces(safePath) || !isInsideWorkspaces(safeTarget)) {
+        throw new Error('访问路径超出 Agent 工作区范围')
+      }
+
+      const sourceStat = await fsPromises.stat(safePath)
+
+      // 防止复制目录到自身或子目录
+      if (sourceStat.isDirectory()) {
+        const rel = relative(safePath, safeTarget)
+        if (rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))) {
+          throw new Error('不能复制目录到自身或子目录')
+        }
+      }
+
+      const name = basename(safePath)
+      let destPath = join(safeTarget, name)
+
+      // 同名冲突处理
+      if (fs.existsSync(destPath)) {
+        const ext = extname(name)
+        const nameWithoutExt = ext ? name.slice(0, -ext.length) : name
+        let counter = 1
+        while (fs.existsSync(destPath)) {
+          destPath = join(safeTarget, `${nameWithoutExt} (${counter})${ext}`)
+          counter++
+        }
+      }
+
+      if (sourceStat.isDirectory()) {
+        await fsPromises.cp(safePath, destPath, { recursive: true })
+      } else {
+        await fsPromises.copyFile(safePath, destPath)
+      }
+
+      console.log(`[Agent 文件] 已复制: ${safePath} → ${destPath}`)
+      return destPath
+    }
+  )
+
   // 列出附加目录内容
   ipcMain.handle(
     AGENT_IPC_CHANNELS.LIST_ATTACHED_DIRECTORY,
@@ -3632,7 +3727,7 @@ export function registerIpcHandlers(): void {
       const { resolve } = await import('node:path')
       const safePath = resolve(filePath)
       const options = normalizeFileAccessOptions(access)
-      if (!isPathAllowed(safePath, options)) {
+      if (!isPathAllowedForExternalOpen(safePath, options)) {
         console.warn('[IPC] show-attached-in-folder 拒绝越界路径:', safePath)
         return
       }
@@ -4161,6 +4256,7 @@ export function registerIpcHandlers(): void {
       try {
         const lark = await import('@larksuiteoapi/node-sdk')
         const QRCode = (await import('qrcode')).default
+        await configureFeishuDefaultHttpInstance(lark.defaultHttpInstance)
         const result = await lark.registerApp({
           source: 'proma',
           signal: abort.signal,

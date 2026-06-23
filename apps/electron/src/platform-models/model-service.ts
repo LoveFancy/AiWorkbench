@@ -12,7 +12,7 @@ import { join } from 'node:path'
 import { getConfigDir } from '../main/lib/config-paths'
 import { getJobId } from '../auth'
 import { httpGet } from '../shared/hteip-client'
-import type { ModelInfo, ModelListResponse, ModelsCache } from './types'
+import type { PlatformModelInfo, PlatformModelsResponse, ModelsCache } from './types'
 
 /** 后端原始模型结构 — 用于字段名映射（supportVision → supportsMultimodal） */
 interface RawModelInfo {
@@ -39,7 +39,7 @@ function cachePath(): string {
 // ===== L1 内存缓存 =====
 
 let l1ApiKey: string | null = null
-let l1Models: ModelInfo[] = []
+let l1Models: PlatformModelInfo[] = []
 let l1Total: number = 0
 let l1CachedAt: number = 0
 let l1JobId: string | null = null
@@ -49,7 +49,7 @@ let _refreshTimer: ReturnType<typeof setInterval> | null = null
 
 export async function fetchUserModels(
   forceRefresh = false,
-): Promise<ModelListResponse> {
+): Promise<PlatformModelsResponse> {
   const currentJobId = getJobId()
 
   if (!currentJobId) {
@@ -60,7 +60,7 @@ export async function fetchUserModels(
     return { apiKey: l1ApiKey ?? '', models: l1Models, total: l1Total }
   }
 
-  const { ok, data } = await httpGet<{ code: number; data: ModelListResponse }>(MODELS_PATH)
+  const { ok, data } = await httpGet<{ code: number; data: PlatformModelsResponse }>(MODELS_PATH)
 
   if (!ok || !data || data.code !== 0) {
     return fallbackToOldCache(currentJobId)
@@ -68,7 +68,7 @@ export async function fetchUserModels(
 
   const { apiKey, total } = data.data
   const rawModels = data.data.models as unknown as RawModelInfo[]
-  const models: ModelInfo[] = rawModels.map((m) => ({
+  const models: PlatformModelInfo[] = rawModels.map((m) => ({
     id: m.id,
     name: m.name,
     description: m.description,
@@ -96,7 +96,7 @@ export function getApiKey(): string | null {
   return l1ApiKey
 }
 
-export function getModels(): ModelInfo[] {
+export function getModels(): PlatformModelInfo[] {
   return l1Models
 }
 
@@ -159,7 +159,7 @@ export function shutdownModelRefresh(): void {
 
 // ===== 启动时从磁盘加载 =====
 
-export function loadCacheFromDisk(jobId?: string): ModelListResponse | null {
+export function loadCacheFromDisk(jobId?: string): PlatformModelsResponse | null {
   const filePath = cachePath()
   if (!existsSync(filePath)) return null
 
@@ -196,7 +196,7 @@ function isCacheValid(jobId: string): boolean {
   return true
 }
 
-function fallbackToOldCache(jobId: string): ModelListResponse {
+function fallbackToOldCache(jobId: string): PlatformModelsResponse {
   if (l1JobId === jobId && l1Models.length) {
     return { apiKey: l1ApiKey ?? '', models: l1Models, total: l1Total }
   }
@@ -204,7 +204,7 @@ function fallbackToOldCache(jobId: string): ModelListResponse {
 }
 
 function saveCacheToDisk(
-  apiKey: string, models: ModelInfo[], total: number,
+  apiKey: string, models: PlatformModelInfo[], total: number,
   cachedAt: number, jobId: string,
 ): void {
   const cache: ModelsCache = { models, total, cachedAt, jobId }

@@ -11,7 +11,7 @@
  */
 
 import * as React from 'react'
-import { useAtomValue } from 'jotai'
+import { useAtom, useAtomValue } from 'jotai'
 import {
   ChevronRight,
   Trash2,
@@ -46,6 +46,7 @@ import {
 } from '@/components/ui/context-menu'
 import { cn } from '@/lib/utils'
 import { workspaceFilesVersionAtom, fileBrowserAutoRevealAtom, recentlyModifiedPathsAtom, currentAgentSessionIdAtom } from '@/atoms/agent-atoms'
+import { fileClipboardAtom, type FileClipboard } from '@/atoms/file-clipboard-atoms'
 import type { FileEntry } from '@proma/shared'
 import { FileTypeIcon } from './FileTypeIcon'
 import { DefaultAppMenuItem } from './DefaultAppMenuItem'
@@ -167,8 +168,8 @@ interface FileBrowserProps {
   }
   /** 文件通过拖拽或菜单移动成功后通知外部刷新其它文件树 */
   onFilesMoved?: () => void
-  /** 外部文件拖到具体目录行时保存到该目录 */
-  onExternalFilesDropToDirectory?: (files: File[], targetDir: string) => Promise<void> | void
+  /** 外部文件拖到具体目录行时保存到该目录（paths 为同步解析出的磁盘路径，unresolvedFiles 为无法解析路径的文件） */
+  onExternalFilesDropToDirectory?: (payload: { paths: string[]; unresolvedFiles: File[] }, targetDir: string) => Promise<void> | void
   /** 目录行成为拖拽目标时通知外层清理其它 drop target 状态 */
   onDirectoryDropTargetActive?: () => void
 }
@@ -178,6 +179,24 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const filesVersion = useAtomValue(workspaceFilesVersionAtom)
+  const [fileClipboard, setFileClipboard] = useAtom(fileClipboardAtom)
+  const containerRef = React.useRef<HTMLDivElement>(null)
+
+  // ===== 可见节点元信息追踪（供键盘快捷键使用） =====
+  const entryMetaMapRef = React.useRef(new Map<string, { name: string; isDirectory: boolean }>())
+  const registerEntryMeta = React.useCallback((entry: FileEntry): (() => void) => {
+    entryMetaMapRef.current.set(entry.path, { name: entry.name, isDirectory: entry.isDirectory })
+    return () => { entryMetaMapRef.current.delete(entry.path) }
+  }, [])
+
+  // ===== 键盘展开/收起信号 =====
+  const [keyboardToggleSignal, setKeyboardToggleSignal] = React.useState<{ path: string; ts: number } | null>(null)
+
+  // ===== 剪切路径集合（供 FileTreeItem 视觉反馈使用） =====
+  const cutPathsSet = React.useMemo<Set<string>>(
+    () => fileClipboard?.mode === 'cut' ? new Set(fileClipboard.paths) : new Set(),
+    [fileClipboard],
+  )
 
   // ===== Agent 写入文件时的自动定位 =====
   const autoReveal = useAtomValue(fileBrowserAutoRevealAtom)
@@ -245,6 +264,7 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
   /** 加载根目录 */
   const loadRoot = React.useCallback(async () => {
     if (!rootPath) return
+    entryMetaMapRef.current.clear()
     setLoading(true)
     setError(null)
     try {
@@ -265,6 +285,7 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
 
   /** 选中项 */
   const handleSelect = React.useCallback((entry: FileEntry, event: React.MouseEvent) => {
+    containerRef.current?.focus()
     const isMulti = event.metaKey || event.ctrlKey
     if (isMulti) {
       setSelectedPaths((prev) => {
@@ -411,6 +432,121 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
     await movePathsToDirectory(paths, targetDir)
   }, [movePathsToDirectory, selectedPaths])
 
+  // ===== 键盘粘贴处理 =====
+  const handlePaste = React.useCallback(async (clipboard: FileClipboard) => {
+    let targetDir = rootPath
+    if (selectedPaths.size === 1) {
+      const selectedPath = [...selectedPaths][0]!
+      const meta = entryMetaMapRef.current.get(selectedPath)
+      if (meta?.isDirectory) {
+        targetDir = selectedPath
+      } else if (meta) {
+        targetDir = getParentPath(selectedPath)
+      }
+    }
+
+    if (clipboard.mode === 'cut') {
+      try {
+        await movePathsToDirectory(clipboard.paths, targetDir)
+      } catch (err) {
+        console.error('[FileBrowser] 剪切粘贴失败:', err)
+      } finally {
+        setFileClipboard(null)
+      }
+      return
+    }
+
+    try {
+      for (const sourcePath of Array.from(new Set(clipboard.paths))) {
+        await window.electronAPI.copyFile(sourcePath, targetDir)
+      }
+    } catch (err) {
+      console.error('[FileBrowser] 粘贴失败:', err)
+    } finally {
+      await loadRoot()
+      onFilesMoved?.()
+    }
+  }, [rootPath, selectedPaths, loadRoot, onFilesMoved, movePathsToDirectory, setFileClipboard])
+
+  // ===== 键盘快捷键处理 =====
+  const handleKeyDown = React.useCallback((e: React.KeyboardEvent) => {
+    if (renamingPath) return
+    if (e.nativeEvent.isComposing) return
+
+    const isMac = navigator.userAgent.includes('Mac')
+    const isMod = isMac ? e.metaKey : e.ctrlKey
+    const isDeleteKey = e.key === 'Delete' || (isMac && e.key === 'Backspace')
+
+    if (isDeleteKey && !isMod && selectedPaths.size > 0) {
+      e.preventDefault()
+      e.stopPropagation()
+      const firstPath = [...selectedPaths][0]!
+      const meta = entryMetaMapRef.current.get(firstPath)
+      handleRequestDelete({
+        path: firstPath,
+        name: meta?.name ?? firstPath.split(/[/\\]/).pop() ?? '',
+        isDirectory: meta?.isDirectory ?? false,
+      } as FileEntry)
+      return
+    }
+
+    if (isMod && e.key === 'c' && selectedPaths.size > 0) {
+      e.preventDefault()
+      e.stopPropagation()
+      setFileClipboard({ paths: [...selectedPaths], mode: 'copy', sourceRoot: rootPath })
+      return
+    }
+
+    if (isMod && e.key === 'x' && selectedPaths.size > 0) {
+      e.preventDefault()
+      e.stopPropagation()
+      setFileClipboard({ paths: [...selectedPaths], mode: 'cut', sourceRoot: rootPath })
+      return
+    }
+
+    if (isMod && e.key === 'v' && fileClipboard) {
+      e.preventDefault()
+      e.stopPropagation()
+      void handlePaste(fileClipboard)
+      return
+    }
+
+    if (e.key === 'F2' && selectedPaths.size === 1) {
+      e.preventDefault()
+      setRenamingPath([...selectedPaths][0]!)
+      return
+    }
+
+    if (isMod && e.key === 'a') {
+      e.preventDefault()
+      e.stopPropagation()
+      setSelectedPaths(new Set(entries.map(item => item.path)))
+      onSelectedDirectoryChange?.(null)
+      return
+    }
+
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      clearSelection()
+      setFileClipboard(null)
+      return
+    }
+
+    if (e.key === 'Enter' && selectedPaths.size === 1) {
+      e.preventDefault()
+      const path = [...selectedPaths][0]!
+      const meta = entryMetaMapRef.current.get(path)
+      if (!meta) return
+      if (meta.isDirectory) {
+        setKeyboardToggleSignal({ path, ts: Date.now() })
+      } else {
+        onFilePreview?.(path)
+      }
+      return
+    }
+  }, [renamingPath, selectedPaths, fileClipboard, entries, rootPath, handlePaste, handleRequestDelete, setFileClipboard, setRenamingPath, setSelectedPaths, onSelectedDirectoryChange, clearSelection, onFilePreview])
+
   const handleRootDragOver = React.useCallback((event: React.DragEvent): void => {
     if (!eventHasFileTreeDrag(event)) return
     event.preventDefault()
@@ -456,6 +592,9 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
           revealTs={revealTs}
           revealSelect={revealSelect}
           recentlyModifiedSet={recentlyModifiedSet}
+          registerEntryMeta={registerEntryMeta}
+          keyboardToggleSignal={keyboardToggleSignal}
+          cutPathsSet={cutPathsSet}
           onSelect={handleSelect}
           onShowInFolder={handleShowInFolder}
           onStartRename={handleStartRename}
@@ -480,7 +619,10 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
 
   return (
     <div
-      className={cn('flex flex-col', embedded ? 'min-h-0' : 'h-full')}
+      ref={containerRef}
+      tabIndex={0}
+      className={cn('flex flex-col outline-none', embedded ? 'min-h-0' : 'h-full')}
+      onKeyDown={handleKeyDown}
       onClickCapture={handleRootClickCapture}
       onDragOver={handleRootDragOver}
       onDrop={handleRootDrop}
@@ -571,6 +713,9 @@ interface FileTreeItemProps {
   revealSelect: boolean
   /** 最近修改的路径集合（命中则在行左侧显示竖条标记） */
   recentlyModifiedSet: Set<string>
+  registerEntryMeta: (entry: FileEntry) => () => void
+  keyboardToggleSignal: { path: string; ts: number } | null
+  cutPathsSet: Set<string>
   onSelect: (entry: FileEntry, event: React.MouseEvent) => void
   onShowInFolder: (entry: FileEntry) => void
   onStartRename: (entry: FileEntry) => void
@@ -589,7 +734,7 @@ interface FileTreeItemProps {
   }
   onTransfer: (entry: FileEntry, targetDir: string) => Promise<void>
   onMovePathsToDirectory: (paths: string[], targetDir: string) => Promise<void>
-  onExternalFilesDropToDirectory?: (files: File[], targetDir: string) => Promise<void> | void
+  onExternalFilesDropToDirectory?: (payload: { paths: string[]; unresolvedFiles: File[] }, targetDir: string) => Promise<void> | void
   onDirectoryDropTargetActive?: () => void
 }
 
@@ -606,6 +751,9 @@ function FileTreeItem({
   revealTs,
   revealSelect,
   recentlyModifiedSet,
+  registerEntryMeta,
+  keyboardToggleSignal,
+  cutPathsSet,
   onSelect,
   onShowInFolder,
   onStartRename,
@@ -661,6 +809,19 @@ function FileTreeItem({
     clearDropExpandTimer()
     clearAutoCollapseTimer()
   }, [clearDropExpandTimer, clearAutoCollapseTimer])
+
+  // 注册元数据到父组件的 entryMetaMapRef
+  React.useEffect(() => {
+    return registerEntryMeta(entry)
+  }, [entry, registerEntryMeta])
+
+  // 响应键盘 Enter 信号（展开/收起目录）
+  React.useEffect(() => {
+    if (!keyboardToggleSignal) return
+    if (keyboardToggleSignal.path !== entry.path) return
+    if (!entry.isDirectory) return
+    setExpanded((prev) => !prev)
+  }, [keyboardToggleSignal, entry.path, entry.isDirectory])
 
   // 当 refreshVersion 变化时，已展开的文件夹自动重新加载子项
   React.useEffect(() => {
@@ -739,6 +900,7 @@ function FileTreeItem({
 
   const isSelected = selectedPaths.has(entry.path)
   const isRenaming = renamingPath === entry.path
+  const isCutTarget = cutPathsSet.has(entry.path)
 
   const loadChildren = async (): Promise<FileEntry[]> => {
     const items = await window.electronAPI.listDirectory(entry.path)
@@ -877,10 +1039,21 @@ function FileTreeItem({
       clearAutoCollapseTimer()
       setIsDropTarget(false)
       autoExpandedByDragRef.current = false
-      const files = Array.from(event.dataTransfer.files)
+      // 必须在 drop 事件同步执行期内调用 getPathForFile：
+      // 经过 await 后拖拽事件结束，File 的底层 native 资源被释放，
+      // 此时再调用 webUtils.getPathForFile 会访问失效句柄导致 renderer 进程崩溃。
+      const droppedFiles = Array.from(event.dataTransfer.files)
+      const paths: string[] = []
+      const unresolvedFiles: File[] = []
+      for (const file of droppedFiles) {
+        let path: string | null = null
+        try { path = window.electronAPI.getPathForFile(file) } catch { path = null }
+        if (path) paths.push(path)
+        else unresolvedFiles.push(file)
+      }
       void (async () => {
         await expandDir()
-        await onExternalFilesDropToDirectory(files, entry.path)
+        await onExternalFilesDropToDirectory({ paths, unresolvedFiles }, entry.path)
         try {
           const items = await window.electronAPI.listDirectory(entry.path)
           setChildren(items)
@@ -1002,25 +1175,25 @@ function FileTreeItem({
       {onCreateEntry && menuSelectedCount === 1 && entry.isDirectory && (
         <>
           <ContextMenuItem
-            className="text-xs py-1 [&>svg]:size-3.5"
+            className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
             onSelect={() => onCreateEntry(entry.path, 'file')}
           >
             <FilePlus />
             新建文件
           </ContextMenuItem>
           <ContextMenuItem
-            className="text-xs py-1 [&>svg]:size-3.5"
+            className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
             onSelect={() => onCreateEntry(entry.path, 'directory')}
           >
             <FolderPlus />
             新建文件夹
           </ContextMenuItem>
-          <ContextMenuSeparator className="my-0.5" />
+          <ContextMenuSeparator className="my-1" />
         </>
       )}
       {onAddToChat && !entry.isDirectory && menuSelectedCount === 1 && (
         <ContextMenuItem
-          className="text-xs py-1 [&>svg]:size-3.5"
+          className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
           onSelect={() => onAddToChat(entry)}
         >
           <MessageSquarePlus />
@@ -1029,7 +1202,7 @@ function FileTreeItem({
       )}
       {onFilePreview && !entry.isDirectory && menuSelectedCount === 1 && isHtmlPreviewPath(entry.path) && (
         <ContextMenuItem
-          className="text-xs py-1 [&>svg]:size-3.5"
+          className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
           onSelect={() => onFilePreview?.(entry.path)}
         >
           <MonitorPlay />
@@ -1038,7 +1211,7 @@ function FileTreeItem({
       )}
       {menuSelectedCount === 1 && (
         <ContextMenuItem
-          className="text-xs py-1 [&>svg]:size-3.5"
+          className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
           onSelect={() => onShowInFolder(entry)}
         >
           <FolderSearch />
@@ -1049,11 +1222,11 @@ function FileTreeItem({
         <DefaultAppMenuItem
           filePath={entry.path}
           menuKind="context"
-          className="text-xs py-1 [&>svg]:size-3.5"
+          className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
         />
       )}
       <ContextMenuItem
-        className="text-xs py-1 [&>svg]:size-3.5"
+        className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
         disabled={moving}
         onSelect={() => { void onMove(entry) }}
       >
@@ -1062,7 +1235,7 @@ function FileTreeItem({
       </ContextMenuItem>
       {transferTarget && (
         <ContextMenuItem
-          className="text-xs py-1 [&>svg]:size-3.5"
+          className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
           disabled={moving || !transferTarget.targetDir}
           onSelect={() => {
             if (!transferTarget.targetDir) return
@@ -1075,16 +1248,16 @@ function FileTreeItem({
       )}
       {menuSelectedCount === 1 && (
         <ContextMenuItem
-          className="text-xs py-1 [&>svg]:size-3.5"
+          className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
           onSelect={() => onStartRename(entry)}
         >
           <Pencil />
           重命名
         </ContextMenuItem>
       )}
-      <ContextMenuSeparator className="my-0.5" />
+      <ContextMenuSeparator className="my-1" />
       <ContextMenuItem
-        className="text-xs py-1 [&>svg]:size-3.5 text-destructive"
+        className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4 text-destructive"
         onSelect={() => onDelete(entry)}
       >
         <Trash2 />
@@ -1111,6 +1284,7 @@ function FileTreeItem({
                   ? 'hover:bg-accent'
                   : 'hover:bg-accent/50',
               flash && 'file-browser-row-flash',
+              isCutTarget && 'opacity-50',
               isDropTarget && 'bg-primary/15 text-foreground shadow-sm ring-2 ring-primary/60 ring-inset',
             )}
             style={{
@@ -1188,7 +1362,7 @@ function FileTreeItem({
           </div>
         </ContextMenuTrigger>
         {showMenu && (
-          <ContextMenuContent className="w-40 z-[9999] min-w-0 p-0.5">
+          <ContextMenuContent className="w-48 z-[9999] min-w-0 p-1.5">
             {menuItems()}
           </ContextMenuContent>
         )}
@@ -1225,6 +1399,9 @@ function FileTreeItem({
               revealTs={revealTs}
               revealSelect={revealSelect}
               recentlyModifiedSet={recentlyModifiedSet}
+              registerEntryMeta={registerEntryMeta}
+              keyboardToggleSignal={keyboardToggleSignal}
+              cutPathsSet={cutPathsSet}
               onSelect={onSelect}
               onShowInFolder={onShowInFolder}
               onStartRename={onStartRename}

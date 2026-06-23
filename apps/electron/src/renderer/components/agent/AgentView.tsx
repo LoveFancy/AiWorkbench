@@ -335,6 +335,14 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
   const setLiveMessagesMap = useSetAtom(liveMessagesMapAtom)
   // 稳定化空数组引用，避免 ?? [] 每次创建新引用导致下游 useMemo 链不必要重算
   const liveMessages = liveMessagesMap.get(sessionId) ?? EMPTY_SDK_MESSAGES
+  // 历史用户提问（按时间正序，最旧 → 最新），供输入框 ↑/↓ 调出
+  // 来源为「持久化历史 + 本次实时」合并消息，避免重新打开历史会话时 liveMessages 已被清空导致历史为空
+  const historyMessages = React.useMemo(
+    () => [...persistedSDKMessages, ...liveMessages]
+      .map((m) => getUserTextFromSDKMessage(m))
+      .filter((t): t is string => t !== null && t.trim() !== '' && t.trim() !== '/compact'),
+    [persistedSDKMessages, liveMessages],
+  )
   // Per-session 渠道/模型配置（优先读 session map，回退到全局默认值）
   const sessionChannelMap = useAtomValue(agentSessionChannelMapAtom)
   const sessionModelMap = useAtomValue(agentSessionModelMapAtom)
@@ -2278,7 +2286,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
                 agentChannelId && hasAvailableModel
                   ? sendWithCmdEnter
                     ? '输入消息... (⌘/Ctrl+Enter 发送，Enter 换行，@ 引用文件，/ 命令或 Skill，& 引用会话)'
-                    : '输入消息... (Enter 发送，Shift+Enter 换行，@ 引用文件，/ 命令或 Skill，& 引用会话)'
+                    : '输入消息... (Enter 发送，Shift+Enter / Ctrl+Enter 换行，@ 引用文件，/ 命令或 Skill，& 引用会话)'
                   : !agentChannelId
                     ? '请先在设置 → 模型配置中配置并启用 Anthropic 兼容模型'
                     : '请先在设置 → 模型配置中配置 API Key 并启用 Agent 模型'
@@ -2297,6 +2305,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
               htmlValue={inputHtmlContent}
               onHtmlChange={setInputHtmlContent}
               sendWithCmdEnter={sendWithCmdEnter}
+              historyMessages={historyMessages}
             />
 
             {/* Footer 工具栏 — 容器变窄时尾部按钮自动折叠进「更多」Popover */}

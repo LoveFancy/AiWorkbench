@@ -25,6 +25,8 @@ export interface ConnectorPickerItem {
   isCli: boolean
 }
 
+// ===== 工具函数 =====
+
 function getConnectorTarget(entry: McpServerEntry): string {
   if (entry.type === 'stdio') return entry.command ?? ''
   return entry.url ?? ''
@@ -60,7 +62,7 @@ export function getAvailableConnectorsForPicker(
       displayName: connector.name,
       target: entry ? getConnectorTarget(entry) : connector.category,
       entry,
-      presetConnector: connector,
+presetConnector: connector,
       isConfigured,
       enabled,
       isComingSoon,
@@ -75,7 +77,7 @@ export function getAvailableConnectorsForPicker(
       displayName: name,
       entry,
       target: getConnectorTarget(entry),
-      isConfigured: true,
+isConfigured: true,
       enabled: entry.enabled ?? false,
       isComingSoon: false,
       isCli: false,
@@ -230,12 +232,12 @@ export function AgentConnectorPicker({
         side="top"
         align="center"
         sideOffset={10}
-        className="w-[430px] overflow-hidden rounded-xl border bg-popover p-0 shadow-2xl"
+        className="w-[360px] overflow-hidden rounded-[14px] border border-border/50 bg-popover/95 p-1.5 shadow-xl backdrop-blur"
         onOpenAutoFocus={(event) => event.preventDefault()}
       >
-        <div className="max-h-[420px] overflow-y-auto py-1.5 scrollbar-thin">
+        <div className="max-h-[360px] space-y-1 overflow-y-auto scrollbar-thin">
           {connectors.length > 0 ? (
-            connectors.map((connector) => (
+connectors.map((connector) => (
               <ConnectorRow
                 key={connector.name}
                 connector={connector}
@@ -250,14 +252,18 @@ export function AgentConnectorPicker({
           )}
         </div>
 
-        <button
-          type="button"
-          className="flex h-11 w-full items-center gap-3 border-t px-3 text-left text-[15px] font-medium text-foreground transition-colors hover:bg-accent"
-          onClick={handleOpenConnectorManager}
-        >
-          <Settings className="size-5 text-muted-foreground" />
-          <span>更多连接器</span>
-        </button>
+        <div className="mt-1 border-t border-border/50 pt-1">
+          <button
+            type="button"
+            className="flex h-10 w-full items-center gap-2.5 rounded-[10px] px-2.5 text-left text-[13px] font-medium text-foreground transition-colors hover:bg-muted/70"
+            onClick={handleOpenConnectorManager}
+          >
+            <span className="flex size-7 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+              <Settings className="size-4" />
+            </span>
+            <span>更多连接器</span>
+          </button>
+        </div>
       </PopoverContent>
     </Popover>
   )

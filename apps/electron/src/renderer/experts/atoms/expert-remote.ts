@@ -5,7 +5,8 @@
  */
 
 import { atom } from 'jotai'
-import type { ServerExpertGroupSummary, FeaturedScene } from '@proma/shared'
+import { atomFamily } from 'jotai/utils'
+import type { ServerExpertGroupSummary, FeaturedScene, RemoteDownloadProgress } from '@proma/shared'
 
 /** 服务端专家团列表摘要 */
 export const serverExpertGroupsAtom = atom<ServerExpertGroupSummary[]>([])
@@ -15,6 +16,14 @@ export const featuredScenesAtom = atom<FeaturedScene[]>([])
 
 /** 服务端专家团分类列表 */
 export const expertCategoriesAtom = atom<string[]>([])
+
+/** 各专家团下载进度 Map — groupId → RemoteDownloadProgress */
+export const expertDownloadProgressAtom = atom<Map<string, RemoteDownloadProgress>>(new Map())
+
+/** 按 groupId 切片订阅，避免任一进度更新触发所有卡片重渲染 */
+export const expertDownloadProgressFamily = atomFamily((groupId: string) =>
+  atom((get) => get(expertDownloadProgressAtom).get(groupId)),
+)
 
 /** 拉取服务端专家团列表 */
 export const fetchServerExpertGroupsAtom = atom(null, async (_get, set) => {

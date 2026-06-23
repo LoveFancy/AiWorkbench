@@ -49,4 +49,8 @@ describe('AgentConnectorPicker helpers', () => {
     expect(source).toContain('连应用')
     expect(source).toContain('连接')
   })
+
+  test('连接器弹层使用紧凑分层布局', () => {
+    expect(source).toContain('w-[360px]')
+  })
 })

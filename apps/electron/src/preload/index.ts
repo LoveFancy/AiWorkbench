@@ -53,6 +53,8 @@ import type {
   AgentGenerateTitleInput,
   AgentSaveFilesInput,
   AgentSaveWorkspaceFilesInput,
+  AgentCopyExternalPathsInput,
+  AgentCopyExternalPathsResult,
   AgentSavedFile,
   AgentAttachDirectoryInput,
   AgentAttachFileInput,
@@ -73,6 +75,7 @@ import type {
   OtherWorkspaceSkillsGroup,
   WorkspaceCapabilities,
   HtSkillHubSkill,
+  HtSkillHubSkillPage,
   HtSkillHubInstallResult,
   AgentPluginInfo,
   AgentPluginMarketplace,
@@ -86,6 +89,7 @@ import type {
   ServerExpertGroupSummary,
   FeaturedScene,
   RemoteDownloadProgress,
+  EnsureExpertGroupLatestResult,
   FileEntry,
   CreateFileEntryInput,
   FileSearchResult,
@@ -602,7 +606,7 @@ export interface ElectronAPI {
   /** 列出插件市场 */
   listAgentPluginMarketplaces: () => Promise<AgentPluginMarketplace[]>
   /** 添加插件市场 */
-  addAgentPluginMarketplace: (input: { id: string; name: string; source: string; type: AgentPluginMarketplaceType; branch?: string }) => Promise<AgentPluginMarketplace>
+  addAgentPluginMarketplace: (input: { id: string; name: string; source: string; type: AgentPluginMarketplaceType; branch?: string; auth?: { type: 'none' | 'token'; token?: string } }) => Promise<AgentPluginMarketplace>
   /** 更新插件市场 */
   updateAgentPluginMarketplace: (id: string, updates: Partial<Omit<AgentPluginMarketplace, 'id' | 'addedAt'>>) => Promise<AgentPluginMarketplace>
   /** 删除插件市场 */
@@ -640,6 +644,8 @@ export interface ElectronAPI {
   fetchServerExpertGroupCategories: () => Promise<string[]>
   /** 订阅下载进度事件（返回清理函数） */
   onExpertDownloadProgress: (callback: (progress: RemoteDownloadProgress) => void) => () => void
+  /** 召唤前确保专家团为最新版（静默检查 group-detail 版本，按需覆盖下载；失败降级本地版） */
+  ensureExpertGroupLatest: (groupId: string, localVersion: string) => Promise<EnsureExpertGroupLatestResult>
 
   // ===== Agent 工作区管理相关 =====
 
@@ -750,7 +756,7 @@ export interface ElectronAPI {
   renameSkillEntry: (workspaceSlug: string, skillSlug: string, fromRelative: string, toRelative: string) => Promise<void>
 
   /** 获取华泰 SkillHub 清单 */
-  getHtSkillHubSkills: (workspaceSlug: string, page?: number, keyword?: string, category?: string) => Promise<HtSkillHubSkill[]>
+  getHtSkillHubSkills: (workspaceSlug: string, page?: number, keyword?: string, category?: string, pageSize?: number) => Promise<HtSkillHubSkillPage>
 
   /** 读取华泰 SkillHub 远端 SKILL.md */
   readHtSkillHubSkill: (skillName: string) => Promise<string>
@@ -852,6 +858,9 @@ export interface ElectronAPI {
   /** 保存文件到工作区文件目录 */
   saveFilesToWorkspaceFiles: (input: AgentSaveWorkspaceFilesInput) => Promise<AgentSavedFile[]>
 
+  /** 复制外部文件/文件夹到托管目录（支持文件夹递归） */
+  copyExternalPathsIntoManagedDir: (input: AgentCopyExternalPathsInput) => Promise<AgentCopyExternalPathsResult>
+
   /** 获取工作区文件目录路径 */
   getWorkspaceFilesPath: (workspaceSlug: string) => Promise<string>
 
@@ -930,7 +939,7 @@ export interface ElectronAPI {
   showPluginInFolder: (pluginPath: string) => Promise<void>
 
   /** 解析文件路径并读取内容（供内联预览使用） */
-  resolveAndReadFile: (filePath: string, access?: import('@proma/shared').FileAccessOptions) => Promise<{ resolvedPath: string; content: string } | null>
+  resolveAndReadFile: (filePath: string, access?: import('@proma/shared').FileAccessOptions) => Promise<import('@proma/shared').FilePreviewReadResult>
 
   /** 写入文本文件（供 Markdown 内联编辑使用） */
   writeTextFile: (filePath: string, content: string, access?: import('@proma/shared').FileAccessOptions) => Promise<boolean>
@@ -961,6 +970,9 @@ export interface ElectronAPI {
 
   /** 移动文件/目录到目标目录 */
   moveFile: (filePath: string, targetDir: string) => Promise<void>
+
+  /** 复制文件/目录到目标目录（返回新文件路径） */
+  copyFile: (sourcePath: string, targetDir: string) => Promise<string>
 
   /** 列出附加目录内容 */
   listAttachedDirectory: (dirPath: string, access?: import('@proma/shared').FileAccessOptions) => Promise<FileEntry[]>
@@ -1846,7 +1858,7 @@ const electronAPI: ElectronAPI = {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.LIST_PLUGIN_MARKETPLACES)
   },
 
-  addAgentPluginMarketplace: (input: { id: string; name: string; source: string; type: AgentPluginMarketplaceType; branch?: string }) => {
+  addAgentPluginMarketplace: (input: { id: string; name: string; source: string; type: AgentPluginMarketplaceType; branch?: string; auth?: { type: 'none' | 'token'; token?: string } }) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.ADD_PLUGIN_MARKETPLACE, input)
   },
 
@@ -1914,6 +1926,10 @@ const electronAPI: ElectronAPI = {
 
   fetchServerExpertGroupCategories: () => {
     return ipcRenderer.invoke(EXPERT_IPC_CHANNELS.FETCH_CATEGORIES)
+  },
+
+  ensureExpertGroupLatest: (groupId: string, localVersion: string) => {
+    return ipcRenderer.invoke(EXPERT_IPC_CHANNELS.ENSURE_LATEST, groupId, localVersion)
   },
 
   onExpertDownloadProgress: (callback: (progress: RemoteDownloadProgress) => void) => {
@@ -2071,8 +2087,8 @@ const electronAPI: ElectronAPI = {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.RENAME_SKILL_ENTRY, workspaceSlug, skillSlug, fromRelative, toRelative)
   },
 
-  getHtSkillHubSkills: (workspaceSlug: string, page?: number, keyword?: string, category?: string) => {
-    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_HT_SKILLHUB_SKILLS, workspaceSlug, page, keyword, category)
+  getHtSkillHubSkills: (workspaceSlug: string, page?: number, keyword?: string, category?: string, pageSize?: number) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_HT_SKILLHUB_SKILLS, workspaceSlug, page, keyword, category, pageSize)
   },
 
   readHtSkillHubSkill: (skillName: string) => {
@@ -2225,6 +2241,10 @@ const electronAPI: ElectronAPI = {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.SAVE_FILES_TO_WORKSPACE, input)
   },
 
+  copyExternalPathsIntoManagedDir: (input: AgentCopyExternalPathsInput) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.COPY_EXTERNAL_PATHS, input)
+  },
+
   getWorkspaceFilesPath: (workspaceSlug: string) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_WORKSPACE_FILES_PATH, workspaceSlug)
   },
@@ -2330,7 +2350,7 @@ const electronAPI: ElectronAPI = {
   },
 
   resolveAndReadFile: (filePath: string, access?: import('@proma/shared').FileAccessOptions) => {
-    return ipcRenderer.invoke('file:resolve-and-read', filePath, access) as Promise<{ resolvedPath: string; content: string } | null>
+    return ipcRenderer.invoke('file:resolve-and-read', filePath, access) as Promise<import('@proma/shared').FilePreviewReadResult>
   },
 
   writeTextFile: (filePath: string, content: string, access?: import('@proma/shared').FileAccessOptions) => {
@@ -2371,6 +2391,10 @@ const electronAPI: ElectronAPI = {
 
   moveFile: (filePath: string, targetDir: string) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.MOVE_FILE, filePath, targetDir)
+  },
+
+  copyFile: (sourcePath: string, targetDir: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.COPY_FILE, sourcePath, targetDir)
   },
 
   listAttachedDirectory: (dirPath: string, access?: import('@proma/shared').FileAccessOptions) => {

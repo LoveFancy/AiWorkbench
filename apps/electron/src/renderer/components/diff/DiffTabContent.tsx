@@ -6,7 +6,7 @@
  */
 
 import * as React from 'react'
-import { Code2, Copy, Check, Eye, List, Pencil, RefreshCw, Save, X } from 'lucide-react'
+import { Code2, Copy, Check, Eye, FolderOpen, List, Pencil, RefreshCw, Save, X } from 'lucide-react'
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
 import DOMPurify from 'dompurify'
 import { File as PierreFile } from '@pierre/diffs/react'
@@ -24,6 +24,8 @@ import { PreviewFindBar } from './PreviewFindBar'
 import { MarkdownToc } from './MarkdownToc'
 import { PIERRE_FILE_CSS } from '@/components/agent/tool-result-renderers/pierre-styles'
 import { formatManagedPath } from '@/lib/managed-path-display'
+import type { FilePreviewReadResult } from '@proma/shared'
+import { DEFAULT_IMAGE_ZOOM, getInitialImageZoom } from './image-preview-zoom'
 
 const MD_EXTS = new Set(['.md', '.markdown'])
 const PLAIN_TEXT_EDIT_EXTS = new Set(['.txt', '.text', '.log'])
@@ -45,6 +47,7 @@ const FILE_FIND_SHORTCUT_OPTIONS = { exclusive: true }
 type CacheEntry = {
   oldContent: string
   newContent: string
+  previewReadStatus?: FilePreviewReadResult['status']
   /** 非文本文件预览数据 */
   pdfSrc?: string
   imageDataUrl?: string
@@ -55,6 +58,8 @@ type CacheEntry = {
 }
 const CACHE_MAX = 50
 const contentCache = new Map<string, CacheEntry>()
+
+type PreviewReadStatus = FilePreviewReadResult['status'] | null
 
 /** 超过此字符数的文本文件将跳过 PierreFile 高亮，直接以纯文本展示，避免大文件卡顿 */
 const MAX_PREVIEW_CHARS = 500_000
@@ -67,6 +72,47 @@ const scrollPositionCache = new Map<string, { top: number; left: number }>()
 
 function scrollCacheKey(sessionId: string, filePath: string): string {
   return `${sessionId}:${filePath}`
+}
+
+function getPreviewUnavailableText(status: PreviewReadStatus): string {
+  if (status === 'unauthorized') return '文件不可访问或已不在工作区。'
+  if (status === 'too_large') return '文件过大，无法在预览中打开。'
+  if (status === 'unavailable') return '文件不存在、已被移动，或临时文件已失效。'
+  return '文件不可预览。'
+}
+
+interface PreviewUnavailableProps {
+  filePath: string
+  status: PreviewReadStatus
+}
+
+function PreviewUnavailable({ filePath, status }: PreviewUnavailableProps): React.ReactElement {
+  const [opening, setOpening] = React.useState(false)
+
+  const handleShowInFolder = React.useCallback(() => {
+    setOpening(true)
+    window.electronAPI.showAttachedInFolder(filePath, { allowTempPreviewPath: true })
+      .catch((error) => {
+        console.error('[DiffTabContent] 在文件管理器中显示失败:', error)
+        toast.error('无法在文件管理器中显示该文件')
+      })
+      .finally(() => setOpening(false))
+  }, [filePath])
+
+  return (
+    <div className="p-4 text-sm text-muted-foreground">
+      <div className="mb-3">{getPreviewUnavailableText(status)}</div>
+      <button
+        type="button"
+        onClick={handleShowInFolder}
+        disabled={opening}
+        className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2.5 py-1.5 text-xs text-foreground/80 hover:bg-muted/80 disabled:opacity-50"
+      >
+        <FolderOpen className="size-3.5" />
+        在 Finder 中显示
+      </button>
+    </div>
+  )
 }
 
 /** 获取缓存的滚动位置 */
@@ -220,9 +266,27 @@ export function DiffTabContent({ filePath, dirPath, sessionId, gitRoot, previewO
     () => formatManagedPath(filePath, { basePaths }),
     [basePaths, filePath],
   )
+
+  /** 在系统文件管理器中显示该文件所在路径 */
+  const handleShowInFolder = React.useCallback(() => {
+    const candidateBasePaths: string[] = []
+    const slash = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'))
+    if (slash > 0) candidateBasePaths.push(filePath.slice(0, slash))
+    if (dirPath) candidateBasePaths.push(dirPath)
+    if (gitRoot) candidateBasePaths.push(gitRoot)
+    for (const basePath of basePaths ?? []) {
+      if (basePath && !candidateBasePaths.includes(basePath)) candidateBasePaths.push(basePath)
+    }
+    window.electronAPI
+      .showAttachedInFolder(filePath, { sessionId, candidateBasePaths, allowTempPreviewPath: true })
+      .catch((error) => {
+        console.error('[DiffTabContent] 在文件管理器中显示失败:', error)
+        toast.error('无法在文件管理器中显示该文件')
+      })
+  }, [filePath, dirPath, gitRoot, basePaths, sessionId])
   const [imageDataUrl, setImageDataUrl] = React.useState('')
-  // 默认 25%：预览面板空间有限，先展示缩略全貌，用户可手动放大查看细节
-  const [imageZoom, setImageZoom] = React.useState(0.25)
+  // 普通图片默认 25%；SVG 加载完成后会按预览容器尺寸自适应。
+  const [imageZoom, setImageZoom] = React.useState(DEFAULT_IMAGE_ZOOM)
   const [imageNaturalSize, setImageNaturalSize] = React.useState({ w: 0, h: 0 })
   const imageContainerRef = React.useRef<HTMLDivElement>(null)
   const imageDragging = React.useRef(false)
@@ -230,6 +294,7 @@ export function DiffTabContent({ filePath, dirPath, sessionId, gitRoot, previewO
   const scrollContainerRef = React.useRef<HTMLDivElement>(null)
   const [findOpen, setFindOpen] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
+  const [previewReadStatus, setPreviewReadStatus] = React.useState<PreviewReadStatus>(null)
   const [copied, setCopied] = React.useState(false)
   const refreshVersionMap = useAtomValue(agentDiffRefreshVersionAtom)
   const setRefreshVersionMap = useSetAtom(agentDiffRefreshVersionAtom)
@@ -485,7 +550,7 @@ export function DiffTabContent({ filePath, dirPath, sessionId, gitRoot, previewO
     setPdfZoom(100)
     setImagePath('')
     setImageDataUrl('')
-    setImageZoom(0.25)
+    setImageZoom(DEFAULT_IMAGE_ZOOM)
     setImageNaturalSize({ w: 0, h: 0 })
     setLoading(!isLegacyOffice)
     setMarkdownEditing(false)
@@ -545,6 +610,7 @@ export function DiffTabContent({ filePath, dirPath, sessionId, gitRoot, previewO
       lastOldContentRef.current = cached.oldContent
       setOldContent(cached.oldContent)
       setNewContent(cached.newContent)
+      setPreviewReadStatus(cached.previewReadStatus ?? null)
       setDocxHtml(cached.docxHtml ?? '')
       setOfficeHtml(cached.officeHtml ?? '')
       setOfficeText(cached.officeText ?? '')
@@ -552,7 +618,7 @@ export function DiffTabContent({ filePath, dirPath, sessionId, gitRoot, previewO
       setPdfZoom(100)
       setImagePath(cached.imagePath ?? '')
       setImageDataUrl(cached.imageDataUrl ?? '')
-      setImageZoom(0.25)
+      setImageZoom(DEFAULT_IMAGE_ZOOM)
       setImageNaturalSize({ w: 0, h: 0 })
       setLoading(false)
       return // 缓存命中，直接返回，不执行 load()
@@ -560,6 +626,7 @@ export function DiffTabContent({ filePath, dirPath, sessionId, gitRoot, previewO
       if (!isLegacyOffice) setLoading(true)
       setOldContent('')
       setNewContent('')
+      setPreviewReadStatus(null)
       setDocxHtml('')
       setOfficeHtml('')
       setOfficeText('')
@@ -567,7 +634,7 @@ export function DiffTabContent({ filePath, dirPath, sessionId, gitRoot, previewO
       setPdfZoom(100)
       setImagePath('')
       setImageDataUrl('')
-      setImageZoom(0.25)
+      setImageZoom(DEFAULT_IMAGE_ZOOM)
       setImageNaturalSize({ w: 0, h: 0 })
       lastNewContentRef.current = ''
       lastOldContentRef.current = ''
@@ -582,6 +649,7 @@ export function DiffTabContent({ filePath, dirPath, sessionId, gitRoot, previewO
       try {
         let content = cached?.newContent ?? ''
         let old = cached?.oldContent ?? ''
+        let readStatus: PreviewReadStatus = cached?.previewReadStatus ?? null
 
         if (!cached) {
           if (previewOnly) {
@@ -630,7 +698,9 @@ export function DiffTabContent({ filePath, dirPath, sessionId, gitRoot, previewO
             }
             const result = await window.electronAPI.resolveAndReadFile(filePath, fileAccess)
             if (cancelled) return
-            content = result?.content ?? ''
+            readStatus = result.status
+            setPreviewReadStatus(readStatus)
+            content = result.content
           } else {
             const result = await window.electronAPI.getDiffContents({ dirPath, filePath, gitRoot, sessionId, baseRef })
             if (cancelled) return
@@ -643,7 +713,7 @@ export function DiffTabContent({ filePath, dirPath, sessionId, gitRoot, previewO
           setOldContent(old)
           setNewContent(content)
 
-          if (cacheKey) cacheSet(cacheKey, { oldContent: old, newContent: content })
+          if (cacheKey) cacheSet(cacheKey, { oldContent: old, newContent: content, previewReadStatus: previewOnly ? readStatus ?? undefined : undefined })
         }
 
         if (previewOnly && !MD_EXTS.has(ext) && content) {
@@ -1044,6 +1114,15 @@ export function DiffTabContent({ filePath, dirPath, sessionId, gitRoot, previewO
           <RefreshCw className="size-3.5" />
         </button>
 
+        <button
+          type="button"
+          onClick={handleShowInFolder}
+          className="p-1 rounded hover:bg-foreground/[0.06] text-foreground/40 hover:text-foreground/60 shrink-0"
+          title="在文件管理器中显示"
+        >
+          <FolderOpen className="size-3.5" />
+        </button>
+
         {isMarkdown && !markdownEditing && (
           <button
             type="button"
@@ -1151,6 +1230,21 @@ export function DiffTabContent({ filePath, dirPath, sessionId, gitRoot, previewO
                       onLoad={(e) => {
                         const img = e.currentTarget
                         setImageNaturalSize({ w: img.naturalWidth, h: img.naturalHeight })
+                        const container = imageContainerRef.current
+                        const styles = container ? window.getComputedStyle(container) : null
+                        const horizontalPadding = styles
+                          ? Number.parseFloat(styles.paddingLeft) + Number.parseFloat(styles.paddingRight)
+                          : 0
+                        const verticalPadding = styles
+                          ? Number.parseFloat(styles.paddingTop) + Number.parseFloat(styles.paddingBottom)
+                          : 0
+                        setImageZoom(getInitialImageZoom({
+                          ext,
+                          imageWidth: img.naturalWidth,
+                          imageHeight: img.naturalHeight,
+                          viewportWidth: container ? Math.max(0, container.clientWidth - horizontalPadding) : 0,
+                          viewportHeight: container ? Math.max(0, container.clientHeight - verticalPadding) : 0,
+                        }))
                       }}
                       style={{ width: imageNaturalSize.w > 0 ? imageNaturalSize.w * imageZoom : '100%', height: imageNaturalSize.h > 0 ? imageNaturalSize.h * imageZoom : 'auto', maxWidth: imageZoom <= 1 ? '100%' : 'none' }}
                     />
@@ -1222,6 +1316,8 @@ export function DiffTabContent({ filePath, dirPath, sessionId, gitRoot, previewO
                 spellCheck={false}
                 className="w-full min-h-full resize-none border-0 bg-transparent px-4 py-3 font-mono text-[13px] leading-relaxed text-foreground outline-none focus:outline-none"
               />
+            ) : previewReadStatus === 'unauthorized' || previewReadStatus === 'unavailable' || previewReadStatus === 'too_large' ? (
+              <PreviewUnavailable filePath={filePath} status={previewReadStatus} />
             ) : newContent ? (
               newContent.length > MAX_PREVIEW_CHARS ? (
                 <pre className="p-3 text-[13px] leading-relaxed text-foreground/80 font-mono whitespace-pre-wrap [overflow-wrap:anywhere]">

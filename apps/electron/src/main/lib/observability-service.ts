@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { app } from 'electron'
 import { platform, release } from 'node:os'
-import { getToken, getJobId } from '../../auth'
+import { getToken, getJobId, hasValidSession } from '../../auth'
 import { getConfigDir } from './config-paths'
 import { safeStringify } from './utils/safe-stringify'
 import {
@@ -117,6 +117,8 @@ export function addBreadcrumb(crumb: Omit<Breadcrumb, 'timestamp'>): void {
 
 export function reportEvent(item: Omit<ObservabilityEventItem, 'eventId'>): void {
   if (!config?.enabled) return
+  // 未登录（含 Token 缺失/已过期）时不上报：EIP 未登录则无有效身份，事件一律丢弃
+  if (!hasValidSession()) return
 
   const event = normalizeObservabilityEvent({
     ...item,

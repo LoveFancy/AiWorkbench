@@ -2092,43 +2092,26 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
         </div>
       )}
 
-      {/* 底部：用户菜单 + 设置入口 */}
+      {/* 底部：账户中心入口 */}
       <div className="px-3 pb-3 flex flex-col gap-1">
-        {/* 用户头像 + 设置 */}
         <div className="flex items-center gap-1">
-        {authState.isLoggedIn ? (
-          /* 已登录：用户头像 → 弹出账户快捷面板 */
-          <UserAccountMenu
-            userProfile={userProfile}
-            jobId={authState.jobId}
-            hasAttention={hasUpdate || hasEnvironmentIssues}
-            onOpenManual={handleOpenManual}
-            onLogout={handleLogout}
-          />
-        ) : (
-          <GuestAccountMenu
-            hasAttention={hasUpdate || hasEnvironmentIssues}
-            onOpenManual={handleOpenManual}
-            onLogin={handleLogin}
-          />
-        )}
-
-        {/* 设置按钮 */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              onClick={() => setSettingsOpen(true)}
-              className="relative flex-shrink-0 size-10 flex items-center justify-center rounded-[10px] transition-colors titlebar-no-drag text-foreground/40 hover:bg-foreground/[0.04] hover:text-foreground"
-            >
-              <Settings size={16} />
-              {(hasUpdate || hasEnvironmentIssues) && (
-                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500" />
-              )}
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="top">设置</TooltipContent>
-        </Tooltip>
-      </div>
+          {authState.isLoggedIn ? (
+            /* 已登录：用户头像 → 弹出账户快捷面板 */
+            <UserAccountMenu
+              userProfile={userProfile}
+              jobId={authState.jobId}
+              hasAttention={hasUpdate || hasEnvironmentIssues}
+              onOpenManual={handleOpenManual}
+              onLogout={handleLogout}
+            />
+          ) : (
+            <GuestAccountMenu
+              hasAttention={hasUpdate || hasEnvironmentIssues}
+              onOpenManual={handleOpenManual}
+              onLogin={handleLogin}
+            />
+          )}
+        </div>
       </div>
 
       {deleteDialog}
@@ -2288,7 +2271,7 @@ function SessionItemActions({
               <MoreHorizontal size={14} />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-40 z-[9999] min-w-0 p-0.5">
+          <DropdownMenuContent align="start" className="w-48 z-[9999] min-w-0 p-1.5">
             {menuItems(DropdownMenuItem, DropdownMenuSeparator)}
           </DropdownMenuContent>
         </DropdownMenu>
@@ -2376,21 +2359,21 @@ const ConversationItem = React.memo(function ConversationItem({
     MenuSeparator: typeof ContextMenuSeparator | typeof DropdownMenuSeparator,
   ) => (
     <>
-      <MenuItem className="text-xs py-1 [&>svg]:size-3.5" onSelect={() => onTogglePin(conversation.id)}>
-        {isPinned ? <PinOff size={14} /> : <Pin size={14} />}
+      <MenuItem className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4" onSelect={() => onTogglePin(conversation.id)}>
+        {isPinned ? <PinOff size={16} /> : <Pin size={16} />}
         {isPinned ? '取消置顶' : '置顶对话'}
       </MenuItem>
-      <MenuItem className="text-xs py-1 [&>svg]:size-3.5" onSelect={() => startEdit()}>
-        <Pencil size={14} />
+      <MenuItem className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4" onSelect={() => startEdit()}>
+        <Pencil size={16} />
         重命名
       </MenuItem>
-      <MenuItem className="text-xs py-1 [&>svg]:size-3.5" onSelect={() => onToggleArchive(conversation.id)}>
-        {conversation.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+      <MenuItem className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4" onSelect={() => onToggleArchive(conversation.id)}>
+        {conversation.archived ? <ArchiveRestore size={16} /> : <Archive size={16} />}
         {conversation.archived ? '取消归档' : '归档'}
       </MenuItem>
-      <MenuSeparator className="my-0.5" />
-      <MenuItem className="text-xs py-1 [&>svg]:size-3.5 text-destructive" onSelect={() => onRequestDelete(conversation.id)}>
-        <Trash2 size={14} />
+      <MenuSeparator className="my-1" />
+      <MenuItem className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4 text-destructive" onSelect={() => onRequestDelete(conversation.id)}>
+        <Trash2 size={16} />
         删除对话
       </MenuItem>
     </>
@@ -2469,7 +2452,7 @@ const ConversationItem = React.memo(function ConversationItem({
           )}
         </div>
       </ContextMenuTrigger>
-      <ContextMenuContent className="w-40 z-[9999] min-w-0 p-0.5">
+      <ContextMenuContent className="w-48 z-[9999] min-w-0 p-1.5">
         {menuItems(ContextMenuItem, ContextMenuSeparator)}
       </ContextMenuContent>
       <SessionMiniMapPopover
@@ -2594,27 +2577,27 @@ const AgentSessionItem = React.memo(function AgentSessionItem({
     MenuSeparator: typeof ContextMenuSeparator | typeof DropdownMenuSeparator,
   ) => (
     <>
-      <MenuItem className="text-xs py-1 [&>svg]:size-3.5" onSelect={() => onTogglePin(session.id)}>
-        {session.pinned ? <PinOff size={14} /> : <Pin size={14} />}
+      <MenuItem className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4" onSelect={() => onTogglePin(session.id)}>
+        {session.pinned ? <PinOff size={16} /> : <Pin size={16} />}
         {session.pinned ? '取消置顶' : '置顶会话'}
       </MenuItem>
       {canMove && (
-        <MenuItem className="text-xs py-1 [&>svg]:size-3.5" onSelect={() => onRequestMove(session.id)}>
-          <ArrowRightLeft size={14} />
+        <MenuItem className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4" onSelect={() => onRequestMove(session.id)}>
+          <ArrowRightLeft size={16} />
           迁移到其他项目
         </MenuItem>
       )}
-      <MenuItem className="text-xs py-1 [&>svg]:size-3.5" onSelect={() => startEdit()}>
-        <Pencil size={14} />
+      <MenuItem className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4" onSelect={() => startEdit()}>
+        <Pencil size={16} />
         重命名
       </MenuItem>
-      <MenuItem className="text-xs py-1 [&>svg]:size-3.5" onSelect={() => onToggleArchive(session.id)}>
-        {session.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+      <MenuItem className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4" onSelect={() => onToggleArchive(session.id)}>
+        {session.archived ? <ArchiveRestore size={16} /> : <Archive size={16} />}
         {session.archived ? '取消归档' : '归档'}
       </MenuItem>
-      <MenuSeparator className="my-0.5" />
-      <MenuItem className="text-xs py-1 [&>svg]:size-3.5 text-destructive" onSelect={() => onRequestDelete(session.id)}>
-        <Trash2 size={14} />
+      <MenuSeparator className="my-1" />
+      <MenuItem className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4 text-destructive" onSelect={() => onRequestDelete(session.id)}>
+        <Trash2 size={16} />
         删除会话
       </MenuItem>
     </>
@@ -2700,7 +2683,7 @@ const AgentSessionItem = React.memo(function AgentSessionItem({
           )}
         </div>
       </ContextMenuTrigger>
-      <ContextMenuContent className="w-40 z-[9999] min-w-0 p-0.5">
+      <ContextMenuContent className="w-48 z-[9999] min-w-0 p-1.5">
         {menuItems(ContextMenuItem, ContextMenuSeparator)}
       </ContextMenuContent>
       {!disableMiniMap && (
@@ -2941,38 +2924,38 @@ const AgentProjectGroupItem = React.memo(function AgentProjectGroupItem({
               <MoreHorizontal size={13} />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-44 z-[9999] min-w-0 p-0.5">
+          <DropdownMenuContent align="start" className="w-48 z-[9999] min-w-0 p-1.5">
             <DropdownMenuItem
-              className="text-xs py-1 [&>svg]:size-3.5"
+              className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
               onSelect={() => onSelectProject(group.workspace.id)}
             >
-              <FolderOpen size={14} />
+              <FolderOpen size={16} />
               设为当前项目
             </DropdownMenuItem>
             <DropdownMenuItem
-              className="text-xs py-1 [&>svg]:size-3.5"
+              className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
               onSelect={handleStartWorkspaceRename}
             >
-              <Pencil size={14} />
+              <Pencil size={16} />
               重命名
             </DropdownMenuItem>
             <DropdownMenuItem
-              className="text-xs py-1 [&>svg]:size-3.5"
+              className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
               onSelect={() => onConfigureProject(group.workspace.id)}
             >
-              <Settings size={14} />
+              <Settings size={16} />
               配置 MCP 与 Skills
             </DropdownMenuItem>
-            <DropdownMenuSeparator className="my-0.5" />
+            <DropdownMenuSeparator className="my-1" />
             <DropdownMenuItem
               disabled={!canDeleteWorkspace}
               className={cn(
-                'text-xs py-1 [&>svg]:size-3.5',
+                'text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4',
                 canDeleteWorkspace && 'text-destructive focus:text-destructive',
               )}
               onSelect={() => onRequestDeleteWorkspace(group.workspace.id)}
             >
-              <Trash2 size={14} />
+              <Trash2 size={16} />
               删除项目
             </DropdownMenuItem>
           </DropdownMenuContent>

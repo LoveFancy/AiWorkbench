@@ -9,6 +9,7 @@ import {
   buildPluginRuntimePaths,
   getPluginCapabilitySummary,
   installUserPluginZip,
+  installUserPluginZipAsync,
   listInstalledPlugins,
   readPluginsConfig,
   setPluginEnabled,
@@ -46,6 +47,24 @@ function createPlugin(root: string, name: string, version = '1.0.0', mcpCommand 
   writeFileSync(join(pluginDir, 'commands', 'demo.md'), '---\ndescription: Demo command\n---\nRun demo', 'utf-8')
   writeFileSync(join(pluginDir, 'agents', 'reviewer.md'), '---\ndescription: Demo agent\n---\nReview code', 'utf-8')
   writeFileSync(join(pluginDir, '.mcp.json'), JSON.stringify({ mcpServers: { drawio: { type: 'stdio', command: mcpCommand, env: { BASE: '1' } } } }), 'utf-8')
+  return pluginDir
+}
+
+function createClaudeCodeSkillsRootPlugin(root: string, name: string, skillFrontmatter?: string): string {
+  const pluginDir = join(root, name)
+  mkdirSync(join(pluginDir, '.claude-plugin'), { recursive: true })
+  mkdirSync(join(pluginDir, name), { recursive: true })
+  writeFileSync(
+    join(pluginDir, '.claude-plugin', 'plugin.json'),
+    JSON.stringify({
+      name,
+      version: '1.0.0',
+      description: `${name} 描述`,
+      skills: './',
+    }),
+    'utf-8',
+  )
+  writeFileSync(join(pluginDir, name, 'SKILL.md'), skillFrontmatter ?? `---\nname: ${name}\n---\n# ${name}`, 'utf-8')
   return pluginDir
 }
 
@@ -99,6 +118,95 @@ describe('插件注册表服务', () => {
       expect(plugins.every((plugin) => plugin.category === 'general')).toBe(true)
       expect(plugins[0]?.capabilities.map((capability) => capability.type).sort()).toEqual(['agent', 'command', 'mcp', 'skill'])
       expect(plugins[1]?.sourceMarketplaceId).toBe('market')
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('扫描 plugin.json 声明的 Claude Code skills 根目录', () => {
+    const temp = tempRoot()
+    try {
+      const userDir = join(temp.root, 'user-plugins')
+      const configPath = join(temp.root, 'plugins.json')
+      createClaudeCodeSkillsRootPlugin(join(userDir, 'market'), 'ppt-master')
+
+      const plugins = listInstalledPlugins({ builtinDir: join(temp.root, 'default-plugins'), userDir, configPath })
+
+      expect(plugins[0]?.capabilities).toContainEqual(expect.objectContaining({
+        type: 'skill',
+        name: 'ppt-master',
+        sourcePluginId: 'user:market/ppt-master',
+        sourceLabel: 'ppt-master',
+        relativePath: 'ppt-master',
+        enabled: true,
+      }))
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('解析 Skill frontmatter 的 YAML 折叠块说明', () => {
+    const temp = tempRoot()
+    try {
+      const userDir = join(temp.root, 'user-plugins')
+      const configPath = join(temp.root, 'plugins.json')
+      createClaudeCodeSkillsRootPlugin(
+        join(userDir, 'market'),
+        'ppt-master',
+        `---
+name: ppt-master
+description: >
+  AI-driven multi-format SVG content generation system. Converts source documents
+  (PDF/DOCX/URL/Markdown) into high-quality SVG pages and exports to PPTX through
+  multi-role collaboration. Use when user asks to "create PPT", "make presentation",
+  "生成PPT", "做PPT", "制作演示文稿", or mentions "ppt-master".
+---
+# ppt-master`,
+      )
+
+      const plugins = listInstalledPlugins({ builtinDir: join(temp.root, 'default-plugins'), userDir, configPath })
+      const skill = plugins[0]?.capabilities.find((capability) => capability.type === 'skill')
+
+      expect(skill?.description).toBe('AI-driven multi-format SVG content generation system. Converts source documents (PDF/DOCX/URL/Markdown) into high-quality SVG pages and exports to PPTX through multi-role collaboration. Use when user asks to "create PPT", "make presentation", "生成PPT", "做PPT", "制作演示文稿", or mentions "ppt-master".')
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('插件 manifest 缺少版本时使用市场安装记录版本', () => {
+    const temp = tempRoot()
+    try {
+      const userDir = join(temp.root, 'user-plugins')
+      const configPath = join(temp.root, 'plugins.json')
+      const pluginDir = createClaudeCodeSkillsRootPlugin(join(userDir, 'market'), 'ppt-master')
+      writeFileSync(
+        join(pluginDir, '.claude-plugin', 'plugin.json'),
+        JSON.stringify({
+          name: 'ppt-master',
+          description: 'ppt-master 描述',
+          skills: './',
+        }),
+        'utf-8',
+      )
+      writeFileSync(
+        configPath,
+        JSON.stringify({
+          version: 1,
+          plugins: {
+            'user:market/ppt-master': {
+              enabled: true,
+              sourceMarketplaceId: 'market',
+              version: '2.7.0',
+            },
+          },
+          mcpServers: {},
+        }),
+        'utf-8',
+      )
+
+      const plugins = listInstalledPlugins({ builtinDir: join(temp.root, 'default-plugins'), userDir, configPath })
+
+      expect(plugins[0]?.version).toBe('2.7.0')
     } finally {
       temp.cleanup()
     }
@@ -460,6 +568,53 @@ describe('插件注册表服务', () => {
         userDir: join(temp.root, 'user-plugins'),
         configPath: join(temp.root, 'plugins.json'),
       })).toThrow('必须包含 .claude-plugin/plugin.json')
+    } finally {
+      temp.cleanup()
+    }
+  })
+})
+
+describe('异步插件安装（installUserPluginZipAsync）', () => {
+  test('installUserPluginZipAsync 异步安装结果与同步一致', async () => {
+    const temp = tempRoot()
+    try {
+      const sourceDir = createPlugin(temp.root, 'async-plugin', '1.0.0')
+      const zipPath = join(temp.root, 'async-plugin.zip')
+      const zip = new AdmZip()
+      zip.addLocalFolder(sourceDir, 'async-plugin')
+      zip.writeZip(zipPath)
+
+      const installed = await installUserPluginZipAsync(zipPath, {
+        builtinDir: join(temp.root, 'default-plugins'),
+        userDir: join(temp.root, 'user-plugins'),
+        configPath: join(temp.root, 'plugins.json'),
+      })
+
+      expect(installed.id).toBe('user:local/async-plugin')
+      expect(installed.version).toBe('1.0.0')
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('installUserPluginZipAsync 在 signal 已 abort 时抛出取消错误', async () => {
+    const temp = tempRoot()
+    try {
+      const sourceDir = createPlugin(temp.root, 'cancel-plugin', '1.0.0')
+      const zipPath = join(temp.root, 'cancel-plugin.zip')
+      const zip = new AdmZip()
+      zip.addLocalFolder(sourceDir, 'cancel-plugin')
+      zip.writeZip(zipPath)
+
+      const controller = new AbortController()
+      controller.abort()
+
+      await expect(installUserPluginZipAsync(zipPath, {
+        builtinDir: join(temp.root, 'default-plugins'),
+        userDir: join(temp.root, 'user-plugins'),
+        configPath: join(temp.root, 'plugins.json'),
+        signal: controller.signal,
+      })).rejects.toThrow('下载已取消')
     } finally {
       temp.cleanup()
     }

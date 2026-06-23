@@ -1,6 +1,6 @@
 import * as React from 'react'
 import type { AgentExpertGroupInfo } from '@proma/shared'
-import { Bot, Star, Users } from 'lucide-react'
+import { Bot, Star, Users, X } from 'lucide-react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -8,6 +8,8 @@ import {
   followedExpertGroupsAtom,
   toggleFollowExpertGroupAtom,
 } from '@/experts/atoms/expert-follow'
+import { expertDownloadProgressFamily } from '@/experts/atoms/expert-remote'
+import { isCardSummonActionable } from '@/experts/utils/summon'
 
 interface ExpertCardProps {
   group: AgentExpertGroupInfo
@@ -21,6 +23,14 @@ export function ExpertCard({ group, onOpen, onSummon, compact = false }: ExpertC
   const toggleFollow = useSetAtom(toggleFollowExpertGroupAtom)
   const isFollowed = !!followed[group.id]
   const isTeam = group.expertType === 'team' || (group.subagents && group.subagents.length > 0)
+
+  const downloadProgress = useAtomValue(expertDownloadProgressFamily(group.id))
+  const isDownloading = downloadProgress?.status === 'downloading' || downloadProgress?.status === 'installing'
+
+  const handleCancelDownload = React.useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    void window.electronAPI.cancelRemoteDownload(group.id)
+  }, [group.id])
 
   const handleToggleFollow = React.useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
@@ -85,18 +95,44 @@ export function ExpertCard({ group, onOpen, onSummon, compact = false }: ExpertC
           </div>
         </button>
         <div className="absolute right-4 top-4 flex items-center gap-2 pr-5">
-          {onSummon && (
-            <Button
-              size="sm"
-              className={cn(
-                'pointer-events-none h-9 px-4 opacity-0 shadow-sm transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100',
-                compact && 'h-8 px-3',
-              )}
-              disabled={group.status !== 'available' && group.status !== 'remote_not_downloaded' && group.status !== 'remote_downloading'}
-              onClick={() => onSummon(group)}
-            >
-              {group.status === 'remote_not_downloaded' ? '下载' : group.status === 'remote_downloading' ? '下载中...' : '召唤'}
-            </Button>
+          {isDownloading ? (
+            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+              <div className="flex flex-col gap-1">
+                <div className="h-1.5 w-28 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all duration-200"
+                    style={{ width: `${downloadProgress?.status === 'installing' ? 100 : downloadProgress?.progress ?? 0}%` }}
+                  />
+                </div>
+                <span className="text-[11px] text-muted-foreground">
+                  {downloadProgress?.status === 'installing'
+                    ? '正在安装…'
+                    : `正在下载 ${downloadProgress?.progress ?? 0}%`}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleCancelDownload}
+                title="取消下载"
+                className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ) : (
+            onSummon && (
+              <Button
+                size="sm"
+                className={cn(
+                  'pointer-events-none h-9 px-4 opacity-0 shadow-sm transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100',
+                  compact && 'h-8 px-3',
+                )}
+                disabled={!isCardSummonActionable(group.status)}
+                onClick={() => onSummon(group)}
+              >
+                {group.status === 'remote_not_downloaded' ? '下载' : group.status === 'remote_downloading' ? '下载中...' : '召唤'}
+              </Button>
+            )
           )}
         </div>
       </div>

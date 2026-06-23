@@ -12,7 +12,7 @@ import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
 import AdmZip from 'adm-zip'
 import { DOMParser } from '@xmldom/xmldom'
-import type { OfficePreviewResult } from '@proma/shared'
+import type { FilePreviewReadResult, OfficePreviewResult } from '@proma/shared'
 import { readTextFile } from './text-decoder'
 
 const require = createRequire(__filename)
@@ -532,16 +532,18 @@ function convertPptxToHtml(filePath: string, resolvedPath: string): OfficePrevie
 // ─── 导出：内联预览 API ───
 
 /** 解析文件路径并读取内容（供内联文本/代码预览使用） */
-export function resolveAndReadFile(filePath: string, basePaths?: string[]): { resolvedPath: string; content: string } | null {
+export function resolveAndReadFile(filePath: string, basePaths?: string[]): FilePreviewReadResult {
   const safePath = resolveTargetPath(filePath, basePaths)
-  if (!existsSync(safePath)) return null
+  if (!existsSync(safePath)) {
+    return { status: 'unavailable', resolvedPath: safePath, content: '' }
+  }
   try {
     const st = statSync(safePath)
-    if (st.size > MAX_FILE_SIZE) return null
+    if (st.size > MAX_FILE_SIZE) return { status: 'too_large', resolvedPath: safePath, content: '' }
     const content = readTextFile(safePath)
-    return { resolvedPath: safePath, content }
+    return { status: content.length > 0 ? 'ok' : 'empty', resolvedPath: safePath, content }
   } catch {
-    return null
+    return { status: 'unavailable', resolvedPath: safePath, content: '' }
   }
 }
 

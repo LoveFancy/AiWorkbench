@@ -88,6 +88,7 @@ import {
   type BridgeContext,
   type QuotedMessage,
 } from './feishu/prompt-builder'
+import { createFeishuSdkTransport } from './feishu-http-client'
 
 // ===== 类型定义 =====
 
@@ -223,6 +224,7 @@ class FeishuBridge {
     try {
       const plainSecret = getDecryptedBotAppSecret(this.botConfig.id)
       const lark = await import('@larksuiteoapi/node-sdk')
+      const transport = await createFeishuSdkTransport()
 
       // 用 createLarkChannel 替代 lark.Client + lark.WSClient + EventDispatcher 老组合
       // 关键收益：channel.on({cardAction}) 能拿到卡片按钮回调（老 WSClient.handleEventData
@@ -232,6 +234,8 @@ class FeishuBridge {
         appId,
         appSecret: plainSecret,
         domain: lark.Domain.Feishu,
+        httpInstance: transport.httpInstance,
+        agent: transport.agent,
         loggerLevel: lark.LoggerLevel.warn,
         policy: {
           dmMode: 'open',
@@ -571,10 +575,12 @@ class FeishuBridge {
   async testConnection(appId: string, appSecret: string): Promise<FeishuTestResult> {
     try {
       const lark = await import('@larksuiteoapi/node-sdk')
+      const transport = await createFeishuSdkTransport()
       const client = new lark.Client({
         appId,
         appSecret,
         appType: lark.AppType.SelfBuild,
+        httpInstance: transport.httpInstance,
       })
 
       // 通过获取 tenant_access_token 来验证凭证

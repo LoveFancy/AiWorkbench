@@ -58,6 +58,11 @@ interface GuestAccountMenuProps {
   onLogin: () => void
 }
 
+const ACCOUNT_MENU_CONTENT_CLASS = cn(
+  'z-[9999] w-[300px] overflow-hidden rounded-[22px] border border-border/70 bg-popover/98 p-0 text-popover-foreground shadow-[0_24px_64px_rgba(15,23,42,0.18)] ring-1 ring-black/5 backdrop-blur-xl',
+  'dark:border-white/10 dark:bg-dialog/95 dark:shadow-[0_28px_72px_rgba(0,0,0,0.58)] dark:ring-white/10',
+)
+
 export function UserAccountMenu({
   userProfile,
   jobId,
@@ -129,7 +134,7 @@ export function UserAccountMenu({
         side="top"
         align={contentAlign}
         sideOffset={12}
-        className="z-[9999] w-[300px] overflow-hidden rounded-[22px] border-0 bg-popover/95 p-0 text-popover-foreground shadow-[0_24px_64px_rgba(15,23,42,0.18)] backdrop-blur-xl dark:bg-popover/95 dark:shadow-[0_24px_64px_rgba(0,0,0,0.38)]"
+        className={ACCOUNT_MENU_CONTENT_CLASS}
       >
         <div className="px-4 pb-3 pt-4">
           <div className="flex items-center gap-3">
@@ -239,7 +244,7 @@ export function GuestAccountMenu({
           </span>
           {!collapsed && (
             <span className="flex-1 truncate text-left text-sm">
-              登录 OA 账号
+              账户与设置
             </span>
           )}
           {hasAttention && (
@@ -255,28 +260,27 @@ export function GuestAccountMenu({
         side="top"
         align={contentAlign}
         sideOffset={12}
-        className="z-[9999] w-[300px] overflow-hidden rounded-[22px] border-0 bg-popover/95 p-0 text-popover-foreground shadow-[0_24px_64px_rgba(15,23,42,0.18)] backdrop-blur-xl dark:bg-popover/95 dark:shadow-[0_24px_64px_rgba(0,0,0,0.38)]"
+        className={ACCOUNT_MENU_CONTENT_CLASS}
       >
         <div className="px-4 pb-3 pt-4">
-          <div className="flex items-center gap-3">
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-[14px] bg-foreground/[0.06] text-foreground/65">
+          <button
+            type="button"
+            onClick={onLogin}
+            className="flex w-full items-center gap-3 rounded-[16px] bg-primary px-4 py-3 text-left text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+          >
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-[14px] bg-primary-foreground/15 text-primary-foreground">
               <LogIn size={20} />
             </span>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-lg font-semibold leading-6">未登录</p>
-              <p className="truncate text-xs text-muted-foreground">登录后同步 OA 账号状态</p>
-            </div>
-          </div>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[15px] font-semibold leading-5">登录 OA 账号</span>
+              <span className="block truncate text-xs text-primary-foreground/70">登录后同步 OA 账号状态</span>
+            </span>
+          </button>
         </div>
 
         <DropdownMenuSeparator className="mx-4 my-0 bg-foreground/[0.08]" />
 
         <div className="space-y-1 p-3">
-          <AccountMenuItem
-            icon={<LogIn size={20} />}
-            label="登录 OA 账号"
-            onSelect={onLogin}
-          />
           <AccountMenuItem
             icon={<Settings size={20} />}
             label="设置"

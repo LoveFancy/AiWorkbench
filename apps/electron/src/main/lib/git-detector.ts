@@ -9,6 +9,7 @@ import { existsSync } from 'fs'
 import { join } from 'path'
 import type { GitRuntimeStatus, GitRepoStatus } from '@proma/shared'
 import { getGitForWindowsInstallPath } from './windows-env'
+import { decodeCommandOutput } from './windows-command-output'
 
 /**
  * 从系统 PATH 查找 Git
@@ -20,12 +21,11 @@ function findGitPath(): string | null {
     const command = process.platform === 'win32' ? 'where git' : 'which git'
 
     const result = execSync(command, {
-      encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
       timeout: 5000,
     })
 
-    const gitPath = result.trim().split('\n')[0]
+    const gitPath = decodeCommandOutput(result).trim().split(/\r?\n/)[0]
 
     if (gitPath && existsSync(gitPath)) {
       return gitPath
@@ -282,12 +282,11 @@ export function detectGitBashWindows(): string | null {
   // 尝试使用 where 命令
   try {
     const result = execSync('where bash', {
-      encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
       timeout: 5000,
     })
 
-    const bashPath = result.trim().split('\n')[0]
+    const bashPath = decodeCommandOutput(result).trim().split(/\r?\n/)[0]
 
     if (bashPath && existsSync(bashPath)) {
       return bashPath

@@ -9,6 +9,7 @@ import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { cn } from '@/lib/utils'
+import { isPluginUpdateAvailable } from '@/lib/plugin-version'
 
 type PluginDetailMode = 'market' | 'installed'
 
@@ -47,6 +48,8 @@ export function PluginDetailSheet({
   const name = pluginName(plugin)
   const description = plugin?.description || manifest?.description || '暂无描述'
   const version = pluginVersion(plugin)
+  const installedVersion = pluginInstalledVersion(plugin)
+  const updateAvailable = isMarketplaceDetail(plugin) && isPluginUpdateAvailable(plugin.version, installedVersion)
   const enabled = pluginEnabled(plugin)
   const installed = pluginInstalled(plugin)
   const homepage = pluginHomepage(plugin)
@@ -55,6 +58,15 @@ export function PluginDetailSheet({
   const grouped = groupCapabilities(capabilities)
   const capabilitySummary = capabilitySummaryItems(capabilities)
   const visibleCapabilityTypes = CAPABILITY_ORDER.filter((type) => grouped[type].length > 0)
+  const emptyCapabilityMessage = isMarketplaceDetail(plugin) && !plugin.installed
+    ? {
+        title: '安装后可查看具体 Skill、命令、智能体和 MCP 能力',
+        description: '市场插件需要安装到本地后，才能读取插件包内的能力清单。',
+      }
+    : {
+        title: '暂无能力',
+        description: '当前插件没有声明可展示的组件能力。',
+      }
 
   return (
     <Sheet open={!!plugin} onOpenChange={onOpenChange}>
@@ -95,10 +107,10 @@ export function PluginDetailSheet({
                 </div>
 
               <div className="flex shrink-0 flex-wrap items-center gap-2 xl:justify-end">
-                {mode === 'market' && isMarketplaceDetail(plugin) && onInstall && (
+                {mode === 'market' && isMarketplaceDetail(plugin) && onInstall && (!plugin.installed || updateAvailable) && (
                   <Button size="sm" disabled={installing} onClick={() => onInstall(plugin)}>
                     {installing ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                    {plugin.installed ? installing ? '更新中' : '更新' : installing ? '安装中' : '安装'}
+                    {updateAvailable ? installing ? '更新中' : '更新' : installing ? '安装中' : '安装'}
                   </Button>
                 )}
                 {mode === 'installed' && isInstalledPlugin(plugin) && (
@@ -171,7 +183,7 @@ export function PluginDetailSheet({
                     <div className="mt-4 border-t border-border/50 pt-4">
                       <div className="mb-2 text-xs font-medium text-muted-foreground">能力数量</div>
                       {capabilitySummary.length === 0 ? (
-                        <div className="text-sm text-muted-foreground">暂无能力</div>
+                        <div className="text-sm text-muted-foreground">{emptyCapabilityMessage.title}</div>
                       ) : (
                         <div className="flex flex-wrap gap-2">
                           {capabilitySummary.map((item) => (
@@ -196,7 +208,10 @@ export function PluginDetailSheet({
                       )}
                     </div>
                     {capabilities.length === 0 ? (
-                      <div className="rounded-lg border border-dashed border-border/70 py-8 text-center text-sm text-muted-foreground">暂无可发现能力</div>
+                      <div className="rounded-lg border border-dashed border-border/70 bg-content-area/60 px-5 py-7 text-center">
+                        <div className="text-sm font-medium text-foreground">{emptyCapabilityMessage.title}</div>
+                        <div className="mx-auto mt-1 max-w-md text-xs leading-5 text-muted-foreground">{emptyCapabilityMessage.description}</div>
+                      </div>
                     ) : (
                       <div className="space-y-2">
                         {visibleCapabilityTypes.map((type, index) => (
@@ -347,6 +362,13 @@ function pluginVersion(plugin: AgentPluginMarketplaceDetail | AgentPluginInfo | 
   if (!plugin) return undefined
   if (isInstalledPlugin(plugin)) return plugin.version
   return plugin.version ?? plugin.manifest?.version
+}
+
+function pluginInstalledVersion(plugin: AgentPluginMarketplaceDetail | AgentPluginInfo | null): string | undefined {
+  if (!plugin) return undefined
+  if (isInstalledPlugin(plugin)) return plugin.version
+  if (!plugin.installed) return undefined
+  return plugin.manifest?.version
 }
 
 function pluginEnabled(plugin: AgentPluginMarketplaceDetail | AgentPluginInfo | null): boolean | null {

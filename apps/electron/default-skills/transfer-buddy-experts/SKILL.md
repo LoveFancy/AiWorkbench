@@ -1,7 +1,5 @@
 ---
-name: transfer-buddy-experts
-description: "将 WorkBuddy 专家团转换为 WorkMate 专家团。当用户想要导入、转换、迁移 WorkBuddy 的专家团到 WorkMate 时使用。也适用于用户说“把 WorkBuddy 专家转过来”、“导入 WorkBuddy 专家团”、“转换专家团格式”、“迁移专家”等场景。支持单 Agent 和团队模式，自动处理 SubAgent 拆分、Rules 融入、Skills 映射等。"
-version: "1.3.1"
+## name: transfer-buddy-experts description: 将 WorkBuddy 专家团转换为 WorkMate 专家团。当用户想要导入、转换、迁移 WorkBuddy 的专家团到 WorkMate 时使用。也适用于用户说"把 WorkBuddy 专家转过来"、"导入 WorkBuddy 专家团"、"转换专家团格式"、"迁移专家"等场景。支持单 Agent 和团队模式，自动处理 SubAgent 拆分、Rules 融入、Skills 映射等。 version: "1.4.0"
 ---
 
 # Transfer Buddy Experts
@@ -66,6 +64,8 @@ version: "1.3.1"
 
 ### 1. `.claude-plugin/plugin.json`
 
+> ⚠️ **必须按下方格式重新生成**，不得将源 WorkBuddy 的 `plugin.json` 原样复制。WorkMate 的 `.claude-plugin/plugin.json` 是精简格式，只含以下 7 个字段。
+
 ```json
 {
   "name": "{中文显示名}",
@@ -129,7 +129,7 @@ description: {角色描述}
 | 源字段 | 目标字段 | 规则 |
 | --- | --- | --- |
 | `name` | `expertGroup` + `id` | 直接使用 |
-| `displayName.zh` | `name` | 优先取，回退 profession.zh → agent .md body 中 `# 中文名` 模式提取 → plugin.json 的 `name` |
+| `displayName.zh` | `name` | 优先取，回退 profession.zh → agent .md body 中 `# 中文名` 提取 → plugin.json 的 `name` |
 | `displayDescription.zh` | `description` | 优先取中文，回退 `description_zh`（扁平字段变体）→ `description` |
 | `defaultInitPrompt.zh` | `introduction` | 中文版，如无则留空 |
 | `profession.zh` | `mainRole.name` | 职业名 |
@@ -145,7 +145,7 @@ description: {角色描述}
 | 源字段 | 目标字段 | 规则 |
 | --- | --- | --- |
 | `name` | `expertGroup` + `id` | 直接使用 |
-| `displayName.zh` | `name` | 优先取，回退同类型 A |
+| `displayName.zh` | `name` | 优先取，回退同类型 A（profession.zh → body `# 中文名` → `name`） |
 | `displayDescription.zh` | `description` | 优先取中文，回退 `description_zh` → `description`（同类型 A） |
 | `defaultInitPrompt.zh` | `introduction` | 中文版，如无则留空 |
 | `version` | `version` | 直接使用，默认 1.0.0 |
@@ -164,6 +164,8 @@ description: {角色描述}
 ## 分类推断规则
 
 转换完成后，根据内容推断 `categories`（字符串数组），专家可归属多个分类。
+
+> ⚠️ **严格限制**：`categories` 的值**必须**从下方 17 类中选取**纯中文分类名**（如 `"内容创作"`），禁止使用任何编号前缀（如 `"11.内容创作"`、`"7.合规与法务"` 或纯数字 `"07"`）。非纯中文名的分类会导致专家市场筛选失效。
 
 ### 分类体系
 
@@ -423,7 +425,7 @@ WorkBuddy 专家的 `skills/` 目录中的每个 skill 需要做以下处理：
 
 输出前请自检：
 
-- [ ] `categories` 已赋值（至少 1 个，跨类不超过 2 个），与 categoryId 映射和 tags/description 语义一致
+- [ ] `categories` 已赋值（至少 1 个，跨类不超过 2 个），值为**纯中文分类名**（无编号前缀如 `"11.内容创作"`，无纯数字如 `"07"`）
 
 - [ ] `expertGroup` 字段与 `id` 一致，均为英文
 

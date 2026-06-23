@@ -17,7 +17,7 @@ interface ExpertDetailDialogProps {
 export function ExpertDetailDialog({ group, open, onOpenChange, onSummon }: ExpertDetailDialogProps): React.ReactElement {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent hideClose side="right" className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:w-[62vw] sm:min-w-[680px] sm:max-w-[1100px]" aria-describedby={undefined}>
+      <SheetContent hideClose side="right" className="flex w-full sm:w-[46vw] sm:min-w-[520px] sm:max-w-[760px] flex-col gap-0 overflow-hidden p-0" aria-describedby={undefined}>
         {group && (
           <div className="flex h-full min-h-0 flex-col">
             <div className="shrink-0 border-b border-border/60 px-5 pb-4 pt-5">
@@ -26,6 +26,20 @@ export function ExpertDetailDialog({ group, open, onOpenChange, onSummon }: Expe
                   <ArrowLeft size={18} />
                 </Button>
                 <SheetTitle className="text-lg font-medium text-foreground">专家详情</SheetTitle>
+                <div className="ml-auto flex shrink-0 items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>关闭</Button>
+                  {onSummon && (
+                    <Button
+                      size="sm"
+                      disabled={group.status !== 'available' && group.status !== 'remote_not_downloaded' && group.status !== 'remote_downloading'}
+                      onClick={() => onSummon(group)}
+                    >
+                      {group.sourcePluginKind === 'remote' && group.status !== 'available'
+                        ? group.status === 'remote_downloading' ? '下载中...' : '下载并召唤'
+                        : `召唤${group.name}`}
+                    </Button>
+                  )}
+                </div>
               </div>
 
               <div className="mt-4 flex items-start gap-3">
@@ -105,21 +119,6 @@ export function ExpertDetailDialog({ group, open, onOpenChange, onSummon }: Expe
               </div>
             </div>
 
-            <div className="shrink-0 border-t border-border/60 px-5 py-4">
-              <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => onOpenChange(false)}>关闭</Button>
-              {onSummon && (
-                <Button
-                  disabled={group.status !== 'available' && group.status !== 'remote_not_downloaded' && group.status !== 'remote_downloading'}
-                  onClick={() => onSummon(group)}
-                >
-                  {group.sourcePluginKind === 'remote' && group.status !== 'available'
-                    ? group.status === 'remote_downloading' ? '下载中...' : '下载并召唤'
-                    : `召唤${group.name}`}
-                </Button>
-              )}
-              </div>
-            </div>
           </div>
         )}
       </SheetContent>
