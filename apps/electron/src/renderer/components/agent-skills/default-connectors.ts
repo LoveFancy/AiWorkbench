@@ -1,42 +1,59 @@
+import type { ConnectorEntry, ConnectorsConfig } from '@proma/shared'
+
 export { buildHuataiEmailMcpEntry } from '@proma/shared'
 export type { HuataiEmailInput } from '@proma/shared'
 
-export type DefaultConnectorId = 'personal-email' | 'feishu-cli' | 'hiagent-taiwei'
-
-export interface DefaultConnectorDefinition {
-  id: DefaultConnectorId
+/* 连接器元数据均从 default-connectors/{name}/connector.json 动态读取 */
+/** 预设连接器展示信息（从 ConnectorEntry 派生） */
+export interface PresetConnectorDefinition {
+  id: string
   name: string
   description: string
   category: string
   status: 'available' | 'coming-soon'
   serverName?: string
+  connectorType: 'mcp' | 'cli'
 }
 
-export const DEFAULT_CONNECTOR_DEFINITIONS: readonly DefaultConnectorDefinition[] = [
-  {
-    id: 'personal-email',
-    name: '华泰邮箱',
-    category: '邮件服务',
-    description: '绑定华泰邮箱后，Agent 可读取邮件主题、发件人和正文内容，辅助整理邮件与提炼信息。',
-    status: 'available',
-    serverName: 'email',
-  },
-  {
-    id: 'feishu-cli',
-    name: '飞书 CLI',
-    category: '办公协同',
-    description: '通过飞书开放平台接入，让 Agent 使用飞书消息、云文档、日历和任务等办公协同能力。',
-    status: 'available',
-  },
-  {
-    id: 'hiagent-taiwei',
-    name: 'HiAgent 泰为',
-    category: '企业智能体',
-    description: '企业智能体连接能力正在准备中。',
-    status: 'coming-soon',
-  },
-]
+/**
+ * 从 connectors.json 中提取 source === 'preset' 的连接器展示定义
+ *
+ * 所有字段从 connectors.json 的 ConnectorEntry 派生，不再硬编码。
+ * 新增连接器只需在 default-connectors/{name}/connector.json 中写好元数据，
+ * 启动时 syncDefaultConnectorsToWorkspace() 同步到工作区 connectors.json 即可。
+ */
+export function getPresetConnectorDefinitions(
+  connectorsConfig: ConnectorsConfig | null,
+): PresetConnectorDefinition[] {
+  if (!connectorsConfig) return []
 
-export function getDefaultConnectorServerNames(): Set<string> {
-  return new Set(DEFAULT_CONNECTOR_DEFINITIONS.map((connector) => connector.serverName).filter((serverName): serverName is string => Boolean(serverName)))
+  const definitions: PresetConnectorDefinition[] = []
+
+  for (const [id, entry] of Object.entries(connectorsConfig.connectors)) {
+    if (entry.source !== 'preset') continue
+    definitions.push({
+      id,
+      name: entry.displayName ?? id,
+      description: entry.description ?? '',
+      category: entry.category ?? '其他',
+      status: entry.status ?? 'available',
+      serverName: entry.serverName,
+      connectorType: entry.type,
+    })
+  }
+
+  return definitions
+}
+
+/**
+ * 获取所有预设连接器的 MCP server name 集合
+ */
+export function getPresetConnectorServerNames(
+  connectorsConfig: ConnectorsConfig | null,
+): Set<string> {
+  return new Set(
+    getPresetConnectorDefinitions(connectorsConfig)
+      .map((def) => def.serverName)
+      .filter((name): name is string => Boolean(name)),
+  )
 }

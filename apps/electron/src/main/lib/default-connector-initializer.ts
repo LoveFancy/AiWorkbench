@@ -7,7 +7,7 @@ import type {
   McpServerEntry,
 } from '@proma/shared'
 import { buildHuataiEmailMcpEntry } from '@proma/shared'
-import { getWorkspaceMcpConfig, saveWorkspaceMcpConfig } from './agent-workspace-manager'
+import { getWorkspaceConnectorsConfig, saveWorkspaceConnectorsConfig, getWorkspaceMcpConfig, saveWorkspaceMcpConfig } from './agent-workspace-manager'
 import { validateMcpServer } from './mcp-validator'
 
 interface CommandResult {
@@ -95,7 +95,7 @@ export async function initializeDefaultConnector(
   input: InitializeDefaultConnectorInput,
   deps: InitializerDeps = {},
 ): Promise<InitializeDefaultConnectorResult> {
-  if (input.connectorId !== 'personal-email') {
+  if (input.connectorId !== 'huatai-email') {
     throw new Error(`暂不支持初始化连接器: ${input.connectorId}`)
   }
   if (!input.emailAddress?.trim() || !input.password?.trim()) {
@@ -110,13 +110,18 @@ export async function initializeDefaultConnector(
   })
   const steps = makeSteps()
 
+  // 从连接器配置读取 serverName
+  const connectorsConfig = getWorkspaceConnectorsConfig(workspaceSlug)
+  const connectorDef = connectorsConfig.connectors[input.connectorId]
+  const serverName = connectorDef?.serverName ?? input.connectorId
+
   const pythonCommand = await findFirstAvailable(['python3', 'python'], commandExists)
   const pipCommand = await findFirstAvailable(['pip3', 'pip'], commandExists)
   if (!pythonCommand || !pipCommand) {
     setStep(steps, 'check-python', 'error', '未检测到可用的 Python 或 pip')
     return {
       connectorId: input.connectorId,
-      serverName: 'email',
+      serverName,
       success: false,
       steps,
       message: '未检测到可用的 Python 或 pip，请先安装 Python。',
@@ -135,7 +140,7 @@ export async function initializeDefaultConnector(
       setStep(steps, 'install-package', 'error', installResult.stderr || installResult.stdout || '安装失败')
       return {
         connectorId: input.connectorId,
-        serverName: 'email',
+        serverName,
         success: false,
         steps,
         message: '安装 mcp-email-server 失败。',
@@ -150,7 +155,7 @@ export async function initializeDefaultConnector(
     setStep(steps, 'check-package', 'error', 'mcp-email-server 安装后无法定位到可执行文件')
     return {
       connectorId: input.connectorId,
-      serverName: 'email',
+      serverName,
       success: false,
       steps,
       message: 'mcp-email-server 安装后无法定位到可执行文件，请检查 pip 安装路径是否在 PATH 中。',
@@ -163,21 +168,30 @@ export async function initializeDefaultConnector(
   })
   // 用全路径替换命令名
   entry.command = resolvedPath
+
   const config = getWorkspaceMcpConfig(workspaceSlug)
   saveWorkspaceMcpConfig(workspaceSlug, {
     servers: {
       ...config.servers,
-      email: entry,
+      [serverName]: entry,
     },
   })
-  setStep(steps, 'write-config', 'success', '已写入 email MCP')
 
-  const validation = await validate('email', entry)
+  // 启用 connectors.json 中的连接器条目（并补齐 serverName）
+  if (connectorDef) {
+    connectorDef.enabled = true
+    connectorDef.serverName = serverName
+    saveWorkspaceConnectorsConfig(workspaceSlug, connectorsConfig)
+  }
+
+  setStep(steps, 'write-config', 'success', `已写入 ${serverName} MCP`)
+
+  const validation = await validate(serverName, entry)
   if (!validation.success) {
     setStep(steps, 'self-check', 'error', validation.message)
     return {
       connectorId: input.connectorId,
-      serverName: 'email',
+      serverName,
       success: false,
       steps,
       message: validation.message,
@@ -187,7 +201,7 @@ export async function initializeDefaultConnector(
 
   return {
     connectorId: input.connectorId,
-    serverName: 'email',
+    serverName,
     success: true,
     steps,
     message: '华泰邮箱连接器初始化完成。',

@@ -31,7 +31,7 @@ import { injectAutomationMcpServer } from './automation-agent-tools'
 import { normalizeAnthropicBaseUrlForSdk, getPromaUserAgent } from '@proma/core'
 import pkg from '../../../package.json' with { type: 'json' }
 import { appendSDKMessages, updateAgentSessionMeta, getAgentSessionMeta, getAgentSessionMessages } from './agent-session-manager'
-import { getAgentWorkspace, ensurePluginManifest, getWorkspaceConnectorsConfig, migrateMcpJsonToConnectors, syncDefaultConnectorsToWorkspace } from './agent-workspace-manager'
+import { getAgentWorkspace, ensurePluginManifest, getWorkspaceConnectorsConfig, migrateMcpJsonToConnectors, syncDefaultConnectorsToWorkspace, readSkillDirsFromConnectorJson } from './agent-workspace-manager'
 import { getAgentSessionWorkspacePath } from './config-paths'
 import { getRuntimeStatus } from './runtime-init'
 import { getSettings } from './settings-service'
@@ -962,26 +962,30 @@ export class AgentOrchestrator {
           ]
           return plugins.length > 0 ? { plugins } : {}
         })(),
-        // 连接器 CLI Skill 扫描：传入 connectors/ 基目录 + 每个 CLI 连接器的 skillDir
+        // 连接器 CLI Skill 扫描：外层 connectors.json 拿 enabled/type，
+        // 内层 connectors/{name}/connector.json 拿 skillDirs
         ...(() => {
           const { getConnectorsDir } = require('./config-paths')
           const connectorsDir = workspaceSlug ? getConnectorsDir(workspaceSlug) : ''
           if (!connectorsDir) return {}
 
-          const skillDirs: string[] = [connectorsDir]
-          // 为每个 CLI 类型的启用连接器拼接 connectors/{name}/{skillDir}
+          const skillDirs: string[] = []
           try {
             const config = workspaceSlug ? getWorkspaceConnectorsConfig(workspaceSlug) : { version: '1.0', connectors: {} }
             for (const [name, connector] of Object.entries(config.connectors)) {
               if (!connector.enabled) continue
-              if (connector.type !== 'cli' || !connector.skillDirs) continue
-              for (const d of connector.skillDirs) {
+              if (connector.type !== 'cli') continue
+
+              // 优先从 connectors/{name}/connector.json 读取 skillDirs（新格式）
+              // 兜底从 connectors.json 的 skillDirs 字段读取（旧格式兼容）
+              const dirs = readSkillDirsFromConnectorJson(connectorsDir, name) ?? connector.skillDirs ?? []
+              for (const d of dirs) {
                 skillDirs.push(join(connectorsDir, name, d))
               }
             }
           } catch { /* connectors/ 目录可能尚未同步 */ }
 
-          return { additionalSkillDirs: skillDirs }
+          return skillDirs.length > 0 ? { additionalSkillDirs: skillDirs } : {}
         })(),
         // 合并附加目录：用户当次输入 + 会话级 + 工作区级（详见 collectAttachedDirectories）
         ...(() => {

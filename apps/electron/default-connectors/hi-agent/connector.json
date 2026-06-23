@@ -1,0 +1,9 @@
+{
+  "type": "cli",
+  "displayName": "taiwei智能体",
+  "description": "taiwei智能体，用于处理办公协同任务",
+  "category": "办公协同",
+  "status": "coming-soon",
+  "version": "1.0.0",
+  "skillDirs": []
+}

@@ -12,6 +12,7 @@
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { existsSync } from 'node:fs'
+import { app } from 'electron'
 
 export const LARK_CLI_DIR = join(homedir(), '.lark-cli')
 
@@ -27,26 +28,24 @@ let dpapi: DpapiBindings
 function loadDpapi(): DpapiBindings {
   const platform = process.platform === 'win32' ? 'win32' : process.platform
   const arch = process.arch === 'x64' ? 'x64' : 'arm64'
-  const filename = process.platform === 'win32' ? '@primno+dpapi.node' : `@primno+dpapi.node`
+  const filename = '@primno+dpapi.node'
 
-  // Electron 39 ships bundled @primno/dpapi
-  const searchPaths = [
-    join(__dirname, '..', 'node_modules', '@primno', 'dpapi', 'prebuilds', `${platform}-${arch}`, filename),
-    join(__dirname, '..', '..', 'node_modules', '@primno', 'dpapi', 'prebuilds', `${platform}-${arch}`, filename),
-  ]
+  // 生产环境：electron-builder 将 prebuilds 打入 extraResources/dpapi-prebuilds/
+  // 开发环境：node_modules/@primno/dpapi/prebuilds/ 通过 __dirname 定位
+  const prebuildsDir = app.isPackaged
+    ? join(process.resourcesPath, 'dpapi-prebuilds')
+    : join(__dirname, '..', 'node_modules', '@primno', 'dpapi', 'prebuilds')
 
-  for (const p of searchPaths) {
-    if (existsSync(p)) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        return require(p) as DpapiBindings
-      } catch { /* try next */ }
-    }
+  const prebuildPath = join(prebuildsDir, `${platform}-${arch}`, filename)
+
+  if (existsSync(prebuildPath)) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return require(prebuildPath) as DpapiBindings
   }
 
   throw new Error(
     `DPAPI is not supported on this platform (${platform}-${arch}). ` +
-    `Checked: ${searchPaths.join(', ')}`
+    `Checked: ${prebuildPath}`
   )
 }
 

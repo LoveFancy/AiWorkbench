@@ -64,6 +64,11 @@ extraResources:
     to: default-connectors
     filter:
       - "**/*"
+  # DPAPI prebuilds（飞书 CLI OAuth 凭据加密）
+  - from: node_modules/@primno/dpapi/prebuilds
+    to: dpapi-prebuilds
+    filter:
+      - "**/*"
   # 教程文件（教程查看器 + 欢迎对话使用）
   - from: ../../tutorial/tutorial.md
     to: tutorial.md

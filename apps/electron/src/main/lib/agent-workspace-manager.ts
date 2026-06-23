@@ -6,7 +6,7 @@
  * - 工作区目录：~/.proma/agent-workspaces/{slug}/（Agent 的 cwd）
  */
 
-import { readFileSync, writeFileSync, existsSync, readdirSync, cpSync, rmSync, mkdirSync, statSync, renameSync, openSync, readSync, closeSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, readdirSync, cpSync, copyFileSync, rmSync, mkdirSync, statSync, renameSync, openSync, readSync, closeSync } from 'node:fs'
 import { writeJsonFileAtomic, readJsonFileSafe } from './safe-file'
 import { randomUUID } from 'node:crypto'
 import { join, resolve, relative, isAbsolute, dirname, basename } from 'node:path'
@@ -711,19 +711,40 @@ export function syncDefaultConnectorsToWorkspace(workspaceSlug: string): void {
           filter: (src) => !blocklist.has(basename(src)),
         })
         console.log(`[Agent 工作区] 已同步预置连接器: ${entry.name}`)
+      } else {
+        // 目录已存在，覆盖 connector.json 保持与源一致
+        const srcMeta = join(source, 'connector.json')
+        const dstMeta = join(target, 'connector.json')
+        if (existsSync(srcMeta)) {
+          copyFileSync(srcMeta, dstMeta)
+        }
       }
     }
   } catch (err) {
     console.warn('[Agent 工作区] 同步预置连接器文件失败:', err)
   }
 
-  // 2. 更新 connectors.json（添加新的预置连接器）
+  // 2. 更新 connectors.json
   const config = getWorkspaceConnectorsConfig(workspaceSlug)
   const presetConnectors = getDefaultConnectorEntries()
-
   let changed = false
   for (const [name, entry] of Object.entries(presetConnectors)) {
-    if (config.connectors[name]) continue // 已存在，保留用户状态
+    const existing = config.connectors[name]
+    if (existing) {
+      // 已存在：补齐元数据字段（保留用户的 enabled 状态）
+      const preservedEnabled = existing.enabled
+      // 只更新非状态字段，不覆盖 enabled
+      existing.type = entry.type
+      if (entry.displayName) existing.displayName = entry.displayName
+      if (entry.description) existing.description = entry.description
+      if (entry.category) existing.category = entry.category
+      if (entry.status) existing.status = entry.status
+      if (entry.serverName) existing.serverName = entry.serverName
+      if (entry.version) existing.version = entry.version
+      existing.enabled = preservedEnabled
+      changed = true
+      continue
+    }
     config.connectors[name] = entry
     changed = true
     console.log(`[Agent 工作区] 添加预置连接器: ${name}`)
@@ -767,11 +788,16 @@ function getDefaultConnectorEntries(): Record<string, ConnectorEntry> {
       }
       if (raw.displayName) entry.displayName = raw.displayName
       if (raw.description) entry.description = raw.description
+      if (raw.category) entry.category = raw.category
+      if (raw.status) entry.status = raw.status
+      if (raw.serverName) entry.serverName = raw.serverName
       if (raw.version) entry.version = raw.version
-      if (Array.isArray(raw.skillDirs) && raw.skillDirs.length > 0) entry.skillDirs = raw.skillDirs
-      if (Array.isArray(raw.disabledTools) && raw.disabledTools.length > 0) entry.disabledTools = raw.disabledTools
+      // skillDirs / disabledTools 不写入 connectors.json，
+      // 由运行时从 connectors/{name}/connector.json 读取
 
-      entries[dirEnt.name] = entry
+      // 以 connector.json 中的 serverName 为连接器 ID（兜底用目录名）
+      const connectorId = (raw.serverName as string | undefined) || dirEnt.name
+      entries[connectorId] = entry
     } catch (err) {
       console.warn(`[Agent 工作区] 读取预置连接器元数据失败 (${dirEnt.name}):`, err)
     }
@@ -781,6 +807,52 @@ function getDefaultConnectorEntries(): Record<string, ConnectorEntry> {
 }
 
 // ===== Skill 目录扫描 =====
+
+/**
+ * 从工作区 connectors/{name}/connector.json 读取 skillDirs
+ *
+ * 与 connectors.json 职责分离：connectors.json 只管状态（enabled/type/source），
+ * skillDirs 属于连接器自身配置，存在子目录 connector.json 中。
+ *
+ * @returns skillDirs 数组，文件不存在或读取失败返回 null
+ */
+export function readSkillDirsFromConnectorJson(connectorsDir: string, name: string): string[] | null {
+  const metaPath = join(connectorsDir, name, 'connector.json')
+  if (!existsSync(metaPath)) return null
+
+  try {
+    const raw = JSON.parse(readFileSync(metaPath, 'utf-8'))
+    if (Array.isArray(raw.skillDirs) && raw.skillDirs.length > 0) {
+      return raw.skillDirs
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 从工作区 connectors/{name}/connector.json 读取 disabledTools
+ *
+ * 与 connectors.json 职责分离：connectors.json 只管状态（enabled/type/source），
+ * disabledTools 属于 MCP 连接器自身配置，存在子目录 connector.json 中。
+ *
+ * @returns disabledTools 数组，文件不存在或读取失败返回 null
+ */
+export function readDisabledToolsFromConnectorJson(connectorsDir: string, name: string): string[] | null {
+  const metaPath = join(connectorsDir, name, 'connector.json')
+  if (!existsSync(metaPath)) return null
+
+  try {
+    const raw = JSON.parse(readFileSync(metaPath, 'utf-8'))
+    if (Array.isArray(raw.disabledTools) && raw.disabledTools.length > 0) {
+      return raw.disabledTools
+    }
+    return null
+  } catch {
+    return null
+  }
+}
 
 /** 扫描工作区活跃 Skills，仅返回 skills/ 下的 Skill */
 export function getWorkspaceSkills(workspaceSlug: string): SkillMeta[] {

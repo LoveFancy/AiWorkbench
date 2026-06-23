@@ -791,6 +791,12 @@ export interface ConnectorEntry {
   displayName?: string
   /** 功能描述 */
   description?: string
+  /** UI 分类（如 "邮件服务"、"办公协同"） */
+  category?: string
+  /** 状态：available 可用，coming-soon 敬请期待 */
+  status?: 'available' | 'coming-soon'
+  /** MCP 类型专用：在 mcp.json 中注册的 server name（如 personal-email → email） */
+  serverName?: string
   /** CLI 类型专用：Skill 所在子目录名列表 */
   skillDirs?: string[]
   /** 版本号（用于预置连接器升级判断） */
@@ -807,8 +813,6 @@ export interface ConnectorsConfig {
 
 // ===== 内置连接器初始化 =====
 
-export type DefaultConnectorId = 'personal-email' | 'feishu-cli' | 'hiagent-taiwei'
-
 export type DefaultConnectorInitStepId = 'check-python' | 'check-package' | 'install-package' | 'write-config' | 'self-check'
 
 export interface DefaultConnectorInitStep {
@@ -819,13 +823,13 @@ export interface DefaultConnectorInitStep {
 }
 
 export interface InitializeDefaultConnectorInput {
-  connectorId: DefaultConnectorId
+  connectorId: string
   emailAddress?: string
   password?: string
 }
 
 export interface InitializeDefaultConnectorResult {
-  connectorId: DefaultConnectorId
+  connectorId: string
   serverName: string
   success: boolean
   steps: DefaultConnectorInitStep[]

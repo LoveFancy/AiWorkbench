@@ -8,9 +8,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import {
-  DEFAULT_CONNECTOR_DEFINITIONS,
-  getDefaultConnectorServerNames,
-  type DefaultConnectorDefinition,
+  getPresetConnectorDefinitions,
+  getPresetConnectorServerNames,
+  type PresetConnectorDefinition,
 } from '@/components/agent-skills/default-connectors'
 
 export interface ConnectorPickerItem {
@@ -18,13 +18,11 @@ export interface ConnectorPickerItem {
   displayName: string
   target: string
   entry?: McpServerEntry
-  defaultConnector?: DefaultConnectorDefinition
-  /** 是否已配置认证凭据 */
+  presetConnector?: PresetConnectorDefinition
   isConfigured: boolean
-  /** 当前 enabled 状态（仅 isConfigured 时有意义） */
   enabled: boolean
   isComingSoon: boolean
-  isFeishu: boolean
+  isCli: boolean
 }
 
 function getConnectorTarget(entry: McpServerEntry): string {
@@ -39,20 +37,19 @@ export function getAvailableConnectorsForPicker(
   query = '',
 ): ConnectorPickerItem[] {
   const normalized = query.trim().toLowerCase()
-  const defaultServerNames = getDefaultConnectorServerNames()
+  const presetServerNames = getPresetConnectorServerNames(connectorsConfig)
+  const presetDefs = getPresetConnectorDefinitions(connectorsConfig)
 
-  const defaultItems: ConnectorPickerItem[] = DEFAULT_CONNECTOR_DEFINITIONS.map((connector) => {
-    const isFeishu = connector.id === 'feishu-cli'
-    const isEmail = connector.id === 'personal-email'
+  const presetItems: ConnectorPickerItem[] = presetDefs.map((connector) => {
+    const isCli = connector.connectorType === 'cli'
     const isComingSoon = connector.status === 'coming-soon'
 
-    const emailEntry = connector.serverName ? config.servers?.[connector.serverName] : undefined
-    const entry = isFeishu ? undefined : emailEntry
+    const mcpEntry = connector.serverName ? config.servers?.[connector.serverName] : undefined
+    const entry = isCli ? undefined : mcpEntry
 
     const isConfigured = isComingSoon ? false
-      : isEmail ? Boolean(emailEntry)
-      : isFeishu ? feishuConnected
-      : false
+      : isCli ? feishuConnected
+      : Boolean(mcpEntry)
 
     const enabled = isConfigured
       ? (connectorsConfig?.connectors?.[connector.id]?.enabled ?? false)
@@ -63,16 +60,16 @@ export function getAvailableConnectorsForPicker(
       displayName: connector.name,
       target: entry ? getConnectorTarget(entry) : connector.category,
       entry,
-      defaultConnector: connector,
+      presetConnector: connector,
       isConfigured,
       enabled,
       isComingSoon,
-      isFeishu,
+      isCli,
     }
   })
 
   const customItems: ConnectorPickerItem[] = Object.entries(config.servers ?? {})
-    .filter(([name, entry]) => name !== 'memos-cloud' && entry.enabled && !defaultServerNames.has(name))
+    .filter(([name, entry]) => name !== 'memos-cloud' && entry.enabled && !presetServerNames.has(name))
     .map(([name, entry]) => ({
       name,
       displayName: name,
@@ -81,10 +78,10 @@ export function getAvailableConnectorsForPicker(
       isConfigured: true,
       enabled: entry.enabled ?? false,
       isComingSoon: false,
-      isFeishu: false,
+      isCli: false,
     }))
 
-  return [...defaultItems, ...customItems]
+  return [...presetItems, ...customItems]
     .filter((item) => {
       if (!normalized) return true
       return [
@@ -92,8 +89,8 @@ export function getAvailableConnectorsForPicker(
         item.displayName,
         item.target,
         item.entry?.type,
-        item.defaultConnector?.description,
-        item.defaultConnector?.category,
+        item.presetConnector?.description,
+        item.presetConnector?.category,
       ].filter(Boolean).some((text) => String(text).toLowerCase().includes(normalized))
     })
 }
@@ -156,10 +153,8 @@ export function AgentConnectorPicker({
 
   /** 切换连接器 enabled 状态 */
   const handleToggleEnabled = React.useCallback(async (connector: ConnectorPickerItem, enabled: boolean): Promise<void> => {
-    if (!workspaceSlug || !connector.defaultConnector) return
-
-    // 即时 UI 更新
-    const connectorId = connector.defaultConnector.id
+    if (!workspaceSlug || !connector.presetConnector) return
+    const connectorId = connector.presetConnector.id
     setConnectorsConfig((prev) => {
       if (!prev) return prev
       const c = prev.connectors[connectorId]

@@ -1,6 +1,6 @@
 # 飞书 CLI 连接器 — 认证设计
 
-> 版本：v3.1  
+> 版本：v3.2  
 > 日期：2026-06-22  
 > 状态：已实现
 
@@ -17,143 +17,73 @@ WorkMate 已有两套飞书集成：
 | 飞书 Bot Bridge | App ID + App Secret | `~/.workmate/feishu.json`，safeStorage 加密 | 接收飞书消息 |
 | 飞书 CLI 连接器 | OAuth 2.0 设备码流 | `~/.lark-cli/config.json` + Registry | Agent 通过 lark-cli 操作飞书 |
 
-### 1.2 目标
+### 1.2 目标（已实现）
 
-用户填 App ID + App Secret → 发起 OAuth 设备授权流 → 用户在浏览器确认授权 scope → 拿到 User Access Token + Refresh Token → 存为 lark-cli 兼容格式。
+用户扫码注册应用（无需手动填凭证）→ 发起 OAuth 设备授权流 → 浏览器确认授权 → 拿到 User Access Token + Refresh Token → 存为 lark-cli 兼容格式。
 
 ```
-填凭证 → POST /authen/v1/device_token → 展示授权 URL → 用户浏览器确认
-  → 轮询 POST /authen/v1/oidc/access_token → 拿到 user_access_token + refresh_token
-  → 写 config.json + Registry → lark-cli 直接用
+扫码注册 App → POST /oauth/v1/device_authorization → 展示授权 URL → 浏览器确认
+  → 轮询 POST /open-apis/authen/v2/oauth/token (Phase 1)
+  → 若拿不到 refresh_token → Phase 2: 重新获取 device_code 后重新轮询
+  → 拿到 access_token + refresh_token
+  → 写 config.json + Registry（DPAPI 加密） → lark-cli 可直接使用
 ```
 
 ---
 
-## 二、认证流程（OAuth 2.0 设备授权流）
+## 二、认证流程
 
-### 2.1 API 端点总览
+### 2.1 两阶段认证机制（实际实现）
+
+代码实现了**两阶段认证**，而非设计文档最初描述的单阶段：
+
+```
+Phase 1: 
+  startFeishuDeviceAuth(appId, appSecret)
+  → POST /oauth/v1/device_authorization → 获取 device_code
+  → pollFeishuDeviceAuth(phase=1) → 轮询 POST /authen/v2/oauth/token
+  → 如果拿到 refresh_token → 认证完成
+  → 如果拿不到 refresh_token → 自动进入 Phase 2
+
+Phase 2:
+  → 重新 POST /oauth/v1/device_authorization → 新 device_code
+  → 前端重新展示新 URL，用户再次确认
+  → pollFeishuDeviceAuth(phase=2) → 拿到完整的 access_token + refresh_token
+```
+
+### 2.2 API 端点（实际代码）
 
 | 步骤 | 方法 | URL | 说明 |
 |------|------|-----|------|
-| 1. 请求设备码 | `POST` | `https://open.feishu.cn/open-apis/authen/v1/device_token` | 用 App ID + Secret 换 device_code |
-| 2. 轮询获取 Token | `POST` | `https://open.feishu.cn/open-apis/authen/v1/oidc/access_token` | `grant_type=urn:ietf:params:oauth:grant-type:device_code` |
-| 3. 刷新 Token | `POST` | `https://open.feishu.cn/open-apis/authen/v1/oidc/access_token` | `grant_type=refresh_token` |
-| 4. 撤销 Token | `POST` | `https://open.feishu.cn/open-apis/authen/v1/revoke` | 解绑时调用 |
+| 请求设备码 | `POST` | `https://accounts.feishu.cn/oauth/v1/device_authorization` | 用 App ID + Secret 换 device_code |
+| 轮询获取 Token | `POST` | `https://open.feishu.cn/open-apis/authen/v2/oauth/token` | `grant_type=urn:ietf:params:oauth:grant-type:device_code` |
+| 获取用户信息 | `GET` | `https://open.feishu.cn/open-apis/authen/v1/user_info` | 用 access_token 获取 openId + 用户名 |
+| 解绑 | 删 config.json + Registry 凭据 | 不调用飞书 revoke API | 本地清理 |
 
-### 2.2 端点 1 — 请求设备码
+代码：[feishu-device-auth.ts:105-170](file:///d:/code/workmate/dev/AiWorkbench/apps/electron/src/main/lib/feishu-device-auth.ts#L105-L170)
 
-```
-POST https://open.feishu.cn/open-apis/authen/v1/device_token
-Content-Type: application/json
+### 2.3 scope 默认值
 
-{ "app_id": "cli_xxx", "app_secret": "xxx" }
-
-Response (200):
-{
-  "code": 0,
-  "data": {
-    "device_code": "Z3j...",
-    "user_code": "N2K...",
-    "verification_uri_complete": "https://accounts.feishu.cn/oauth/device?user_code=N2K...",
-    "expires_in": 600,
-    "interval": 5
-  }
-}
-```
-
-### 2.3 端点 2 — 轮询获批
-
-```
-POST https://open.feishu.cn/open-apis/authen/v1/oidc/access_token
-Content-Type: application/json
-
-{
-  "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-  "client_id": "cli_xxx",
-  "client_secret": "xxx",
-  "code": "Z3j..."
-}
-
-# 用户尚未确认（继续轮询）：
-{ "code": 99991664, "msg": "authorization_pending" }
-
-# 用户确认后：
-{
-  "code": 0,
-  "access_token": "u-xxx",
-  "refresh_token": "r-xxx",
-  "token_type": "Bearer",
-  "expires_in": 7200,
-  "scope": "calendar:calendar:read im:message ..."
-}
-```
-
-### 2.4 端点 3 — 刷新 Token
-
-```
-POST https://open.feishu.cn/open-apis/authen/v1/oidc/access_token
-Content-Type: application/json
-
-{
-  "grant_type": "refresh_token",
-  "refresh_token": "r-xxx"
-}
-
-Response: { "code": 0, "access_token": "u-new", "refresh_token": "r-new", "expires_in": 7200 }
-```
-
-### 2.5 端点 4 — 撤销 Token（解绑）
-
-```
-POST https://open.feishu.cn/open-apis/authen/v1/revoke
-Content-Type: application/json
-
-{ "token": "u-xxx" }
-```
-
-### 2.6 完整时序
-
-```
-WorkMate                 飞书开放平台                      用户浏览器
-  │                          │                                │
-  │── POST device_token ──→ │                                │
-  │←── device_code + URL ── │                                │
-  │                          │                                │
-  │  展示授权 URL ──────────────────────────────────────────→ │
-  │                          │←── 用户确认授权 scope ──────── │
-  │                          │                                │
-  │── POST oidc/access_token (device_code, polling) ───────→ │
-  │←── { code: 99991664, pending } ───────────────────────   │
-  │   ...polling every N seconds...                           │
-  │── POST oidc/access_token (device_code) ────────────────→ │
-  │←── { code: 0, access_token, refresh_token } ───────────  │
-  │                          │                                │
-  │  写 config.json + Registry                                 │
-```
-
-### 2.7 scope 默认值（对应 `lark-cli auth login --recommend`）
-
-```
-approval:approval
-attendance:attendance
-calendar:calendar
-contact:contact
-docs:doc
-drive:drive
-im:message
-mail:mail
-meeting_room:meeting_room
-minutes:minutes
-task:task
-vc:vc
-wiki:wiki
+```typescript
+const DEVICE_AUTH_SCOPE = [
+  'offline_access',
+  'calendar:calendar:*', 'calendar:calendar.event:*', 'calendar:calendar.free_busy:read',
+  'im:message', 'im:message:*', 'im:chat:*',
+  'docx:document:*', 'docs:document:*',
+  'drive:file:*', 'drive:drive.metadata:readonly',
+  'sheets:spreadsheet:*', 'wiki:*',
+  'task:task:*', 'mail:user_mailbox:*',
+  'contact:user.basic_profile:readonly', 'contact:user:search',
+  'approval:instance:read', 'approval:task:read',
+  'search:message',
+].join(' ')
 ```
 
 ---
 
 ## 三、存储格式
 
-### 3.1 ~/.lark-cli/config.json
+### 3.1 ~/.lark-cli/config.json（多 app 支持）
 
 ```json
 {
@@ -171,142 +101,62 @@ wiki:wiki
 }
 ```
 
-### 3.2 Windows Registry（base64 编码）
+### 3.2 Windows Registry（DPAPI 加密存储）
 
 ```
-HKCU\Software\LarkCli\keychain
-  ├── appsecret:{appId}     ← App Secret
-  ├── token:{appId}:access  ← user_access_token
-  ├── token:{appId}:refresh ← refresh_token
-  └── token:{appId}:scope   ← 授权的 scope 列表
+HKEY_CURRENT_USER\Software\LarkCli\keychain\lark-cli
+  ├── appsecret:{appId}     ← App Secret（DPAPI + entropy 加密）
+  ├── token:{appId}:{openId}  ← StoredUAToken JSON（含 access_token / refresh_token / expiresAt 等）
 ```
+
+entropy 格式：`"lark-cli\x00{account}"`
 
 ---
 
-## 四、文件清单
+## 四、文件清单（实际实现）
 
-| 文件 | 改动类型 | 说明 |
-|------|---------|------|
-| `feishu-device-auth.ts` | 重写 | tenant_access_token → OAuth 设备码流（`requestDeviceCode` / `pollDeviceToken` / `refreshAccessToken` / `unbindFeishuCli`） |
-| `FeishuCliConnectorDialog.tsx` | 重构 | App ID/Secret 表单 → 授权 URL 展示 + 轮询 UI |
-| `types/agent.ts` | 修改 | 新增 `FeishuCliDeviceCodeData` / `FeishuCliPollResult`；移除 `FeishuCliAuthResult`；新增 2 个 IPC 通道，移除 `START_FEISHU_CLI_AUTH` |
-| `ipc.ts` | 修改 | 新增 `REQUEST_FEISHU_DEVICE_CODE` / `POLL_FEISHU_DEVICE_TOKEN` handler；移除 `START_FEISHU_CLI_AUTH` |
-| `preload/index.ts` | 修改 | 新增 `requestFeishuDeviceCode` / `pollFeishuDeviceToken`；移除 `connectFeishuCli` |
-
----
-
-## 五、前后端交互
-
-### 5.1 IPC 通道
-
-| 通道 | 方向 | 入参 | 出参 | 说明 |
-|------|------|------|------|------|
-| `GET_FEISHU_CLI_AUTH_STATUS` | 前端→后端 | - | `FeishuCliAuthState` | 检查 token 是否存在 |
-| `REQUEST_FEISHU_DEVICE_CODE` | 前端→后端 | `appId, appSecret` | `FeishuCliDeviceCodeData` | 请求设备码 + 写预置 config |
-| `POLL_FEISHU_DEVICE_TOKEN` | 前端→后端 | `appId, appSecret, deviceCode` | `FeishuCliPollResult` | 轮询 token |
-| `UNBIND_FEISHU_CLI` | 前端→后端 | - | `boolean` | 撤销 token + 清本地凭据 |
-
-### 5.2 前端 UI 状态机
-
-```
-idle ──点「连接飞书」──→ authorizing ──轮询成功──→ done
-  ↑                        │                         │
-  │                        │ 超时/拒绝                │ 点「更换凭据」
-  │                        ↓                         ↓
-  └─────── 点「重试」────── error ←───────────────── idle
-```
-
----
-
-## 六、设计决策
-
-| 决策 | 选择 | 理由 |
+| 文件 | 状态 | 说明 |
 |------|------|------|
-| 认证方式 | OAuth 2.0 Device Authorization Grant | 飞书开放平台官方支持，无需回调 URL |
-| Token 类型 | User Access Token (UAT) + Refresh Token | Agent 以用户身份操作飞书数据（消息/日历/文档） |
-| scope | `--recommend` 对应集合（13 个域） | 覆盖常用飞书业务域，用户授权一次即可 |
-| 轮询策略 | 按服务器返回的 `interval` 间隔，最多 `expiresIn / interval + 5` 次 | 跟随服务器节奏，防止频率过高 |
-| 存储格式 | lark-cli 兼容（config.json + Registry） | lark-cli 可直接使用 |
-| 解绑 | revoke + 删 config + 删 Registry | 服务端侧注销 + 本地清理 |
-| Token 刷新 | 后端 `refreshAccessToken()` 函数 | lark-cli 可自行刷新也可由 WorkMate 手动触发 |
+| `feishu-device-auth.ts` | 已实现 | OAuth 设备码流 + DPAPI 存储 + 两阶段认证 |
+| `FeishuCliConnectorDialog.tsx` | 已实现 | 扫码注册 → 展示授权 URL → 轮询 → 完成 |
+| `types/agent.ts` | 已实现 | `FeishuCliAuthState` / `FeishuCliDeviceCodeData` / `FeishuCliPollResult` |
+| `ipc.ts` | 已实现 | 6 个 IPC handler + 2 个 event 推送 |
+| `dpapi.ts` | 已实现 | 直接 require prebuild 二进制，绕过 `node-gyp-build` |
+| `default-connectors/feishu-cli/connector.json` | 已实现 | 预设模板（type: cli, skillDirs: ["skill"]） |
 
 ---
 
-## 七、实施细则（代码对照）
+## 五、前后端交互（实际 IPC 通道）
 
-> 以下对照设计文档与 [feishu-device-auth.ts](file:///d:/code/workmate/dev/AiWorkbench/apps/electron/src/main/lib/feishu-device-auth.ts)、[ipc.ts](file:///d:/code/workmate/dev/AiWorkbench/apps/electron/src/main/ipc.ts) 的实际实现，记录差异与实施细节。
+| IPC 通道 | 实际名称 | 入参 | 出参 | 说明 |
+|----------|---------|------|------|------|
+| 检查连接状态 | `agent:get-feishu-cli-auth-status` | - | `FeishuCliAuthState` | 检查 token 是否存在 |
+| 注册飞书应用 | `agent:register-feishu-app` | - | `{ appId, appSecret }` | SDK registerApp() + QR 码流 |
+| 取消注册 | `agent:cancel-feishu-cli-register` | - | void | AbortController |
+| 发起设备授权 | `agent:start-feishu-device-auth` | `appId, appSecret` | `FeishuCliDeviceCodeData` | 写 Registry + config |
+| 轮询 Token | `agent:poll-feishu-device-auth` | `appId, appSecret, deviceCode, phase` | `FeishuCliPollResult` | 两阶段认证 |
+| 解绑 | `agent:unbind-feishu-cli` | - | `boolean` | 删 Registry + config.json |
 
-### 7.1 API 端点差异
+Event 推送（前端接收）：
 
-设计文档基于飞书开放平台文档编写，实际代码使用的端点有差异：
+| Event | 数据 | 说明 |
+|-------|------|------|
+| `agent:feishu-cli-register-qrcode` | `{ url, expireIn }` | QR 码 URL，前端展示 |
+| `agent:feishu-cli-register-status` | `{ status, interval }` | 注册状态变化 |
 
-| API | 设计文档 | 实际代码 |
-|-----|---------|---------|
-| 请求设备码 | `POST /open-apis/authen/v1/device_token` | `POST /oauth/v1/device_authorization`（accounts 域名） |
-| 轮询 Token | `POST /open-apis/authen/v1/oidc/access_token` | `POST /open-apis/authen/v2/oauth/token`（v2 版本） |
+---
 
-### 7.2 两阶段认证机制
-
-设计文档描述的是单阶段轮询，实际代码实现了**两阶段认证**：
-
-```
-Phase 1: POST /oauth/v1/device_authorization → 获取 device_code
-  → 轮询 POST /authen/v2/oauth/token
-  → 如果拿到 refresh_token → 认证完成
-  → 如果拿不到 refresh_token → 自动进入 Phase 2
-
-Phase 2: 重新 POST /oauth/v1/device_authorization → 新 device_code
-  → 用户再次在浏览器确认
-  → 轮询 → 拿到完整的 access_token + refresh_token
-```
-
-代码实现在 [feishu-device-auth.ts:118-170](file:///d:/code/workmate/dev/AiWorkbench/apps/electron/src/main/lib/feishu-device-auth.ts#L118-L170)，通过 `phase` 参数（1→2）控制流程。
-
-### 7.3 IPC 通道对照
-
-| 设计文档 IPC 通道 | 实际 IPC 通道 | 说明 |
-|-------------------|--------------|------|
-| `GET_FEISHU_CLI_AUTH_STATUS` | `GET_FEISHU_CLI_AUTH_STATUS` | 一致 |
-| `REQUEST_FEISHU_DEVICE_CODE` | `START_FEISHU_DEVICE_AUTH` | 名称不同 |
-| `POLL_FEISHU_DEVICE_TOKEN` | `POLL_FEISHU_DEVICE_AUTH` | 名称不同，多一个 `phase` 参数 |
-| `UNBIND_FEISHU_CLI` | `UNBIND_FEISHU_CLI` | 一致 |
-| 未提及 | `REGISTER_FEISHU_APP` | 新增：通过 lark SDK 注册飞书应用 |
-| 未提及 | `CANCEL_FEISHU_CLI_REGISTER` | 新增：取消注册流程 |
-| 未提及 | `FEISHU_CLI_REGISTER_QRCODE` | 新增：推送 QR 码给前端（event） |
-| 未提及 | `FEISHU_CLI_REGISTER_STATUS` | 新增：推送注册状态给前端（event） |
-
-### 7.4 App 注册流程
-
-设计文档未描述飞书应用注册步骤，实际代码新增了完整的注册流程：
-
-1. 前端调用 `REGISTER_FEISHU_APP` → 后端调用 `larksuiteoapi/node-sdk` 的 `registerApp()`
-2. 后端通过 event 推送 QR 码 URL（`FEISHU_CLI_REGISTER_QRCODE`）→ 前端展示
-3. 后端通过 event 推送状态变化（`FEISHU_CLI_REGISTER_STATUS`）→ 前端更新 UI
-4. 用户扫码确认后返回 `appId` + `appSecret` → 进入设备授权流程
-
-### 7.5 scope 范围差异
-
-设计文档用 `lark-cli --recommend` 对应的 13 个 scope 域，实际代码扩展为更细粒度的 scope 列表（[feishu-device-auth.ts:33-51](file:///d:/code/workmate/dev/AiWorkbench/apps/electron/src/main/lib/feishu-device-auth.ts#L33-L51)），包含日历事件的细分权限、飞书消息的子权限等。
-
-### 7.6 存储实现
-
-| 组件 | 设计文档 | 实际代码 |
-|------|---------|---------|
-| Region path | `HKCU\Software\LarkCli\keychain` | `HKEY_CURRENT_USER\Software\LarkCli\keychain\lark-cli` |
-| DPAPI entropy | 未描述 | `'lark-cli\x00{account}'` 格式 |
-| config.json | 固定结构 | 多 app 支持：`apps` 数组 + `currentApp` |
-| Token 结构 | 简单 key-value | JSON 序列化的 `StoredUAToken`（含 expiresAt、refreshExpiresAt、grantedAt 等字段） |
-
-### 7.7 前端 UI 状态机（实际实现）
-
-设计文档的状态机在代码中扩展了"注册应用"阶段：
+## 六、前端 UI 状态机（实际实现）
 
 ```
 idle ──「连接飞书」→ registering ──QR码展示→ user_scan ──注册成功→ idle(有appId)
   │                        │                        │
   │                        └── 取消 → idle           └── 失败 → registering_error
-  
-idle(有appId) ──「开始授权」→ authorizing ──轮询成功→ connected
+
+idle(有appId) ──「开始授权」→ authorizing ──Phase 1 轮询成功→ connected
+  │                              │
+  │                              │ 无 refresh_token → Phase 2
+  │                              │   → 重新展示 URL → 重新轮询 → connected / error
   │                              │
   │                              │ 超时/拒绝
   │                              ↓
@@ -315,12 +165,35 @@ idle(有appId) ──「开始授权」→ authorizing ──轮询成功→ con
 connected ──「解绑」→ idle
 ```
 
-### 7.8 核心代码文件对照
+---
 
-| 设计文档文件 | 实际文件 | 状态 |
-|-------------|---------|------|
-| `feishu-device-auth.ts` | [feishu-device-auth.ts](file:///d:/code/workmate/dev/AiWorkbench/apps/electron/src/main/lib/feishu-device-auth.ts) | 已实现（204 行） |
-| `FeishuCliConnectorDialog.tsx` | [FeishuCliConnectorDialog.tsx](file:///d:/code/workmate/dev/AiWorkbench/apps/electron/src/renderer/components/agent-skills/FeishuCliConnectorDialog.tsx) | 已实现 |
-| `types/agent.ts` | [agent.ts](file:///d:/code/workmate/dev/AiWorkbench/packages/shared/src/types/agent.ts) | 已添加 `FeishuCliDeviceCodeData`、`FeishuCliPollResult`、`FeishuCliAuthState` |
-| `ipc.ts` | [ipc.ts](file:///d:/code/workmate/dev/AiWorkbench/apps/electron/src/main/ipc.ts) | 已添加 7 个 IPC handler |
-| `preload/index.ts` | preload | 已添加 API 桥接 |
+## 七、DPAPI Native Binary 加载（已解决）
+
+### 问题
+
+`@primno/dpapi` 的 JS loader 依赖 `node-gyp-build`，Bun workspace hoist 导致 Electron 进程解析失败 → `"DPAPI is not supported on this platform."`
+
+### 方案
+
+[dpapi.ts](file:///d:/code/workmate/dev/AiWorkbench/apps/electron/src/main/lib/dpapi.ts) 直接 `require()` prebuild 二进制：
+
+```typescript
+const prebuildsDir = app.isPackaged
+  ? join(process.resourcesPath, 'dpapi-prebuilds')       // 生产
+  : join(__dirname, '..', 'node_modules', '@primno', 'dpapi', 'prebuilds')  // 开发
+return require(join(prebuildsDir, `${platform}-${arch}`, '@primno+dpapi.node'))
+```
+
+### 打包
+
+```yaml
+# electron-builder.yml
+extraResources:
+  - from: node_modules/@primno/dpapi/prebuilds
+    to: dpapi-prebuilds
+```
+
+### 影响
+
+- 加密算法不变（DPAPI + entropy `"lark-cli\x00{account}"`，与 lark-cli 兼容）
+- 不依赖 `node-gyp-build`，不受 Bun workspace / npm hoist 影响

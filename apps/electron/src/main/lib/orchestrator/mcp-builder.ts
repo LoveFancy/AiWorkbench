@@ -7,7 +7,7 @@
  * - 联网搜索工具（WebSearch）
  */
 
-import { getWorkspaceMcpConfig, getWorkspaceConnectorsConfig } from '../agent-workspace-manager'
+import { getWorkspaceMcpConfig, getWorkspaceConnectorsConfig, readDisabledToolsFromConnectorJson } from '../agent-workspace-manager'
 import type { ConnectorsConfig } from '@proma/shared'
 import { getMemoryConfig } from '../memory-service'
 import { searchMemory, addMemory, formatSearchResult } from '../memos-client'
@@ -20,7 +20,11 @@ import { join } from 'node:path'
 /**
  * 构建工作区 MCP 服务器配置
  *
- * 优先从 connectors/ 目录加载（新格式），兜底从旧 mcp.json 加载。
+ * 新旧格式合并加载：
+ * 1. 遍历 connectors.json 中 enabled + type='mcp' 的连接器：
+ *    - 优先从 connectors/{name}/mcp.json 加载
+ *    - 不存在时兜底从旧 mcp.json 按 serverName 查找
+ * 2. 旧 mcp.json 中未被连接器覆盖的 server 也一并加载
  *
  * @param preReadConfig 可选，调用方已读好的配置，避免重复 I/O
  * @param selectedMcpServers 可选，只加载指定的 MCP server（空数组 = 全部）
@@ -34,37 +38,47 @@ export function buildMcpServers(
   if (!workspaceSlug) return mcpServers
 
   const selectedNames = new Set(selectedMcpServers)
-
-  // 尝试从 connectors/ 加载（新格式）
   const connectorsConfig = preReadConfig ?? getWorkspaceConnectorsConfig(workspaceSlug)
-  if (Object.keys(connectorsConfig.connectors).length > 0) {
-    for (const [name, connector] of Object.entries(connectorsConfig.connectors)) {
-      if (!connector.enabled) continue
-      if (connector.type !== 'mcp') continue
-      if (selectedNames.size > 0 && !selectedNames.has(name)) continue
+  const oldMcpConfig = getWorkspaceMcpConfig(workspaceSlug)
 
-      const mcpPath = join(getConnectorsDir(workspaceSlug), name, 'mcp.json')
-      if (!existsSync(mcpPath)) continue
+  // 记录已被连接器覆盖的 serverName（避免兜底时重复加载）
+  const coveredServerNames = new Set<string>()
 
+  // 第一阶段：从连接器加载
+  for (const [name, connector] of Object.entries(connectorsConfig.connectors)) {
+    if (!connector.enabled) continue
+    if (connector.type !== 'mcp') continue
+    if (selectedNames.size > 0 && !selectedNames.has(name)) continue
+
+    // 优先从 connectors/{name}/mcp.json 加载
+    const mcpPath = join(getConnectorsDir(workspaceSlug), name, 'mcp.json')
+    if (existsSync(mcpPath)) {
       try {
         const entry = JSON.parse(readFileSync(mcpPath, 'utf-8'))
         registerMcpServer(name, entry, mcpServers)
+        if (connector.serverName) coveredServerNames.add(connector.serverName)
+        continue
       } catch (err) {
         console.error(`[Agent 编排] 读取连接器 MCP 配置失败 (${name}):`, err)
       }
     }
-    if (Object.keys(mcpServers).length > 0) {
-      console.log(`[Agent 编排] 已从 connectors/ 加载 ${Object.keys(mcpServers).length} 个 MCP 服务器`)
+
+    // 兜底：从旧 mcp.json 按 serverName 查找
+    if (connector.serverName) {
+      const oldEntry = oldMcpConfig.servers?.[connector.serverName]
+      if (oldEntry?.enabled) {
+        registerMcpServer(name, oldEntry, mcpServers)
+        coveredServerNames.add(connector.serverName)
+      }
     }
-    return mcpServers
   }
 
-  // 兜底：从旧 mcp.json 加载
-  const mcpConfig = getWorkspaceMcpConfig(workspaceSlug)
-  for (const [name, entry] of Object.entries(mcpConfig.servers ?? {})) {
+  // 第二阶段：加载旧 mcp.json 中未被连接器覆盖的 server
+  for (const [name, entry] of Object.entries(oldMcpConfig.servers ?? {})) {
     if (selectedNames.size > 0 && !selectedNames.has(name)) continue
     if (!entry.enabled) continue
     if (name === 'memos-cloud') continue
+    if (coveredServerNames.has(name)) continue
     registerMcpServer(name, entry, mcpServers)
   }
 
@@ -109,7 +123,8 @@ function registerMcpServer(
 /**
  * 收集连接器级别的禁用工具列表
  *
- * 从 connectors.json 中读取各 MCP 连接器的 disabledTools，
+ * 优先从 connectors/{name}/connector.json 读取 disabledTools（新格式），
+ * 兜底从 connectors.json 的 ConnectorEntry.disabledTools 读取（旧格式兼容）。
  * 转为 SDK 格式 mcp__<connectorName>__<toolName>，由 agent-orchestrator
  * 合并到 disallowedTools 中传给 SDK。
  *
@@ -127,9 +142,15 @@ export function collectConnectorDisabledTools(
 
   for (const [name, connector] of Object.entries(connectorsConfig.connectors)) {
     if (!connector.enabled) continue
-    if (!connector.disabledTools?.length) continue
+    if (connector.type !== 'mcp') continue
 
-    for (const tool of connector.disabledTools) {
+    // 优先从 connectors/{name}/connector.json 读取（新格式）
+    // 兜底从 connectors.json 的 disabledTools 字段读取（旧格式兼容）
+    const tools = readDisabledToolsFromConnectorJson(getConnectorsDir(workspaceSlug), name)
+      ?? connector.disabledTools
+      ?? []
+
+    for (const tool of tools) {
       disabled.push(`mcp__${name}__${tool}`)
     }
   }

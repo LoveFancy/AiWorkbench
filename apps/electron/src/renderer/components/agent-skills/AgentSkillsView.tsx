@@ -49,13 +49,10 @@ import { ImportSkillDialog } from './ImportSkillDialog'
 import { FeishuCliConnectorDialog } from './FeishuCliConnectorDialog'
 import { SkillMarketPanel } from './SkillMarketPanel'
 import {
-  DEFAULT_CONNECTOR_DEFINITIONS,
-  getDefaultConnectorServerNames,
-  type DefaultConnectorDefinition,
-  type DefaultConnectorId,
+  getPresetConnectorDefinitions,
+  getPresetConnectorServerNames,
+  type PresetConnectorDefinition,
 } from './default-connectors'
-
-const DEFAULT_CONNECTOR_SERVER_NAMES = getDefaultConnectorServerNames()
 
 interface AgentSkillsViewProps {
   initialTab?: CapabilityTab
@@ -90,9 +87,10 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
   const [isDeletingMcp, setIsDeletingMcp] = React.useState(false)
   const [isInstallingSkillZip, setIsInstallingSkillZip] = React.useState(false)
   const [isRefreshingExperts, setIsRefreshingExperts] = React.useState(false)
-  const [activeDefaultConnector, setActiveDefaultConnector] = React.useState<DefaultConnectorId | null>(null)
+  const [activeDefaultConnector, setActiveDefaultConnector] = React.useState<string | null>(null)
   const [feishuCliConnected, setFeishuCliConnected] = React.useState(false)
-  const [connectorEnabledMap, setConnectorEnabledMap] = React.useState<Partial<Record<DefaultConnectorId, boolean>>>({})
+  const [connectorEnabledMap, setConnectorEnabledMap] = React.useState<Record<string, boolean>>({})
+  const [connectorsConfig, setConnectorsConfig] = React.useState<import('@proma/shared').ConnectorsConfig | null>(null)
   const [unbindingFeishu, setUnbindingFeishu] = React.useState(false)
 
   React.useEffect(() => {
@@ -111,15 +109,26 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
     if (!data.workspaceSlug) return
     try {
       const config = await window.electronAPI.getConnectorsConfig(data.workspaceSlug)
-      const map: Partial<Record<DefaultConnectorId, boolean>> = {}
+      setConnectorsConfig(config)
+      const map: Record<string, boolean> = {}
       for (const [name, c] of Object.entries(config.connectors)) {
-        map[name as DefaultConnectorId] = c.enabled
+        map[name] = c.enabled
       }
       setConnectorEnabledMap(map)
     } catch { /* connectors 目录可能尚未同步 */ }
   }, [data.workspaceSlug])
 
-  const handleToggleDefaultConnector = React.useCallback(async (connectorId: DefaultConnectorId, enabled: boolean) => {
+  // 从 connectors.json 派生预设连接器列表（替代硬编码）
+  const presetConnectors = React.useMemo(
+    () => getPresetConnectorDefinitions(connectorsConfig),
+    [connectorsConfig],
+  )
+  const presetConnectorServerNames = React.useMemo(
+    () => getPresetConnectorServerNames(connectorsConfig),
+    [connectorsConfig],
+  )
+
+  const handleToggleDefaultConnector = React.useCallback(async (connectorId: string, enabled: boolean) => {
     setConnectorEnabledMap((prev) => ({ ...prev, [connectorId]: enabled }))
     try {
       const config = await window.electronAPI.getConnectorsConfig(data.workspaceSlug)
@@ -220,22 +229,22 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
   const serverEntries = React.useMemo(() => {
     return Object.entries(data.mcpConfig.servers ?? {})
       .filter(([name]) => name !== 'memos-cloud')
-      .filter(([name]) => !DEFAULT_CONNECTOR_SERVER_NAMES.has(name))
+      .filter(([name]) => !presetConnectorServerNames.has(name))
       .filter(([name]) => !q || name.toLowerCase().includes(q))
-  }, [data.mcpConfig, q])
+  }, [data.mcpConfig, q, presetConnectorServerNames])
 
-  // 不含搜索过滤的 MCP 总数（标签计数与空态判断用）
+  // 不含搜索过滤的 MCP 总数
   const mcpCount = React.useMemo(
-    () => Object.keys(data.mcpConfig.servers ?? {}).filter((n) => n !== 'memos-cloud' && !DEFAULT_CONNECTOR_SERVER_NAMES.has(n)).length + DEFAULT_CONNECTOR_DEFINITIONS.length,
-    [data.mcpConfig],
+    () => Object.keys(data.mcpConfig.servers ?? {}).filter((n) => n !== 'memos-cloud' && !presetConnectorServerNames.has(n)).length + presetConnectors.length,
+    [data.mcpConfig, presetConnectors, presetConnectorServerNames],
   )
-  const defaultConnectorServers = React.useMemo(() => {
+  const presetConnectorServers = React.useMemo(() => {
     return Object.fromEntries(
-      DEFAULT_CONNECTOR_DEFINITIONS
+      presetConnectors
         .filter((connector) => connector.serverName)
         .map((connector) => [connector.id, data.mcpConfig.servers[connector.serverName as string]]),
-    ) as Partial<Record<DefaultConnectorId, McpServerEntry>>
-  }, [data.mcpConfig.servers])
+    ) as Partial<Record<string, McpServerEntry>>
+  }, [data.mcpConfig.servers, presetConnectors])
   const capabilityTabs = React.useMemo(
     () => getCapabilityTabs({ experts: expertGroups.length, skills: data.skills.length, connectors: mcpCount }),
     [data.skills.length, expertGroups.length, mcpCount],
@@ -511,7 +520,8 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
                 onRequestDelete={setPendingDeleteMcpName}
                 onAdd={() => { setEditingMcp(null); setMcpSheetOpen(true) }}
                 onOpenDefaultConnector={setActiveDefaultConnector}
-                defaultConnectorServers={defaultConnectorServers}
+                defaultConnectorServers={presetConnectorServers}
+                defaultConnectorDefs={presetConnectors}
                 feishuCliConnected={feishuCliConnected}
                 connectorEnabledMap={connectorEnabledMap}
                 onToggleDefaultConnector={handleToggleDefaultConnector}
@@ -644,10 +654,10 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
       </Dialog>
 
       <HuataiEmailConnectorDialog
-        open={activeDefaultConnector === 'personal-email'}
+        open={activeDefaultConnector === 'huatai-email'}
         workspaceSlug={data.workspaceSlug}
-        server={defaultConnectorServers['personal-email'] ?? null}
-        onOpenChange={(open) => setActiveDefaultConnector(open ? 'personal-email' : null)}
+        server={presetConnectorServers['huatai-email'] ?? null}
+        onOpenChange={(open) => setActiveDefaultConnector(open ? 'huatai-email' : null)}
         onSaved={() => {
           setActiveDefaultConnector(null)
           void loadConnectorEnabledMap()
@@ -905,28 +915,29 @@ interface McpTabProps {
   entries: Array<[string, McpServerEntry]>
   total: number
   query: string
-  defaultConnectorServers: Partial<Record<DefaultConnectorId, McpServerEntry>>
+  defaultConnectorServers: Partial<Record<string, McpServerEntry>>
+  defaultConnectorDefs: PresetConnectorDefinition[]
   onOpen: (name: string, entry: McpServerEntry) => void
   onToggle: (name: string, enabled: boolean) => void
   onRequestDelete: (name: string) => void
   onAdd: () => void
-  onOpenDefaultConnector: (id: DefaultConnectorId) => void
+  onOpenDefaultConnector: (id: string) => void
   feishuCliConnected: boolean
-  connectorEnabledMap: Partial<Record<DefaultConnectorId, boolean>>
-  onToggleDefaultConnector: (id: DefaultConnectorId, enabled: boolean) => void
+  connectorEnabledMap: Record<string, boolean>
+  onToggleDefaultConnector: (id: string, enabled: boolean) => void
   onUnbindFeishu: () => void
   unbindingFeishu: boolean
 }
 
-function McpTab({ entries, total, query, defaultConnectorServers, onOpen, onToggle, onRequestDelete, onAdd, onOpenDefaultConnector, feishuCliConnected, connectorEnabledMap, onToggleDefaultConnector, onUnbindFeishu, unbindingFeishu }: McpTabProps): React.ReactElement {
+function McpTab({ entries, total, query, defaultConnectorServers, defaultConnectorDefs, onOpen, onToggle, onRequestDelete, onAdd, onOpenDefaultConnector, feishuCliConnected, connectorEnabledMap, onToggleDefaultConnector, onUnbindFeishu, unbindingFeishu }: McpTabProps): React.ReactElement {
   const defaultConnectors = React.useMemo(() => {
-    if (!query) return DEFAULT_CONNECTOR_DEFINITIONS
-    return DEFAULT_CONNECTOR_DEFINITIONS.filter((connector) =>
+    if (!query) return defaultConnectorDefs
+    return defaultConnectorDefs.filter((connector) =>
       connector.name.toLowerCase().includes(query) ||
       connector.description.toLowerCase().includes(query) ||
       connector.category.toLowerCase().includes(query),
     )
-  }, [query])
+  }, [query, defaultConnectorDefs])
 
   if (total === 0) {
     return (
@@ -990,7 +1001,7 @@ function DefaultConnectorCard({
   onUnbindFeishu,
   unbindingFeishu,
 }: {
-  connector: DefaultConnectorDefinition
+  connector: PresetConnectorDefinition
   server: McpServerEntry | null
   isFeishuConnected: boolean
   enabled: boolean
@@ -999,12 +1010,12 @@ function DefaultConnectorCard({
   onUnbindFeishu: () => void
   unbindingFeishu: boolean
 }): React.ReactElement {
-  const isEmail = connector.id === 'personal-email'
-  const isFeishu = connector.id === 'feishu-cli'
+  const isMcp = connector.connectorType === 'mcp'
+  const isCli = connector.connectorType === 'cli'
   const isComingSoon = connector.status === 'coming-soon'
   const isInitialized = Boolean(server)
-  // 飞书 CLI：凭据存在才算已配置；邮箱：MCP server 存在才算已配置
-  const isConfigured = isEmail ? isInitialized : isFeishu ? isFeishuConnected : false
+  // MCP 类型：MCP server 存在才算已配置；CLI 类型：凭据连接才算已配置
+  const isConfigured = isCli ? isFeishuConnected : isMcp ? isInitialized : false
   return (
     <div
       className={cn(
@@ -1023,9 +1034,9 @@ function DefaultConnectorCard({
         <div className="flex items-start gap-3">
           <div className={cn(
             'rounded-xl p-2 shadow-sm shrink-0',
-            isEmail ? 'bg-amber-500/12 text-amber-500' : 'bg-blue-500/12 text-blue-500',
+            isMcp ? 'bg-amber-500/12 text-amber-500' : 'bg-blue-500/12 text-blue-500',
           )}>
-            {isEmail ? <Mail size={18} /> : <Blocks size={18} />}
+            {isMcp ? <Mail size={18} /> : <Blocks size={18} />}
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -1040,9 +1051,7 @@ function DefaultConnectorCard({
               </span>
             </div>
             <div className="mt-0.5 truncate text-xs text-muted-foreground">
-              {isEmail && server?.env?.MCP_EMAIL_SERVER_EMAIL_ADDRESS
-                ? server.env.MCP_EMAIL_SERVER_EMAIL_ADDRESS
-                : connector.category}
+              {connector.category}
             </div>
           </div>
           <ArrowRight
@@ -1068,7 +1077,7 @@ function DefaultConnectorCard({
               onCheckedChange={onToggle}
               className="scale-75 data-[state=checked]:bg-green-500"
             />
-            {isFeishu && (
+            {isCli && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
@@ -1142,7 +1151,7 @@ function HuataiEmailConnectorDialog({
     ])
     try {
       const result = await window.electronAPI.initializeDefaultConnector(workspaceSlug, {
-        connectorId: 'personal-email',
+        connectorId: 'huatai-email',
         emailAddress,
         password,
       })
