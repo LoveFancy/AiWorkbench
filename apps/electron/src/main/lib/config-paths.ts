@@ -29,6 +29,8 @@ let _configDirName: string | undefined
 
 const REMOVED_DEFAULT_SKILL_SLUGS = ['proma-coach'] as const
 
+const REMOVED_DEFAULT_CONNECTOR_SLUGS: readonly string[] = []
+
 export function resolveDefaultConfigDirName(homeDir: string, preferredName: string, legacyName: string): string {
   const preferredDir = join(homeDir, preferredName)
   const legacyDir = join(homeDir, legacyName)
@@ -627,8 +629,14 @@ export function parsePluginVersion(pluginDir: string): string {
  * @returns 正数表示 a > b，0 表示相等，负数表示 a < b
  */
 function compareSemver(a: string, b: string): number {
-  const pa = a.split('.').map(Number)
-  const pb = b.split('.').map(Number)
+  const pa = a.split('.').map((s) => {
+    const n = Number(s)
+    return Number.isNaN(n) ? 0 : n
+  })
+  const pb = b.split('.').map((s) => {
+    const n = Number(s)
+    return Number.isNaN(n) ? 0 : n
+  })
   for (let i = 0; i < 3; i++) {
     const diff = (pa[i] ?? 0) - (pb[i] ?? 0)
     if (diff !== 0) return diff
@@ -726,6 +734,20 @@ function removeDeletedDefaultSkills(defaultSkillsDir: string): void {
       console.log(`[配置] 已移除废弃默认 Skill: ${slug}`)
     } catch (err) {
       console.warn(`[配置] 移除废弃默认 Skill 失败 (${slug})，跳过:`, err)
+    }
+  }
+}
+
+function removeDeletedDefaultConnectors(defaultConnectorsDir: string): void {
+  for (const slug of REMOVED_DEFAULT_CONNECTOR_SLUGS) {
+    const target = join(defaultConnectorsDir, slug)
+    if (!existsSync(target)) continue
+
+    try {
+      rmSync(target, { recursive: true, force: true })
+      console.log(`[配置] 已移除废弃默认连接器: ${slug}`)
+    } catch (err) {
+      console.warn(`[配置] 移除废弃默认连接器失败 (${slug})，跳过:`, err)
     }
   }
 }
@@ -996,6 +1018,8 @@ export function seedDefaultConnectors(): void {
   const userDir = getDefaultConnectorsDir()
 
   try {
+    removeDeletedDefaultConnectors(userDir)
+
     const entries = readdirSync(bundledDir, { withFileTypes: true })
 
     for (const entry of entries) {

@@ -112,11 +112,23 @@ async function executeHttpRequest(
     ...config.headers,
   }
 
-  // EIP 网关认证：自动注入 Cookie（如果用户没自己设置 Cookie 的话）
+  // EIP 网关认证：仅对 EIP 域名自动注入 Cookie（如果用户没自己设置 Cookie 的话）
   if (config.useEipAuth && !headers.Cookie) {
-    const token = getToken()
-    if (token) {
-      headers.Cookie = `EIPGW-TOKEN=${token}`
+    const isEipDomain = (() => {
+      try {
+        const hostname = new URL(url).hostname
+        return hostname.endsWith('.htsc.com.cn') || hostname === 'htsc.com.cn'
+      } catch {
+        return false
+      }
+    })()
+    if (isEipDomain) {
+      const token = getToken()
+      if (token) {
+        headers.Cookie = `EIPGW-TOKEN=${token}`
+      }
+    } else {
+      console.warn('[HTTP 工具] EIP 认证请求目标非 EIP 域名，已跳过 Cookie 注入:', url)
     }
   }
 

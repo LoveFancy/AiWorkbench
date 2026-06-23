@@ -79,7 +79,7 @@ export function SkillMarketDetailSheet({
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => window.open('http://eip.htsc.com.cn/skillhub/#/skillhub/skillMarket', '_blank')}
+                    onClick={() => window.open('http://eip.htsc.com.cn/skillhub/#/skillhub/skillMarket', '_blank', 'noopener,noreferrer')}
                   >
                     <ExternalLink size={14} />
                     申请权限

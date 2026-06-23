@@ -1889,21 +1889,21 @@ export const AGENT_IPC_CHANNELS = {
   /** 初始化内置连接器 */
   INITIALIZE_DEFAULT_CONNECTOR: 'agent:initialize-default-connector',
   /** 获取飞书 CLI 授权状态 */
-   GET_FEISHU_CLI_AUTH_STATUS: 'agent:get-feishu-cli-auth-status',
-   /** 注册飞书 CLI 应用（SDK registerApp） */
-   REGISTER_FEISHU_APP: 'agent:register-feishu-app',
-   /** 飞书 CLI 注册 QR 码就绪（主→渲染 push） */
-    FEISHU_CLI_REGISTER_QRCODE: 'agent:feishu-cli-register-qrcode',
-    /** 飞书 CLI 注册状态变更（主→渲染 push） */
-    FEISHU_CLI_REGISTER_STATUS: 'agent:feishu-cli-register-status',
-    /** 取消飞书 CLI 注册 */
-    CANCEL_FEISHU_CLI_REGISTER: 'agent:cancel-feishu-cli-register',
-   /** 发起设备授权（获取 device_code + verification_uri） */
-   START_FEISHU_DEVICE_AUTH: 'agent:start-feishu-device-auth',
-   /** 轮询设备授权 Token（含两阶段认证） */
-   POLL_FEISHU_DEVICE_AUTH: 'agent:poll-feishu-device-auth',
-   /** 解绑飞书 CLI（清除凭据） */
-   UNBIND_FEISHU_CLI: 'agent:unbind-feishu-cli',
+  GET_FEISHU_CLI_AUTH_STATUS: 'agent:get-feishu-cli-auth-status',
+  /** 注册飞书 CLI 应用（SDK registerApp） */
+  REGISTER_FEISHU_APP: 'agent:register-feishu-app',
+  /** 飞书 CLI 注册 QR 码就绪（主→渲染 push） */
+  FEISHU_CLI_REGISTER_QRCODE: 'agent:feishu-cli-register-qrcode',
+  /** 飞书 CLI 注册状态变更（主→渲染 push） */
+  FEISHU_CLI_REGISTER_STATUS: 'agent:feishu-cli-register-status',
+  /** 取消飞书 CLI 注册 */
+  CANCEL_FEISHU_CLI_REGISTER: 'agent:cancel-feishu-cli-register',
+  /** 发起设备授权（获取 device_code + verification_uri） */
+  START_FEISHU_DEVICE_AUTH: 'agent:start-feishu-device-auth',
+  /** 轮询设备授权 Token（含两阶段认证） */
+  POLL_FEISHU_DEVICE_AUTH: 'agent:poll-feishu-device-auth',
+  /** 解绑飞书 CLI（清除凭据） */
+  UNBIND_FEISHU_CLI: 'agent:unbind-feishu-cli',
   /** 获取工作区 Skill 列表 */
   GET_SKILLS: 'agent:get-skills',
   /** 获取工作区 Skills 目录绝对路径 */

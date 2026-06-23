@@ -256,6 +256,19 @@ export async function initializeDefaultConnector(
   // 用全路径替换命令名
   entry.command = resolvedPath
 
+  const validation = await validate(serverName, entry)
+  if (!validation.success) {
+    logConnectorInfo('连接器自检失败', { message: validation.message })
+    setStep(steps, 'self-check', 'error', validation.message)
+    return {
+      connectorId: input.connectorId,
+      serverName,
+      success: false,
+      steps,
+      message: validation.message,
+    }
+  }
+
   const config = getWorkspaceMcpConfig(workspaceSlug)
   saveWorkspaceMcpConfig(workspaceSlug, {
     servers: {
@@ -273,19 +286,6 @@ export async function initializeDefaultConnector(
   }
 
   setStep(steps, 'write-config', 'success', `已写入 ${serverName} MCP`)
-
-  const validation = await validate(serverName, entry)
-  if (!validation.success) {
-    logConnectorInfo('连接器自检失败', { message: validation.message })
-    setStep(steps, 'self-check', 'error', validation.message)
-    return {
-      connectorId: input.connectorId,
-      serverName,
-      success: false,
-      steps,
-      message: validation.message,
-    }
-  }
   setStep(steps, 'self-check', 'success', validation.message)
   logConnectorInfo('连接器初始化完成', { workspaceSlug, serverName: 'email' })
 

@@ -78,7 +78,7 @@ export function unprotectData(account: string, encryptedB64: string): string {
     throw new Error('DPAPI is not supported on this platform.')
   }
   // 校验 base64 格式，避免 Buffer.from(_, 'base64') 静默吞掉非法字符
-  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(encryptedB64)) {
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encryptedB64)) {
     throw new Error('无效的 base64 编码')
   }
   const entropy = Buffer.concat([

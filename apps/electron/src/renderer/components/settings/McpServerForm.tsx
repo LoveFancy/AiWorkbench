@@ -77,6 +77,7 @@ export function McpServerForm({ server, workspaceSlug, onSaved, onCancel }: McpS
 
   // 表单状态
   const [name, setName] = React.useState(server?.name ?? '')
+  const [nameError, setNameError] = React.useState('')
   const [transportType, setTransportType] = React.useState<McpTransportType>(server?.entry.type ?? 'stdio')
   const [enabled, setEnabled] = React.useState(server?.entry.enabled ?? false) // 默认关闭
 
@@ -98,6 +99,21 @@ export function McpServerForm({ server, workspaceSlug, onSaved, onCancel }: McpS
   const [testResult, setTestResult] = React.useState<{ success: boolean; message: string } | null>(
     server?.entry.lastTestResult ?? null
   )
+
+  /** 校验连接器名称 */
+  const validateName = (val: string): string => {
+    const trimmed = val.trim()
+    if (!trimmed) return ''
+    if (trimmed.includes('\0') || trimmed.includes('..') || trimmed.includes('/') || trimmed.includes('\\')) {
+      return '服务器名称不能包含 ..、/、\\ 或空字符'
+    }
+    return ''
+  }
+
+  const handleNameChange = (val: string): void => {
+    setName(val)
+    setNameError(validateName(val))
+  }
 
   // 监听配置改变，清空测试结果（避免使用过期的测试结果）
   React.useEffect(() => {
@@ -190,6 +206,7 @@ export function McpServerForm({ server, workspaceSlug, onSaved, onCancel }: McpS
 
     const serverName = name.trim()
     if (!serverName) return
+    if (nameError) return
 
     // stdio 需要 command，http/sse 需要 url
     if (transportType === 'stdio' && !command.trim()) return
@@ -207,14 +224,7 @@ export function McpServerForm({ server, workspaceSlug, onSaved, onCancel }: McpS
       // 日志记录实际保存的状态
       console.log(`[MCP 表单] 注册用户连接器: ${serverName}, enabled: ${entry.enabled}, testResult: ${testResult?.success}`)
 
-      // 路径穿越防护
-      const safeName = serverName.trim()
-      if (!safeName || safeName.includes('..') || safeName.includes('/') || safeName.includes('\\')) {
-        console.error('[MCP 表单] 非法连接器名称:', safeName)
-        return
-      }
-
-      await window.electronAPI.registerUserConnector(workspaceSlug, safeName, entry, safeName)
+      await window.electronAPI.registerUserConnector(workspaceSlug, serverName, entry, serverName)
       onSaved()
     } catch (error) {
       console.error('[MCP 表单] 注册连接器失败:', error)
@@ -276,10 +286,11 @@ export function McpServerForm({ server, workspaceSlug, onSaved, onCancel }: McpS
           <SettingsInput
             label="服务器名称"
             value={name}
-            onChange={setName}
+            onChange={handleNameChange}
             placeholder="例如: github-mcp"
             required
             disabled={isEdit}
+            error={nameError}
           />
           <SettingsSelect
             label="传输类型"

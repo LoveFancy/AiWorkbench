@@ -28,7 +28,7 @@ import {
 } from './config-paths'
 import { listInstalledPlugins } from './plugin-registry-service'
 import type { AgentPluginInfo } from '@proma/shared'
-import type { AgentWorkspace, WorkspaceMcpConfig, McpServerEntry, SkillMeta, SkillImportSource, OtherWorkspaceSkillsGroup, WorkspaceCapabilities, SkillFileNode, SkillFileContent, ConnectorsConfig, ConnectorEntry } from '@proma/shared'
+import type { AgentWorkspace, WorkspaceMcpConfig, McpServerEntry, McpTransportType, SkillMeta, SkillImportSource, OtherWorkspaceSkillsGroup, WorkspaceCapabilities, SkillFileNode, SkillFileContent, ConnectorsConfig, ConnectorEntry } from '@proma/shared'
 import { isGeneralPlugin } from '@proma/shared'
 
 interface AgentWorkspacesIndex {
@@ -638,6 +638,20 @@ export function registerUserConnector(
   entry: McpServerEntry,
   displayName?: string,
 ): void {
+  // 校验 transport type
+  const validTypes: McpTransportType[] = ['stdio', 'http', 'sse']
+  if (!validTypes.includes(entry.type)) {
+    throw new Error(`无效的传输类型: ${entry.type}，仅支持 ${validTypes.join(', ')}`)
+  }
+
+  // 校验必填字段
+  if (entry.type === 'stdio' && (!entry.command || typeof entry.command !== 'string')) {
+    throw new Error('stdio 类型连接器必须提供有效的 command 字段')
+  }
+  if ((entry.type === 'http' || entry.type === 'sse') && (!entry.url || typeof entry.url !== 'string')) {
+    throw new Error(`${entry.type} 类型连接器必须提供有效的 url 字段`)
+  }
+
   const safeName = assertValidSlug(name)
   const connectorsDir = getConnectorsDir(workspaceSlug)
   const connectorDir = join(connectorsDir, safeName)
@@ -753,6 +767,16 @@ export function syncDefaultConnectorsToWorkspace(workspaceSlug: string): void {
   const defaultDir = getDefaultConnectorsDir()
   const workspaceConnectorsDir = getConnectorsDir(workspaceSlug)
 
+  // 如果工作区连接器目录已存在，跳过重复同步
+  if (existsSync(workspaceConnectorsDir)) {
+    try {
+      const entries = readdirSync(workspaceConnectorsDir, { withFileTypes: true })
+      if (entries.some((e) => e.isDirectory())) return
+    } catch {
+      // 目录可能尚不存在，继续执行
+    }
+  }
+
   // 1. 复制预置连接器文件
   try {
     if (!existsSync(defaultDir)) return
@@ -772,10 +796,10 @@ export function syncDefaultConnectorsToWorkspace(workspaceSlug: string): void {
         })
         console.log(`[Agent 工作区] 已同步预置连接器: ${entry.name}`)
       } else {
-        // 目录已存在，覆盖 connector.json 保持与源一致
+        // 目录已存在：仅补齐缺失文件，不覆盖用户已自定义的 connector.json
         const srcMeta = join(source, 'connector.json')
         const dstMeta = join(target, 'connector.json')
-        if (existsSync(srcMeta)) {
+        if (!existsSync(dstMeta) && existsSync(srcMeta)) {
           copyFileSync(srcMeta, dstMeta)
         }
       }

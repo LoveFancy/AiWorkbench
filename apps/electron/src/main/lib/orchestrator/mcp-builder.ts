@@ -32,23 +32,32 @@ import { join } from 'node:path'
 export function buildMcpServers(
   workspaceSlug: string | undefined,
   preReadConfig?: ConnectorsConfig,
-  selectedMcpServers: readonly string[] = [],
+  selectedMcpServers?: readonly string[],
 ): Record<string, Record<string, unknown>> {
   const mcpServers: Record<string, Record<string, unknown>> = {}
   if (!workspaceSlug) return mcpServers
 
-  const selectedNames = new Set(selectedMcpServers)
+  // selectedMcpServers:
+  //   undefined → 加载全部 server
+  //   []        → 一个都不加载
+  //   ['name']  → 只加载指定 server
+  if (Array.isArray(selectedMcpServers) && selectedMcpServers.length === 0) {
+    return mcpServers
+  }
+
+  const selectedNames = selectedMcpServers ? new Set(selectedMcpServers) : null
   const connectorsConfig = preReadConfig ?? getWorkspaceConnectorsConfig(workspaceSlug)
   const oldMcpConfig = getWorkspaceMcpConfig(workspaceSlug)
 
   // 记录已被连接器覆盖的 serverName（避免兜底时重复加载）
   const coveredServerNames = new Set<string>()
+  const connectorsDir = getConnectorsDir(workspaceSlug)
 
   // 第一阶段：从连接器加载
   for (const [name, connector] of Object.entries(connectorsConfig.connectors)) {
     if (!connector.enabled) continue
     if (connector.type !== 'mcp') continue
-    if (selectedNames.size > 0 && !selectedNames.has(name)) continue
+    if (selectedNames && !selectedNames.has(name)) continue
 
     // 路径穿越防护
     if (!/^[a-zA-Z0-9._-]+$/.test(name)) {
@@ -57,7 +66,7 @@ export function buildMcpServers(
     }
 
     // 优先从 connectors/{name}/mcp.json 加载
-    const mcpPath = join(getConnectorsDir(workspaceSlug), name, 'mcp.json')
+    const mcpPath = join(connectorsDir, name, 'mcp.json')
     if (existsSync(mcpPath)) {
       try {
         const entry = JSON.parse(readFileSync(mcpPath, 'utf-8'))
@@ -81,7 +90,7 @@ export function buildMcpServers(
 
   // 第二阶段：加载旧 mcp.json 中未被连接器覆盖的 server
   for (const [name, entry] of Object.entries(oldMcpConfig.servers ?? {})) {
-    if (selectedNames.size > 0 && !selectedNames.has(name)) continue
+    if (selectedNames && !selectedNames.has(name)) continue
     if (!entry.enabled) continue
     if (name === 'memos-cloud') continue
     if (coveredServerNames.has(name)) continue
@@ -157,14 +166,21 @@ export function collectConnectorDisabledTools(
 
   const connectorsConfig = preReadConfig ?? getWorkspaceConnectorsConfig(workspaceSlug)
   const disabled: string[] = []
+  const connectorsDir = getConnectorsDir(workspaceSlug)
 
   for (const [name, connector] of Object.entries(connectorsConfig.connectors)) {
     if (!connector.enabled) continue
     if (connector.type !== 'mcp') continue
 
+    // 路径穿越防护（与 buildMcpServers 保持一致）
+    if (!/^[a-zA-Z0-9._-]+$/.test(name)) {
+      console.warn(`[Agent 编排] 跳过非法连接器名称: ${name}`)
+      continue
+    }
+
     // 优先从 connectors/{name}/connector.json 读取（新格式）
     // 兜底从 connectors.json 的 disabledTools 字段读取（旧格式兼容）
-    const tools = readDisabledToolsFromConnectorJson(getConnectorsDir(workspaceSlug), name)
+    const tools = readDisabledToolsFromConnectorJson(connectorsDir, name)
       ?? connector.disabledTools
       ?? []
 

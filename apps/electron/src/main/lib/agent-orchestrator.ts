@@ -1012,14 +1012,16 @@ export class AgentOrchestrator {
               // 兜底从 connectors.json 的 skillDirs 字段读取（旧格式兼容）
               const dirs = readSkillDirsFromConnectorJson(connectorsDir, name) ?? connector.skillDirs ?? []
               for (const d of dirs) {
-                if (!/^[a-zA-Z0-9._-]+$/.test(d)) {
+                if (d === '.' || d === '..' || !/^[a-zA-Z0-9._-]+$/.test(d)) {
                   console.warn(`[Agent 编排] 跳过非法 skill 目录: ${name}/${d}`)
                   continue
                 }
                 skillDirs.push(join(connectorsDir, name, d))
               }
             }
-          } catch { /* connectors/ 目录可能尚未同步 */ }
+          } catch (err) {
+            console.warn('[Agent 编排] 读取 connector skill 目录失败:', err)
+          }
 
           return skillDirs.length > 0 ? { additionalSkillDirs: skillDirs } : {}
         })(),
