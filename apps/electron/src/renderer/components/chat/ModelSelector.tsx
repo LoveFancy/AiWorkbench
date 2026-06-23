@@ -467,6 +467,11 @@ export function ModelSelector({
                               文本
                             </span>
                           )}
+                          {isSaasModel(option.modelId) && (
+                            <span className="inline-flex h-5 shrink-0 items-center rounded px-1.5 text-[10px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                              云端 (SaaS)
+                            </span>
+                          )}
                           {!editingCandidates && autoModeConfig?.candidateModelIds?.includes(option.modelId) && (
                             <span className="inline-flex h-5 shrink-0 items-center rounded px-1.5 text-[10px] font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400">
                               Auto
