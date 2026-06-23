@@ -802,6 +802,39 @@ function resolvePluginInstallSlug(pluginRoot: string, extractDir: string, manife
   return pluginSlug(manifest.name, '插件名称')
 }
 
+async function copyPluginAtomicallyAsync(
+  sourceDir: string,
+  targetDir: string,
+  overwrite: boolean,
+  signal?: AbortSignal,
+): Promise<'installed' | 'overwritten'> {
+  if (signal?.aborted) throw new DownloadCancelledError()
+  const existed = existsSync(targetDir)
+  if (existed && !overwrite) throw new Error(`插件已存在: ${basename(targetDir)}`)
+
+  const parent = dirname(targetDir)
+  const tmp = join(parent, `.${basename(targetDir)}.installing-${Date.now()}`)
+  await fsp.mkdir(parent, { recursive: true })
+  await fsp.rm(tmp, { recursive: true, force: true })
+  await fsp.cp(sourceDir, tmp, { recursive: true })
+
+  if (signal?.aborted) {
+    await fsp.rm(tmp, { recursive: true, force: true })
+    throw new DownloadCancelledError()
+  }
+
+  try {
+    if (existed) await fsp.rm(targetDir, { recursive: true, force: true })
+    await fsp.rename(tmp, targetDir)
+  } catch (error) {
+    await fsp.rm(tmp, { recursive: true, force: true })
+    if (!existed) await fsp.rm(targetDir, { recursive: true, force: true })
+    throw error
+  }
+
+  return existed ? 'overwritten' : 'installed'
+}
+
 function copyPluginAtomically(sourceDir: string, targetDir: string, overwrite: boolean): 'installed' | 'overwritten' {
   const existed = existsSync(targetDir)
   if (existed && !overwrite) throw new Error(`插件已存在: ${basename(targetDir)}`)
