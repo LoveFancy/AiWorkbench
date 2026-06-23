@@ -9,6 +9,7 @@ import {
   activateDefaultEnabledSkillsForWorkspace,
   deleteWorkspaceSkill,
   getDefaultSkillInitialEnabled,
+  getAllWorkspaceSkills,
   getWorkspaceCapabilitiesFromSources,
   installSkillZipToWorkspace,
 } from './agent-workspace-manager.ts'
@@ -174,15 +175,37 @@ describe('Agent 工作区 Skill zip 安装', () => {
       })
 
       const installedSkillMd = join(fixture.activeDir, 'my-skill', 'SKILL.md')
-      expect(meta).toEqual({
+      expect(meta).toMatchObject({
         slug: 'my-skill',
         name: '我的 Skill',
         description: '测试上传安装',
         enabled: true,
         sourceKind: 'workspace',
       })
+      expect(meta.installedAt).toBeString()
       expect(existsSync(installedSkillMd)).toBe(true)
       expect(readFileSync(installedSkillMd, 'utf-8')).toContain('description: 测试上传安装')
+    } finally {
+      cleanupFixture(fixture)
+    }
+  })
+
+  test('扫描已安装 Skill 时返回安装时间用于列表排序', () => {
+    const fixture = createSkillZipFixture()
+
+    try {
+      installSkillZipToWorkspace('default', fixture.zipPath, {
+        activeDir: fixture.activeDir,
+        inactiveDir: fixture.inactiveDir,
+        tempRoot: fixture.tempRoot,
+      })
+
+      const [installed] = getAllWorkspaceSkills('default', {
+        activeDir: fixture.activeDir,
+        inactiveDir: fixture.inactiveDir,
+      })
+
+      expect(installed?.installedAt).toBeString()
     } finally {
       cleanupFixture(fixture)
     }

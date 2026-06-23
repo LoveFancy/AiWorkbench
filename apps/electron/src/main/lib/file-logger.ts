@@ -1,5 +1,4 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { appendFile, readFile, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { inspect } from 'node:util'
 
@@ -33,11 +32,17 @@ let activeLogsDir: string | null = null
 let originalConsole: Partial<Record<ConsoleMethod, (...data: unknown[]) => void>> | null = null
 let activeMaxBytes = DEFAULT_MAX_LOG_BYTES
 let shouldMirrorToConsole = true
-
-/** 待写入缓冲：filePath -> 已格式化的日志行（含换行）。异步批量刷盘，避免阻塞主线程。 */
-const pendingWrites = new Map<string, string[]>()
+let pendingEntries: LogEntry[] = []
 let flushScheduled = false
-let exitHandlerRegistered = false
+let flushPromise: Promise<void> | null = null
+let resolveFlushPromise: (() => void) | null = null
+
+interface LogEntry {
+  logsDir: string
+  fileName: string
+  line: string
+  maxBytes: number
+}
 
 function levelLabel(method: ConsoleMethod): string {
   if (method === 'log') return 'INFO'
@@ -106,36 +111,6 @@ function appendRollingFile(filePath: string, line: string, maxBytes: number): vo
   writeFileSync(filePath, tail + line, 'utf-8')
 }
 
-async function appendRollingFileAsync(filePath: string, text: string, maxBytes: number): Promise<void> {
-  const textBuffer = Buffer.from(text)
-  if (textBuffer.byteLength >= maxBytes) {
-    await writeFile(filePath, trimTextToMaxBytesFromEnd(text, maxBytes), 'utf-8')
-    return
-  }
-
-  let currentSize = 0
-  try {
-    currentSize = (await stat(filePath)).size
-  } catch {
-    currentSize = 0
-  }
-
-  if (currentSize + textBuffer.byteLength <= maxBytes) {
-    await appendFile(filePath, textBuffer)
-    return
-  }
-
-  const bytesToKeep = maxBytes - textBuffer.byteLength
-  let currentText = ''
-  try {
-    currentText = await readFile(filePath, 'utf-8')
-  } catch {
-    currentText = ''
-  }
-  const tail = trimTextToMaxBytesFromEnd(currentText, bytesToKeep)
-  await writeFile(filePath, tail + text, 'utf-8')
-}
-
 function trimExistingLogFile(filePath: string, maxBytes: number): void {
   if (!existsSync(filePath)) return
   const currentSize = statSync(filePath).size
@@ -145,52 +120,47 @@ function trimExistingLogFile(filePath: string, maxBytes: number): void {
   writeFileSync(filePath, trimTextToMaxBytesFromEnd(currentText, maxBytes), 'utf-8')
 }
 
-function flushScheduledWrites(): void {
-  flushScheduled = false
-  for (const [filePath, lines] of pendingWrites) {
-    if (lines.length === 0) continue
-    const chunk = lines.join('')
-    pendingWrites.set(filePath, [])
-    void appendRollingFileAsync(filePath, chunk, activeMaxBytes).catch((error) => {
-      originalConsole?.warn?.('[日志] 异步写入日志文件失败:', error)
-    })
+function appendLogLine(logsDir: string, fileName: string, line: string, maxBytes = DEFAULT_MAX_LOG_BYTES): void {
+  try {
+    mkdirSync(logsDir, { recursive: true })
+    appendRollingFile(join(logsDir, fileName), line, maxBytes)
+  } catch (error) {
+    originalConsole?.warn?.('[日志] 写入日志文件失败:', error)
   }
+}
+
+function flushPendingLogs(): void {
+  flushScheduled = false
+  const entries = pendingEntries
+  pendingEntries = []
+  for (const entry of entries) {
+    appendLogLine(entry.logsDir, entry.fileName, entry.line, entry.maxBytes)
+  }
+  const resolve = resolveFlushPromise
+  flushPromise = null
+  resolveFlushPromise = null
+  resolve?.()
 }
 
 function scheduleFlush(): void {
   if (flushScheduled) return
   flushScheduled = true
-  setImmediate(flushScheduledWrites)
+  setImmediate(flushPendingLogs)
 }
 
-function enqueueLog(filePath: string, line: string): void {
-  const existing = pendingWrites.get(filePath)
-  if (existing) {
-    existing.push(line)
-  } else {
-    pendingWrites.set(filePath, [line])
+function enqueueLog(logsDir: string, fileName: string, level: string, values: unknown[], maxBytes = DEFAULT_MAX_LOG_BYTES): void {
+  pendingEntries.push({
+    logsDir,
+    fileName,
+    line: formatLogLine(level, values),
+    maxBytes,
+  })
+  if (!flushPromise) {
+    flushPromise = new Promise((resolve) => {
+      resolveFlushPromise = resolve
+    })
   }
   scheduleFlush()
-}
-
-/**
- * 同步刷盘所有待写入日志。用于进程退出兜底（'exit' 仅允许同步操作）与测试中"写入后立即读取"。
- */
-export function flushFileLoggerSync(): void {
-  for (const [filePath, lines] of pendingWrites) {
-    if (lines.length === 0) continue
-    const chunk = lines.join('')
-    pendingWrites.set(filePath, [])
-    try {
-      appendRollingFile(filePath, chunk, activeMaxBytes)
-    } catch (error) {
-      originalConsole?.warn?.('[日志] 同步刷盘失败:', error)
-    }
-  }
-}
-
-function appendLog(logsDir: string, fileName: string, level: string, values: unknown[]): void {
-  enqueueLog(join(logsDir, fileName), formatLogLine(level, values))
 }
 
 export function installFileLogger(logsDir: string, options: FileLoggerOptions = {}): void {
@@ -205,26 +175,14 @@ export function installFileLogger(logsDir: string, options: FileLoggerOptions = 
   trimExistingLogFile(join(logsDir, 'main.log'), activeMaxBytes)
   trimExistingLogFile(join(logsDir, 'renderer.log'), activeMaxBytes)
 
-  // 进程退出兜底：'exit' 阶段仅允许同步操作，确保缓冲中的日志不丢失
-  if (!exitHandlerRegistered) {
-    exitHandlerRegistered = true
-    process.once('exit', () => {
-      try {
-        flushFileLoggerSync()
-      } catch {
-        /* 退出阶段无能为力 */
-      }
-    })
-  }
-
   for (const method of CONSOLE_METHODS) {
     originalConsole[method] = console[method].bind(console)
     console[method] = (...values: unknown[]) => {
       if (shouldWriteConsoleMethod(method)) {
-        appendLog(logsDir, 'main.log', levelLabel(method), values)
+        enqueueLog(logsDir, 'main.log', levelLabel(method), values, activeMaxBytes)
       }
       if (shouldMirrorToConsole) {
-        originalConsole?.[method]?.(...values)
+        setImmediate(() => originalConsole?.[method]?.(...values))
       }
     }
   }
@@ -234,9 +192,16 @@ export function attachRendererLogCapture(win: RendererWindowLike, logsDir: strin
   win.webContents.on('console-message', ({ level, message, lineNumber, sourceId }) => {
     if (!shouldWriteRendererLevel(level)) return
     const location = sourceId ? `${sourceId}:${lineNumber}` : `line:${lineNumber}`
-    appendLog(logsDir, 'renderer.log', rendererLevelLabel(level), [message, `(${location})`])
+    enqueueLog(logsDir, 'renderer.log', rendererLevelLabel(level), [message, `(${location})`], activeMaxBytes)
   })
 }
+
+export async function flushFileLogger(): Promise<void> {
+  if (!flushPromise) return
+  await flushPromise
+}
+
+export const flushFileLoggerForTests = flushFileLogger
 
 export function resetFileLoggerForTests(): void {
   if (originalConsole) {
@@ -249,6 +214,11 @@ export function resetFileLoggerForTests(): void {
   originalConsole = null
   activeMaxBytes = DEFAULT_MAX_LOG_BYTES
   shouldMirrorToConsole = true
-  pendingWrites.clear()
+  if (flushScheduled) {
+    flushPendingLogs()
+  }
+  pendingEntries = []
+  flushPromise = null
+  resolveFlushPromise = null
   flushScheduled = false
 }

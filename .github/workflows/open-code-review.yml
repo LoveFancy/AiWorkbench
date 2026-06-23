@@ -6,7 +6,7 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
+  pull-requests: write
 
 jobs:
   review:
@@ -21,6 +21,9 @@ jobs:
       OCR_LLM_MODEL: deepseek-v4-pro
       OCR_USE_ANTHROPIC: "true"
       OCR_LLM_AUTH_HEADER: authorization
+      PR_URL: ${{ github.event.pull_request.html_url }}
+      PR_TITLE: ${{ github.event.pull_request.title }}
+      REPO: ${{ github.repository }}
 
     steps:
       - name: 检出代码
@@ -58,14 +61,14 @@ jobs:
             --timeout 10 \
             > ocr-review.json
 
-      - name: 严重问题通知飞书
+      - name: 飞书通知审查结果
         env:
           FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
           FEISHU_SECRET: ${{ secrets.FEISHU_SECRET }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          REPO: ${{ github.repository }}
         run: python3 scripts/notify_feishu_if_critical.py ocr-review.json
+
+      - name: 审查结果评论 PR
+        run: python3 scripts/post_review_to_pr.py ocr-review.json
 
       - name: 上传审查结果
         if: always()

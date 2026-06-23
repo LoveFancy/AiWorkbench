@@ -9,6 +9,7 @@ const bundledPluginsRoot = join(import.meta.dir, '..', '..', '..', 'bundled-plug
 
 interface PluginManifest {
   name?: string
+  description?: string
   expertGroup?: string
   expertType?: string
 }
@@ -17,6 +18,7 @@ interface ExpertGroupManifest {
   id?: string
   name?: string
   categories?: string[]
+  introduction?: string
   skills?: string[]
   mainRole?: {
     name?: string
@@ -42,6 +44,7 @@ describe('从 WorkBuddy 转换的内置专家', () => {
     const group = readJson<ExpertGroupManifest>(join(bundledPluginsRoot, pluginId, 'expert-groups', `${pluginId}.json`))
 
     expect(manifest.name).toBe('文档处理专家')
+    expect(manifest.description ?? '').not.toContain('WorkBuddy')
     expect(manifest.expertGroup).toBe(pluginId)
     expect(manifest.expertType).toBe('agent')
     expect(group.id).toBe(pluginId)
@@ -49,7 +52,11 @@ describe('从 WorkBuddy 转换的内置专家', () => {
     expect(group.categories).toContain('内容创作')
     expect(group.categories).toContain('项目管理与质量')
     expect(group.skills).toEqual(['document-dependency-setup', 'xlsx', 'docx', 'pptx', 'pdf', 'pdfkit-py'])
-    expect(group.mainRole?.prompt ?? '').toContain('WorkBuddy document-skills')
+    expect(group.introduction ?? '').not.toContain('WorkBuddy')
+    expect(group.mainRole?.prompt ?? '').not.toContain('WorkBuddy')
+    expect(group.introduction ?? '').toContain('Word')
+    expect(group.introduction ?? '').toContain('Excel')
+    expect(group.introduction ?? '').toContain('PDF')
     expect(group.mainRole?.prompt ?? '').toContain('document-dependency-setup')
 
     for (const skillName of group.skills ?? []) {
@@ -96,6 +103,9 @@ describe('从 WorkBuddy 转换的内置专家', () => {
     expect(group.name).toBe('数据分析专家')
     expect(group.categories).toContain('AI与数据智能')
     expect(group.skills).toEqual(expectedSkills)
+    expect(manifest.description ?? '').not.toContain('WorkBuddy')
+    expect(group.introduction ?? '').not.toContain('WorkBuddy')
+    expect(group.mainRole?.prompt ?? '').not.toContain('WorkBuddy')
     expect(group.mainRole?.prompt ?? '').toContain('plotly')
 
     for (const skillName of expectedSkills) {

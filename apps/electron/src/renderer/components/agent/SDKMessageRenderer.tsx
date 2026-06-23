@@ -39,6 +39,7 @@ import { Badge } from '@/components/ui/badge'
 import { formatMessageTime } from '@/components/chat/ChatMessageItem'
 import workmateLogo from '../../../../resources/icon.png'
 import { resolveModelDisplayName } from '@/lib/model-logo'
+import { getAgentUserDisplayText } from '@/lib/bridge-message-display'
 import { userProfileAtom } from '@/atoms/user-profile'
 import { channelsAtom } from '@/atoms/chat-atoms'
 import { agentProcessGroupsKeepExpandedAtom } from '@/atoms/agent-atoms'
@@ -1085,7 +1086,8 @@ function UserInputMessage({ message }: { message: SDKUserMessage }): React.React
   const userProfile = useAtomValue(userProfileAtom)
   const rawText = extractUserText(message) ?? ''
   const isScheduledRun = rawText.includes(SCHEDULED_RUN_MARKER)
-  const { files: attachedFiles, quotes, text } = parseAttachedFiles(stripScheduledRunMarker(rawText))
+  const displayText = getAgentUserDisplayText(stripScheduledRunMarker(rawText))
+  const { files: attachedFiles, quotes, text } = parseAttachedFiles(displayText)
   const imageFiles = attachedFiles.filter((f) => isImageFile(f.filename))
   const nonImageFiles = attachedFiles.filter((f) => !isImageFile(f.filename))
   const meta = extractMeta(message as unknown as SDKMessage)
@@ -1412,7 +1414,7 @@ export function getGroupId(group: MessageGroup): string {
  */
 export function getGroupPreview(group: MessageGroup): string {
   if (group.type === 'user') {
-    return stripScheduledRunMarker(extractUserText(group.message) ?? '')
+    return getAgentUserDisplayText(stripScheduledRunMarker(extractUserText(group.message) ?? ''))
       .replace(/<attached_files>[\s\S]*?<\/attached_files>\n*/, '')
       .replace(/<quoted_file[^>]*>[\s\S]*?<\/quoted_file>\n*/g, '')
       .slice(0, 200)

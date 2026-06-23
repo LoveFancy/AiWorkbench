@@ -38,6 +38,14 @@ test('远程连接入口在设置页导航中可见', () => {
   expect(agentTabs.find((tab) => tab.id === 'bots')?.label).toBe('远程连接')
 })
 
+test('本地 API 入口在设置页导航中可见', () => {
+  const generalTabs = getSettingsTabs('chat')
+  const agentTabs = getSettingsTabs('agent')
+
+  expect(generalTabs.find((tab) => tab.id === 'local-api')?.label).toBe('本地 API')
+  expect(agentTabs.find((tab) => tab.id === 'local-api')?.label).toBe('本地 API')
+})
+
 test('系统日志入口在设置页导航中可见', () => {
   const generalTabs = getSettingsTabs('chat')
   const agentTabs = getSettingsTabs('agent')

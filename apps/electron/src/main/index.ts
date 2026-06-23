@@ -84,7 +84,7 @@ function registerProtocolsAndHandlers(): void {
 
 import { getSettings, updateSettings } from './lib/settings-service'
 import { handlePromaFileRequest } from './lib/local-file-protocol'
-import { attachRendererLogCapture, installFileLogger } from './lib/file-logger'
+import { attachRendererLogCapture, flushFileLogger, installFileLogger } from './lib/file-logger'
 
 // 处理 EPIPE 错误：当 stdout/stderr 管道被关闭时（如 electronmon 重启），忽略写入错误
 // 这在开发环境热重载时经常发生，不影响应用功能
@@ -114,6 +114,7 @@ import { getConfigDirPath, seedDefaultPlugins, seedDefaultSkills } from './lib/c
 import { upgradeDefaultSkillsInWorkspaces } from './lib/agent-workspace-manager'
 import { stopAllAgents, killOrphanedClaudeSubprocesses } from './lib/agent-service'
 import { stopAllGenerations } from './lib/chat-service'
+import { startLocalApiServer, stopLocalApiServer } from './lib/local-api-service'
 import { initAutoUpdater, cleanupUpdater } from './lib/updater/auto-updater'
 import { startWorkspaceWatcher, stopWorkspaceWatcher } from './lib/workspace-watcher'
 import { registerAuthIpcHandlers } from '../auth'
@@ -647,6 +648,9 @@ async function bootstrap(): Promise<void> {
   safeRun('startBridgeSelfHealing', startBridgeSelfHealing)
   elapsed('bootstrap: Bridges 启动完成')
 
+  // 启动本地 API 服务（默认关闭，仅在用户设置启用后启动）
+  await safeAwait('startLocalApiServer', startLocalApiServer)
+
   // 启动定时任务调度器（恢复持久化的 active 任务）
   safeRun('startScheduler', startScheduler)
 
@@ -737,6 +741,8 @@ app.on('before-quit', (event) => {
     event.preventDefault()
     void shutdownWorkmateServices()
       .catch((error) => console.warn('[WorkMate] 观测上报关闭失败:', error))
+      .then(() => flushFileLogger())
+      .catch((error) => console.warn('[日志] 退出前刷新日志失败:', error))
       .finally(() => {
         isWorkmateShutdownComplete = true
         app.quit()
@@ -759,6 +765,8 @@ app.on('before-quit', (event) => {
   stopWorkspaceWatcher()
   // 停止 Chat 工具配置文件监听
   stopChatToolsWatcher()
+  // 停止本地 API 服务
+  void stopLocalApiServer().catch((error) => console.warn('[本地 API] 停止服务失败:', error))
   // 停止所有 Bridge
   stopBridgeSelfHealing()
   stopAllBridges()
