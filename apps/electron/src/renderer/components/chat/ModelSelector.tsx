@@ -23,6 +23,7 @@ import { useConversationIdOptional } from '@/contexts/session-context'
 import { getModelLogo, getChannelLogo, DefaultLogo } from '@/lib/model-logo'
 import { hasConfiguredApiKey } from '@/lib/model-selection'
 import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
 import type { Channel, ModelOption } from '@proma/shared'
 
 /** 判定模型是否为 SaaS 云端模型（数据经第三方处理，存在泄露风险） */
@@ -217,6 +218,11 @@ export function ModelSelector({
 
   /** 选择模型并持久化 */
   const handleSelect = (option: ModelOption): void => {
+    if (isSaasModel(option.modelId)) {
+      toast.warning('已切换到 SaaS 云端模型', {
+        description: '敏感数据请勿使用 SaaS 模型，数据将经第三方云服务处理。',
+      })
+    }
     if (onModelSelect) {
       onModelSelect(option)
       setOpen(false)
