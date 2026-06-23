@@ -1458,3 +1458,8 @@
     transform: translateY(0);
   }
 }
+
+@keyframes download-progress-slide {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(320%); }
+}
