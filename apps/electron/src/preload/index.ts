@@ -14,7 +14,7 @@ preloadElapsed('preload 脚本开始执行')
 
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { IPC_CHANNELS, CHANNEL_IPC_CHANNELS, CHAT_IPC_CHANNELS, AGENT_IPC_CHANNELS, EXPERT_IPC_CHANNELS, ENVIRONMENT_IPC_CHANNELS, INSTALLER_IPC_CHANNELS, PROXY_IPC_CHANNELS, GITHUB_RELEASE_IPC_CHANNELS, SYSTEM_PROMPT_IPC_CHANNELS, MEMORY_IPC_CHANNELS, CHAT_TOOL_IPC_CHANNELS, FEISHU_IPC_CHANNELS, DINGTALK_IPC_CHANNELS, WECHAT_IPC_CHANNELS, AUTOMATION_IPC_CHANNELS, SYSTEM_LOG_IPC_CHANNELS } from '@proma/shared'
-import { USER_PROFILE_IPC_CHANNELS, SETTINGS_IPC_CHANNELS, SCRATCH_PAD_IPC_CHANNELS, APP_ICON_IPC_CHANNELS, DOCK_BADGE_IPC_CHANNELS, STORAGE_IPC_CHANNELS } from '../types'
+import { USER_PROFILE_IPC_CHANNELS, SETTINGS_IPC_CHANNELS, LOCAL_API_IPC_CHANNELS, SCRATCH_PAD_IPC_CHANNELS, APP_ICON_IPC_CHANNELS, DOCK_BADGE_IPC_CHANNELS, STORAGE_IPC_CHANNELS } from '../types'
 import type {
   RuntimeStatus,
   GitRepoStatus,
@@ -83,6 +83,7 @@ import type {
   AgentPluginMarketplaceDetail,
   AgentPluginCapabilitySummary,
   AgentPluginInstallInput,
+  AgentPluginInstallProgress,
   AgentPluginInstallResult,
   AgentPluginMarketplaceType,
   AgentExpertGroupInfo,
@@ -168,6 +169,7 @@ import type {
   TrayCreateSessionData,
   TrayOpenAgentSessionData,
 } from '../types'
+import type { LocalApiPublicSettings, LocalApiSettings, LocalApiTokenResetResult } from '../main/lib/local-api-types'
 import { QUICK_TASK_IPC_CHANNELS, TRAY_IPC_CHANNELS, VOICE_DICTATION_IPC_CHANNELS } from '../types'
 import { createAuthPreloadApi } from '../auth'
 import { createPlatformModelsPreloadApi } from '../platform-models/preload-bridge'
@@ -427,6 +429,18 @@ export interface ElectronAPI {
   /** 获取系统主题（是否深色模式） */
   getSystemTheme: () => Promise<boolean>
 
+  /** 获取本地 API 服务公开设置 */
+  getLocalApiSettings: () => Promise<LocalApiPublicSettings>
+
+  /** 更新本地 API 服务设置 */
+  updateLocalApiSettings: (updates: Partial<LocalApiSettings>) => Promise<LocalApiPublicSettings>
+
+  /** 重置本地 API Token，明文 token 只在本次响应返回 */
+  resetLocalApiToken: () => Promise<LocalApiTokenResetResult>
+
+  /** 获取本地 API Server 当前运行状态 */
+  getLocalApiStatus: () => Promise<{ running: boolean; url: string | null }>
+
   /** 订阅系统主题变化事件（返回清理函数） */
   onSystemThemeChanged: (callback: (isDark: boolean) => void) => () => void
 
@@ -619,6 +633,8 @@ export interface ElectronAPI {
   getAgentPluginMarketplaceDetail: (marketplaceId: string, pluginName: string) => Promise<AgentPluginMarketplaceDetail>
   /** 安装插件市场插件 */
   installAgentMarketplacePlugin: (input: AgentPluginInstallInput) => Promise<AgentPluginInstallResult>
+  /** 订阅插件市场插件安装进度（返回清理函数） */
+  onAgentPluginInstallProgress: (callback: (progress: AgentPluginInstallProgress) => void) => () => void
   /** 获取 Agent 插件能力摘要 */
   getAgentPluginCapabilities: () => Promise<AgentPluginCapabilitySummary>
   /** 列出 Agent 专家团 */
@@ -1586,6 +1602,22 @@ const electronAPI: ElectronAPI = {
     return ipcRenderer.invoke(SETTINGS_IPC_CHANNELS.GET_SYSTEM_THEME)
   },
 
+  getLocalApiSettings: () => {
+    return ipcRenderer.invoke(LOCAL_API_IPC_CHANNELS.GET_SETTINGS)
+  },
+
+  updateLocalApiSettings: (updates: Partial<LocalApiSettings>) => {
+    return ipcRenderer.invoke(LOCAL_API_IPC_CHANNELS.UPDATE_SETTINGS, updates)
+  },
+
+  resetLocalApiToken: () => {
+    return ipcRenderer.invoke(LOCAL_API_IPC_CHANNELS.RESET_TOKEN)
+  },
+
+  getLocalApiStatus: () => {
+    return ipcRenderer.invoke(LOCAL_API_IPC_CHANNELS.GET_STATUS)
+  },
+
   onSystemThemeChanged: (callback: (isDark: boolean) => void) => {
     const listener = (_: unknown, isDark: boolean): void => callback(isDark)
     ipcRenderer.on(SETTINGS_IPC_CHANNELS.ON_SYSTEM_THEME_CHANGED, listener)
@@ -1884,6 +1916,12 @@ const electronAPI: ElectronAPI = {
 
   installAgentMarketplacePlugin: (input: AgentPluginInstallInput) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.INSTALL_MARKETPLACE_PLUGIN, input)
+  },
+
+  onAgentPluginInstallProgress: (callback: (progress: AgentPluginInstallProgress) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, progress: AgentPluginInstallProgress) => callback(progress)
+    ipcRenderer.on(AGENT_IPC_CHANNELS.PLUGIN_INSTALL_PROGRESS, listener)
+    return () => { ipcRenderer.removeListener(AGENT_IPC_CHANNELS.PLUGIN_INSTALL_PROGRESS, listener) }
   },
 
   getAgentPluginCapabilities: () => {

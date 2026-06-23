@@ -901,6 +901,8 @@ export interface SkillMeta {
   icon?: string
   version?: string
   enabled: boolean
+  /** 安装时间，用于已安装技能列表排序。ISO 8601 */
+  installedAt?: string
   /** Skill 来源类型 */
   sourceKind: SkillSourceKind
   /** 普通插件提供的 Skill 所属插件 ID */
@@ -1283,6 +1285,15 @@ export interface AgentPluginInstallResult {
   pluginId: string
   status: 'installed' | 'overwritten' | 'updated'
   enabled: boolean
+}
+
+export interface AgentPluginInstallProgress {
+  marketplaceId: string
+  pluginName: string
+  stage: 'preparing' | 'cloning' | 'installing' | 'scanning' | 'done' | 'error'
+  message: string
+  progress: number
+  error?: string
 }
 
 // ===== Agent Slash Command =====
@@ -1967,6 +1978,8 @@ export const AGENT_IPC_CHANNELS = {
   GET_PLUGIN_MARKETPLACE_DETAIL: 'agent:get-plugin-marketplace-detail',
   /** 安装插件市场插件 */
   INSTALL_MARKETPLACE_PLUGIN: 'agent:install-marketplace-plugin',
+  /** 插件市场插件安装进度 */
+  PLUGIN_INSTALL_PROGRESS: 'agent:plugin-install-progress',
   /** 获取 Agent 插件能力摘要 */
   GET_PLUGIN_CAPABILITIES: 'agent:get-plugin-capabilities',
   /** 列出 Agent 专家团 */

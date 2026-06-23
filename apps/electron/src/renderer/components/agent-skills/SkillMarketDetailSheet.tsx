@@ -31,7 +31,7 @@ export function SkillMarketDetailSheet({
 
   return (
     <Sheet open={!!skill} onOpenChange={onOpenChange}>
-      <SheetContent hideClose side="right" className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:w-[62vw] sm:min-w-[680px] sm:max-w-[1100px]" aria-describedby={undefined}>
+      <SheetContent hideClose side="right" className="flex w-full sm:w-[46vw] sm:min-w-[520px] sm:max-w-[760px] flex-col gap-0 overflow-hidden p-0" aria-describedby={undefined}>
         <SheetTitle className="sr-only">技能市场详情</SheetTitle>
         {skill && (
           <>

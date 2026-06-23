@@ -212,6 +212,7 @@ export function GuestAccountMenu({
   onOpenManual,
   onLogin,
 }: GuestAccountMenuProps): React.ReactElement {
+  const [open, setOpen] = React.useState(false)
   const setSettingsOpen = useSetAtom(settingsOpenAtom)
   const setSettingsTab = useSetAtom(settingsTabAtom)
   const setIssueReportOpen = useSetAtom(issueReportOpenAtom)
@@ -226,8 +227,13 @@ export function GuestAccountMenu({
     openSettings('about')
   }, [openSettings])
 
+  const handleLoginClick = React.useCallback(() => {
+    setOpen(false)
+    onLogin()
+  }, [onLogin])
+
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
@@ -265,7 +271,7 @@ export function GuestAccountMenu({
         <div className="px-4 pb-3 pt-4">
           <button
             type="button"
-            onClick={onLogin}
+            onClick={handleLoginClick}
             className="flex w-full items-center gap-3 rounded-[16px] bg-primary px-4 py-3 text-left text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
           >
             <span className="flex size-10 shrink-0 items-center justify-center rounded-[14px] bg-primary-foreground/15 text-primary-foreground">

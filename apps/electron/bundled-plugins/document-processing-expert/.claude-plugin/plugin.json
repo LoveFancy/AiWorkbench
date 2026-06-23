@@ -1,9 +1,9 @@
 {
   "name": "文档处理专家",
-  "version": "1.0.1",
-  "description": "从 WorkBuddy document-skills 独立转换的 WorkMate 内置专家，覆盖 Word、Excel、PowerPoint、PDF 与 PDF 工具箱处理能力。",
+  "version": "1.0.2",
+  "description": "WorkMate 内置文档处理专家，覆盖 Word、Excel、PowerPoint、PDF 与 PDF 工具箱处理能力。",
   "author": {
-    "name": "WorkBuddy Import"
+    "name": "WorkMate"
   },
   "license": "MIT",
   "keywords": [

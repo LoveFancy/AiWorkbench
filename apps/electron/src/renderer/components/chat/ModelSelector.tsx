@@ -25,6 +25,9 @@ import { hasConfiguredApiKey } from '@/lib/model-selection'
 import { cn } from '@/lib/utils'
 import type { Channel, ModelOption } from '@proma/shared'
 
+const MODEL_NAME_TRIGGER_CLASS = 'truncate text-xs'
+const MODEL_NAME_OPTION_CLASS = 'flex-1 text-xs truncate'
+
 /** 从渠道列表构建扁平化的模型选项 */
 function buildModelOptions(channels: Channel[], filterChannelId?: string, filterChannelIds?: string[]): ModelOption[] {
   const options: ModelOption[] = []
@@ -273,7 +276,7 @@ export function ModelSelector({
         {autoModeConfig?.enabled ? (
           <>
             <Cpu className="size-4" />
-            <span className={cn('truncate', compactTrigger ? 'max-w-[52px]' : 'max-w-[200px]')}>Auto</span>
+            <span className={cn(MODEL_NAME_TRIGGER_CLASS, compactTrigger ? 'max-w-[52px]' : 'max-w-[200px]')}>Auto</span>
           </>
         ) : (
           <>
@@ -286,7 +289,7 @@ export function ModelSelector({
             ) : (
               <Cpu className="size-4" />
             )}
-            <span className={cn('truncate', compactTrigger ? 'max-w-[96px]' : 'max-w-[200px]')}>
+            <span className={cn(MODEL_NAME_TRIGGER_CLASS, compactTrigger ? 'max-w-[96px]' : 'max-w-[200px]')}>
               {displayModelInfo
                 ? (showChannelInTrigger ? `${displayModelInfo.channelName} · ${displayModelInfo.modelName}` : displayModelInfo.modelName)
                 : '选择模型'}
@@ -442,7 +445,7 @@ export function ModelSelector({
                             className="size-[18px] rounded object-cover flex-shrink-0"
                           />
                           <span className={cn(
-                            'flex-1 text-sm truncate',
+                            MODEL_NAME_OPTION_CLASS,
                             !editingCandidates && isSelected ? 'font-semibold text-foreground' : 'text-foreground/75'
                           )}>
                             {option.modelName}

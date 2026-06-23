@@ -971,6 +971,16 @@ function parseSkillFrontmatter(content: string, slug: string, enabled: boolean):
   return meta
 }
 
+function withSkillInstalledAt(meta: SkillMeta, skillDir: string): SkillMeta {
+  try {
+    const stats = statSync(skillDir)
+    const timestamp = stats.birthtimeMs > 0 ? stats.birthtimeMs : stats.mtimeMs
+    return { ...meta, installedAt: new Date(timestamp).toISOString() }
+  } catch {
+    return meta
+  }
+}
+
 // ===== 工作区能力摘要 =====
 
 function pluginSkillMeta(capability: AgentPluginInfo['capabilities'][number]): SkillMeta {
@@ -1083,11 +1093,12 @@ function scanSkillsInDir(dir: string, enabled: boolean): SkillMeta[] {
       if (!existsSync(skillMdPath)) continue
 
       try {
+        const skillDir = join(dir, entry.name)
         const content = readFileSync(skillMdPath, 'utf-8')
-        const meta = parseSkillFrontmatter(content, entry.name, enabled)
+        const meta = withSkillInstalledAt(parseSkillFrontmatter(content, entry.name, enabled), skillDir)
 
         // 如果是导入的 Skill，读取来源信息并检测更新
-        const importSource = readSkillImportSource(join(dir, entry.name))
+        const importSource = readSkillImportSource(skillDir)
         if (importSource) {
           meta.importSource = importSource
           meta.sourceKind = 'import'
@@ -1125,9 +1136,9 @@ export function getDefaultSkillSlugs(): string[] {
 }
 
 /** 获取工作区所有 Skills（含活跃和不活跃），用于设置页 UI */
-export function getAllWorkspaceSkills(workspaceSlug: string): SkillMeta[] {
-  const activeSkills = scanSkillsInDir(getWorkspaceSkillsDir(workspaceSlug), true)
-  const inactiveSkills = scanSkillsInDir(getInactiveSkillsDir(workspaceSlug), false)
+export function getAllWorkspaceSkills(workspaceSlug: string, options: WorkspaceSkillDirs = {}): SkillMeta[] {
+  const activeSkills = scanSkillsInDir(options.activeDir ?? getWorkspaceSkillsDir(workspaceSlug), true)
+  const inactiveSkills = scanSkillsInDir(options.inactiveDir ?? getInactiveSkillsDir(workspaceSlug), false)
   return [...activeSkills, ...inactiveSkills]
 }
 
@@ -1171,7 +1182,7 @@ export function installSkillZipToWorkspace(
     cpSync(skillRoot.path, targetPath, { recursive: true })
     const content = readFileSync(join(targetPath, 'SKILL.md'), 'utf-8')
     console.log(`[Agent 工作区] 已安装上传 Skill: ${workspaceSlug}/${slug}`)
-    return parseSkillFrontmatter(content, slug, true)
+    return withSkillInstalledAt(parseSkillFrontmatter(content, slug, true), targetPath)
   } finally {
     rmSync(extractDir, { recursive: true, force: true })
   }
@@ -1326,7 +1337,7 @@ export function importSkillFromWorkspace(
   console.log(`[Agent 工作区] 已从 ${sourceSlug} 导入 Skill: ${targetSlug}/${skillSlug}`)
 
   const content = readFileSync(join(targetPath, 'SKILL.md'), 'utf-8')
-  const meta = parseSkillFrontmatter(content, skillSlug, true)
+  const meta = withSkillInstalledAt(parseSkillFrontmatter(content, skillSlug, true), targetPath)
   meta.importSource = importSource
   meta.sourceKind = 'import'
   return meta
@@ -1394,7 +1405,7 @@ export function updateSkillFromSource(
 
   const enabled = targetPath === join(activeDir, skillSlug)
   const content = readFileSync(join(targetPath, 'SKILL.md'), 'utf-8')
-  const meta = parseSkillFrontmatter(content, skillSlug, enabled)
+  const meta = withSkillInstalledAt(parseSkillFrontmatter(content, skillSlug, enabled), targetPath)
   meta.importSource = updatedSource
   meta.sourceKind = 'import'
   meta.hasUpdate = false

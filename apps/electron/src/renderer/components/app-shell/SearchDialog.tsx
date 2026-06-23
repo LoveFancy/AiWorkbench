@@ -20,6 +20,7 @@ import { useAtom, useAtomValue, useSetAtom } from 'jotai'
 import { Search, X, MessageSquare, Bot, Archive, Loader2 } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import { getAgentUserDisplayText } from '@/lib/bridge-message-display'
 import { searchDialogOpenAtom } from '@/atoms/search-atoms'
 import { conversationsAtom, channelsAtom } from '@/atoms/chat-atoms'
 import {
@@ -146,7 +147,7 @@ function SearchResultIcon({ result }: { result: SearchResult }): React.ReactElem
 }
 
 function normalizePreviewText(text: string): string {
-  return text
+  return getAgentUserDisplayText(text)
     .replace(/<attached_files>[\s\S]*?<\/attached_files>\n*/g, '')
     .replace(/<quoted_file[^>]*>[\s\S]*?<\/quoted_file>\n*/g, '')
     .replace(/\s+/g, ' ')

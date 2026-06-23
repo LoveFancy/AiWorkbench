@@ -1,0 +1,866 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "WorkMate 本地 API",
+    "description": "WorkMate Electron 主进程提供的本地 HTTP API。服务默认关闭，启用后默认监听 127.0.0.1:17373。除健康检查外，所有接口都需要 Authorization: Bearer <token>。",
+    "version": "1.0.0",
+    "contact": {
+      "name": "WorkMate Team"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:17373",
+      "description": "本机默认地址"
+    }
+  ],
+  "tags": [
+    {
+      "name": "health",
+      "description": "服务健康检查"
+    },
+    {
+      "name": "agent-sessions",
+      "description": "Agent 会话管理"
+    },
+    {
+      "name": "agent-runs",
+      "description": "Agent 运行、事件订阅和停止"
+    }
+  ],
+  "paths": {
+    "/api/health": {
+      "get": {
+        "summary": "健康检查",
+        "description": "无需鉴权，用于确认本地 API 服务是否可访问。",
+        "operationId": "getLocalApiHealth",
+        "tags": [
+          "health"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "服务可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                },
+                "example": {
+                  "ok": true,
+                  "version": "0.12.45",
+                  "apiVersion": "v1"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/sessions": {
+      "get": {
+        "summary": "获取 Agent 会话列表",
+        "description": "返回当前本地存储中的 Agent 会话元数据列表。",
+        "operationId": "listAgentSessions",
+        "tags": [
+          "agent-sessions"
+        ],
+        "responses": {
+          "200": {
+            "description": "会话列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListAgentSessionsResponse"
+                },
+                "example": {
+                  "sessions": [
+                    {
+                      "id": "8fbd1b96-9b8f-4ed2-917b-0e6d84d4d3c8",
+                      "title": "调研本地 API",
+                      "channelId": "channel-claude",
+                      "workspaceId": "workspace-default",
+                      "createdAt": 1782153600000,
+                      "updatedAt": 1782153660000
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "post": {
+        "summary": "创建 Agent 会话",
+        "description": "创建一个新的 Agent 会话。若传入 workspaceId，会按现有工作区规则初始化会话工作目录。",
+        "operationId": "createAgentSession",
+        "tags": [
+          "agent-sessions"
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAgentSessionRequest"
+              },
+              "example": {
+                "title": "外部自动化任务",
+                "channelId": "channel-claude",
+                "workspaceId": "workspace-default"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateAgentSessionResponse"
+                },
+                "example": {
+                  "session": {
+                    "id": "8fbd1b96-9b8f-4ed2-917b-0e6d84d4d3c8",
+                    "title": "外部自动化任务",
+                    "channelId": "channel-claude",
+                    "workspaceId": "workspace-default",
+                    "createdAt": 1782153600000,
+                    "updatedAt": 1782153600000
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/agent/sessions/{sessionId}/messages": {
+      "get": {
+        "summary": "获取会话消息",
+        "description": "返回指定 Agent 会话持久化的 SDK 消息列表。消息结构由 Agent SDK 决定，文档中保留为宽松对象。",
+        "operationId": "getAgentSessionMessages",
+        "tags": [
+          "agent-sessions"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SessionId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "会话消息",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetAgentSessionMessagesResponse"
+                },
+                "example": {
+                  "messages": [
+                    {
+                      "type": "user",
+                      "message": {
+                        "role": "user",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "帮我分析这个项目"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "type": "assistant",
+                      "message": {
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "我先读取项目结构。"
+                          }
+                        ]
+                      },
+                      "parent_tool_use_id": null
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/SessionNotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "post": {
+        "summary": "发送 Agent 消息并启动运行",
+        "description": "向指定会话发送用户消息，并异步启动 Agent 运行。接口立即返回 runId 和 SSE 订阅地址；运行事件通过 /events 接口获取。同一会话同时只能有一个运行。",
+        "operationId": "sendAgentSessionMessage",
+        "tags": [
+          "agent-runs"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SessionId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendAgentMessageRequest"
+              },
+              "example": {
+                "userMessage": "请总结当前工作区的 README，并给出改进建议",
+                "permissionMode": "auto",
+                "mentionedSkills": [
+                  "doc-review"
+                ],
+                "selectedMcpServers": [
+                  "filesystem"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "运行已启动",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendAgentMessageResponse"
+                },
+                "example": {
+                  "runId": "d54f9b52-9f7a-477d-b9fb-60331f96094a",
+                  "sessionId": "8fbd1b96-9b8f-4ed2-917b-0e6d84d4d3c8",
+                  "status": "started",
+                  "eventsUrl": "/api/agent/sessions/8fbd1b96-9b8f-4ed2-917b-0e6d84d4d3c8/events?runId=d54f9b52-9f7a-477d-b9fb-60331f96094a"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/PermissionModeForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/SessionNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/SessionBusy"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRuns"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/agent/sessions/{sessionId}/events": {
+      "get": {
+        "summary": "订阅 Agent 运行事件",
+        "description": "通过 Server-Sent Events 订阅指定 runId 的事件。服务会先 replay 已缓存事件，然后继续推送新事件。事件类型包括 run_started、delta、tool_start、tool_result、title_updated、error、done。",
+        "operationId": "subscribeAgentRunEvents",
+        "tags": [
+          "agent-runs"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SessionId"
+          },
+          {
+            "name": "runId",
+            "in": "query",
+            "description": "发送消息接口返回的运行 ID。",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "d54f9b52-9f7a-477d-b9fb-60331f96094a"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE 事件流",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                },
+                "examples": {
+                  "delta": {
+                    "summary": "文本增量事件",
+                    "value": "event: delta\ndata: {\"text\":\"正在读取 README...\"}\n\n"
+                  },
+                  "tool_start": {
+                    "summary": "工具开始事件",
+                    "value": "event: tool_start\ndata: {\"id\":\"toolu_01\",\"name\":\"Read\",\"input\":{\"file_path\":\"README.md\"}}\n\n"
+                  },
+                  "done": {
+                    "summary": "运行完成事件",
+                    "value": "event: done\ndata: {\"stoppedByUser\":false}\n\n"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/RunNotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/agent/sessions/{sessionId}/stop": {
+      "post": {
+        "summary": "停止 Agent 运行",
+        "description": "停止指定会话当前运行中的 Agent。即使会话当前没有运行，也会返回 200，并通过 wasActive 表明调用时是否存在活跃运行。",
+        "operationId": "stopAgentRun",
+        "tags": [
+          "agent-runs"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SessionId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "停止请求已处理",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StopAgentRunResponse"
+                },
+                "example": {
+                  "sessionId": "8fbd1b96-9b8f-4ed2-917b-0e6d84d4d3c8",
+                  "stopped": true,
+                  "wasActive": true
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "WorkMate Local API Token",
+        "description": "在设置页「本地 API」中重置生成的 Token，明文只展示一次。"
+      }
+    },
+    "parameters": {
+      "SessionId": {
+        "name": "sessionId",
+        "in": "path",
+        "description": "Agent 会话 ID。",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "example": "8fbd1b96-9b8f-4ed2-917b-0e6d84d4d3c8"
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "请求参数无效或 JSON 解析失败",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "examples": {
+              "invalid_request": {
+                "summary": "参数无效",
+                "value": {
+                  "error": {
+                    "code": "invalid_request",
+                    "message": "userMessage 不能为空"
+                  }
+                }
+              },
+              "invalid_json": {
+                "summary": "JSON 无效",
+                "value": {
+                  "error": {
+                    "code": "invalid_json",
+                    "message": "请求体不是合法 JSON"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "缺少或无效的 API Token",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "unauthorized",
+                "message": "缺少或无效的 API Token"
+              }
+            }
+          }
+        }
+      },
+      "PermissionModeForbidden": {
+        "description": "当前设置不允许使用 bypassPermissions",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "permission_mode_forbidden",
+                "message": "当前设置不允许使用 bypassPermissions"
+              }
+            }
+          }
+        }
+      },
+      "SessionNotFound": {
+        "description": "Agent 会话不存在",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "session_not_found",
+                "message": "Agent 会话不存在"
+              }
+            }
+          }
+        }
+      },
+      "SessionBusy": {
+        "description": "同一会话已有运行中请求",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "session_busy",
+                "message": "上一条消息仍在处理中，请稍候再试"
+              }
+            }
+          }
+        }
+      },
+      "RunNotFound": {
+        "description": "运行不存在、会话不匹配或已过期",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "run_not_found",
+                "message": "运行不存在或已过期"
+              }
+            }
+          }
+        }
+      },
+      "TooManyRuns": {
+        "description": "活跃运行数达到本地 API 设置的上限",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "too_many_runs",
+                "message": "本地 API 活跃运行数已达到上限"
+              }
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "本地 API 服务内部错误",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "internal_error",
+                "message": "本地 API 服务内部错误"
+              }
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "HealthResponse": {
+        "type": "object",
+        "required": [
+          "ok",
+          "version",
+          "apiVersion"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "description": "服务是否可用。"
+          },
+          "version": {
+            "type": "string",
+            "description": "当前 WorkMate 应用版本。"
+          },
+          "apiVersion": {
+            "type": "string",
+            "description": "本地 API 版本。",
+            "example": "v1"
+          }
+        }
+      },
+      "AgentSessionMeta": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "会话 ID。"
+          },
+          "title": {
+            "type": "string",
+            "description": "会话标题。"
+          },
+          "channelId": {
+            "type": "string",
+            "nullable": true,
+            "description": "默认渠道 ID。"
+          },
+          "workspaceId": {
+            "type": "string",
+            "nullable": true,
+            "description": "工作区 ID。"
+          },
+          "expertGroupId": {
+            "type": "string",
+            "nullable": true,
+            "description": "专家团 ID。"
+          },
+          "expertPluginId": {
+            "type": "string",
+            "nullable": true,
+            "description": "专家团插件 ID。"
+          },
+          "createdAt": {
+            "type": "integer",
+            "format": "int64",
+            "description": "创建时间戳，单位毫秒。"
+          },
+          "updatedAt": {
+            "type": "integer",
+            "format": "int64",
+            "description": "更新时间戳，单位毫秒。"
+          }
+        }
+      },
+      "CreateAgentSessionRequest": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "会话标题，不传时使用默认标题。"
+          },
+          "channelId": {
+            "type": "string",
+            "description": "默认渠道 ID。"
+          },
+          "workspaceId": {
+            "type": "string",
+            "description": "工作区 ID。"
+          },
+          "expertGroupId": {
+            "type": "string",
+            "description": "专家团 ID。"
+          },
+          "expertPluginId": {
+            "type": "string",
+            "description": "专家团插件 ID。"
+          },
+          "expertIntroduction": {
+            "type": "string",
+            "description": "专家团介绍，会作为初始 assistant 消息写入会话。"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateAgentSessionResponse": {
+        "type": "object",
+        "required": [
+          "session"
+        ],
+        "properties": {
+          "session": {
+            "$ref": "#/components/schemas/AgentSessionMeta"
+          }
+        }
+      },
+      "ListAgentSessionsResponse": {
+        "type": "object",
+        "required": [
+          "sessions"
+        ],
+        "properties": {
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentSessionMeta"
+            }
+          }
+        }
+      },
+      "SDKMessage": {
+        "type": "object",
+        "description": "Agent SDK 原始消息。常见 type 包括 user、assistant、result、system 等；具体结构由 SDK 决定。",
+        "additionalProperties": true
+      },
+      "GetAgentSessionMessagesResponse": {
+        "type": "object",
+        "required": [
+          "messages"
+        ],
+        "properties": {
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SDKMessage"
+            }
+          }
+        }
+      },
+      "PermissionMode": {
+        "type": "string",
+        "description": "权限模式。ask 为兼容别名，服务端会映射为 auto；bypassPermissions 需要在设置页显式允许。",
+        "enum": [
+          "auto",
+          "ask",
+          "plan",
+          "bypassPermissions"
+        ]
+      },
+      "SendAgentMessageRequest": {
+        "type": "object",
+        "required": [
+          "userMessage"
+        ],
+        "properties": {
+          "userMessage": {
+            "type": "string",
+            "description": "用户消息内容，不能为空。"
+          },
+          "channelId": {
+            "type": "string",
+            "description": "本次运行使用的渠道 ID；不传时使用会话默认 channelId。"
+          },
+          "modelId": {
+            "type": "string",
+            "description": "本次运行使用的模型 ID；不传时使用渠道默认模型。"
+          },
+          "workspaceId": {
+            "type": "string",
+            "description": "本次运行使用的工作区 ID；不传时使用会话默认 workspaceId。"
+          },
+          "permissionMode": {
+            "$ref": "#/components/schemas/PermissionMode"
+          },
+          "mentionedSkills": {
+            "type": "array",
+            "description": "显式引用的 Skill slug 列表。",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mentionedSessionIds": {
+            "type": "array",
+            "description": "显式引用的 Agent 会话 ID 列表。",
+            "items": {
+              "type": "string"
+            }
+          },
+          "selectedMcpServers": {
+            "type": "array",
+            "description": "本次运行启用的 MCP Server 名称列表。",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "SendAgentMessageResponse": {
+        "type": "object",
+        "required": [
+          "runId",
+          "sessionId",
+          "status",
+          "eventsUrl"
+        ],
+        "properties": {
+          "runId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "本次 Agent 运行 ID。"
+          },
+          "sessionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "会话 ID。"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "started"
+            ],
+            "description": "运行启动状态。"
+          },
+          "eventsUrl": {
+            "type": "string",
+            "description": "SSE 事件订阅地址。"
+          }
+        }
+      },
+      "StopAgentRunResponse": {
+        "type": "object",
+        "required": [
+          "sessionId",
+          "stopped",
+          "wasActive"
+        ],
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "会话 ID。"
+          },
+          "stopped": {
+            "type": "boolean",
+            "description": "停止请求是否已处理。"
+          },
+          "wasActive": {
+            "type": "boolean",
+            "description": "调用时该会话是否存在活跃运行。"
+          }
+        }
+      },
+      "LocalApiErrorCode": {
+        "type": "string",
+        "enum": [
+          "unauthorized",
+          "forbidden",
+          "not_found",
+          "invalid_json",
+          "invalid_request",
+          "session_not_found",
+          "session_busy",
+          "run_not_found",
+          "too_many_runs",
+          "permission_mode_forbidden",
+          "agent_error",
+          "internal_error"
+        ]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "$ref": "#/components/schemas/LocalApiErrorCode"
+              },
+              "message": {
+                "type": "string",
+                "description": "错误描述。"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ]
+}

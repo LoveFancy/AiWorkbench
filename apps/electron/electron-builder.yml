@@ -20,6 +20,7 @@ compression: normal
 # 启用 ASAR 归档，将 SDK native binary 解压到 app.asar.unpacked/ 避免路径问题
 asar: true
 asarUnpack:
+  - "dist/plugin-install-worker.cjs"
   - "node_modules/@anthropic-ai/**"
 
 # 跳过 npm install（代码已被 esbuild/Vite 打包，npm 不识别 workspace:* 协议）
