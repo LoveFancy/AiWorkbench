@@ -5,7 +5,7 @@
   "category": "邮件服务",
   "status": "available",
   "serverName": "huatai-email",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "disabledTools": ["send_email", "delete_email"],
   "mcpServer": {
     "type": "stdio",

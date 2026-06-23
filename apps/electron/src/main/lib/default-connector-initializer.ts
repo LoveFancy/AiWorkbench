@@ -1,4 +1,6 @@
 import { execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { isAbsolute } from 'node:path'
 import type {
   DefaultConnectorInitStep,
   DefaultConnectorInitStepId,
@@ -232,6 +234,18 @@ export async function initializeDefaultConnector(
       success: false,
       steps,
       message: 'mcp-email-server 安装后无法定位到可执行文件，请检查 pip 安装路径是否在 PATH 中。',
+    }
+  }
+
+  // 校验可执行文件路径
+  if (!isAbsolute(resolvedPath) || !existsSync(resolvedPath)) {
+    setStep(steps, 'check-package', 'error', `mcp-email-server 路径无效: ${resolvedPath}`)
+    return {
+      connectorId: input.connectorId,
+      serverName,
+      success: false,
+      steps,
+      message: 'mcp-email-server 可执行文件路径无效。',
     }
   }
 

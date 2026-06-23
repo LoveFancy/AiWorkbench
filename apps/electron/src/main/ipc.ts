@@ -2151,6 +2151,8 @@ export function registerIpcHandlers(): void {
 
       try {
         const lark = await import('@larksuiteoapi/node-sdk')
+        await configureFeishuDefaultHttpInstance(lark.defaultHttpInstance)
+
         const result = await lark.registerApp({
           source: 'proma-cli',
           signal: abort.signal,

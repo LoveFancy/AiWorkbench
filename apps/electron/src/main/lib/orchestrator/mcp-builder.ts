@@ -103,24 +103,36 @@ function registerMcpServer(
   entry: Record<string, unknown>,
   mcpServers: Record<string, Record<string, unknown>>,
 ): void {
-  if (entry.type === 'stdio' && entry.command) {
+  if (typeof entry.type !== 'string') {
+    console.warn(`[MCP Builder] 跳过非法连接器 ${name}: type 不是字符串`)
+    return
+  }
+  if (entry.type === 'stdio') {
+    if (typeof entry.command !== 'string' || !entry.command) {
+      console.warn(`[MCP Builder] 跳过非法连接器 ${name}: stdio 缺少 command`)
+      return
+    }
     const mergedEnv: Record<string, string> = {
       ...(process.env.PATH && { PATH: process.env.PATH }),
-      ...(entry.env as Record<string, string> ?? {}),
+      ...(entry.env && typeof entry.env === 'object' ? (entry.env as Record<string, string>) : {}),
     }
     mcpServers[name] = {
       type: 'stdio',
       command: entry.command,
-      ...(entry.args && (entry.args as string[]).length > 0 && { args: entry.args }),
+      ...(Array.isArray(entry.args) && entry.args.length > 0 && { args: entry.args }),
       ...(Object.keys(mergedEnv).length > 0 && { env: mergedEnv }),
       required: false,
-      startup_timeout_sec: (entry.timeout as number) ?? 30,
+      startup_timeout_sec: typeof entry.timeout === 'number' ? entry.timeout : 30,
     }
-  } else if ((entry.type === 'http' || entry.type === 'sse') && entry.url) {
+  } else if (entry.type === 'http' || entry.type === 'sse') {
+    if (typeof entry.url !== 'string' || !entry.url) {
+      console.warn(`[MCP Builder] 跳过非法连接器 ${name}: ${entry.type} 缺少 url`)
+      return
+    }
     mcpServers[name] = {
       type: entry.type,
       url: entry.url,
-      ...(entry.headers && Object.keys(entry.headers as Record<string, string>).length > 0 && { headers: entry.headers }),
+      ...(entry.headers && typeof entry.headers === 'object' && Object.keys(entry.headers as Record<string, string>).length > 0 && { headers: entry.headers }),
       required: false,
     }
   }

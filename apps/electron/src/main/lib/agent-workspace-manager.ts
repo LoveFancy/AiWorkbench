@@ -1276,13 +1276,6 @@ export function toggleWorkspaceSkill(workspaceSlug: string, skillSlug: string, e
   const srcPath = join(srcDir, skillSlug)
   const destPath = join(destDir, skillSlug)
 
-  // DEBUG: 排查路径不一致问题
-  console.log(`[toggleWorkspaceSkill] enabled=${enabled} skill=${skillSlug} workspace=${workspaceSlug}`)
-  console.log(`[toggleWorkspaceSkill] activeDir=${activeDir}`)
-  console.log(`[toggleWorkspaceSkill] inactiveDir=${inactiveDir}`)
-  console.log(`[toggleWorkspaceSkill] srcPath=${srcPath} exists=${existsSync(srcPath)}`)
-  console.log(`[toggleWorkspaceSkill] destPath=${destPath} exists=${existsSync(destPath)}`)
-
   if (!existsSync(srcPath)) {
     throw new Error(`Skill 不存在: ${skillSlug}`)
   }
