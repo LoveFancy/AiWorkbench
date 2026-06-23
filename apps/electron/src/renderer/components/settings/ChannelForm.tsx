@@ -202,11 +202,11 @@ export function ChannelForm({ channel, onSaved, onAutoSaved, onAgentEligibilityC
 
   // 表单状态
   const [name, setName] = React.useState(channel?.name ?? '')
-  const [provider, setProvider] = React.useState<ProviderType>(channel?.provider ?? 'anthropic')
+  const [provider, setProvider] = React.useState<ProviderType>(channel?.provider ?? 'huatai-anthropic')
   const [baseUrl, setBaseUrl] = React.useState(
     channel?.provider.startsWith('huatai-')
       ? PROVIDER_DEFAULT_URLS[channel.provider]
-      : (channel?.baseUrl ?? PROVIDER_DEFAULT_URLS.anthropic)
+      : (channel?.baseUrl ?? PROVIDER_DEFAULT_URLS['huatai-anthropic'])
   )
   const [apiKey, setApiKey] = React.useState('')
   const [showApiKey, setShowApiKey] = React.useState(false)
