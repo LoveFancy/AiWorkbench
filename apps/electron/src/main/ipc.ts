@@ -2383,11 +2383,13 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     AGENT_IPC_CHANNELS.INSTALL_HT_SKILLHUB_SKILL,
     async (_, workspaceSlug: string, skillName: string, overwrite: boolean): Promise<HtSkillHubInstallResult> => {
-      const { fetchHtSkillHubIndex, installHtSkillHubSkill } = await import('./lib/skillhub-service')
-      const skills = await fetchHtSkillHubIndex(workspaceSlug)
-      const key = skillName.toLowerCase()
-      const skill = skills.find((item) => item.name.toLowerCase() === key)
-      if (!skill) throw new Error(`华泰 SkillHub 未找到 Skill: ${skillName}`)
+      const { fetchSkillHubDetail, installHtSkillHubSkill, canDownloadSkill, SKILLHUB_APPLY_URL } = await import('./lib/skillhub-service')
+      // 直接用 API 按名称查询，不依赖分页列表
+      const detail = await fetchSkillHubDetail(skillName)
+      if (!canDownloadSkill(detail.type, detail.permission)) {
+        throw new Error(`该 Skill 需要审批授权才能下载，请通过 ${SKILLHUB_APPLY_URL} 进行申请。`)
+      }
+      const skill: HtSkillHubSkill = { name: detail.skillName, description: detail.description, files: [] }
       return installHtSkillHubSkill({ workspaceSlug, skill, overwrite })
     }
   )

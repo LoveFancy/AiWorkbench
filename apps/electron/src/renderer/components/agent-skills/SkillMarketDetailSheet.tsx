@@ -1,7 +1,7 @@
 import * as React from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { ArrowLeft, Download, RefreshCw, Sparkles } from 'lucide-react'
+import { ArrowLeft, Download, ExternalLink, RefreshCw, ShieldAlert, Sparkles } from 'lucide-react'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { SettingsCard } from '@/components/settings/primitives'
@@ -67,17 +67,44 @@ export function SkillMarketDetailSheet({
 
               <div className="mt-3 flex items-center gap-2">
                 <div className="mr-auto flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">{skill.installed ? '已安装到当前工作区' : '可从技能市场安装'}</span>
+                  {skill.installed ? (
+                    <span className="text-xs text-muted-foreground">已安装到当前工作区</span>
+                  ) : skill.canDownload === false ? (
+                    <span className="text-xs text-amber-600 dark:text-amber-400">需要审批授权</span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">可从技能市场安装</span>
+                  )}
                 </div>
-                <Button
-                  size="sm"
-                  disabled={installing || skill.installed}
-                  onClick={() => onInstall(skill)}
-                >
-                  {installing ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
-                  {skill.installed ? '已安装' : installing ? '安装中' : '安装'}
-                </Button>
+                {!skill.installed && skill.canDownload === false ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => window.open('http://eip.htsc.com.cn/skillhub/#/skillhub/skillMarket', '_blank')}
+                  >
+                    <ExternalLink size={14} />
+                    申请权限
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    disabled={installing || skill.installed}
+                    onClick={() => onInstall(skill)}
+                  >
+                    {installing ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
+                    {skill.installed ? '已安装' : installing ? '安装中' : '安装'}
+                  </Button>
+                )}
               </div>
+
+              {!skill.installed && skill.canDownload === false && (
+                <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/8 px-3 py-2.5">
+                  <ShieldAlert size={15} className="mt-0.5 shrink-0 text-amber-500" />
+                  <div className="text-xs text-foreground/80">
+                    <span className="font-medium">该 Skill 需要审批授权后才能下载。</span>
+                    {' '}请前往 <a href="http://eip.htsc.com.cn/skillhub/#/skillhub/skillMarket" target="_blank" rel="noopener noreferrer" className="underline text-blue-600 dark:text-blue-400 hover:text-blue-700">EIP SkillHub 市场</a> 进行申请。
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin">

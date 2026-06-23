@@ -15,6 +15,8 @@ import { writeFileSync, readFileSync, existsSync, mkdirSync, rmSync } from 'node
 import { join } from 'node:path'
 import { execSync } from 'node:child_process'
 import { protectData, LARK_CLI_DIR } from './dpapi'
+import { getEffectiveProxyUrl } from './proxy-settings-service'
+import { HttpsProxyAgent } from 'https-proxy-agent'
 import type { FeishuCliAuthState, FeishuCliDeviceCodeData, FeishuCliPollResult } from '@proma/shared'
 
 const FEISHU_BASE = 'https://open.feishu.cn'
@@ -23,6 +25,22 @@ const CONFIG_PATH = join(LARK_CLI_DIR, 'config.json')
 
 const REG_PATH = 'HKCU\\Software\\LarkCli\\keychain\\lark-cli'
 const REG_FULL = 'HKEY_CURRENT_USER\\Software\\LarkCli\\keychain\\lark-cli'
+
+// ===== 代理感知的 fetch =====
+
+/**
+ * 带系统代理的 fetch，用于飞书 CLI OAuth 请求。
+ * Electron 原生 fetch 不走系统代理，这里通过 HttpsProxyAgent 补偿。
+ */
+async function proxyFetch(url: string, init?: RequestInit): Promise<Response> {
+  const proxyUrl = await getEffectiveProxyUrl()
+  if (proxyUrl) {
+    console.log('[飞书 CLI 认证] 使用代理:', proxyUrl)
+    const agent = new HttpsProxyAgent(proxyUrl)
+    return fetch(url, { ...init, dispatcher: agent } as RequestInit & { dispatcher?: unknown })
+  }
+  return fetch(url, init)
+}
 
 const DEVICE_AUTH_SCOPE = [
   'offline_access',
@@ -106,7 +124,7 @@ export async function startFeishuDeviceAuth(appId: string, appSecret: string): P
   regSet(`appsecret:${appId}`, appSecret)
   writeConfig(appId, '', '')
 
-  const resp = await fetch(`${FEISHU_ACCOUNTS}/oauth/v1/device_authorization`, {
+  const resp = await proxyFetch(`${FEISHU_ACCOUNTS}/oauth/v1/device_authorization`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ client_id: appId, client_secret: appSecret, grant_type: 'urn:ietf:params:oauth:grant-type:device_code', scope: DEVICE_AUTH_SCOPE }),
   })
@@ -118,7 +136,7 @@ export async function startFeishuDeviceAuth(appId: string, appSecret: string): P
 export async function pollFeishuDeviceAuth(
   appId: string, appSecret: string, deviceCode: string, phase = 1,
 ): Promise<FeishuCliPollResult> {
-  const resp = await fetch(`${FEISHU_BASE}/open-apis/authen/v2/oauth/token`, {
+  const resp = await proxyFetch(`${FEISHU_BASE}/open-apis/authen/v2/oauth/token`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ grant_type: 'urn:ietf:params:oauth:grant-type:device_code', device_code: deviceCode, client_id: appId, client_secret: appSecret }),
   })
@@ -132,7 +150,7 @@ export async function pollFeishuDeviceAuth(
 
   if (phase === 1 && !rt) {
     await new Promise((r) => setTimeout(r, 5000))
-    const r2 = await fetch(`${FEISHU_ACCOUNTS}/oauth/v1/device_authorization`, {
+    const r2 = await proxyFetch(`${FEISHU_ACCOUNTS}/oauth/v1/device_authorization`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ client_id: appId, client_secret: appSecret, grant_type: 'urn:ietf:params:oauth:grant-type:device_code', scope: DEVICE_AUTH_SCOPE }),
     })
@@ -142,7 +160,7 @@ export async function pollFeishuDeviceAuth(
 
   let openId = '', userName = ''
   try {
-    const u = await (await fetch(`${FEISHU_BASE}/open-apis/authen/v1/user_info`, { headers: { Authorization: `Bearer ${at}` } })).json()
+    const u = await (await proxyFetch(`${FEISHU_BASE}/open-apis/authen/v1/user_info`, { headers: { Authorization: `Bearer ${at}` } })).json()
     if (u.code === 0 && u.data) { openId = u.data.open_id; userName = u.data.name }
   } catch { /* ignore */ }
   if (!openId) { openId = appId; userName = appId.slice(0, 12) }

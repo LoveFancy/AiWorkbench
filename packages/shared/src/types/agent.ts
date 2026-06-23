@@ -966,6 +966,8 @@ export interface HtSkillHubSkill {
   files: string[]
   installed: boolean
   enabled?: boolean
+  /** 当前用户是否允许下载此 Skill（取决于 type 和 permission.role） */
+  canDownload?: boolean
 }
 
 /** 华泰 SkillHub 市场分页结果 */
