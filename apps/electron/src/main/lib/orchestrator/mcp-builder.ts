@@ -8,7 +8,7 @@
  */
 
 import { getWorkspaceMcpConfig, getWorkspaceConnectorsConfig, readDisabledToolsFromConnectorJson } from '../agent-workspace-manager'
-import type { ConnectorsConfig } from '@proma/shared'
+import type { ConnectorsConfig, McpServerEntry } from '@proma/shared'
 import { getMemoryConfig } from '../memory-service'
 import { searchMemory, addMemory, formatSearchResult } from '../memos-client'
 import { getConnectorsDir } from '../config-paths'
@@ -28,7 +28,7 @@ import { join } from 'node:path'
  * 3. 向后兼容：未被 connectors.json 管理的 server 仍加载（如迁移前的旧配置）
  *
  * @param preReadConfig 可选，调用方已读好的配置，避免重复 I/O
- * @param selectedMcpServers 可选，只加载指定的 MCP server（空数组 = 全部）
+ * @param selectedMcpServers 可选，只加载指定的 MCP server（undefined / 空数组 = 全部）
  */
 export function buildMcpServers(
   workspaceSlug: string | undefined,
@@ -38,15 +38,9 @@ export function buildMcpServers(
   const mcpServers: Record<string, Record<string, unknown>> = {}
   if (!workspaceSlug) return mcpServers
 
-  // selectedMcpServers:
-  //   undefined → 加载全部 server
-  //   []        → 一个都不加载
-  //   ['name']  → 只加载指定 server
-  if (Array.isArray(selectedMcpServers) && selectedMcpServers.length === 0) {
-    return mcpServers
-  }
-
-  const selectedNames = selectedMcpServers ? new Set(selectedMcpServers) : null
+  const selectedNames = selectedMcpServers && selectedMcpServers.length > 0
+    ? new Set(selectedMcpServers)
+    : null
   const connectorsConfig = preReadConfig ?? getWorkspaceConnectorsConfig(workspaceSlug)
   const mcpConfig = getWorkspaceMcpConfig(workspaceSlug)
 
@@ -97,7 +91,7 @@ export function buildMcpServers(
  */
 function registerMcpServer(
   name: string,
-  entry: Record<string, unknown>,
+  entry: Partial<McpServerEntry>,
   mcpServers: Record<string, Record<string, unknown>>,
 ): void {
   if (typeof entry.type !== 'string') {
@@ -129,7 +123,7 @@ function registerMcpServer(
     mcpServers[name] = {
       type: entry.type,
       url: entry.url,
-      ...(entry.headers && typeof entry.headers === 'object' && Object.keys(entry.headers as Record<string, string>).length > 0 && { headers: entry.headers }),
+      ...(entry.headers && Object.keys(entry.headers).length > 0 && { headers: entry.headers }),
       required: false,
     }
   }

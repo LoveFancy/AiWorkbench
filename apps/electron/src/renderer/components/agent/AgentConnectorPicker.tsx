@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { ChevronDown, Plug, Settings } from 'lucide-react'
+import { Plug, Settings } from 'lucide-react'
 import { toast } from 'sonner'
 import type { McpServerEntry, WorkspaceMcpConfig, ConnectorsConfig } from '@proma/shared'
 import { Button } from '@/components/ui/button'
@@ -62,7 +62,7 @@ export function getAvailableConnectorsForPicker(
       displayName: connector.name,
       target: entry ? getConnectorTarget(entry) : connector.category,
       entry,
-presetConnector: connector,
+      presetConnector: connector,
       isConfigured,
       enabled,
       isComingSoon,
@@ -71,13 +71,13 @@ presetConnector: connector,
   })
 
   const customItems: ConnectorPickerItem[] = Object.entries(config.servers ?? {})
-    .filter(([name, entry]) => name !== 'memos-cloud' && !presetServerNames.has(name))
+    .filter(([name, entry]) => name !== 'memos-cloud' && entry.enabled && !presetServerNames.has(name))
     .map(([name, entry]) => ({
       name,
       displayName: connectorsConfig?.connectors?.[name]?.displayName ?? name,
       entry,
       target: getConnectorTarget(entry),
-isConfigured: true,
+      isConfigured: true,
       enabled: connectorsConfig?.connectors?.[name]?.enabled ?? entry.enabled ?? false,
       isComingSoon: false,
       isCli: false,
@@ -220,22 +220,24 @@ export function AgentConnectorPicker({
             <Button
               type="button"
               variant="ghost"
+              size="icon"
+              aria-label="连接器"
               className={cn(
-                'h-8 shrink-0 rounded-full px-2.5 text-foreground/70 hover:text-foreground',
-                (open || anyEnabled) && 'bg-muted text-foreground',
+                'relative size-8 shrink-0 rounded-full text-foreground/65 hover:bg-muted hover:text-foreground',
+                open && 'bg-muted text-foreground',
+                anyEnabled && 'bg-blue-500/10 text-blue-600 shadow-sm hover:bg-blue-500/15 dark:text-blue-300',
               )}
               disabled={disabled || !workspaceSlug}
             >
-              <Plug className={cn('size-4', anyEnabled && 'text-blue-500')} />
-              <span className="text-[13px] font-medium">
-                {anyEnabled ? `连应用 ${connectors.filter((c) => c.isConfigured && c.enabled).length}` : '连应用'}
-              </span>
-              <ChevronDown className="size-3.5" />
+              <Plug className="size-4" />
+              {anyEnabled ? (
+                <span className="absolute right-1 top-1 size-1.5 rounded-full bg-blue-500 shadow-[0_0_0_2px_hsl(var(--background))]" />
+              ) : null}
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
         <TooltipContent side="top">
-          <p>连接应用</p>
+          <p>连接器</p>
         </TooltipContent>
       </Tooltip>
 
@@ -248,7 +250,7 @@ export function AgentConnectorPicker({
       >
         <div className="max-h-[360px] space-y-1 overflow-y-auto scrollbar-thin">
           {connectors.length > 0 ? (
-connectors.map((connector) => (
+            connectors.map((connector) => (
               <ConnectorRow
                 key={connector.name}
                 connector={connector}

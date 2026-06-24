@@ -232,8 +232,9 @@ export function getFeishuCliAuthStatus(): FeishuCliAuthState {
   const appId = cfg.currentApp
   const app = cfg.apps.find((a) => a.appId === appId)
   if (!app) return { status: 'disconnected' }
-  if (!app.users.some((u) => regHas(`${appId}:${u.userOpenId}`))) return { status: 'disconnected' }
-  return { status: 'connected', appId, userName: app.users[0].userName }
+  const firstBoundUser = app.users.find((u) => regHas(`${appId}:${u.userOpenId}`))
+  if (!firstBoundUser) return { status: 'disconnected' }
+  return { status: 'connected', appId, userName: firstBoundUser.userName }
 }
 
 export async function unbindFeishuCli(): Promise<boolean> {
@@ -250,8 +251,9 @@ export async function unbindFeishuCli(): Promise<boolean> {
     }
     // 从 config.json 中移除当前 app，保留其他 app
     const remaining = cfg!.apps.filter((a) => a.appId !== appId)
-    if (remaining.length > 0) {
-      writeFileSync(CONFIG_PATH, JSON.stringify({ apps: remaining, currentApp: remaining[0].appId }, null, 2), 'utf-8')
+    const nextApp = remaining[0]
+    if (nextApp) {
+      writeFileSync(CONFIG_PATH, JSON.stringify({ apps: remaining, currentApp: nextApp.appId }, null, 2), 'utf-8')
     } else {
       try { rmSync(CONFIG_PATH, { force: true }) } catch { /* ignore */ }
     }

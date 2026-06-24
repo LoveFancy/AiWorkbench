@@ -53,6 +53,7 @@ export { eventBus as agentEventBus }
  * runAgent 开始时注册，结束时清理。
  */
 const sessionWebContents = new Map<string, WebContents>()
+const SLOW_IPC_SEND_MS = 16
 
 /**
  * 已挂载 destroyed 回收钩子的 webContents 集合。
@@ -103,7 +104,19 @@ eventBus.use((sessionId, payload, next) => {
   const wc = sessionWebContents.get(sessionId)
   if (wc && !wc.isDestroyed()) {
     try {
+      const startedAt = Date.now()
       wc.send(AGENT_IPC_CHANNELS.STREAM_EVENT, { sessionId, payload } as AgentStreamEvent)
+      const durationMs = Date.now() - startedAt
+      if (durationMs >= SLOW_IPC_SEND_MS) {
+        console.warn('[性能诊断][AgentEventBus] STREAM_EVENT 推送耗时偏高', {
+          sessionId,
+          durationMs,
+          payloadKind: payload.kind,
+          messageType: payload.kind === 'sdk_message'
+            ? (payload.message as Record<string, unknown>).type
+            : payload.event.type,
+        })
+      }
     } catch (err) {
       console.error(`[EventBus] wc.send 失败: sessionId=${sessionId}, payload.kind=${(payload as Record<string, unknown>)?.kind}`, err)
     }

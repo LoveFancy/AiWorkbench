@@ -145,6 +145,7 @@ import { initWorkmateServices, shutdownWorkmateServices } from './lib/workmate-i
 import { getDingTalkMultiBotConfig } from './lib/dingtalk-config'
 import { wechatBridge } from './lib/wechat-bridge'
 import { getWeChatConfig } from './lib/wechat-config'
+import { scheduleAfterFirstWindowLoad } from './lib/startup-bridge-scheduler'
 import { createQuickTaskWindow, toggleQuickTaskWindow, destroyQuickTaskWindow } from './lib/quick-task-window'
 import {
   createVoiceDictationWindow,
@@ -578,7 +579,29 @@ async function bootstrap(): Promise<void> {
 
   // ── 关键段：首屏可见前必须就绪的最小集合（保持轻量，不做阻塞式检测） ──
 
+  // 同步默认 Skills 模板到 ~/.workmate/default-skills/
+  safeRun('seedDefaultSkills', seedDefaultSkills)
+
+  // 同步默认插件到 ~/.workmate/default-plugins/
+  seedDefaultPlugins()
+
+  // 同步默认连接器到 ~/.workmate/default-connectors/
+  safeRun('seedDefaultConnectors', seedDefaultConnectors)
+
+  // 为已有工作区补全缺失的连接器，并刷新预设连接器元数据
+  safeRun('syncDefaultConnectorsToAllWorkspaces', syncDefaultConnectorsToAllWorkspaces)
+
+  // 升级所有工作区中版本过旧的默认 Skills
+  safeRun('upgradeDefaultSkillsInWorkspaces', upgradeDefaultSkillsInWorkspaces)
+  elapsed('bootstrap: Skills/Plugins 初始化完成')
+
+  // Create application menu
+  const menu = createApplicationMenu()
+  Menu.setApplicationMenu(menu)
+  elapsed('bootstrap: 菜单创建完成')
+
   // IPC 处理器必须先于渲染层首个调用（auth.checkSession / getSettings）注册，否则首屏 IPC 会失败
+  // Register IPC handlers
   registerIpcHandlers()
   registerLogUploadIpc()
   registerAuthIpcHandlers()
@@ -630,6 +653,62 @@ async function bootstrap(): Promise<void> {
     },
   })
   elapsed('bootstrap: 系统托盘创建完成')
+
+  // 启动工作区文件监听（Agent MCP/Skills + 文件浏览器自动刷新）
+  if (mainWindow) {
+    safeRun('startWorkspaceWatcher', () => startWorkspaceWatcher(mainWindow!))
+  }
+
+  // 启动 Chat 工具配置文件监听（Agent 创建工具后自动通知渲染进程）
+  safeRun('startChatToolsWatcher', startChatToolsWatcher)
+
+  // 初始化自动更新
+  if (mainWindow) {
+    safeRun('initAutoUpdater', () => initAutoUpdater(mainWindow!))
+  }
+
+  // 预创建快速任务窗口（隐藏状态，首次唤起秒开）
+  safeRun('createQuickTaskWindow', createQuickTaskWindow)
+  if (getSettings().voiceDictation?.enabled === true) {
+    safeRun('createVoiceDictationWindow', createVoiceDictationWindow)
+  }
+  elapsed('bootstrap: 快捷窗口 & 更新器初始化完成')
+
+  // 飞书实时同步开启时，默认阻止系统自动休眠，保证远程群内继续可用。
+  safeRun('syncFeishuSyncSleepBlocker', () => syncFeishuSyncSleepBlocker(getSettings()))
+
+  // 注册全局快捷键
+  safeRun('registerGlobalShortcut:quick-task', () =>
+    registerGlobalShortcut('quick-task', toggleQuickTaskWindow),
+  )
+  safeRun('registerGlobalShortcut:show-main-window', () =>
+    registerGlobalShortcut('show-main-window', showAndFocusMainWindow),
+  )
+  safeRun('registerGlobalShortcut:voice-dictation', () =>
+    registerGlobalShortcut('voice-dictation', () => {
+      toggleVoiceDictationWindow({ targetIsProma: mainWindow?.isFocused() === true })
+    }),
+  )
+
+  // 启动所有已注册的 Bridge（飞书/钉钉/微信等）
+  // Windows 上飞书 SDK import/connect 曾与首屏加载竞争资源，导致 loadFile 到 preload 延迟约 90s。
+  // 这里延后到主窗口首轮加载完成后启动，保证用户先看到界面。
+  elapsed('bootstrap: 安排 Bridges 在首屏加载后启动')
+  scheduleAfterFirstWindowLoad(mainWindow, (reason) => {
+    elapsed(`bootstrap: ${reason}，准备启动 Bridges`)
+    void safeAwait('startAllBridges', () => startAllBridges()).then(() => {
+      safeRun('startBridgeSelfHealing', startBridgeSelfHealing)
+      elapsed('bootstrap: Bridges 启动完成')
+    })
+  })
+
+  // 启动本地 API 服务（默认关闭，仅在用户设置启用后启动）
+  await safeAwait('startLocalApiServer', startLocalApiServer)
+
+  // 启动定时任务调度器（恢复持久化的 active 任务）
+  safeRun('startScheduler', startScheduler)
+
+  elapsed('bootstrap: 核心初始化完成（Bridges 已按首屏加载调度）')
 
   app.on('activate', () => {
     if (shouldSuppressVoiceDictationActivate()) {

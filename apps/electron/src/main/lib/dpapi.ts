@@ -24,36 +24,98 @@ interface DpapiBindings {
 }
 
 let dpapi: DpapiBindings | null
+let dpapiLoadError: Error | null = null
 
-function loadDpapi(): DpapiBindings {
-  const platform = process.platform === 'win32' ? 'win32' : process.platform
-  const arch = process.arch === 'x64' ? 'x64' : 'arm64'
-  const filename = '@primno+dpapi.node'
+interface DpapiPrebuildOptions {
+  isPackaged: boolean
+  resourcesPath?: string
+  dirname: string
+  platform: NodeJS.Platform | string
+  arch: string
+}
 
-  // 生产环境：electron-builder 将 prebuilds 打入 extraResources/dpapi-prebuilds/
-  // 开发环境：node_modules/@primno/dpapi/prebuilds/ 通过 __dirname 定位
-  const prebuildsDir = app.isPackaged
-    ? join(process.resourcesPath, 'dpapi-prebuilds')
-    : join(__dirname, '..', 'node_modules', '@primno', 'dpapi', 'prebuilds')
+const DPAPI_PREBUILD_FILENAME = '@primno+dpapi.node'
 
-  const prebuildPath = join(prebuildsDir, `${platform}-${arch}`, filename)
+function normalizeDpapiPlatform(platform: NodeJS.Platform | string): string {
+  return platform === 'win32' ? 'win32' : platform
+}
 
-  if (existsSync(prebuildPath)) {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    return require(prebuildPath) as DpapiBindings
+function normalizeDpapiArch(arch: string): string {
+  if (arch === 'x64' || arch === 'arm64') return arch
+  return arch
+}
+
+function uniquePaths(paths: string[]): string[] {
+  return Array.from(new Set(paths))
+}
+
+export function buildDpapiPrebuildCandidates(options: DpapiPrebuildOptions): string[] {
+  const platform = normalizeDpapiPlatform(options.platform)
+  const arch = normalizeDpapiArch(options.arch)
+  const prebuildDirName = `${platform}-${arch}`
+  const packagePrebuildParts = ['node_modules', '@primno', 'dpapi', 'prebuilds', prebuildDirName, DPAPI_PREBUILD_FILENAME]
+  const candidates: string[] = []
+
+  if (options.isPackaged && options.resourcesPath) {
+    candidates.push(join(options.resourcesPath, 'dpapi-prebuilds', prebuildDirName, DPAPI_PREBUILD_FILENAME))
+    candidates.push(join(options.resourcesPath, 'app.asar.unpacked', ...packagePrebuildParts))
   }
+
+  candidates.push(join(options.dirname, '..', ...packagePrebuildParts))
+  candidates.push(join(options.dirname, '..', '..', ...packagePrebuildParts))
+  candidates.push(join(options.dirname, '..', '..', '..', ...packagePrebuildParts))
+  candidates.push(join(process.cwd(), ...packagePrebuildParts))
+
+  return uniquePaths(candidates)
+}
+
+export function resolveDpapiPrebuildPath(options: DpapiPrebuildOptions): string {
+  const platform = normalizeDpapiPlatform(options.platform)
+  const arch = normalizeDpapiArch(options.arch)
+  const candidates = buildDpapiPrebuildCandidates(options)
+  const found = candidates.find((candidate) => existsSync(candidate))
+
+  if (found) return found
 
   throw new Error(
     `DPAPI is not supported on this platform (${platform}-${arch}). ` +
-    `Checked: ${prebuildPath}`
+    `已检查路径: ${candidates.join('; ')}`
   )
+}
+
+function getResourcesPath(): string | undefined {
+  const processWithResources = process as NodeJS.Process & { resourcesPath?: string }
+  return processWithResources.resourcesPath
+}
+
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function loadDpapi(): DpapiBindings {
+  const options: DpapiPrebuildOptions = {
+    isPackaged: app.isPackaged,
+    resourcesPath: getResourcesPath(),
+    dirname: __dirname,
+    platform: process.platform,
+    arch: process.arch,
+  }
+  const prebuildPath = resolveDpapiPrebuildPath(options)
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return require(prebuildPath) as DpapiBindings
+  } catch (error) {
+    throw new Error(`DPAPI native 模块加载失败: ${prebuildPath}; ${formatError(error)}`)
+  }
 }
 
 try {
   dpapi = loadDpapi()
-} catch {
+} catch (error) {
   // 非 Windows 环境不抛错，由 protectData / unprotectData 内部报错
   dpapi = null
+  dpapiLoadError = error instanceof Error ? error : new Error(String(error))
 }
 
 // ===== 公开 API =====
@@ -61,7 +123,7 @@ try {
 /** DPAPI 加密，返回 base64(StdEncoding) 结果 */
 export function protectData(account: string, data: string): string {
   if (!dpapi) {
-    throw new Error('DPAPI is not supported on this platform.')
+    throw new Error(dpapiLoadError?.message ?? 'DPAPI is not supported on this platform.')
   }
   const entropy = Buffer.concat([
     Buffer.from('lark-cli', 'utf-8'),
@@ -75,7 +137,7 @@ export function protectData(account: string, data: string): string {
 /** DPAPI 解密，返回原文 */
 export function unprotectData(account: string, encryptedB64: string): string {
   if (!dpapi) {
-    throw new Error('DPAPI is not supported on this platform.')
+    throw new Error(dpapiLoadError?.message ?? 'DPAPI is not supported on this platform.')
   }
   // 校验 base64 格式，避免 Buffer.from(_, 'base64') 静默吞掉非法字符
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encryptedB64)) {
