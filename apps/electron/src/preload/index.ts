@@ -719,6 +719,8 @@ export interface ElectronAPI {
   saveConnectorsConfig: (workspaceSlug: string, config: ConnectorsConfig) => Promise<void>
   /** 注册用户创建的连接器（创建目录 + connector.json + mcp.json + connectors.json） */
   registerUserConnector: (workspaceSlug: string, name: string, entry: import('@proma/shared').McpServerEntry, displayName?: string) => Promise<void>
+  /** 注销用户创建的连接器（删除目录 + connectors.json 条目 + mcp.json 条目） */
+  unregisterUserConnector: (workspaceSlug: string, name: string) => Promise<void>
 
   /** 获取工作区 Skill 列表（含活跃和不活跃） */
   getWorkspaceSkills: (workspaceSlug: string) => Promise<SkillMeta[]>
@@ -2048,6 +2050,10 @@ const electronAPI: ElectronAPI = {
 
   registerUserConnector: (workspaceSlug: string, name: string, entry: import('@proma/shared').McpServerEntry, displayName?: string) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.REGISTER_USER_CONNECTOR, workspaceSlug, name, entry, displayName)
+  },
+
+  unregisterUserConnector: (workspaceSlug: string, name: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.UNREGISTER_USER_CONNECTOR, workspaceSlug, name)
   },
 
   getWorkspaceSkills: (workspaceSlug: string) => {

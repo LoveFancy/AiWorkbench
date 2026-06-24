@@ -12,7 +12,7 @@
 import * as React from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { toast } from 'sonner'
-import { Blocks, ChevronDown, Search, Plus, FolderOpen, Check, Mail, ArrowRight, Upload, RefreshCw, Package, Loader2, XCircle, Unplug } from 'lucide-react'
+import { Blocks, ChevronDown, Search, Plus, FolderOpen, Check, Mail, Upload, RefreshCw, Package, Loader2, XCircle, Unplug, ShieldCheck, Trash2, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Button } from '@/components/ui/button'
@@ -51,7 +51,7 @@ import { SkillMarketPanel } from './SkillMarketPanel'
 import { sortInstalledCapabilities } from './installed-capabilities'
 import {
   getPresetConnectorDefinitions,
-  getPresetConnectorServerNames,
+  getAllConnectorDefinitions,
   type PresetConnectorDefinition,
 } from './default-connectors'
 
@@ -135,10 +135,6 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
     () => getPresetConnectorDefinitions(connectorsConfig),
     [connectorsConfig],
   )
-  const presetConnectorServerNames = React.useMemo(
-    () => getPresetConnectorServerNames(connectorsConfig),
-    [connectorsConfig],
-  )
 
   const handleToggleDefaultConnector = React.useCallback(async (connectorId: string, enabled: boolean) => {
     setConnectorEnabledMap((prev) => ({ ...prev, [connectorId]: enabled }))
@@ -146,8 +142,12 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
       const config = await window.electronAPI.getConnectorsConfig(data.workspaceSlug)
       const connector = config.connectors[connectorId]
       if (!connector) {
-        // 回滚乐观 UI 更新
-        setConnectorEnabledMap((prev) => ({ ...prev, [connectorId]: !enabled }))
+        // 自定义连接器可能尚未注册，补一个最小条目
+        await window.electronAPI.saveConnectorsConfig(data.workspaceSlug, {
+          ...config,
+          connectors: { ...config.connectors, [connectorId]: { type: 'mcp', enabled, source: 'user' } },
+        })
+        bumpCapabilities((v) => v + 1)
         return
       }
       await window.electronAPI.saveConnectorsConfig(data.workspaceSlug, {
@@ -242,18 +242,23 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
   const updateCount = data.skills.filter((s) => s.hasUpdate).length
   const installedSkillNames = React.useMemo(() => new Set(data.skills.map((skill) => skill.name)), [data.skills])
 
-  const serverEntries = React.useMemo(() => {
-    return Object.entries(data.mcpConfig.servers ?? {})
-      .filter(([name]) => name !== 'memos-cloud')
-      .filter(([name]) => !presetConnectorServerNames.has(name))
-      .filter(([name]) => !q || name.toLowerCase().includes(q))
-  }, [data.mcpConfig, q, presetConnectorServerNames])
-
-  // 不含搜索过滤的 MCP 总数
+  // 连接器总数（预置 + 自定义）
   const mcpCount = React.useMemo(
-    () => Object.keys(data.mcpConfig.servers ?? {}).filter((n) => n !== 'memos-cloud' && !presetConnectorServerNames.has(n)).length + presetConnectors.length,
-    [data.mcpConfig, presetConnectors, presetConnectorServerNames],
+    () => getAllConnectorDefinitions(connectorsConfig, data.mcpConfig.servers).length,
+    [connectorsConfig, data.mcpConfig.servers],
   )
+
+  // 过滤后的连接器列表（供 JSX 直接使用，不在条件渲染中调用 hooks）
+  const filteredConnectors = React.useMemo(() => {
+    const defs = getAllConnectorDefinitions(connectorsConfig, data.mcpConfig.servers)
+    const q = search.toLowerCase()
+    if (!q) return defs
+    return defs.filter((c) =>
+      c.name.toLowerCase().includes(q) ||
+      c.description.toLowerCase().includes(q) ||
+      c.category.toLowerCase().includes(q),
+    )
+  }, [search, connectorsConfig, data.mcpConfig.servers])
   const presetConnectorServers = React.useMemo(() => {
     return Object.fromEntries(
       presetConnectors
@@ -554,24 +559,56 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
                 onSkillViewChange={setSkillView}
                 onRefreshInstalled={handleRefreshInstalledSkills}
               />
-            ) : (
-              <McpTab
-                entries={serverEntries}
-                total={mcpCount}
-                query={q}
-                onOpen={(name, entry) => { setEditingMcp({ name, entry }); setMcpSheetOpen(true) }}
-                onToggle={data.toggleMcp}
-                onRequestDelete={setPendingDeleteMcpName}
-                onAdd={() => { setEditingMcp(null); setMcpSheetOpen(true) }}
-                onOpenDefaultConnector={setActiveDefaultConnector}
-                defaultConnectorServers={presetConnectorServers}
-                defaultConnectorDefs={presetConnectors}
-                feishuCliConnected={feishuCliConnected}
-                connectorEnabledMap={connectorEnabledMap}
-                onToggleDefaultConnector={handleToggleDefaultConnector}
-                onUnbindFeishu={handleUnbindFeishu}
-                unbindingFeishu={unbindingFeishu}
+            ) : mcpCount === 0 ? (
+              <EmptyState
+                icon={<Plus className="size-8 text-foreground/30" />}
+                title="还没有连接器"
+                hint="点击右上角「添加连接器」开始，或在 Agent 模式下让 Proma 帮你查找并配置。"
+                action={
+                  <button
+                    type="button"
+                    onClick={() => { setEditingMcp(null); setMcpSheetOpen(true) }}
+                    className="mt-2 flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-[13px] font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+                  >
+                    <Plus size={14} />
+                    <span>添加连接器</span>
+                  </button>
+                }
               />
+            ) : filteredConnectors.length === 0 ? (
+              <EmptyState icon={<Search className="size-8 text-foreground/30" />} title="没有匹配的连接器" hint="试试更换搜索关键词。" />
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {filteredConnectors.map((connector) => {
+                  const serverEntry = connector.serverName ? data.mcpConfig.servers[connector.serverName] as McpServerEntry | undefined : undefined
+                  const isPreset = connector.source === 'preset'
+                  return (
+                    <ConnectorCard
+                      key={connector.id}
+                      connector={connector}
+                      server={serverEntry ?? null}
+                      isFeishuConnected={feishuCliConnected}
+                      enabled={connectorEnabledMap[connector.id] ?? false}
+                      onOpen={() => {
+                        if (isPreset) {
+                          setActiveDefaultConnector(connector.id)
+                        } else if (connector.serverName && serverEntry) {
+                          setEditingMcp({ name: connector.serverName, entry: serverEntry })
+                          setMcpSheetOpen(true)
+                        }
+                      }}
+                      onToggle={(enabled) => {
+                        handleToggleDefaultConnector(connector.id, enabled)
+                      }}
+                      onUnbindFeishu={handleUnbindFeishu}
+                      unbindingFeishu={unbindingFeishu}
+                      onRequestDelete={() => !isPreset && connector.serverName && setPendingDeleteMcpName(connector.serverName)}
+                      isBuiltin={(connector as any).isBuiltin}
+                      lastTestResult={(connector as any).lastTestResult}
+                    />
+                  )
+                })}
+              </div>
             )}
           </div>
         )}
@@ -975,89 +1012,7 @@ function SkillSection({ skills, isBuiltin, updatingSkill, onOpen, onToggle, onUp
   )
 }
 
-// ===== MCP Tab =====
-
-interface McpTabProps {
-  entries: Array<[string, McpServerEntry]>
-  total: number
-  query: string
-  defaultConnectorServers: Partial<Record<string, McpServerEntry>>
-  defaultConnectorDefs: PresetConnectorDefinition[]
-  onOpen: (name: string, entry: McpServerEntry) => void
-  onToggle: (name: string, enabled: boolean) => void
-  onRequestDelete: (name: string) => void
-  onAdd: () => void
-  onOpenDefaultConnector: (id: string) => void
-  feishuCliConnected: boolean
-  connectorEnabledMap: Record<string, boolean>
-  onToggleDefaultConnector: (id: string, enabled: boolean) => void
-  onUnbindFeishu: () => void
-  unbindingFeishu: boolean
-}
-
-function McpTab({ entries, total, query, defaultConnectorServers, defaultConnectorDefs, onOpen, onToggle, onRequestDelete, onAdd, onOpenDefaultConnector, feishuCliConnected, connectorEnabledMap, onToggleDefaultConnector, onUnbindFeishu, unbindingFeishu }: McpTabProps): React.ReactElement {
-  const defaultConnectors = React.useMemo(() => {
-    if (!query) return defaultConnectorDefs
-    return defaultConnectorDefs.filter((connector) =>
-      connector.name.toLowerCase().includes(query) ||
-      connector.description.toLowerCase().includes(query) ||
-      connector.category.toLowerCase().includes(query),
-    )
-  }, [query, defaultConnectorDefs])
-
-  if (total === 0) {
-    return (
-      <EmptyState
-        icon={<Plus className="size-8 text-foreground/30" />}
-        title="还没有连接器"
-        hint="点击右上角「添加连接器」开始，或在 Agent 模式下让 Proma 帮你查找并配置。"
-        action={
-          <button
-            type="button"
-            onClick={onAdd}
-            className="mt-2 flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-[13px] font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
-          >
-            <Plus size={14} />
-            <span>添加连接器</span>
-          </button>
-        }
-      />
-    )
-  }
-  if (entries.length === 0 && defaultConnectors.length === 0) {
-    return <EmptyState icon={<Search className="size-8 text-foreground/30" />} title="没有匹配的连接器" hint="试试更换搜索关键词。" />
-  }
-
-  return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {defaultConnectors.map((connector) => (
-        <DefaultConnectorCard
-          key={connector.id}
-          connector={connector}
-          server={defaultConnectorServers[connector.id] ?? null}
-          isFeishuConnected={feishuCliConnected}
-          enabled={connectorEnabledMap[connector.id] ?? false}
-          onOpen={() => onOpenDefaultConnector(connector.id)}
-          onToggle={(enabled) => onToggleDefaultConnector(connector.id, enabled)}
-          onUnbindFeishu={onUnbindFeishu}
-          unbindingFeishu={unbindingFeishu}
-        />
-      ))}
-      {entries.map(([name, entry]) => (
-        <McpCard
-          key={name}
-          name={name}
-          entry={entry}
-          onOpen={() => onOpen(name, entry)}
-          onToggle={(enabled) => onToggle(name, enabled)}
-          onRequestDelete={() => onRequestDelete(name)}
-        />
-      ))}
-    </div>
-  )
-}
-
-function DefaultConnectorCard({
+function ConnectorCard({
   connector,
   server,
   isFeishuConnected,
@@ -1066,8 +1021,13 @@ function DefaultConnectorCard({
   onToggle,
   onUnbindFeishu,
   unbindingFeishu,
+  onRequestDelete,
+  isBuiltin,
+  lastTestResult,
 }: {
-  connector: PresetConnectorDefinition
+  connector: PresetConnectorDefinition & {
+    source?: 'preset' | 'user'
+  }
   server: McpServerEntry | null
   isFeishuConnected: boolean
   enabled: boolean
@@ -1075,6 +1035,9 @@ function DefaultConnectorCard({
   onToggle: (enabled: boolean) => void
   onUnbindFeishu: () => void
   unbindingFeishu: boolean
+  onRequestDelete?: () => void
+  isBuiltin?: boolean
+  lastTestResult?: { success: boolean; message: string }
 }): React.ReactElement {
   const isMcp = connector.connectorType === 'mcp'
   const isCli = connector.connectorType === 'cli'
@@ -1082,90 +1045,135 @@ function DefaultConnectorCard({
   const isInitialized = Boolean(server)
   // MCP 类型：MCP server 存在才算已配置；CLI 类型：凭据连接才算已配置
   const isConfigured = isCli ? isFeishuConnected : isMcp ? isInitialized : false
+  const isUserConnector = connector.source === 'user'
+  const isPresetConnector = connector.source === 'preset'
+
+  // 参考 SkillCard 显示 source 标签
+  const connectorSourceLabel = () => {
+    if (isPresetConnector) {
+      return (
+        <span className="flex items-center gap-1 rounded-md bg-blue-500/10 px-1.5 py-0.5 text-[11px] font-medium text-blue-600 dark:text-blue-400">
+          <ShieldCheck size={12} /> WorkMate 内置
+        </span>
+      )
+    }
+    return (
+      <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+        {connector.category ?? '用户自定义'}
+      </span>
+    )
+  }
+
   return (
     <div
+      role="button"
+      tabIndex={0}
+      onClick={isComingSoon ? undefined : onOpen}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          !isComingSoon && onOpen()
+        }
+      }}
       className={cn(
-        'group relative flex h-full min-h-[132px] flex-col gap-3 rounded-xl border border-border/60 bg-content-area p-4 transition-all',
-        isComingSoon
-          ? 'cursor-not-allowed opacity-55'
-          : 'hover:border-border hover:shadow-sm focus-within:ring-1 focus-within:ring-ring',
+        'group relative flex h-full flex-col gap-3 rounded-xl border border-border/60 bg-content-area p-4 text-left transition-all cursor-pointer',
+        'hover:border-border hover:shadow-sm focus:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+        isComingSoon ? 'cursor-not-allowed opacity-55' : !enabled && 'opacity-55',
       )}
     >
-      <button
-        type="button"
-        onClick={isComingSoon ? undefined : onOpen}
-        disabled={isComingSoon}
-        className="flex flex-1 flex-col gap-3 text-left"
-      >
-        <div className="flex items-start gap-3">
-          <div className={cn(
-            'rounded-xl p-2 shadow-sm shrink-0',
-            isMcp ? 'bg-amber-500/12 text-amber-500' : 'bg-blue-500/12 text-blue-500',
-          )}>
-            {isMcp ? <Mail size={18} /> : <Blocks size={18} />}
+      <div className="flex items-start gap-3">
+        <div className={cn(
+          'rounded-xl p-2 shadow-sm shrink-0',
+          isMcp ? 'bg-amber-500/12 text-amber-500' : 'bg-blue-500/12 text-blue-500',
+        )}>
+          {isMcp ? <Mail size={18} /> : <Blocks size={18} />}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-sm font-medium text-foreground">{connector.name}</span>
+            <span className={cn(
+              'shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium',
+              isComingSoon ? 'bg-muted text-muted-foreground'
+                : isConfigured ? 'bg-green-500/10 text-green-600 dark:text-green-400'
+                  : 'bg-muted text-muted-foreground',
+            )}>
+              {isComingSoon ? '敬请期待' : isConfigured ? '已连接' : '待配置'}
+            </span>
           </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <span className="truncate text-sm font-medium text-foreground">{connector.name}</span>
-              <span className={cn(
-                'shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium',
-                isComingSoon ? 'bg-muted text-muted-foreground'
-                  : isConfigured ? 'bg-green-500/10 text-green-600 dark:text-green-400'
-                    : 'bg-muted text-muted-foreground',
-              )}>
-                {isComingSoon ? '敬请期待' : isConfigured ? '已连接' : '待配置'}
-              </span>
-            </div>
-            <div className="mt-0.5 truncate text-xs text-muted-foreground">
-              {connector.category}
-            </div>
+          <div className="mt-0.5 truncate text-xs text-muted-foreground">
+            {connector.category}
           </div>
-          <ArrowRight
-            size={16}
-            className={cn(
-              'shrink-0 text-muted-foreground/50 transition-transform',
-              !isComingSoon && 'group-hover:translate-x-0.5 group-hover:text-foreground/70',
-            )}
+        </div>
+        {!isComingSoon && (
+          <Switch
+            checked={enabled}
+            onCheckedChange={onToggle}
+            onClick={(e) => e.stopPropagation()}
+            className="shrink-0"
           />
-        </div>
-        <p className="line-clamp-3 text-[12px] leading-relaxed text-muted-foreground">
-          {isInitialized && server ? `MCP: ${connector.serverName ?? '默认'} · ${server.type === 'stdio' ? server.command : server.url}` : connector.description}
-        </p>
-      </button>
+        )}
+      </div>
+      <p className="line-clamp-2 min-h-[40px] text-[13px] leading-6 text-muted-foreground">
+        {isInitialized && server
+          ? `${server.type.toUpperCase()}: ${server.type === 'stdio' ? server.command : server.url}`
+          : connector.description ?? '暂无描述'}
+      </p>
 
-      {/* 已配置：显示开关 + 飞书解绑 */}
-      {isConfigured && !isComingSoon && (
-        <div className="flex items-center justify-between rounded-lg bg-muted/40 px-2 py-1.5">
-          <span className="text-[11px] text-muted-foreground">{connector.name}能力</span>
-          <div className="flex items-center gap-1">
-            <Switch
-              checked={enabled}
-              onCheckedChange={onToggle}
-              className="scale-75 data-[state=checked]:bg-green-500"
-            />
-            {isCli && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onUnbindFeishu()
-                    }}
-                    disabled={unbindingFeishu}
-                    className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed"
-                  >
-                    <Unplug size={14} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  <p>解绑飞书 CLI</p>
-                </TooltipContent>
-              </Tooltip>
+      <div className="mt-auto flex items-center gap-2">
+        {connectorSourceLabel()}
+
+        {isConfigured && lastTestResult && (
+          <span
+            className={cn(
+              'flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium',
+              lastTestResult.success
+                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                : 'bg-destructive/10 text-destructive',
             )}
-          </div>
+          >
+            {lastTestResult.success ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
+            {lastTestResult.success ? '连接正常' : '连接失败'}
+          </span>
+        )}
+
+        <div className="ml-auto flex items-center gap-1">
+          {connector.id === 'feishu-cli' && isCli && isConfigured && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onUnbindFeishu()
+                  }}
+                  disabled={unbindingFeishu}
+                  className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed"
+                >
+                  <Unplug size={16} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top">解绑飞书 CLI</TooltipContent>
+            </Tooltip>
+          )}
+          {isUserConnector && !isBuiltin && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onRequestDelete?.()
+                  }}
+                  className="rounded p-1.5 text-muted-foreground transition-colors hover:text-destructive"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top">删除</TooltipContent>
+            </Tooltip>
+          )}
         </div>
-      )}
+      </div>
     </div>
   )
 }
@@ -1323,20 +1331,20 @@ function HuataiEmailConnectorDialog({
         )}
 
         {initSteps.length > 0 && (
-          <div className="mt-5 min-w-0 overflow-hidden space-y-2 rounded-xl bg-muted/45 p-3">
+          <div className="mt-5 min-w-0 max-h-[240px] overflow-y-auto space-y-2 rounded-xl bg-muted/45 p-3">
             {initSteps.map((step) => (
-              <div key={step.id} className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+              <div key={step.id} className="flex min-w-0 items-start gap-2 text-xs text-muted-foreground">
                 {step.status === 'running' ? (
-                  <Loader2 size={14} className="shrink-0 animate-spin text-primary" />
+                  <Loader2 size={14} className="shrink-0 animate-spin text-primary mt-0.5" />
                 ) : step.status === 'success' || step.status === 'skipped' ? (
-                  <Check size={14} className="shrink-0 text-emerald-500" />
+                  <Check size={14} className="shrink-0 text-emerald-500 mt-0.5" />
                 ) : step.status === 'error' ? (
-                  <XCircle size={14} className="shrink-0 text-destructive" />
+                  <XCircle size={14} className="shrink-0 text-destructive mt-0.5" />
                 ) : (
-                  <span className="size-3.5 shrink-0 rounded-full border border-border" />
+                  <span className="size-3.5 shrink-0 rounded-full border border-border mt-0.5" />
                 )}
                 <span className="shrink-0 font-medium text-foreground/80">{step.label}</span>
-                {step.message && <span className="min-w-0 flex-1 truncate">{step.message}</span>}
+                {step.message && <span className="min-w-0 break-all">{step.message}</span>}
               </div>
             ))}
           </div>
