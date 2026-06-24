@@ -1447,7 +1447,7 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
         <AlertDialogHeader>
           <AlertDialogTitle>确认删除对话</AlertDialogTitle>
           <AlertDialogDescription>
-            删除后将无法恢复，确定要删除这个对话吗？
+            <strong className="font-semibold text-foreground">删除会将会话文件一并删除</strong>，且无法恢复，确定要删除吗？
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
