@@ -99,7 +99,7 @@ function encryptApiKey(plainKey: string): string {
  * @param encryptedKey base64 编码的加密字符串
  * @returns 明文 API Key
  */
-function decryptKey(encryptedKey: string): string {
+export function decryptKey(encryptedKey: string): string {
   return decryptKeyInternal(encryptedKey, { logError: true })
 }
 

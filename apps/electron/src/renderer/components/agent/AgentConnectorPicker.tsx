@@ -71,14 +71,14 @@ presetConnector: connector,
   })
 
   const customItems: ConnectorPickerItem[] = Object.entries(config.servers ?? {})
-    .filter(([name, entry]) => name !== 'memos-cloud' && entry.enabled && !presetServerNames.has(name))
+    .filter(([name, entry]) => name !== 'memos-cloud' && !presetServerNames.has(name))
     .map(([name, entry]) => ({
       name,
-      displayName: name,
+      displayName: connectorsConfig?.connectors?.[name]?.displayName ?? name,
       entry,
       target: getConnectorTarget(entry),
 isConfigured: true,
-      enabled: entry.enabled ?? false,
+      enabled: connectorsConfig?.connectors?.[name]?.enabled ?? entry.enabled ?? false,
       isComingSoon: false,
       isCli: false,
     }))
@@ -153,18 +153,23 @@ export function AgentConnectorPicker({
     onOpenConnectorManager()
   }, [onOpenConnectorManager])
 
-  /** 切换连接器 enabled 状态 */
+  /** 切换连接器 enabled 状态（统一走 connectorsConfig） */
   const handleToggleEnabled = React.useCallback(async (connector: ConnectorPickerItem, enabled: boolean): Promise<void> => {
-    if (!workspaceSlug || !connector.presetConnector) return
-    const connectorId = connector.presetConnector.id
+    if (!workspaceSlug) return
+
+    // 预设连接器用 presetConnector.id，自定义连接器用 name
+    const connectorId = connector.presetConnector?.id ?? connector.name
+
     setConnectorsConfig((prev) => {
       if (!prev) return prev
       const c = prev.connectors[connectorId]
-      if (!c) return prev
+      if (!c) {
+        // 自定义连接器可能尚未注册到 connectors.json，补一个最小条目
+        return { ...prev, connectors: { ...prev.connectors, [connectorId]: { type: 'mcp', enabled, source: 'user' } } }
+      }
       return { ...prev, connectors: { ...prev.connectors, [connectorId]: { ...c, enabled } } }
     })
 
-    // 同步更新 selectedNames
     if (enabled) {
       if (!selectedNames.includes(connectorId)) {
         onSelectedNamesChange([...selectedNames, connectorId])
@@ -180,6 +185,12 @@ export function AgentConnectorPicker({
         await window.electronAPI.saveConnectorsConfig(workspaceSlug, {
           ...cc,
           connectors: { ...cc.connectors, [connectorId]: { ...c, enabled } },
+        })
+      } else {
+        // 补充缺失的自定义连接器条目
+        await window.electronAPI.saveConnectorsConfig(workspaceSlug, {
+          ...cc,
+          connectors: { ...cc.connectors, [connectorId]: { type: 'mcp', enabled, source: 'user' } },
         })
       }
     } catch (e) {

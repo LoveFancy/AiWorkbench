@@ -236,6 +236,7 @@ import {
   getWorkspaceConnectorsConfig,
   saveWorkspaceConnectorsConfig,
   registerUserConnector,
+  unregisterUserConnector,
   migrateMcpJsonToConnectors,
   syncDefaultConnectorsToWorkspace,
   getAllWorkspaceSkills,
@@ -2241,6 +2242,14 @@ export function registerIpcHandlers(): void {
     AGENT_IPC_CHANNELS.REGISTER_USER_CONNECTOR,
     async (_, workspaceSlug: string, name: string, entry: import('@proma/shared').McpServerEntry, displayName?: string): Promise<void> => {
       return registerUserConnector(workspaceSlug, name, entry, displayName)
+    }
+  )
+
+  // 注销用户创建的连接器
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.UNREGISTER_USER_CONNECTOR,
+    async (_, workspaceSlug: string, name: string): Promise<void> => {
+      return unregisterUserConnector(workspaceSlug, name)
     }
   )
 
