@@ -220,11 +220,19 @@ class FeishuBridge {
     }
 
     this.updateStatus({ status: 'connecting' })
+    const bridgeStartTime = Date.now()
+    const logStartStage = (label: string): void => {
+      console.log(`[飞书 Bridge][启动耗时] +${Date.now() - bridgeStartTime}ms | ${label}`)
+    }
+    logStartStage('start 入口')
 
     try {
       const plainSecret = getDecryptedBotAppSecret(this.botConfig.id)
+      logStartStage('App Secret 解密完成')
       const lark = await import('@larksuiteoapi/node-sdk')
+      logStartStage('SDK 动态导入完成')
       const transport = await createFeishuSdkTransport()
+      logStartStage('HTTP Transport 创建完成')
 
       // 用 createLarkChannel 替代 lark.Client + lark.WSClient + EventDispatcher 老组合
       // 关键收益：channel.on({cardAction}) 能拿到卡片按钮回调（老 WSClient.handleEventData
@@ -248,6 +256,7 @@ class FeishuBridge {
         includeRawEvent: true,
       })
       this.client = this.channel.rawClient
+      logStartStage('LarkChannel 创建完成')
 
       // 获取 Bot 自身的 open_id（用于群聊 @Bot 精确检测）
       try {
@@ -259,6 +268,7 @@ class FeishuBridge {
           method: 'GET',
           url: 'https://open.feishu.cn/open-apis/bot/v3/info/',
         })
+        logStartStage('Bot info 请求完成')
         console.log('[飞书 Bridge] Bot info 响应:', JSON.stringify(botInfoResp, null, 2))
         // 飞书 API 返回 bot 在顶层，Lark SDK 可能包装在 data 下，兼容两种
         this.botOpenId = botInfoResp?.bot?.open_id ?? botInfoResp?.data?.bot?.open_id ?? null
@@ -286,6 +296,7 @@ class FeishuBridge {
       })
 
       await this.channel.connect()
+      logStartStage('channel.connect 完成')
 
       // 注册 EventBus 监听器
       this.eventBusUnsubscribe = agentEventBus.on((sessionId, payload) => {
@@ -296,12 +307,15 @@ class FeishuBridge {
       this.loadBindings()
       // 恢复运行时元数据（最近交互用户等）
       this.loadMetadata()
+      logStartStage('绑定和元数据恢复完成')
 
       this.updateStatus({ status: 'connected', connectedAt: Date.now() })
+      logStartStage('start 完成')
       console.log('[飞书 Bridge] 已连接')
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       this.updateStatus({ status: 'error', errorMessage: message })
+      logStartStage('start 失败')
       console.error('[飞书 Bridge] 启动失败:', error)
     }
   }

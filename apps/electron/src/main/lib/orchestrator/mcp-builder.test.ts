@@ -72,7 +72,13 @@ describe('buildMcpServers', () => {
     expect(Object.keys(servers).sort()).toEqual(['docs', 'email'])
   })
 
-  test('select 指定加载部分 server', () => {
+  test('空 select 参数按未指定处理，加载全部 enabled server', () => {
+    writeWorkspaceMcp('default')
+    const servers = buildMcpServers('default', undefined, [])
+    expect(Object.keys(servers).sort()).toEqual(['docs', 'email'])
+  })
+
+  test('只加载指定名称的旧 MCP', () => {
     writeWorkspaceMcp('default')
     const servers = buildMcpServers('default', undefined, ['email'])
     expect(Object.keys(servers)).toEqual(['email'])
@@ -115,7 +121,21 @@ describe('buildMcpServers', () => {
     expect(servers['email']).toBeUndefined()
   })
 
-  test('disabled 连接器对应的 server 按原始名加载（不被重命名）', () => {
+  test('连接器兜底加载时空 select 参数按未指定处理', () => {
+    writeWorkspaceMcp('default')
+    writeConnectorsConfig('default', {
+      'huatai-email': {
+        type: 'mcp', enabled: true, source: 'preset',
+        displayName: '华泰邮箱', serverName: 'email',
+      },
+    })
+
+    const servers = buildMcpServers('default', undefined, [])
+    expect(Object.keys(servers).sort()).toEqual(['docs', 'huatai-email'])
+    expect(servers['huatai-email']).toBeDefined()
+  })
+
+  test('disabled 连接器不加载，但旧 mcp.json 中同名 server 也不被覆盖', () => {
     writeWorkspaceMcp('default')
     writeConnectorsConfig('default', {
       'huatai-email': {

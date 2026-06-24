@@ -11,7 +11,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { cn } from '@/lib/utils'
 import type { McpServerEntry } from '@proma/shared'
 
-const TRANSPORT_LABELS: Record<string, string> = { stdio: 'stdio', http: 'HTTP', sse: 'SSE' }
+const TRANSPORT_LABELS: Record<string, string> = { stdio: 'STDIO', http: 'HTTP', sse: 'SSE' }
 
 interface McpCardProps {
   name: string
@@ -51,7 +51,7 @@ export function McpCard({ name, entry, onOpen, onToggle, onRequestDelete }: McpC
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-medium text-foreground">{name}</span>
             <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-              {TRANSPORT_LABELS[entry.type] ?? entry.type ?? '未知'}
+              MCP · {TRANSPORT_LABELS[entry.type] ?? entry.type ?? '未知'}
             </span>
           </div>
           <div className="mt-0.5 truncate text-xs text-muted-foreground">{target || '未配置地址'}</div>

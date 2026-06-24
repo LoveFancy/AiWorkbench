@@ -8,6 +8,7 @@ import * as React from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { toast } from 'sonner'
 import {
+  ChevronUp,
   Check,
   Copy,
   HelpCircle,
@@ -105,22 +106,30 @@ export function UserAccountMenu({
           type="button"
           aria-label="用户菜单"
           className={cn(
-            'relative titlebar-no-drag transition-colors',
+            'group relative titlebar-no-drag transition-all duration-150',
             collapsed
-              ? 'size-10 flex items-center justify-center rounded-[12px] hover:bg-foreground/5'
-              : 'flex-1 flex items-center gap-3 min-w-0 px-3 py-2 rounded-[10px] text-foreground/70 hover:bg-foreground/[0.04] hover:text-foreground',
+              ? 'size-10 flex items-center justify-center rounded-[14px] bg-background/45 text-foreground/70 ring-1 ring-foreground/[0.08] hover:bg-background hover:text-foreground hover:shadow-sm data-[state=open]:bg-background data-[state=open]:text-foreground data-[state=open]:shadow-sm'
+              : 'flex-1 flex items-center gap-3 min-w-0 rounded-[14px] bg-background/50 px-3 py-2.5 text-foreground/76 ring-1 ring-foreground/[0.07] hover:bg-background hover:text-foreground hover:shadow-[0_8px_22px_rgba(15,23,42,0.08)] data-[state=open]:bg-background data-[state=open]:text-foreground data-[state=open]:shadow-[0_8px_22px_rgba(15,23,42,0.10)] dark:bg-foreground/[0.035] dark:ring-white/[0.08] dark:hover:bg-foreground/[0.07] dark:data-[state=open]:bg-foreground/[0.08]',
             triggerClassName,
           )}
         >
           <div className="relative flex-shrink-0">
             <UserAvatar avatar={userProfile.avatar} size={28} />
             <span className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-background bg-emerald-500" />
+            {collapsed && (
+              <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm ring-2 ring-background">
+                <Settings size={10} />
+              </span>
+            )}
           </div>
           {!collapsed && (
-            <span className="flex-1 truncate text-left text-sm">
-              {accountText}
+            <span className="min-w-0 flex-1 text-left">
+              <span className="block truncate text-[13px] font-medium leading-4">
+                {accountText}
+              </span>
             </span>
           )}
+          {!collapsed && <AccountTriggerHint />}
           {hasAttention && (
             <span className={cn(
               'absolute size-2 rounded-full bg-red-500',
@@ -239,20 +248,28 @@ export function GuestAccountMenu({
           type="button"
           aria-label="账户菜单"
           className={cn(
-            'relative titlebar-no-drag transition-colors',
+            'group relative titlebar-no-drag transition-all duration-150',
             collapsed
-              ? 'size-10 flex items-center justify-center rounded-[12px] text-foreground/55 hover:bg-foreground/5 hover:text-foreground'
-              : 'flex-1 flex items-center gap-3 min-w-0 px-3 py-2 rounded-[12px] text-foreground/70 hover:bg-foreground/[0.04] hover:text-foreground',
+              ? 'size-10 flex items-center justify-center rounded-[14px] bg-background/45 text-foreground/70 ring-1 ring-foreground/[0.08] hover:bg-background hover:text-foreground hover:shadow-sm data-[state=open]:bg-background data-[state=open]:text-foreground data-[state=open]:shadow-sm'
+              : 'flex-1 flex items-center gap-3 min-w-0 rounded-[14px] bg-background/50 px-3 py-2.5 text-foreground/76 ring-1 ring-foreground/[0.07] hover:bg-background hover:text-foreground hover:shadow-[0_8px_22px_rgba(15,23,42,0.08)] data-[state=open]:bg-background data-[state=open]:text-foreground data-[state=open]:shadow-[0_8px_22px_rgba(15,23,42,0.10)] dark:bg-foreground/[0.035] dark:ring-white/[0.08] dark:hover:bg-foreground/[0.07] dark:data-[state=open]:bg-foreground/[0.08]',
           )}
         >
-          <span className="flex size-7 shrink-0 items-center justify-center rounded-[10px] bg-foreground/[0.06] text-foreground/65">
+          <span className="relative flex size-7 shrink-0 items-center justify-center rounded-[10px] bg-primary/10 text-primary ring-1 ring-primary/15">
             <LogIn size={17} />
+            {collapsed && (
+              <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm ring-2 ring-background">
+                <Settings size={10} />
+              </span>
+            )}
           </span>
           {!collapsed && (
-            <span className="flex-1 truncate text-left text-sm">
-              账户与设置
+            <span className="min-w-0 flex-1 text-left">
+              <span className="block truncate text-[13px] font-medium leading-4">
+                账户与设置
+              </span>
             </span>
           )}
+          {!collapsed && <AccountTriggerHint />}
           {hasAttention && (
             <span className={cn(
               'absolute size-2 rounded-full bg-red-500',
@@ -311,6 +328,23 @@ export function GuestAccountMenu({
         </div>
       </DropdownMenuContent>
     </DropdownMenu>
+  )
+}
+
+function AccountTriggerHint(): React.ReactElement {
+  return <AccountTriggerActions />
+}
+
+function AccountTriggerActions(): React.ReactElement {
+  return (
+    <span className="flex shrink-0 items-center gap-1.5" aria-hidden="true">
+      <span className="flex size-7 items-center justify-center rounded-full bg-foreground/[0.055] text-muted-foreground transition-all duration-150 group-hover:bg-primary/10 group-hover:text-primary group-data-[state=open]:bg-primary/12 group-data-[state=open]:text-primary">
+        <Settings size={13} />
+      </span>
+      <span className="flex size-7 items-center justify-center rounded-full bg-foreground/[0.055] text-muted-foreground transition-all duration-150 group-hover:bg-primary/10 group-hover:text-primary group-data-[state=open]:bg-primary/12 group-data-[state=open]:text-primary">
+        <ChevronUp size={14} className="transition-transform duration-150 group-data-[state=open]:rotate-180" />
+      </span>
+    </span>
   )
 }
 

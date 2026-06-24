@@ -1265,7 +1265,29 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     CHAT_IPC_CHANNELS.SEND_MESSAGE,
     async (event, input: ChatSendInput): Promise<void> => {
-      await sendMessage(input, event.sender)
+      const startedAt = Date.now()
+      console.log('[性能诊断][IPC][chat:send-message] 入口', {
+        conversationId: input.conversationId,
+        channelId: input.channelId,
+        modelId: input.modelId,
+        userMessageLength: input.userMessage.length,
+        attachmentCount: input.attachments?.length ?? 0,
+        enabledToolCount: input.enabledToolIds?.length ?? 0,
+      })
+      try {
+        await sendMessage(input, event.sender)
+        console.log('[性能诊断][IPC][chat:send-message] 完成', {
+          conversationId: input.conversationId,
+          durationMs: Date.now() - startedAt,
+        })
+      } catch (error) {
+        console.error('[性能诊断][IPC][chat:send-message] 失败', {
+          conversationId: input.conversationId,
+          durationMs: Date.now() - startedAt,
+          error: error instanceof Error ? error.message : String(error),
+        })
+        throw error
+      }
     }
   )
 
@@ -2697,13 +2719,42 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     AGENT_IPC_CHANNELS.SEND_MESSAGE,
     async (event, input: AgentSendInput): Promise<void> => {
+      const startedAt = Date.now()
+      console.log('[性能诊断][IPC][agent:send-message] 入口', {
+        sessionId: input.sessionId,
+        channelId: input.channelId,
+        modelId: input.modelId,
+        workspaceId: input.workspaceId,
+        userMessageLength: input.userMessage.length,
+        attachmentCount: input.attachments?.length ?? 0,
+        additionalDirectoryCount: input.additionalDirectories?.length ?? 0,
+        selectedMcpServerCount: input.selectedMcpServers?.length ?? 0,
+      })
       const session = getAgentSessionMeta(input.sessionId)
       if (session) {
+        const mirrorStartedAt = Date.now()
         await feishuBridgeManager.startSessionMirrorRun(session).catch((error) => {
           console.error('[飞书 Session 镜像] 流式卡片初始化失败:', error)
         })
+        console.log('[性能诊断][IPC][agent:send-message] 飞书镜像初始化完成', {
+          sessionId: input.sessionId,
+          durationMs: Date.now() - mirrorStartedAt,
+        })
       }
-      await runAgent(input, event.sender)
+      try {
+        await runAgent(input, event.sender)
+        console.log('[性能诊断][IPC][agent:send-message] 完成', {
+          sessionId: input.sessionId,
+          durationMs: Date.now() - startedAt,
+        })
+      } catch (error) {
+        console.error('[性能诊断][IPC][agent:send-message] 失败', {
+          sessionId: input.sessionId,
+          durationMs: Date.now() - startedAt,
+          error: error instanceof Error ? error.message : String(error),
+        })
+        throw error
+      }
     }
   )
 
@@ -2722,7 +2773,28 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     AGENT_IPC_CHANNELS.QUEUE_MESSAGE,
     async (event, input: import('@proma/shared').AgentQueueMessageInput): Promise<string> => {
-      return queueAgentMessage(input, event.sender)
+      const startedAt = Date.now()
+      console.log('[性能诊断][IPC][agent:queue-message] 入口', {
+        sessionId: input.sessionId,
+        userMessageLength: input.userMessage.length,
+        interrupt: input.interrupt === true,
+      })
+      try {
+        const messageId = await queueAgentMessage(input, event.sender)
+        console.log('[性能诊断][IPC][agent:queue-message] 完成', {
+          sessionId: input.sessionId,
+          durationMs: Date.now() - startedAt,
+          messageId,
+        })
+        return messageId
+      } catch (error) {
+        console.error('[性能诊断][IPC][agent:queue-message] 失败', {
+          sessionId: input.sessionId,
+          durationMs: Date.now() - startedAt,
+          error: error instanceof Error ? error.message : String(error),
+        })
+        throw error
+      }
     }
   )
 

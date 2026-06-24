@@ -13,6 +13,11 @@ const expandedFooterSource = sidebarSource.slice(
   expandedFooterStart,
   sidebarSource.indexOf('{deleteDialog}', expandedFooterStart),
 )
+const manualHandlerStart = sidebarSource.indexOf('const handleOpenManual = React.useCallback')
+const manualHandlerSource = sidebarSource.slice(
+  manualHandlerStart,
+  sidebarSource.indexOf('}, [', manualHandlerStart),
+)
 
 test('账户菜单提供精简的账户、设置、外观、更新和退出入口', () => {
   expect(menuSource).toContain('复制账号')
@@ -51,6 +56,11 @@ test('使用手册和问题反馈不再作为侧栏底部常驻按钮渲染', ()
   expect(sidebarSource).not.toContain('<BookOpen className="size-5 flex-shrink-0" />')
 })
 
+test('使用手册入口会切回会话视图以展示手册标签页', () => {
+  expect(manualHandlerSource).toContain("setActiveView('conversations')")
+  expect(manualHandlerSource).toContain('setAutomationForm({ open: false, draft: null })')
+})
+
 test('账户弹窗的浅色快捷按钮切换到云朵舞者，深色快捷按钮切换到普通深色', () => {
   expect(menuSource).toContain('ThemeQuickSwitch')
   expect(menuSource).toContain("updateThemeMode('special')")
@@ -67,6 +77,15 @@ test('未登录账户弹窗同样提供主题快捷切换', () => {
 test('未登录触发器使用账户中心语义而不是重复登录动作', () => {
   expect(guestMenuSource).toContain('账户与设置')
   expect(guestMenuSource).not.toContain('<span className="flex-1 truncate text-left text-sm">\n              登录 OA 账号\n            </span>')
+})
+
+test('账户菜单触发器不展示副标题，设置图标和展开箭头分开展示', () => {
+  expect(menuSource).toContain('AccountTriggerHint')
+  expect(menuSource).toContain('AccountTriggerActions')
+  expect(menuSource).toContain('ChevronUp')
+  expect(menuSource).not.toContain('个人偏好 · 支持')
+  expect(menuSource).toContain('aria-hidden="true"')
+  expect(menuSource).toContain('data-[state=open]:')
 })
 
 test('未登录弹窗只保留一个登录主动作', () => {

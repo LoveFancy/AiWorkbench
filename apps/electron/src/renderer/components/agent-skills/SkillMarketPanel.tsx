@@ -1,10 +1,11 @@
 import * as React from 'react'
-import { ChevronDown, Info, KeyRound, Loader2, LogIn, MoreHorizontal, Package, Plus, RefreshCw } from 'lucide-react'
+import { ChevronDown, ExternalLink, Info, Loader2, LogIn, MoreHorizontal, Package, Plus, RefreshCw } from 'lucide-react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { toast } from 'sonner'
 import type { AgentPluginMarketplace, AgentPluginMarketplaceDetail, AgentPluginMarketplacePlugin } from '@proma/shared'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import {
   Dialog,
   DialogContent,
@@ -714,9 +715,9 @@ function PluginMarketContent({ query, onInstalled }: { query: string; onInstalle
                   <ChevronDown size={14} className={cn('transition-transform', marketplaceAdvancedOpen && 'rotate-180')} />
                 </button>
                 {marketplaceAdvancedOpen && (
-                  <div className="space-y-2 border-t border-border/50 px-3 pb-3 pt-2">
+                  <div className="space-y-4 border-t border-border/50 px-3 pb-3 pt-3">
                     {branchSupported ? (
-                      <>
+                      <div className="space-y-2">
                         <label className="text-xs font-medium text-foreground/80">读取分支</label>
                         <Input
                           value={marketplaceBranchInput}
@@ -725,47 +726,57 @@ function PluginMarketContent({ query, onInstalled }: { query: string; onInstalle
                           className="h-8 text-sm"
                         />
                         <div className="text-[11px] leading-5 text-muted-foreground">仓库型市场读取 .claude-plugin/marketplace.json 的分支，默认 main。</div>
-                      </>
+                      </div>
                     ) : (
                       <div className="text-xs leading-5 text-muted-foreground">当前市场源不需要配置读取分支。</div>
+                    )}
+                    <div className="rounded-lg bg-background/70 px-3 py-2.5 shadow-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <label htmlFor="private-marketplace-switch" className="text-xs font-medium text-foreground/80">
+                            私有市场
+                          </label>
+                          <div className="mt-1 text-[11px] leading-5 text-muted-foreground">
+                            默认关闭，按公开市场读取；打开后需要填写访问 Token。
+                          </div>
+                        </div>
+                        <Switch
+                          id="private-marketplace-switch"
+                          checked={marketplaceAuthMode === 'token'}
+                          onCheckedChange={(checked) => {
+                            setMarketplaceAuthMode(checked ? 'token' : 'none')
+                            if (!checked) setMarketplaceTokenInput('')
+                          }}
+                          aria-label="访问私有市场"
+                        />
+                      </div>
+                    </div>
+                    {marketplaceAuthMode === 'token' && (
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-foreground/80">访问 Token *</label>
+                        <Input
+                          type="password"
+                          value={marketplaceTokenInput}
+                          onChange={(event) => setMarketplaceTokenInput(event.target.value)}
+                          placeholder="用于读取私有插件市场"
+                          className="h-8 text-sm"
+                        />
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-5 text-muted-foreground">
+                          <span>可在 GitLab 个人访问令牌页面申请，建议授予读取仓库所需权限。</span>
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
+                            onClick={() => void window.electronAPI.openExternal('http://gitlab.htzq.htsc.com.cn/-/profile/personal_access_tokens')}
+                          >
+                            申请个人访问 Token
+                            <ExternalLink size={12} />
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </div>
                 )}
               </div>
-              <div className="space-y-2">
-                <div className="text-sm font-medium">访问方式</div>
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    type="button"
-                    variant={marketplaceAuthMode === 'none' ? 'secondary' : 'outline'}
-                    onClick={() => {
-                      setMarketplaceAuthMode('none')
-                      setMarketplaceTokenInput('')
-                    }}
-                  >
-                    公开市场
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={marketplaceAuthMode === 'token' ? 'secondary' : 'outline'}
-                    onClick={() => setMarketplaceAuthMode('token')}
-                  >
-                    <KeyRound size={16} className="mr-2" />
-                    Token 认证
-                  </Button>
-                </div>
-              </div>
-              {marketplaceAuthMode === 'token' && (
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">访问 Token *</label>
-                  <Input
-                    type="password"
-                    value={marketplaceTokenInput}
-                    onChange={(event) => setMarketplaceTokenInput(event.target.value)}
-                    placeholder="用于读取私有插件市场"
-                  />
-                </div>
-              )}
             </div>
           )}
           <DialogFooter>

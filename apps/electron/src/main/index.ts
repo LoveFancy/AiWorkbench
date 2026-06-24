@@ -140,6 +140,7 @@ import { initWorkmateServices, shutdownWorkmateServices } from './lib/workmate-i
 import { getDingTalkMultiBotConfig } from './lib/dingtalk-config'
 import { wechatBridge } from './lib/wechat-bridge'
 import { getWeChatConfig } from './lib/wechat-config'
+import { scheduleAfterFirstWindowLoad } from './lib/startup-bridge-scheduler'
 import { createQuickTaskWindow, toggleQuickTaskWindow, destroyQuickTaskWindow } from './lib/quick-task-window'
 import {
   createVoiceDictationWindow,
@@ -549,7 +550,7 @@ async function bootstrap(): Promise<void> {
   // 同步默认连接器到 ~/.workmate/default-connectors/
   safeRun('seedDefaultConnectors', seedDefaultConnectors)
 
-  // 为已有工作区补全缺失的连接器（只在 connectors 目录不存在时同步）
+  // 为已有工作区补全缺失的连接器，并刷新预设连接器元数据
   safeRun('syncDefaultConnectorsToAllWorkspaces', syncDefaultConnectorsToAllWorkspaces)
 
   // 升级所有工作区中版本过旧的默认 Skills
@@ -649,10 +650,16 @@ async function bootstrap(): Promise<void> {
   )
 
   // 启动所有已注册的 Bridge（飞书/钉钉/微信等）
-  elapsed('bootstrap: 准备启动 Bridges')
-  await safeAwait('startAllBridges', () => startAllBridges())
-  safeRun('startBridgeSelfHealing', startBridgeSelfHealing)
-  elapsed('bootstrap: Bridges 启动完成')
+  // Windows 上飞书 SDK import/connect 曾与首屏加载竞争资源，导致 loadFile 到 preload 延迟约 90s。
+  // 这里延后到主窗口首轮加载完成后启动，保证用户先看到界面。
+  elapsed('bootstrap: 安排 Bridges 在首屏加载后启动')
+  scheduleAfterFirstWindowLoad(mainWindow, (reason) => {
+    elapsed(`bootstrap: ${reason}，准备启动 Bridges`)
+    void safeAwait('startAllBridges', () => startAllBridges()).then(() => {
+      safeRun('startBridgeSelfHealing', startBridgeSelfHealing)
+      elapsed('bootstrap: Bridges 启动完成')
+    })
+  })
 
   // 启动本地 API 服务（默认关闭，仅在用户设置启用后启动）
   await safeAwait('startLocalApiServer', startLocalApiServer)
@@ -660,7 +667,7 @@ async function bootstrap(): Promise<void> {
   // 启动定时任务调度器（恢复持久化的 active 任务）
   safeRun('startScheduler', startScheduler)
 
-  elapsed('bootstrap: 全部初始化完成')
+  elapsed('bootstrap: 核心初始化完成（Bridges 已按首屏加载调度）')
 
   app.on('activate', () => {
     if (shouldSuppressVoiceDictationActivate()) {

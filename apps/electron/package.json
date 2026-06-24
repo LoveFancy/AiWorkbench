@@ -1,6 +1,6 @@
 {
   "name": "@proma/electron",
-  "version": "0.12.50",
+  "version": "0.12.51",
   "description": "WorkMate next gen ai software with general agents - Electron App",
   "main": "dist/main.cjs",
   "author": {
@@ -21,7 +21,7 @@
     "watch:main": "concurrently -k -n main,plugin-worker -c yellow,blue \"esbuild src/main/index.ts --bundle --platform=node --format=cjs --outfile=dist/main.cjs --external:electron --external:@anthropic-ai/claude-agent-sdk --watch=forever\" \"esbuild src/main/plugin-install-worker.ts --bundle --platform=node --format=cjs --outfile=dist/plugin-install-worker.cjs --external:electron --external:@anthropic-ai/claude-agent-sdk --watch=forever\"",
     "watch:preload": "esbuild src/preload/index.ts --bundle --platform=node --format=cjs --outfile=dist/preload.cjs --external:electron --watch=forever",
     "build:renderer": "vite build",
-    "build:resources": "cp -r resources dist/ 2>/dev/null || true",
+    "build:resources": "bun run scripts/copy-dpapi-prebuilds.ts && bun run scripts/copy-app-resources.ts",
     "build": "bun run build:main && bun run build:preload && bun run build:renderer && bun run build:resources",
     "start": "bun run build && electron .",
     "typecheck": "tsc --noEmit",

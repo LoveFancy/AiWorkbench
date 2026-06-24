@@ -56,6 +56,7 @@ import {
 } from './default-connectors'
 
 const HUATAI_EMAIL_DOMAIN = 'htsc.com'
+const MCP_TRANSPORT_LABELS: Record<string, string> = { stdio: 'STDIO', http: 'HTTP', sse: 'SSE' }
 
 function getHuataiEmailLocalPart(emailAddress: string): string {
   const trimmed = emailAddress.trim()
@@ -63,6 +64,16 @@ function getHuataiEmailLocalPart(emailAddress: string): string {
     ? trimmed.slice(0, -(`@${HUATAI_EMAIL_DOMAIN}`.length))
     : trimmed
   return withoutDomain.split('@')[0] ?? ''
+}
+
+function getMcpTransportLabel(type: string | undefined): string {
+  return type ? MCP_TRANSPORT_LABELS[type] ?? type : '未知'
+}
+
+function getConnectorKindLabel(connector: PresetConnectorDefinition, server: McpServerEntry | null): string {
+  if (connector.connectorType === 'cli') return 'CLI'
+  if (server) return `MCP · ${getMcpTransportLabel(server.type)}`
+  return 'MCP'
 }
 
 interface AgentSkillsViewProps {
@@ -617,8 +628,8 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
                       onUnbindFeishu={handleUnbindFeishu}
                       unbindingFeishu={unbindingFeishu}
                       onRequestDelete={() => !isPreset && connector.serverName && setPendingDeleteMcpName(connector.serverName)}
-                      isBuiltin={(connector as any).isBuiltin}
-                      lastTestResult={(connector as any).lastTestResult}
+                      isBuiltin={connector.isBuiltin}
+                      lastTestResult={connector.lastTestResult}
                     />
                   )
                 })}
@@ -1123,22 +1134,18 @@ function ConnectorCard({
             {connector.category}
           </div>
         </div>
-        {!isComingSoon && (
-          <Switch
-            checked={enabled}
-            onCheckedChange={onToggle}
-            onClick={(e) => e.stopPropagation()}
-            className="shrink-0"
-          />
-        )}
       </div>
-      <p className="line-clamp-2 min-h-[40px] text-[13px] leading-6 text-muted-foreground">
-        {isInitialized && server
-          ? `${server.type.toUpperCase()}: ${server.type === 'stdio' ? server.command : server.url}`
-          : connector.description ?? '暂无描述'}
+      <p className="line-clamp-3 text-[12px] leading-relaxed text-muted-foreground">
+        {connector.description}
       </p>
 
       <div className="mt-auto flex items-center gap-2">
+        <span className={cn(
+          'shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium',
+          isCli ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+        )}>
+          {getConnectorKindLabel(connector, server)}
+        </span>
         {connectorSourceLabel()}
 
         {isConfigured && lastTestResult && (
@@ -1156,6 +1163,14 @@ function ConnectorCard({
         )}
 
         <div className="ml-auto flex items-center gap-1">
+          {isConfigured && !isComingSoon && (
+            <Switch
+              checked={enabled}
+              onCheckedChange={onToggle}
+              onClick={(e) => e.stopPropagation()}
+              className="shrink-0 scale-75 data-[state=checked]:bg-green-500"
+            />
+          )}
           {connector.id === 'feishu-cli' && isCli && isConfigured && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -1237,11 +1252,11 @@ function HuataiEmailConnectorDialog({
     if (!canSave || saving) return
     setSaving(true)
     setInitSteps([
-      { id: 'check-python', label: '检查环境', status: 'running' },
-      { id: 'check-package', label: '检查 mcp-email-server', status: 'pending' },
-      { id: 'install-package', label: '安装 mcp-email-server', status: 'pending' },
-      { id: 'write-config', label: '写入 MCP 配置', status: 'pending' },
-      { id: 'self-check', label: '自检连接器', status: 'pending' },
+      { id: 'check-python', label: '检查 Python 环境', status: 'running' },
+      { id: 'check-package', label: '检查邮箱连接环境', status: 'pending' },
+      { id: 'install-package', label: '准备邮箱连接能力', status: 'pending' },
+      { id: 'write-config', label: '启用邮箱能力', status: 'pending' },
+      { id: 'self-check', label: '自检邮箱连接', status: 'pending' },
     ])
     try {
       const result = await window.electronAPI.initializeDefaultConnector(workspaceSlug, {
@@ -1269,7 +1284,7 @@ function HuataiEmailConnectorDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[min(calc(100vw-48px),560px)] max-w-none overflow-hidden rounded-2xl border-0 p-8 shadow-2xl">
         <DialogTitle className="text-2xl font-semibold tracking-normal">邮箱绑定</DialogTitle>
-        <DialogDescription className="sr-only">绑定华泰邮箱并写入当前工作区 MCP 配置。</DialogDescription>
+        <DialogDescription className="sr-only">绑定华泰邮箱，启用华泰邮箱邮件读取能力。</DialogDescription>
 
         <div className="mt-2 flex items-start gap-4">
           <div className="flex size-16 shrink-0 items-center justify-center rounded-2xl bg-amber-500/12 text-amber-500">
@@ -1278,7 +1293,7 @@ function HuataiEmailConnectorDialog({
           <div className="min-w-0 space-y-2">
             <div className="text-[15px] font-medium text-foreground">绑定华泰邮箱</div>
             <p className="text-[13px] leading-relaxed text-muted-foreground">
-              绑定时会检查环境、安装 <span className="font-mono text-foreground/70">mcp-email-server</span>，并写入当前工作区的 <span className="font-mono text-foreground/70">email</span> MCP 配置。默认只启用 IMAP 读取能力。
+              绑定后 WorkMate 可以读取你的华泰邮箱邮件，帮助你检索邮件内容、整理信息和处理办公协同任务。
             </p>
           </div>
         </div>
@@ -1287,8 +1302,8 @@ function HuataiEmailConnectorDialog({
           <div className="mt-6 space-y-3 rounded-xl bg-muted/45 p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-sm font-medium text-foreground">当前 MCP 配置</div>
-                <div className="mt-1 text-xs text-muted-foreground">已挂载为 <span className="font-mono text-foreground/70">email</span>，不会在连接器列表中重复展示。</div>
+                <div className="text-sm font-medium text-foreground">当前邮箱能力</div>
+                <div className="mt-1 text-xs text-muted-foreground">已为当前工作区启用华泰邮箱读取能力，不会在连接器列表中重复展示。</div>
               </div>
               <Button type="button" variant="outline" size="sm" onClick={() => setEditing(true)}>
                 重新绑定
@@ -1331,11 +1346,17 @@ function HuataiEmailConnectorDialog({
               <input
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && canSave && !saving) {
+                    event.preventDefault()
+                    void handleSave()
+                  }
+                }}
                 placeholder="请输入华泰邮箱密码"
                 type="password"
                 className="h-11 w-full rounded-lg border border-border/80 bg-content-area px-3 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary/60 focus:ring-2 focus:ring-primary/15"
               />
-              <p className="text-xs text-muted-foreground">密码只保存在本地 MCP 配置中，不会上传到云端。</p>
+              <p className="text-xs text-muted-foreground">密码只保存在本机，用于连接华泰邮箱，不会上传到云端。</p>
             </div>
             <Button
               type="button"
@@ -1344,26 +1365,26 @@ function HuataiEmailConnectorDialog({
               disabled={!canSave || saving}
               onClick={() => void handleSave()}
             >
-              {saving ? '保存中...' : isInitialized ? '保存并覆盖配置' : '完成连接'}
+              {saving ? '保存中...' : isInitialized ? '保存并覆盖配置' : '开始连接'}
             </Button>
           </div>
         )}
 
         {initSteps.length > 0 && (
-          <div className="mt-5 min-w-0 max-h-[240px] overflow-y-auto space-y-2 rounded-xl bg-muted/45 p-3">
+          <div className="mt-5 min-w-0 overflow-hidden space-y-2 rounded-xl bg-muted/45 p-3">
             {initSteps.map((step) => (
-              <div key={step.id} className="flex min-w-0 items-start gap-2 text-xs text-muted-foreground">
+              <div key={step.id} className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
                 {step.status === 'running' ? (
-                  <Loader2 size={14} className="shrink-0 animate-spin text-primary mt-0.5" />
+                  <Loader2 size={14} className="shrink-0 animate-spin text-primary" />
                 ) : step.status === 'success' || step.status === 'skipped' ? (
-                  <Check size={14} className="shrink-0 text-emerald-500 mt-0.5" />
+                  <Check size={14} className="shrink-0 text-emerald-500" />
                 ) : step.status === 'error' ? (
-                  <XCircle size={14} className="shrink-0 text-destructive mt-0.5" />
+                  <XCircle size={14} className="shrink-0 text-destructive" />
                 ) : (
-                  <span className="size-3.5 shrink-0 rounded-full border border-border mt-0.5" />
+                  <span className="size-3.5 shrink-0 rounded-full border border-border" />
                 )}
                 <span className="shrink-0 font-medium text-foreground/80">{step.label}</span>
-                {step.message && <span className="min-w-0 break-all">{step.message}</span>}
+                {step.message && <span className="min-w-0 flex-1 truncate">{step.message}</span>}
               </div>
             ))}
           </div>

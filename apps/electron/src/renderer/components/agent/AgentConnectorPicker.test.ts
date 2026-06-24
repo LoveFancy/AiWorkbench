@@ -38,20 +38,31 @@ const connectorsConfig: ConnectorsConfig = {
       enabled: true,
       source: 'preset',
       displayName: '华泰邮箱',
+      description: '企业邮箱',
+      category: '邮件服务',
+      status: 'available',
       serverName: 'email',
+      sortOrder: 1,
     },
     'feishu-cli': {
       type: 'cli',
       enabled: false,
       source: 'preset',
       displayName: '飞书 CLI',
+      description: '飞书连接器',
+      category: '协作',
+      status: 'available',
+      sortOrder: 2,
     },
-    'hi-agent': {
-      type: 'cli',
+    'hiagent-taiwei': {
+      type: 'mcp',
       enabled: false,
       source: 'preset',
       displayName: 'HiAgent 泰为',
+      description: '泰为连接器',
+      category: '智能体',
       status: 'coming-soon',
+      sortOrder: 3,
     },
   },
 }
@@ -69,10 +80,12 @@ describe('AgentConnectorPicker helpers', () => {
     expect(getAvailableConnectorsForPicker(config, connectorsConfig, false, 'example').map((item) => item.name)).toEqual(['docs'])
   })
 
-  test('连接器入口包含更多连接器和状态文案', () => {
+  test('连接器入口使用图标激活态，不展示文字和数量', () => {
     expect(source).toContain('更多连接器')
-    expect(source).toContain('连接应用')
-    expect(source).toContain('连应用')
+    expect(source).toContain('aria-label="连接器"')
+    expect(source).toContain('<p>连接器</p>')
+    expect(source).not.toContain('连应用')
+    expect(source).not.toContain('connectors.filter((c) => c.isConfigured && c.enabled).length')
     expect(source).toContain('连接')
   })
 

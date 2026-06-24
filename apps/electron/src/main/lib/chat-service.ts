@@ -38,6 +38,20 @@ const activeControllers = new Map<string, AbortController>()
 
 /** 最大工具续接轮数（安全上限，防止极端情况下的无限循环） */
 const MAX_TOOL_ROUNDS = 999
+const SLOW_IPC_SEND_MS = 16
+
+function sendChatStreamEvent(webContents: WebContents, channel: string, payload: Record<string, unknown>): void {
+  const startedAt = Date.now()
+  webContents.send(channel, payload)
+  const durationMs = Date.now() - startedAt
+  if (durationMs < SLOW_IPC_SEND_MS) return
+  console.warn('[性能诊断][ChatService] webContents.send 耗时偏高', {
+    channel,
+    durationMs,
+    conversationId: payload.conversationId,
+    deltaLength: typeof payload.delta === 'string' ? payload.delta.length : undefined,
+  })
+}
 
 // ===== 平台相关：图片附件读取器 =====
 
@@ -206,7 +220,7 @@ export async function sendMessage(
   const channels = listChannels()
   const channel = channels.find((c) => c.id === channelId)
   if (!channel) {
-    webContents.send(CHAT_IPC_CHANNELS.STREAM_ERROR, {
+    sendChatStreamEvent(webContents, CHAT_IPC_CHANNELS.STREAM_ERROR, {
       conversationId,
       error: '渠道不存在',
     })
@@ -218,7 +232,7 @@ export async function sendMessage(
   try {
     apiKey = decryptApiKey(channelId)
   } catch {
-    webContents.send(CHAT_IPC_CHANNELS.STREAM_ERROR, {
+    sendChatStreamEvent(webContents, CHAT_IPC_CHANNELS.STREAM_ERROR, {
       conversationId,
       error: '解密 API Key 失败',
     })
@@ -273,7 +287,7 @@ export async function sendMessage(
       const delaySec = Math.round(delayMs / 1000)
       const reason = lastError?.message ?? '未知错误'
 
-      webContents.send(CHAT_IPC_CHANNELS.STREAM_RETRYING, {
+      sendChatStreamEvent(webContents, CHAT_IPC_CHANNELS.STREAM_RETRYING, {
         conversationId,
         attempt,
         maxAttempts: MAX_CHAT_RETRIES,
@@ -325,14 +339,14 @@ export async function sendMessage(
         switch (event.type) {
           case 'chunk':
             accumulatedContent += event.delta ?? ''
-            webContents.send(CHAT_IPC_CHANNELS.STREAM_CHUNK, {
+            sendChatStreamEvent(webContents, CHAT_IPC_CHANNELS.STREAM_CHUNK, {
               conversationId,
               delta: event.delta,
             })
             break
           case 'reasoning':
             accumulatedReasoning += event.delta ?? ''
-            webContents.send(CHAT_IPC_CHANNELS.STREAM_REASONING, {
+            sendChatStreamEvent(webContents, CHAT_IPC_CHANNELS.STREAM_REASONING, {
               conversationId,
               delta: event.delta,
             })
@@ -343,7 +357,7 @@ export async function sendMessage(
               toolName: event.toolName!,
               type: 'start',
             })
-            webContents.send(CHAT_IPC_CHANNELS.STREAM_TOOL_ACTIVITY, {
+            sendChatStreamEvent(webContents, CHAT_IPC_CHANNELS.STREAM_TOOL_ACTIVITY, {
               conversationId,
               activity: { type: 'start', toolName: event.toolName!, toolCallId: event.toolCallId! },
             })
@@ -480,7 +494,7 @@ export async function sendMessage(
         console.warn(`[聊天服务] 模型返回空内容且无生成附件，跳过保存 (对话 ${conversationId})`)
       }
 
-      webContents.send(CHAT_IPC_CHANNELS.STREAM_COMPLETE, {
+      sendChatStreamEvent(webContents, CHAT_IPC_CHANNELS.STREAM_COMPLETE, {
         conversationId,
         model: modelId,
         messageId: (accumulatedContent.trim() || accumulatedGeneratedAttachments.length > 0) ? assistantMsgId : undefined,
@@ -499,7 +513,7 @@ export async function sendMessage(
       // 成功：发送重试清除并退出循环
       retrySucceeded = true
       if (attempt > 1) {
-        webContents.send(CHAT_IPC_CHANNELS.STREAM_RETRY_CLEARED, { conversationId })
+        sendChatStreamEvent(webContents, CHAT_IPC_CHANNELS.STREAM_RETRY_CLEARED, { conversationId })
       }
       break
     } catch (error) {
@@ -523,13 +537,13 @@ export async function sendMessage(
 
           try { updateConversationMeta(conversationId, {}) } catch { /* ignore */ }
 
-          webContents.send(CHAT_IPC_CHANNELS.STREAM_COMPLETE, {
+          sendChatStreamEvent(webContents, CHAT_IPC_CHANNELS.STREAM_COMPLETE, {
             conversationId,
             model: modelId,
             messageId: assistantMsgId,
           })
         } else {
-          webContents.send(CHAT_IPC_CHANNELS.STREAM_COMPLETE, {
+          sendChatStreamEvent(webContents, CHAT_IPC_CHANNELS.STREAM_COMPLETE, {
             conversationId,
             model: modelId,
           })
@@ -566,7 +580,7 @@ export async function sendMessage(
     const errorMessage = lastError.message
 
     // 通知前端重试全部失败
-    webContents.send(CHAT_IPC_CHANNELS.STREAM_RETRY_FAILED, {
+    sendChatStreamEvent(webContents, CHAT_IPC_CHANNELS.STREAM_RETRY_FAILED, {
       conversationId,
       finalAttempt: {
         attempt: MAX_CHAT_RETRIES,
@@ -599,7 +613,7 @@ export async function sendMessage(
       try { updateConversationMeta(conversationId, {}) } catch { /* ignore */ }
     }
 
-    webContents.send(CHAT_IPC_CHANNELS.STREAM_ERROR, {
+    sendChatStreamEvent(webContents, CHAT_IPC_CHANNELS.STREAM_ERROR, {
       conversationId,
       error: errorMessage,
     })
