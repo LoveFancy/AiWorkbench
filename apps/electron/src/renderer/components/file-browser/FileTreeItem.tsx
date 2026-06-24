@@ -316,8 +316,9 @@ export function FileTreeItem({
   const handleClick = (e: React.MouseEvent): void => {
     e.stopPropagation()
     const isMulti = e.metaKey || e.ctrlKey
+    const isShift = e.shiftKey
     onSelect(entry, e)
-    if (isMulti) return
+    if (isMulti || isShift) return
     if (entry.isDirectory) {
       void toggleDir()
     } else {

@@ -632,6 +632,8 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
           hasClipboardContent={fileClipboard !== null}
         />
       ))}
+      {/* 底部留白，确保文件条目下方始终有足够空间右键触发根目录菜单 */}
+      <div className="h-8" />
     </div>
   )
 
@@ -715,8 +717,27 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
       </AlertDialog>
     </div>
       </ContextMenuTrigger>
-      {/* 根目录空白区域右键菜单：粘贴到根目录 */}
+      {/* 根目录空白区域右键菜单 */}
       <ContextMenuContent className="z-[9999] min-w-[160px]">
+        {onCreateEntry && (
+          <>
+            <ContextMenuItem
+              className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
+              onSelect={() => onCreateEntry(rootPath, 'file')}
+            >
+              <FilePlus />
+              新建文件
+            </ContextMenuItem>
+            <ContextMenuItem
+              className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
+              onSelect={() => onCreateEntry(rootPath, 'directory')}
+            >
+              <FolderPlus />
+              新建文件夹
+            </ContextMenuItem>
+            <ContextMenuSeparator className="my-1" />
+          </>
+        )}
         {fileClipboard && (
           <ContextMenuItem
             className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
