@@ -292,13 +292,14 @@ import {
   getFeishuMultiBotConfig,
   saveFeishuBotConfig,
   removeFeishuBot,
+  setFeishuBotEnabled,
   getDecryptedBotAppSecret,
 } from './lib/feishu-config'
 import { configureFeishuDefaultHttpInstance } from './lib/feishu-http-client'
 import { feishuBridgeManager } from './lib/feishu-bridge-manager'
 import { syncFeishuSyncSleepBlocker } from './lib/feishu-sleep-blocker'
 import { presenceService } from './lib/feishu-presence'
-import { getDingTalkConfig, saveDingTalkConfig, getDecryptedClientSecret, getDingTalkMultiBotConfig, saveDingTalkBotConfig, removeDingTalkBot, getDecryptedBotClientSecret } from './lib/dingtalk-config'
+import { getDingTalkConfig, saveDingTalkConfig, getDecryptedClientSecret, getDingTalkMultiBotConfig, saveDingTalkBotConfig, removeDingTalkBot, setDingTalkBotEnabled, getDecryptedBotClientSecret } from './lib/dingtalk-config'
 import { dingtalkBridgeManager } from './lib/dingtalk-bridge-manager'
 import { getWeChatConfig } from './lib/wechat-config'
 import { wechatBridge } from './lib/wechat-bridge'
@@ -4406,6 +4407,8 @@ ${validPaths.map((p) => `  <string>file://${escapeXml(p)}</string>`).join('\n')}
   ipcMain.handle(
     FEISHU_IPC_CHANNELS.START_BOT,
     async (_, botId: string) => {
+      // 持久化启用状态，确保下次应用启动时会自动连接
+      setFeishuBotEnabled(botId, true)
       await feishuBridgeManager.startBot(botId)
     }
   )
@@ -4415,6 +4418,8 @@ ${validPaths.map((p) => `  <string>file://${escapeXml(p)}</string>`).join('\n')}
     FEISHU_IPC_CHANNELS.STOP_BOT,
     async (_, botId: string) => {
       feishuBridgeManager.stopBot(botId)
+      // 持久化停用状态，避免下次应用启动时自动重连飞书
+      setFeishuBotEnabled(botId, false)
     }
   )
 
@@ -4651,6 +4656,8 @@ ${validPaths.map((p) => `  <string>file://${escapeXml(p)}</string>`).join('\n')}
   ipcMain.handle(
     DINGTALK_IPC_CHANNELS.START_BOT,
     async (_, botId: string) => {
+      // 持久化启用状态，确保下次应用启动时会自动连接
+      setDingTalkBotEnabled(botId, true)
       await dingtalkBridgeManager.startBot(botId)
     }
   )
@@ -4660,6 +4667,8 @@ ${validPaths.map((p) => `  <string>file://${escapeXml(p)}</string>`).join('\n')}
     DINGTALK_IPC_CHANNELS.STOP_BOT,
     async (_, botId: string) => {
       dingtalkBridgeManager.stopBot(botId)
+      // 持久化停用状态，避免下次应用启动时自动重连钉钉
+      setDingTalkBotEnabled(botId, false)
     }
   )
 
