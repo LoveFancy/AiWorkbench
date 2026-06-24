@@ -969,6 +969,9 @@ export interface ElectronAPI {
   /** 复制文件/目录到目标目录（返回新文件路径） */
   copyFile: (sourcePath: string, targetDir: string) => Promise<string>
 
+  /** 清除系统剪贴板（用于内部文件复制时清除残留文件对象） */
+  clearSystemClipboard: () => Promise<void>
+
   /** 列出附加目录内容 */
   listAttachedDirectory: (dirPath: string, access?: import('@proma/shared').FileAccessOptions) => Promise<FileEntry[]>
 
@@ -2376,6 +2379,10 @@ const electronAPI: ElectronAPI = {
 
   copyFile: (sourcePath: string, targetDir: string) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.COPY_FILE, sourcePath, targetDir)
+  },
+
+  clearSystemClipboard: () => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.CLEAR_SYSTEM_CLIPBOARD)
   },
 
   listAttachedDirectory: (dirPath: string, access?: import('@proma/shared').FileAccessOptions) => {

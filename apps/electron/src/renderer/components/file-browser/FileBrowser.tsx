@@ -24,6 +24,9 @@ import {
   FilePlus,
   FolderPlus,
   MonitorPlay,
+  Copy,
+  Scissors,
+  ClipboardPaste,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -471,40 +474,76 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
     }
   }, [getPasteTargetDir, loadRoot, onFilesMoved, movePathsToDirectory, setFileClipboard])
 
-  // ===== 系统剪贴板外部文件粘贴 =====
-  // 仅当应用内虚拟剪贴板为空时生效（不影响内部 Ctrl+C/X/V），
-  // 用 DOM clipboardData + 同步解析磁盘路径，复用与拖拽一致的复制链路。
-  const handleExternalPaste = React.useCallback((e: ClipboardEvent): void => {
-    if (!onExternalFilesPaste) return
-    // 内部虚拟剪贴板优先；重命名输入态下交给原生粘贴
-    if (fileClipboard || renamingPath) return
-    // 仅当本文件树当前持有焦点时才处理，避免多个实例重复响应或抢占输入框粘贴
+  // ===== 右键菜单复制/剪切/粘贴处理 =====
+  const handleContextCopy = React.useCallback(() => {
+    if (selectedPaths.size === 0) return
+    setFileClipboard({ paths: [...selectedPaths], mode: 'copy', sourceRoot: rootPath })
+    void window.electronAPI.clearSystemClipboard()
+  }, [selectedPaths, rootPath, setFileClipboard])
+
+  const handleContextCut = React.useCallback(() => {
+    if (selectedPaths.size === 0) return
+    setFileClipboard({ paths: [...selectedPaths], mode: 'cut', sourceRoot: rootPath })
+    void window.electronAPI.clearSystemClipboard()
+  }, [selectedPaths, rootPath, setFileClipboard])
+
+  const handleContextPaste = React.useCallback(() => {
+    if (!fileClipboard) return
+    void handlePaste(fileClipboard)
+  }, [fileClipboard, handlePaste])
+
+  // ===== 系统剪贴板粘贴处理（同时处理内部和外部剪贴板） =====
+  // 以 paste 事件的 clipboardData.files 为准判断来源：
+  // - 有 files → 系统剪贴板有文件对象（用户在外部文件管理器复制了文件）→ 外部粘贴
+  // - 无 files + 内部剪贴板存在 → 内部 Ctrl+C/X 后的粘贴
+  // 内部 Ctrl+C/X 会调用 clearSystemClipboard() 清除系统剪贴板残留，
+  // 确保 paste 事件的 clipboardData.files 不会干扰内部粘贴。
+  const handlePasteEvent = React.useCallback((e: ClipboardEvent): void => {
+    if (renamingPath) return
     const container = containerRef.current
     if (!container || !container.contains(document.activeElement)) return
 
-    const files = Array.from(e.clipboardData?.files ?? [])
-    if (files.length === 0) return
+    const systemFiles = Array.from(e.clipboardData?.files ?? [])
 
-    // 必须在事件同步执行期内调用 getPathForFile：await 之后 File 句柄失效会崩溃渲染进程
-    const paths: string[] = []
-    const unresolvedFiles: File[] = []
-    for (const file of files) {
-      let path: string | null = null
-      try { path = window.electronAPI.getPathForFile(file) } catch { path = null }
-      if (path) paths.push(path)
-      else unresolvedFiles.push(file)
+    if (systemFiles.length > 0) {
+      // 系统剪贴板有文件对象 → 外部文件管理器复制 → 优先使用系统剪贴板
+      // 同时清除可能存在的内部剪贴板（已过期）
+      if (fileClipboard) {
+        setFileClipboard(null)
+      }
+
+      if (!onExternalFilesPaste) return
+
+      // 必须在事件同步执行期内调用 getPathForFile
+      const paths: string[] = []
+      const unresolvedFiles: File[] = []
+      for (const file of systemFiles) {
+        let path: string | null = null
+        try { path = window.electronAPI.getPathForFile(file) } catch { path = null }
+        if (path) paths.push(path)
+        else unresolvedFiles.push(file)
+      }
+      if (paths.length === 0 && unresolvedFiles.length === 0) return
+
+      e.preventDefault()
+      e.stopPropagation()
+      void onExternalFilesPaste({ paths, unresolvedFiles }, getPasteTargetDir())
+      return
     }
-    if (paths.length === 0 && unresolvedFiles.length === 0) return
 
-    e.preventDefault()
-    e.stopPropagation()
-    void onExternalFilesPaste({ paths, unresolvedFiles }, getPasteTargetDir())
-  }, [onExternalFilesPaste, fileClipboard, renamingPath, getPasteTargetDir])
+    // 系统剪贴板无文件对象 → 检查内部剪贴板
+    if (fileClipboard) {
+      e.preventDefault()
+      e.stopPropagation()
+      void handlePaste(fileClipboard)
+      return
+    }
+  }, [fileClipboard, renamingPath, onExternalFilesPaste, handlePaste, getPasteTargetDir, setFileClipboard])
 
   React.useEffect(() => {
-    document.addEventListener('paste', handleExternalPaste, true)
-    return () => document.removeEventListener('paste', handleExternalPaste, true)
-  }, [handleExternalPaste])
+    document.addEventListener('paste', handlePasteEvent, true)
+    return () => document.removeEventListener('paste', handlePasteEvent, true)
+  }, [handlePasteEvent])
 
   // ===== 键盘快捷键处理 =====
   const handleKeyDown = React.useCallback((e: React.KeyboardEvent) => {
@@ -532,6 +571,8 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
       e.preventDefault()
       e.stopPropagation()
       setFileClipboard({ paths: [...selectedPaths], mode: 'copy', sourceRoot: rootPath })
+      // 清除系统剪贴板残留文件列表，确保后续 paste 事件不会被旧文件对象干扰
+      void window.electronAPI.clearSystemClipboard()
       return
     }
 
@@ -539,13 +580,8 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
       e.preventDefault()
       e.stopPropagation()
       setFileClipboard({ paths: [...selectedPaths], mode: 'cut', sourceRoot: rootPath })
-      return
-    }
-
-    if (isMod && e.key === 'v' && fileClipboard) {
-      e.preventDefault()
-      e.stopPropagation()
-      void handlePaste(fileClipboard)
+      // 清除系统剪贴板残留文件列表，确保后续 paste 事件不会被旧文件对象干扰
+      void window.electronAPI.clearSystemClipboard()
       return
     }
 
@@ -583,7 +619,7 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
       }
       return
     }
-  }, [renamingPath, selectedPaths, fileClipboard, entries, rootPath, handlePaste, handleRequestDelete, setFileClipboard, setRenamingPath, setSelectedPaths, onSelectedDirectoryChange, clearSelection, onFilePreview])
+  }, [renamingPath, selectedPaths, entries, rootPath, handleRequestDelete, setFileClipboard, setRenamingPath, setSelectedPaths, onSelectedDirectoryChange, clearSelection, onFilePreview])
 
   const handleRootDragOver = React.useCallback((event: React.DragEvent): void => {
     if (!eventHasFileTreeDrag(event)) return
@@ -650,16 +686,27 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
           onMovePathsToDirectory={movePathsToDirectory}
           onExternalFilesDropToDirectory={onExternalFilesDropToDirectory}
           onDirectoryDropTargetActive={onDirectoryDropTargetActive}
+          onCopySelection={handleContextCopy}
+          onCutSelection={handleContextCut}
+          onPasteFromClipboard={handleContextPaste}
+          hasClipboardContent={fileClipboard !== null}
         />
       ))}
     </div>
   )
 
   return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
     <div
       ref={containerRef}
       tabIndex={0}
-      className={cn('flex flex-col outline-none', embedded ? 'min-h-0' : 'h-full')}
+      className={cn(
+        'flex flex-col outline-none transition-colors',
+        embedded ? 'min-h-0' : 'h-full',
+        // 剪贴板有内容且无选中项时，根目录就是粘贴目标，显示虚线边框提示
+        fileClipboard && selectedPaths.size === 0 && 'ring-1 ring-dashed ring-primary/40 rounded-md',
+      )}
       onKeyDown={handleKeyDown}
       onClickCapture={handleRootClickCapture}
       onDragOver={handleRootDragOver}
@@ -727,6 +774,26 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
         </AlertDialogContent>
       </AlertDialog>
     </div>
+      </ContextMenuTrigger>
+      {/* 根目录空白区域右键菜单：粘贴到根目录 */}
+      <ContextMenuContent className="z-[9999] min-w-[160px]">
+        {fileClipboard && (
+          <ContextMenuItem
+            className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
+            onSelect={() => void handleContextPaste()}
+          >
+            <ClipboardPaste />
+            粘贴到根目录
+            <span className="ml-auto text-[11px] text-muted-foreground">Ctrl+V</span>
+          </ContextMenuItem>
+        )}
+        {!fileClipboard && (
+          <div className="px-2 py-1.5 text-[12px] text-muted-foreground">
+            复制文件后可使用 Ctrl+V 粘贴到根目录
+          </div>
+        )}
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }
 
@@ -774,6 +841,14 @@ interface FileTreeItemProps {
   onMovePathsToDirectory: (paths: string[], targetDir: string) => Promise<void>
   onExternalFilesDropToDirectory?: (payload: { paths: string[]; unresolvedFiles: File[] }, targetDir: string) => Promise<void> | void
   onDirectoryDropTargetActive?: () => void
+  /** 复制选中项到内部剪贴板 */
+  onCopySelection: () => void
+  /** 剪切选中项到内部剪贴板 */
+  onCutSelection: () => void
+  /** 粘贴内部剪贴板到目标目录 */
+  onPasteFromClipboard: () => void
+  /** 内部文件剪贴板是否有内容（用于控制粘贴菜单项可用性） */
+  hasClipboardContent: boolean
 }
 
 function FileTreeItem({
@@ -809,6 +884,10 @@ function FileTreeItem({
   onMovePathsToDirectory,
   onExternalFilesDropToDirectory,
   onDirectoryDropTargetActive,
+  onCopySelection,
+  onCutSelection,
+  onPasteFromClipboard,
+  hasClipboardContent,
 }: FileTreeItemProps): React.ReactElement {
   const [expanded, setExpanded] = React.useState(false)
   const [children, setChildren] = React.useState<FileEntry[]>([])
@@ -1263,6 +1342,40 @@ function FileTreeItem({
           className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
         />
       )}
+      {/* 复制 / 剪切 / 粘贴 */}
+      <ContextMenuSeparator className="my-1" />
+      {onCopySelection && (
+        <ContextMenuItem
+          className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
+          onSelect={() => onCopySelection()}
+        >
+          <Copy />
+          复制
+          <span className="ml-auto text-[11px] text-muted-foreground">Ctrl+C</span>
+        </ContextMenuItem>
+      )}
+      {onCutSelection && (
+        <ContextMenuItem
+          className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
+          onSelect={() => onCutSelection()}
+        >
+          <Scissors />
+          剪切
+          <span className="ml-auto text-[11px] text-muted-foreground">Ctrl+X</span>
+        </ContextMenuItem>
+      )}
+      {onPasteFromClipboard && (
+        <ContextMenuItem
+          className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
+          disabled={!hasClipboardContent}
+          onSelect={() => onPasteFromClipboard()}
+        >
+          <ClipboardPaste />
+          粘贴
+          <span className="ml-auto text-[11px] text-muted-foreground">Ctrl+V</span>
+        </ContextMenuItem>
+      )}
+      <ContextMenuSeparator className="my-1" />
       <ContextMenuItem
         className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
         disabled={moving}
@@ -1457,6 +1570,10 @@ function FileTreeItem({
               onMovePathsToDirectory={onMovePathsToDirectory}
               onExternalFilesDropToDirectory={onExternalFilesDropToDirectory}
               onDirectoryDropTargetActive={onDirectoryDropTargetActive}
+              onCopySelection={onCopySelection}
+              onCutSelection={onCutSelection}
+              onPasteFromClipboard={onPasteFromClipboard}
+              hasClipboardContent={hasClipboardContent}
             />
           ))}
         </div>

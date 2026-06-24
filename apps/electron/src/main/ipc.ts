@@ -3246,6 +3246,18 @@ export function registerIpcHandlers(): void {
     }
   )
 
+  // 清除系统剪贴板中的文件列表（用于内部文件复制/剪切时清除旧文件对象，
+  // 防止 paste 事件的 clipboardData.files 残留导致内部粘贴被覆盖）
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.CLEAR_SYSTEM_CLIPBOARD,
+    async (): Promise<void> => {
+      const { clipboard } = await import('electron')
+      clipboard.clear()
+      // 写入空文本确保剪贴板无残留数据
+      clipboard.writeText('')
+    }
+  )
+
   // 在系统文件管理器中显示文件
   ipcMain.handle(
     AGENT_IPC_CHANNELS.SHOW_IN_FOLDER,

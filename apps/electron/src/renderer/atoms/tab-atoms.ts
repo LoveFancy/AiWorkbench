@@ -292,8 +292,8 @@ export function openTab(
     sessionId: item.sessionId,
     title: item.title,
   }
-  // 切换会话时保留已打开的手册 Tab
-  const manualTab = tabs.find((t) => t.id === MANUAL_TAB_ID)
+  // 保留固定的 Scratch Pad 和手册 Tab（手册 Tab 始终存在，避免 useDeferredValue 导致的 transient 警告）
+  const manualTab = tabs.find((t) => t.id === MANUAL_TAB_ID) ?? createManualTab()
 
   // 切回带预览的会话：重建该会话的预览 Tab，并按 lastView 决定激活哪个。
   if (restore?.previewTabOpen) {
@@ -339,14 +339,14 @@ export function buildOpenTabRestore(
   }
 }
 
-/** 关闭标签页（scratch tab 不可关闭） */
+/** 关闭标签页（scratch tab 和 manual tab 不可关闭） */
 export function closeTab(
   tabs: TabItem[],
   activeTabId: string | null,
   tabId: string,
 ): { tabs: TabItem[]; activeTabId: string | null } {
-  // Scratch Pad 不可关闭
-  if (tabId === SCRATCH_PAD_ID) return { tabs, activeTabId }
+  // Scratch Pad 和手册不可关闭
+  if (tabId === SCRATCH_PAD_ID || tabId === MANUAL_TAB_ID) return { tabs, activeTabId }
 
   const tabIndex = tabs.findIndex((t) => t.id === tabId)
   if (tabIndex === -1) return { tabs, activeTabId }
@@ -395,20 +395,15 @@ export function updateTabTitle(
   )
 }
 
-/** 确保 Scratch Pad 标签存在并位于首位，同时只保留一个会话入口 + 保留手册 Tab */
+/** 确保 Scratch Pad + 使用手册标签存在，只保留一个会话入口 */
 export function ensureScratchPadTab(tabs: TabItem[]): TabItem[] {
-  const scratchTab = tabs.find((t) => t.id === SCRATCH_PAD_ID)
-  const manualTab = tabs.find((t) => t.id === MANUAL_TAB_ID)
+  const scratchTab = tabs.find((t) => t.id === SCRATCH_PAD_ID) ?? createScratchPadTab()
+  const manualTab = tabs.find((t) => t.id === MANUAL_TAB_ID) ?? createManualTab()
   const sessionTab = tabs.filter((t) =>
     t.id !== SCRATCH_PAD_ID && t.id !== MANUAL_TAB_ID && !isPreviewTab(t)).at(-1)
 
-  const result: TabItem[] = []
-  if (scratchTab) {
-    result.push(scratchTab)
-  } else {
-    result.push(createScratchPadTab())
-  }
+  const result: TabItem[] = [scratchTab]
   if (sessionTab) result.push(sessionTab)
-  if (manualTab) result.push(manualTab)
+  result.push(manualTab)
   return result
 }
