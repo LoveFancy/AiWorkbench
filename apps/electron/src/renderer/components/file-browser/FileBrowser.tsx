@@ -1,4 +1,4 @@
-/**
+﻿/**
  * FileBrowser — 通用文件浏览器面板
  *
  * 显示指定根路径下的文件树，支持：
@@ -13,19 +13,10 @@
 import * as React from 'react'
 import { useAtom, useAtomValue } from 'jotai'
 import {
-  ChevronRight,
-  Trash2,
   RefreshCw,
   ExternalLink,
-  FolderSearch,
-  FolderInput,
-  Pencil,
-  MessageSquarePlus,
   FilePlus,
   FolderPlus,
-  MonitorPlay,
-  Copy,
-  Scissors,
   ClipboardPaste,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -51,98 +42,27 @@ import { cn } from '@/lib/utils'
 import { workspaceFilesVersionAtom, fileBrowserAutoRevealAtom, recentlyModifiedPathsAtom, currentAgentSessionIdAtom } from '@/atoms/agent-atoms'
 import { fileClipboardAtom, type FileClipboard } from '@/atoms/file-clipboard-atoms'
 import type { FileEntry } from '@proma/shared'
-import { FileTypeIcon } from './FileTypeIcon'
-import { DefaultAppMenuItem } from './DefaultAppMenuItem'
-import { isHtmlPreviewPath } from '@/components/diff/html-preview-utils'
-import {
-  computeTreeRowLayout,
-  AncestorGuides,
-  STICKY_ROW_BASE_CLASS,
-  canBeSticky,
-} from './tree-row-layout'
+import { useFileBrowserKeyboard } from './useFileBrowserKeyboard'
 import { formatManagedPath, type ManagedPathRoots } from '@/lib/managed-path-display'
+import {
+  computeRevealAncestors,
+  isPathUnderRoot,
+  normalizeFsPath,
+  getParentPath,
+  isSameOrChildPath,
+  filterMovablePaths,
+} from './file-path-utils'
+import {
+  FILE_TREE_DRAG_MIME,
+  readFileTreeDragPayload,
+  eventHasFileTreeDrag,
+  eventHasExternalFiles,
+  type FileTreeDragPayload,
+} from './file-drag-utils'
+import { FileTreeItem } from './FileTreeItem'
 
-export const FILE_TREE_DRAG_MIME = 'application/x-proma-file-tree-entry'
-
-type FileTreeDragPayload = {
-  paths: string[]
-}
-
-/** 计算目标路径相对 rootPath 的祖先目录集合（不含 rootPath 自身、含目标的所有上级） */
-export function computeRevealAncestors(rootPath: string, targetPath: string): Set<string> {
-  const ancestors = new Set<string>()
-  if (!rootPath || !targetPath) return ancestors
-  // 归一化：移除尾部分隔符
-  const root = rootPath.replace(/[/\\]+$/, '')
-  if (targetPath === root) return ancestors
-  const sep = targetPath.includes('\\') ? '\\' : '/'
-  if (!targetPath.startsWith(root + sep)) return ancestors
-  // 取相对 root 的部分，逐级累加
-  const relative = targetPath.slice(root.length + sep.length)
-  const parts = relative.split(/[/\\]/).filter(Boolean)
-  // 文件本身不算祖先，只到父目录
-  let current = root
-  for (let i = 0; i < parts.length - 1; i++) {
-    current = current + sep + parts[i]
-    ancestors.add(current)
-  }
-  return ancestors
-}
-
-/** 判断目标路径是否落在 rootPath 内 */
-export function isPathUnderRoot(rootPath: string, targetPath: string): boolean {
-  if (!rootPath || !targetPath) return false
-  const root = rootPath.replace(/[/\\]+$/, '')
-  if (targetPath === root) return true
-  return targetPath.startsWith(root + '/') || targetPath.startsWith(root + '\\')
-}
-
-export function normalizeFsPath(filePath: string): string {
-  return filePath.replace(/[/\\]+$/, '')
-}
-
-export function getParentPath(filePath: string): string {
-  const normalized = normalizeFsPath(filePath)
-  const index = Math.max(normalized.lastIndexOf('/'), normalized.lastIndexOf('\\'))
-  return index > 0 ? normalized.slice(0, index) : normalized
-}
-
-export function isSameOrChildPath(parentPath: string, childPath: string): boolean {
-  const parent = normalizeFsPath(parentPath)
-  const child = normalizeFsPath(childPath)
-  return child === parent || child.startsWith(parent + '/') || child.startsWith(parent + '\\')
-}
-
-export function readFileTreeDragPayload(event: React.DragEvent): FileTreeDragPayload | null {
-  const raw = event.dataTransfer.getData(FILE_TREE_DRAG_MIME)
-  if (!raw) return null
-  try {
-    const parsed = JSON.parse(raw) as Partial<FileTreeDragPayload>
-    const paths = Array.isArray(parsed.paths)
-      ? parsed.paths.filter((path): path is string => typeof path === 'string' && path.length > 0)
-      : []
-    return paths.length > 0 ? { paths } : null
-  } catch {
-    return null
-  }
-}
-
-export function eventHasFileTreeDrag(event: React.DragEvent): boolean {
-  return Array.from(event.dataTransfer.types).includes(FILE_TREE_DRAG_MIME)
-}
-
-export function eventHasExternalFiles(event: React.DragEvent): boolean {
-  return Array.from(event.dataTransfer.types).includes('Files')
-}
-
-function isPointerInsideElement(event: React.DragEvent, element: HTMLElement | null): boolean {
-  if (!element) return false
-  const rect = element.getBoundingClientRect()
-  return event.clientX >= rect.left
-    && event.clientX <= rect.right
-    && event.clientY >= rect.top
-    && event.clientY <= rect.bottom
-}
+export { FILE_TREE_DRAG_MIME, readFileTreeDragPayload, eventHasFileTreeDrag, eventHasExternalFiles }
+export type { FileTreeDragPayload }
 
 interface FileBrowserProps {
   rootPath: string
@@ -408,12 +328,7 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
   }, [selectedPaths, loadRoot, onFilesMoved])
 
   const movePathsToDirectory = React.useCallback(async (paths: string[], targetDir: string): Promise<void> => {
-    const uniquePaths = Array.from(new Set(paths))
-    const movablePaths = uniquePaths.filter((path) => {
-      if (normalizeFsPath(getParentPath(path)) === normalizeFsPath(targetDir)) return false
-      if (isSameOrChildPath(path, targetDir)) return false
-      return true
-    })
+    const movablePaths = filterMovablePaths(paths, targetDir)
     if (movablePaths.length === 0) return
 
     setMoving(true)
@@ -463,29 +378,31 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
     }
 
     try {
+      let copiedCount = 0
       for (const sourcePath of Array.from(new Set(clipboard.paths))) {
         await window.electronAPI.copyFile(sourcePath, targetDir)
+        copiedCount++
+      }
+      if (copiedCount > 0) {
+        await loadRoot()
+        onFilesMoved?.()
       }
     } catch (err) {
       console.error('[FileBrowser] 粘贴失败:', err)
-    } finally {
       await loadRoot()
       onFilesMoved?.()
     }
   }, [getPasteTargetDir, loadRoot, onFilesMoved, movePathsToDirectory, setFileClipboard])
 
   // ===== 右键菜单复制/剪切/粘贴处理 =====
-  const handleContextCopy = React.useCallback(() => {
+  const copyOrCutToClipboard = React.useCallback((mode: 'copy' | 'cut') => {
     if (selectedPaths.size === 0) return
-    setFileClipboard({ paths: [...selectedPaths], mode: 'copy', sourceRoot: rootPath })
+    setFileClipboard({ paths: [...selectedPaths], mode, sourceRoot: rootPath })
     void window.electronAPI.clearSystemClipboard()
   }, [selectedPaths, rootPath, setFileClipboard])
 
-  const handleContextCut = React.useCallback(() => {
-    if (selectedPaths.size === 0) return
-    setFileClipboard({ paths: [...selectedPaths], mode: 'cut', sourceRoot: rootPath })
-    void window.electronAPI.clearSystemClipboard()
-  }, [selectedPaths, rootPath, setFileClipboard])
+  const handleContextCopy = React.useCallback(() => copyOrCutToClipboard('copy'), [copyOrCutToClipboard])
+  const handleContextCut = React.useCallback(() => copyOrCutToClipboard('cut'), [copyOrCutToClipboard])
 
   const handleContextPaste = React.useCallback(() => {
     if (!fileClipboard) return
@@ -546,80 +463,21 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
   }, [handlePasteEvent])
 
   // ===== 键盘快捷键处理 =====
-  const handleKeyDown = React.useCallback((e: React.KeyboardEvent) => {
-    if (renamingPath) return
-    if (e.nativeEvent.isComposing) return
-
-    const isMac = navigator.userAgent.includes('Mac')
-    const isMod = isMac ? e.metaKey : e.ctrlKey
-    const isDeleteKey = e.key === 'Delete' || (isMac && e.key === 'Backspace')
-
-    if (isDeleteKey && !isMod && selectedPaths.size > 0) {
-      e.preventDefault()
-      e.stopPropagation()
-      const firstPath = [...selectedPaths][0]!
-      const meta = entryMetaMapRef.current.get(firstPath)
-      handleRequestDelete({
-        path: firstPath,
-        name: meta?.name ?? firstPath.split(/[/\\]/).pop() ?? '',
-        isDirectory: meta?.isDirectory ?? false,
-      } as FileEntry)
-      return
-    }
-
-    if (isMod && e.key === 'c' && selectedPaths.size > 0) {
-      e.preventDefault()
-      e.stopPropagation()
-      setFileClipboard({ paths: [...selectedPaths], mode: 'copy', sourceRoot: rootPath })
-      // 清除系统剪贴板残留文件列表，确保后续 paste 事件不会被旧文件对象干扰
-      void window.electronAPI.clearSystemClipboard()
-      return
-    }
-
-    if (isMod && e.key === 'x' && selectedPaths.size > 0) {
-      e.preventDefault()
-      e.stopPropagation()
-      setFileClipboard({ paths: [...selectedPaths], mode: 'cut', sourceRoot: rootPath })
-      // 清除系统剪贴板残留文件列表，确保后续 paste 事件不会被旧文件对象干扰
-      void window.electronAPI.clearSystemClipboard()
-      return
-    }
-
-    if (e.key === 'F2' && selectedPaths.size === 1) {
-      e.preventDefault()
-      setRenamingPath([...selectedPaths][0]!)
-      return
-    }
-
-    if (isMod && e.key === 'a') {
-      e.preventDefault()
-      e.stopPropagation()
-      setSelectedPaths(new Set(entries.map(item => item.path)))
-      onSelectedDirectoryChange?.(null)
-      return
-    }
-
-    if (e.key === 'Escape') {
-      e.preventDefault()
-      e.stopPropagation()
-      clearSelection()
-      setFileClipboard(null)
-      return
-    }
-
-    if (e.key === 'Enter' && selectedPaths.size === 1) {
-      e.preventDefault()
-      const path = [...selectedPaths][0]!
-      const meta = entryMetaMapRef.current.get(path)
-      if (!meta) return
-      if (meta.isDirectory) {
-        setKeyboardToggleSignal({ path, ts: Date.now() })
-      } else {
-        onFilePreview?.(path)
-      }
-      return
-    }
-  }, [renamingPath, selectedPaths, entries, rootPath, handleRequestDelete, setFileClipboard, setRenamingPath, setSelectedPaths, onSelectedDirectoryChange, clearSelection, onFilePreview])
+  const handleKeyDown = useFileBrowserKeyboard({
+    renamingPath,
+    selectedPaths,
+    entries,
+    entryMetaMapRef,
+    copyOrCutToClipboard,
+    handleRequestDelete,
+    setRenamingPath,
+    setSelectedPaths,
+    setFileClipboard,
+    setKeyboardToggleSignal,
+    onSelectedDirectoryChange,
+    onFilePreview,
+    clearSelection,
+  })
 
   const handleRootDragOver = React.useCallback((event: React.DragEvent): void => {
     if (!eventHasFileTreeDrag(event)) return
@@ -794,790 +652,5 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
         )}
       </ContextMenuContent>
     </ContextMenu>
-  )
-}
-
-// ===== FileTreeItem 子组件 =====
-
-interface FileTreeItemProps {
-  entry: FileEntry
-  depth: number
-  selectedPaths: Set<string>
-  selectedCount: number
-  renamingPath: string | null
-  moving: boolean
-  /** 文件版本号，变化时已展开的文件夹自动重新加载子项 */
-  refreshVersion: number
-  /** 自动定位：祖先目录路径集合（命中则自动展开） */
-  revealAncestors: Set<string>
-  /** 自动定位：目标文件路径（命中则滚动 + 高亮脉冲） */
-  revealTarget: string | null
-  /** 自动定位脉冲时间戳，变化时重新触发 */
-  revealTs: number
-  /** 本次 reveal 是否带 select 标记（来源于用户搜索点击）；为 true 时跳过 flash 高亮，避免覆盖选中色 */
-  revealSelect: boolean
-  /** 最近修改的路径集合（命中则在行左侧显示竖条标记） */
-  recentlyModifiedSet: Set<string>
-  registerEntryMeta: (entry: FileEntry) => () => void
-  keyboardToggleSignal: { path: string; ts: number } | null
-  cutPathsSet: Set<string>
-  onSelect: (entry: FileEntry, event: React.MouseEvent) => void
-  onShowInFolder: (entry: FileEntry) => void
-  onStartRename: (entry: FileEntry) => void
-  onCancelRename: () => void
-  onRename: (filePath: string, newName: string) => Promise<string | null>
-  onDelete: (entry: FileEntry) => void
-  onMove: (entry: FileEntry) => void
-  onRefresh: () => Promise<void>
-  onClearSelection: () => void
-  onAddToChat?: (entry: FileEntry) => void
-  onFilePreview?: (filePath: string) => void
-  onCreateEntry?: (parentDir: string, type: 'directory' | 'file') => void
-  transferTarget?: {
-    label: string
-    targetDir: string | null
-  }
-  onTransfer: (entry: FileEntry, targetDir: string) => Promise<void>
-  onMovePathsToDirectory: (paths: string[], targetDir: string) => Promise<void>
-  onExternalFilesDropToDirectory?: (payload: { paths: string[]; unresolvedFiles: File[] }, targetDir: string) => Promise<void> | void
-  onDirectoryDropTargetActive?: () => void
-  /** 复制选中项到内部剪贴板 */
-  onCopySelection: () => void
-  /** 剪切选中项到内部剪贴板 */
-  onCutSelection: () => void
-  /** 粘贴内部剪贴板到目标目录 */
-  onPasteFromClipboard: () => void
-  /** 内部文件剪贴板是否有内容（用于控制粘贴菜单项可用性） */
-  hasClipboardContent: boolean
-}
-
-function FileTreeItem({
-  entry,
-  depth,
-  selectedPaths,
-  selectedCount,
-  renamingPath,
-  moving,
-  refreshVersion,
-  revealAncestors,
-  revealTarget,
-  revealTs,
-  revealSelect,
-  recentlyModifiedSet,
-  registerEntryMeta,
-  keyboardToggleSignal,
-  cutPathsSet,
-  onSelect,
-  onShowInFolder,
-  onStartRename,
-  onCancelRename,
-  onRename,
-  onDelete,
-  onMove,
-  onRefresh,
-  onClearSelection,
-  onAddToChat,
-  onFilePreview,
-  onCreateEntry,
-  transferTarget,
-  onTransfer,
-  onMovePathsToDirectory,
-  onExternalFilesDropToDirectory,
-  onDirectoryDropTargetActive,
-  onCopySelection,
-  onCutSelection,
-  onPasteFromClipboard,
-  hasClipboardContent,
-}: FileTreeItemProps): React.ReactElement {
-  const [expanded, setExpanded] = React.useState(false)
-  const [children, setChildren] = React.useState<FileEntry[]>([])
-  const [childrenLoaded, setChildrenLoaded] = React.useState(false)
-  const [flash, setFlash] = React.useState(false)
-  const [isDropTarget, setIsDropTarget] = React.useState(false)
-  const rowRef = React.useRef<HTMLDivElement>(null)
-  const dropExpandTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
-  const autoExpandedByDragRef = React.useRef(false)
-  const autoCollapseTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const clearDropExpandTimer = React.useCallback((): void => {
-    if (!dropExpandTimerRef.current) return
-    clearTimeout(dropExpandTimerRef.current)
-    dropExpandTimerRef.current = null
-  }, [])
-
-  const clearAutoCollapseTimer = React.useCallback((): void => {
-    if (!autoCollapseTimerRef.current) return
-    clearTimeout(autoCollapseTimerRef.current)
-    autoCollapseTimerRef.current = null
-  }, [])
-
-  const scheduleAutoCollapse = React.useCallback((): void => {
-    if (!autoExpandedByDragRef.current) return
-    clearAutoCollapseTimer()
-    autoCollapseTimerRef.current = setTimeout(() => {
-      autoCollapseTimerRef.current = null
-      if (!autoExpandedByDragRef.current) return
-      setExpanded(false)
-      autoExpandedByDragRef.current = false
-    }, 320)
-  }, [clearAutoCollapseTimer])
-
-  React.useEffect(() => () => {
-    clearDropExpandTimer()
-    clearAutoCollapseTimer()
-  }, [clearDropExpandTimer, clearAutoCollapseTimer])
-
-  // 注册元数据到父组件的 entryMetaMapRef
-  React.useEffect(() => {
-    return registerEntryMeta(entry)
-  }, [entry, registerEntryMeta])
-
-  // 响应键盘 Enter 信号（展开/收起目录）
-  React.useEffect(() => {
-    if (!keyboardToggleSignal) return
-    if (keyboardToggleSignal.path !== entry.path) return
-    if (!entry.isDirectory) return
-    setExpanded((prev) => !prev)
-  }, [keyboardToggleSignal, entry.path, entry.isDirectory])
-
-  // 当 refreshVersion 变化时，已展开的文件夹自动重新加载子项
-  React.useEffect(() => {
-    if (expanded && childrenLoaded && entry.isDirectory) {
-      window.electronAPI.listDirectory(entry.path)
-        .then((items) => setChildren(items))
-        .catch((err) => console.error('[FileTreeItem] 刷新子目录失败:', err))
-    }
-  }, [refreshVersion]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ===== Agent 自动定位：祖先目录自动展开 + 目标行滚动到中心 + 0.8s 高亮脉冲 =====
-  React.useEffect(() => {
-    if (revealTs === 0) return
-
-    const cleanups: Array<() => void> = []
-    const isAncestor = revealAncestors.has(entry.path)
-    const isTarget = revealTarget !== null && entry.path === revealTarget
-
-    const scrollToTarget = (): void => {
-      requestAnimationFrame(() => {
-        rowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      })
-    }
-
-    // 自身需要展开：祖先目录 OR 目标本身就是目录（搜到文件夹时让其展开露出内容）
-    const willExpand = entry.isDirectory && (isAncestor || isTarget) && !expanded
-    if (willExpand) {
-      let cancelled = false
-      const run = async (): Promise<void> => {
-        if (!childrenLoaded) {
-          try {
-            const items = await window.electronAPI.listDirectory(entry.path)
-            if (!cancelled) {
-              setChildren(items)
-              setChildrenLoaded(true)
-            }
-          } catch (err) {
-            console.error('[FileTreeItem] reveal 加载子目录失败:', err)
-            return
-          }
-        }
-        if (cancelled) return
-        setExpanded(true)
-        // 目标自身就是这个目录时，等展开后再滚动，避免子项渲染改变行高使
-        // smooth scroll 的目标位置过时；加载失败路径不会到这里。
-        if (isTarget) scrollToTarget()
-      }
-      void run()
-      cleanups.push(() => { cancelled = true })
-    }
-
-    // 目标行：滚动到可视区中心 + 高亮脉冲
-    if (isTarget) {
-      // 仅在不会通过展开分支异步滚动时立即滚动（即：目标是文件，或已展开的目录）
-      if (!willExpand) scrollToTarget()
-      // 用户搜索点击场景（revealSelect=true）会同步把目标置为选中态，
-      // flash 动画末关键帧的 transparent 背景会盖掉 bg-accent，造成"先闪一下再变选中"的视觉断层，
-      // 因此该路径跳过 flash，仅保留滚动 + 选中态。Agent 自动定位（无 select）仍走 flash。
-      // 注意：不要改 globals.css 里 .file-browser-row-flash 末关键帧的 transparent，那是 Agent
-      // 路径下"动画结束行恢复无背景"的预期行为；选中态冲突应由本分支跳过 class 解决。
-      if (!revealSelect) {
-        setFlash(true)
-        const t = setTimeout(() => setFlash(false), 1200)
-        cleanups.push(() => clearTimeout(t))
-      }
-    }
-
-    if (cleanups.length > 0) return () => { for (const c of cleanups) c() }
-  }, [revealTs]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // 重命名编辑状态
-  const [editName, setEditName] = React.useState('')
-  const [renameError, setRenameError] = React.useState<string | null>(null)
-  const renameInputRef = React.useRef<HTMLInputElement>(null)
-  const justStartedEditing = React.useRef(false)
-
-  const isSelected = selectedPaths.has(entry.path)
-  const isRenaming = renamingPath === entry.path
-  const isCutTarget = cutPathsSet.has(entry.path)
-
-  const loadChildren = async (): Promise<FileEntry[]> => {
-    const items = await window.electronAPI.listDirectory(entry.path)
-    setChildren(items)
-    setChildrenLoaded(true)
-
-    // 首次展开空目录时，延迟重试一次（应对 Agent 正在写入文件的时序问题）
-    if (items.length === 0) {
-      setTimeout(async () => {
-        try {
-          const retryItems = await window.electronAPI.listDirectory(entry.path)
-          if (retryItems.length > 0) setChildren(retryItems)
-        } catch { /* 静默忽略 */ }
-      }, 800)
-    }
-
-    return items
-  }
-
-  /** 只展开目录，不切换收起状态；用于拖拽 hover 和自动定位。 */
-  const expandDir = async (): Promise<void> => {
-    if (!entry.isDirectory) return
-    if (!childrenLoaded) {
-      try {
-        await loadChildren()
-      } catch (err) {
-        console.error('[FileTreeItem] 加载子目录失败:', err)
-        return
-      }
-    }
-    setExpanded(true)
-  }
-
-  /** 展开/收起文件夹 */
-  const toggleDir = async (): Promise<void> => {
-    if (!entry.isDirectory) return
-
-    if (!expanded && !childrenLoaded) {
-      try {
-        await loadChildren()
-      } catch (err) {
-        console.error('[FileTreeItem] 加载子目录失败:', err)
-      }
-    }
-
-    setExpanded(!expanded)
-  }
-
-  /** 点击行为：选中 + 文件夹展开/收起 / 文件预览 */
-  const handleClick = (e: React.MouseEvent): void => {
-    e.stopPropagation()
-    const isMulti = e.metaKey || e.ctrlKey
-    onSelect(entry, e)
-    if (isMulti) return
-    if (entry.isDirectory) {
-      void toggleDir()
-    } else {
-      onFilePreview?.(entry.path)
-    }
-  }
-
-  const handleDragStart = (event: React.DragEvent): void => {
-    if (isRenaming) {
-      event.preventDefault()
-      return
-    }
-    const paths = isSelected ? Array.from(selectedPaths) : [entry.path]
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData(FILE_TREE_DRAG_MIME, JSON.stringify({ paths }))
-    event.dataTransfer.setData('text/plain', paths.join('\n'))
-  }
-
-  const handleDragEnd = (): void => {
-    clearDropExpandTimer()
-    clearAutoCollapseTimer()
-    autoExpandedByDragRef.current = false
-    setIsDropTarget(false)
-  }
-
-  const handleDragOver = (event: React.DragEvent): void => {
-    if (!entry.isDirectory) return
-    if (!eventHasFileTreeDrag(event) && eventHasExternalFiles(event) && onExternalFilesDropToDirectory) {
-      event.preventDefault()
-      event.stopPropagation()
-      event.dataTransfer.dropEffect = 'copy'
-      onDirectoryDropTargetActive?.()
-      setIsDropTarget(true)
-      clearAutoCollapseTimer()
-      if (!expanded && !dropExpandTimerRef.current) {
-        dropExpandTimerRef.current = setTimeout(() => {
-          dropExpandTimerRef.current = null
-          autoExpandedByDragRef.current = true
-          void expandDir()
-        }, 450)
-      }
-      return
-    }
-    if (!eventHasFileTreeDrag(event)) return
-    const payload = readFileTreeDragPayload(event)
-    if (!payload) return
-    const canDrop = payload.paths.some((path) => {
-      if (normalizeFsPath(getParentPath(path)) === normalizeFsPath(entry.path)) return false
-      return !isSameOrChildPath(path, entry.path)
-    })
-    if (!canDrop) return
-    event.preventDefault()
-    event.stopPropagation()
-    event.dataTransfer.dropEffect = 'move'
-    onDirectoryDropTargetActive?.()
-    setIsDropTarget(true)
-    clearAutoCollapseTimer()
-    if (!expanded && !dropExpandTimerRef.current) {
-      dropExpandTimerRef.current = setTimeout(() => {
-        dropExpandTimerRef.current = null
-        autoExpandedByDragRef.current = true
-        void expandDir()
-      }, 450)
-    }
-  }
-
-  const handleDragLeave = (event: React.DragEvent): void => {
-    const related = event.relatedTarget as Node | null
-    if (related && rowRef.current?.contains(related)) return
-    if (!related && isPointerInsideElement(event, rowRef.current)) return
-    clearDropExpandTimer()
-    setIsDropTarget(false)
-    scheduleAutoCollapse()
-  }
-
-  const handleDrop = (event: React.DragEvent): void => {
-    if (!entry.isDirectory) return
-    if (!eventHasFileTreeDrag(event) && event.dataTransfer.files.length > 0 && onExternalFilesDropToDirectory) {
-      event.preventDefault()
-      event.stopPropagation()
-      clearDropExpandTimer()
-      clearAutoCollapseTimer()
-      setIsDropTarget(false)
-      autoExpandedByDragRef.current = false
-      // 必须在 drop 事件同步执行期内调用 getPathForFile：
-      // 经过 await 后拖拽事件结束，File 的底层 native 资源被释放，
-      // 此时再调用 webUtils.getPathForFile 会访问失效句柄导致 renderer 进程崩溃。
-      const droppedFiles = Array.from(event.dataTransfer.files)
-      const paths: string[] = []
-      const unresolvedFiles: File[] = []
-      for (const file of droppedFiles) {
-        let path: string | null = null
-        try { path = window.electronAPI.getPathForFile(file) } catch { path = null }
-        if (path) paths.push(path)
-        else unresolvedFiles.push(file)
-      }
-      void (async () => {
-        await expandDir()
-        await onExternalFilesDropToDirectory({ paths, unresolvedFiles }, entry.path)
-        try {
-          const items = await window.electronAPI.listDirectory(entry.path)
-          setChildren(items)
-          setChildrenLoaded(true)
-        } catch (err) {
-          console.error('[FileTreeItem] 外部文件保存后刷新目录失败:', err)
-        }
-      })()
-      return
-    }
-    const payload = readFileTreeDragPayload(event)
-    if (!payload) return
-    event.preventDefault()
-    event.stopPropagation()
-    clearDropExpandTimer()
-    clearAutoCollapseTimer()
-    setIsDropTarget(false)
-    autoExpandedByDragRef.current = false
-    void (async () => {
-      await expandDir()
-      await onMovePathsToDirectory(payload.paths, entry.path)
-      try {
-        const items = await window.electronAPI.listDirectory(entry.path)
-        setChildren(items)
-        setChildrenLoaded(true)
-      } catch (err) {
-        console.error('[FileTreeItem] 拖拽移动后刷新目录失败:', err)
-      }
-    })()
-  }
-
-  /** 删除后刷新子目录 */
-  const handleRefreshAfterDelete = async (): Promise<void> => {
-    if (childrenLoaded) {
-      try {
-        const items = await window.electronAPI.listDirectory(entry.path)
-        setChildren(items)
-      } catch {
-        await onRefresh()
-      }
-    }
-  }
-
-  // 进入重命名编辑模式
-  React.useEffect(() => {
-    if (isRenaming) {
-      setEditName(entry.name)
-      setRenameError(null)
-      justStartedEditing.current = true
-      const timer = setTimeout(() => {
-        justStartedEditing.current = false
-        const input = renameInputRef.current
-        if (input) {
-          input.focus()
-          // 只选中文件名部分，不包括后缀
-          const lastDotIndex = entry.name.lastIndexOf('.')
-          if (lastDotIndex > 0 && !entry.isDirectory) {
-            input.setSelectionRange(0, lastDotIndex)
-          } else {
-            input.select()
-          }
-        }
-      }, 100)
-      return () => clearTimeout(timer)
-    }
-  }, [isRenaming, entry.name, entry.isDirectory])
-
-  /** 保存重命名 */
-  const saveRename = async (): Promise<void> => {
-    if (justStartedEditing.current) return
-
-    const trimmed = editName.trim()
-    if (!trimmed || trimmed === entry.name) {
-      onCancelRename()
-      return
-    }
-    const error = await onRename(entry.path, trimmed)
-    if (error) {
-      setRenameError(error)
-    }
-  }
-
-  /** 重命名键盘事件 */
-  const handleRenameKeyDown = (e: React.KeyboardEvent): void => {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      void saveRename()
-    } else if (e.key === 'Escape') {
-      e.preventDefault()
-      onCancelRename()
-    }
-  }
-
-  /** 重命名失焦 */
-  const handleBlur = (): void => {
-    if (renameError) {
-      onCancelRename()
-      setRenameError(null)
-    } else {
-      void saveRename()
-    }
-  }
-
-  // 行使用 mx-2 形成左右各 8px 留白，留白处的点击 target 是本 wrapper 而非父级
-  // py-1 容器，所以父级 handleBackgroundClick 的 target===currentTarget 判定不会命中。
-  // 这里就近处理留白点击的清选语义，保持视觉上"点空白即清选"的一致体验。
-  const handleWrapperClick = (e: React.MouseEvent): void => {
-    if (e.target === e.currentTarget) {
-      onClearSelection()
-    }
-  }
-
-  const { paddingLeft, guideLeft, stickyTop, stickyZIndex } = computeTreeRowLayout(depth)
-  const isSticky = entry.isDirectory && expanded && canBeSticky(depth)
-  const showMenu = !isRenaming
-  const menuSelectedCount = isSelected ? selectedCount : 1
-  const menuItems = (): React.ReactNode => (
-    <>
-      {onCreateEntry && menuSelectedCount === 1 && entry.isDirectory && (
-        <>
-          <ContextMenuItem
-            className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
-            onSelect={() => onCreateEntry(entry.path, 'file')}
-          >
-            <FilePlus />
-            新建文件
-          </ContextMenuItem>
-          <ContextMenuItem
-            className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
-            onSelect={() => onCreateEntry(entry.path, 'directory')}
-          >
-            <FolderPlus />
-            新建文件夹
-          </ContextMenuItem>
-          <ContextMenuSeparator className="my-1" />
-        </>
-      )}
-      {onAddToChat && !entry.isDirectory && menuSelectedCount === 1 && (
-        <ContextMenuItem
-          className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
-          onSelect={() => onAddToChat(entry)}
-        >
-          <MessageSquarePlus />
-          添加到聊天
-        </ContextMenuItem>
-      )}
-      {onFilePreview && !entry.isDirectory && menuSelectedCount === 1 && isHtmlPreviewPath(entry.path) && (
-        <ContextMenuItem
-          className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
-          onSelect={() => onFilePreview?.(entry.path)}
-        >
-          <MonitorPlay />
-          实时预览
-        </ContextMenuItem>
-      )}
-      {menuSelectedCount === 1 && (
-        <ContextMenuItem
-          className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
-          onSelect={() => onShowInFolder(entry)}
-        >
-          <FolderSearch />
-          在文件夹中显示
-        </ContextMenuItem>
-      )}
-      {menuSelectedCount === 1 && !entry.isDirectory && (
-        <DefaultAppMenuItem
-          filePath={entry.path}
-          menuKind="context"
-          className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
-        />
-      )}
-      {/* 复制 / 剪切 / 粘贴 */}
-      <ContextMenuSeparator className="my-1" />
-      {onCopySelection && (
-        <ContextMenuItem
-          className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
-          onSelect={() => onCopySelection()}
-        >
-          <Copy />
-          复制
-          <span className="ml-auto text-[11px] text-muted-foreground">Ctrl+C</span>
-        </ContextMenuItem>
-      )}
-      {onCutSelection && (
-        <ContextMenuItem
-          className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
-          onSelect={() => onCutSelection()}
-        >
-          <Scissors />
-          剪切
-          <span className="ml-auto text-[11px] text-muted-foreground">Ctrl+X</span>
-        </ContextMenuItem>
-      )}
-      {onPasteFromClipboard && (
-        <ContextMenuItem
-          className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
-          disabled={!hasClipboardContent}
-          onSelect={() => onPasteFromClipboard()}
-        >
-          <ClipboardPaste />
-          粘贴
-          <span className="ml-auto text-[11px] text-muted-foreground">Ctrl+V</span>
-        </ContextMenuItem>
-      )}
-      <ContextMenuSeparator className="my-1" />
-      <ContextMenuItem
-        className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
-        disabled={moving}
-        onSelect={() => { void onMove(entry) }}
-      >
-        <FolderInput />
-        {menuSelectedCount > 1 ? `移动选中 (${menuSelectedCount})` : '移动到...'}
-      </ContextMenuItem>
-      {transferTarget && (
-        <ContextMenuItem
-          className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
-          disabled={moving || !transferTarget.targetDir}
-          onSelect={() => {
-            if (!transferTarget.targetDir) return
-            void onTransfer(entry, transferTarget.targetDir)
-          }}
-        >
-          <FolderInput />
-          {menuSelectedCount > 1 ? `${transferTarget.label} (${menuSelectedCount})` : transferTarget.label}
-        </ContextMenuItem>
-      )}
-      {menuSelectedCount === 1 && (
-        <ContextMenuItem
-          className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
-          onSelect={() => onStartRename(entry)}
-        >
-          <Pencil />
-          重命名
-        </ContextMenuItem>
-      )}
-      <ContextMenuSeparator className="my-1" />
-      <ContextMenuItem
-        className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4 text-destructive"
-        onSelect={() => onDelete(entry)}
-      >
-        <Trash2 />
-        {menuSelectedCount > 1 ? `删除选中 (${menuSelectedCount})` : '删除'}
-      </ContextMenuItem>
-    </>
-  )
-
-  return (
-    <div className="relative" onClick={handleWrapperClick}>
-      <ContextMenu>
-        <ContextMenuTrigger asChild>
-          <div
-            ref={rowRef}
-            data-file-tree-item="true"
-            data-sticky-row={isSticky ? 'true' : undefined}
-            className={cn(
-              'relative flex h-8 items-center gap-1 pr-2 text-sm cursor-pointer group transition-colors',
-              isSticky && STICKY_ROW_BASE_CLASS,
-              // sticky 行 hover 用不透明色，避免下方滚动内容透出；普通行保持半透明柔和感
-              isSelected
-                ? 'bg-accent'
-                : isSticky
-                  ? 'hover:bg-accent'
-                  : 'hover:bg-accent/50',
-              flash && 'file-browser-row-flash',
-              isCutTarget && 'opacity-50',
-              isDropTarget && 'bg-primary/15 text-foreground shadow-sm ring-2 ring-primary/60 ring-inset',
-            )}
-            style={{
-              paddingLeft,
-              top: isSticky ? stickyTop : undefined,
-              zIndex: isSticky ? stickyZIndex : undefined,
-            }}
-            onClick={handleClick}
-            draggable={!isRenaming}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            onContextMenu={(event) => {
-              if (!isSelected) onSelect(entry, event)
-            }}
-          >
-        {/* sticky 行祖先链竖线，逻辑见 tree-row-layout.tsx 的 AncestorGuides */}
-        {isDropTarget && (
-          <span
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-y-0 left-0 right-0 bg-primary/10"
-          />
-        )}
-        {isSticky && <AncestorGuides depth={depth} isSelected={isSelected} />}
-        {recentlyModifiedSet.has(entry.path) && (
-          <span
-            aria-label="最近被 Agent 修改"
-            className="absolute top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-primary/80"
-            style={{ left: paddingLeft - 6 }}
-          />
-        )}
-        {/* 展开/收起图标 */}
-        {entry.isDirectory ? (
-          <ChevronRight
-            className={cn(
-              'size-3.5 text-muted-foreground flex-shrink-0 transition-transform duration-150',
-              expanded && 'rotate-90',
-            )}
-          />
-        ) : (
-          <span className="w-3.5 flex-shrink-0" />
-        )}
-
-        {/* 文件/文件夹图标 */}
-        <FileTypeIcon name={entry.name} isDirectory={entry.isDirectory} isOpen={expanded} />
-
-        {/* 文件名 / 重命名输入框 */}
-        {isRenaming ? (
-          <div className="relative flex-1 min-w-0">
-            <input
-              ref={renameInputRef}
-              value={editName}
-              onChange={(e) => { setEditName(e.target.value); setRenameError(null) }}
-              onKeyDown={handleRenameKeyDown}
-              onBlur={handleBlur}
-              onClick={(e) => e.stopPropagation()}
-              className={cn(
-                'w-full bg-transparent text-xs border-b outline-none py-0.5',
-                renameError ? 'border-destructive' : 'border-primary/50',
-              )}
-              maxLength={255}
-            />
-            {renameError && (
-              <div className="absolute left-0 top-full mt-0.5 text-[10px] leading-4 text-destructive whitespace-nowrap pointer-events-none">
-                {renameError}
-              </div>
-            )}
-          </div>
-        ) : (
-          <span className="truncate text-xs flex-1">{entry.name}</span>
-        )}
-
-          </div>
-        </ContextMenuTrigger>
-        {showMenu && (
-          <ContextMenuContent className="w-48 z-[9999] min-w-0 p-1.5">
-            {menuItems()}
-          </ContextMenuContent>
-        )}
-      </ContextMenu>
-
-      {/* 子项 */}
-      {expanded && (
-        <div className="relative">
-          <span
-            aria-hidden="true"
-            className="pointer-events-none absolute bottom-1 top-0 w-px bg-border/70"
-            style={{ left: guideLeft }}
-          />
-          {children.length === 0 && childrenLoaded && (
-            <div
-              className="text-[11px] text-muted-foreground/50 py-1"
-              style={{ paddingLeft: paddingLeft + 24 }}
-            >
-              空文件夹
-            </div>
-          )}
-          {children.map((child) => (
-            <FileTreeItem
-              key={child.path}
-              entry={child}
-              depth={depth + 1}
-              selectedPaths={selectedPaths}
-              selectedCount={selectedCount}
-              renamingPath={renamingPath}
-              moving={moving}
-              refreshVersion={refreshVersion}
-              revealAncestors={revealAncestors}
-              revealTarget={revealTarget}
-              revealTs={revealTs}
-              revealSelect={revealSelect}
-              recentlyModifiedSet={recentlyModifiedSet}
-              registerEntryMeta={registerEntryMeta}
-              keyboardToggleSignal={keyboardToggleSignal}
-              cutPathsSet={cutPathsSet}
-              onSelect={onSelect}
-              onShowInFolder={onShowInFolder}
-              onStartRename={onStartRename}
-              onCancelRename={onCancelRename}
-              onRename={onRename}
-              onDelete={onDelete}
-              onMove={onMove}
-              onRefresh={handleRefreshAfterDelete}
-              onClearSelection={onClearSelection}
-              onAddToChat={onAddToChat}
-              onFilePreview={onFilePreview}
-              onCreateEntry={onCreateEntry}
-              transferTarget={transferTarget}
-              onTransfer={onTransfer}
-              onMovePathsToDirectory={onMovePathsToDirectory}
-              onExternalFilesDropToDirectory={onExternalFilesDropToDirectory}
-              onDirectoryDropTargetActive={onDirectoryDropTargetActive}
-              onCopySelection={onCopySelection}
-              onCutSelection={onCutSelection}
-              onPasteFromClipboard={onPasteFromClipboard}
-              hasClipboardContent={hasClipboardContent}
-            />
-          ))}
-        </div>
-      )}
-    </div>
   )
 }
