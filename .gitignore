@@ -73,3 +73,6 @@ workmate-server-java/mock-skills/
 # ===== Runtime artifacts =====
 hs_err_pid*.log
 workmate-server-java/data/
+
+# ===== Debug tools =====
+.superpowers/

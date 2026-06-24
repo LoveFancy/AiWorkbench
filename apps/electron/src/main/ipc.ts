@@ -2613,8 +2613,8 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     AGENT_IPC_CHANNELS.LIST_EXPERT_GROUPS,
     async (): Promise<AgentExpertGroupInfo[]> => {
-      const { listAgentExpertGroups } = await import('./lib/agent-expert-group-manager')
-      return listAgentExpertGroups()
+      const { listAgentExpertGroupsAsync } = await import('./lib/agent-expert-group-manager')
+      return listAgentExpertGroupsAsync()
     }
   )
 
@@ -3389,6 +3389,18 @@ export function registerIpcHandlers(): void {
     }
   )
 
+  // 清除系统剪贴板中的文件列表（用于内部文件复制/剪切时清除旧文件对象，
+  // 防止 paste 事件的 clipboardData.files 残留导致内部粘贴被覆盖）
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.CLEAR_SYSTEM_CLIPBOARD,
+    async (): Promise<void> => {
+      const { clipboard } = await import('electron')
+      clipboard.clear()
+      // 写入空文本确保剪贴板无残留数据
+      clipboard.writeText('')
+    }
+  )
+
   // 在系统文件管理器中显示文件
   ipcMain.handle(
     AGENT_IPC_CHANNELS.SHOW_IN_FOLDER,
@@ -3682,6 +3694,77 @@ export function registerIpcHandlers(): void {
 
       console.log(`[Agent 文件] 已复制: ${safePath} → ${destPath}`)
       return destPath
+    }
+  )
+
+  // 将文件路径写入系统剪贴板（支持外部粘贴到资源管理器/Finder）
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.WRITE_PATHS_TO_SYSTEM_CLIPBOARD,
+    async (_: Electron.IpcMainInvokeEvent, paths: string[]): Promise<void> => {
+      const { clipboard } = await import('electron')
+      const { resolve, relative, isAbsolute } = await import('node:path')
+      const { statSync } = await import('node:fs')
+
+      const workspacesRoot = resolve(getAgentWorkspacesDir())
+      const isInsideWorkspaces = (candidate: string): boolean => {
+        const rel = relative(workspacesRoot, candidate)
+        return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+      }
+
+      const validPaths = paths
+        .map((p) => resolve(p))
+        // 仅允许工作区内路径，避免对任意路径做存在性探测
+        .filter((p) => isInsideWorkspaces(p))
+        .filter((p) => {
+          try {
+            statSync(p)
+            return true
+          } catch { return false }
+        })
+
+      if (validPaths.length === 0) return
+
+      const isMac = process.platform === 'darwin'
+
+      if (isMac) {
+        // macOS: NSFilenamesPboardType
+        const escapeXml = (s: string): string =>
+          s.replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&apos;')
+        const plist = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<array>
+${validPaths.map((p) => `  <string>file://${escapeXml(p)}</string>`).join('\n')}
+</array>
+</plist>`
+        clipboard.writeBuffer('NSFilenamesPboardType', Buffer.from(plist, 'utf-8'))
+      } else {
+        // Windows/Linux: CF_HDROP
+        const pathBytes: number[] = []
+        for (const p of validPaths) {
+          for (let i = 0; i < p.length; i++) {
+            const code = p.charCodeAt(i)
+            pathBytes.push(code & 0xff, (code >> 8) & 0xff)
+          }
+          pathBytes.push(0, 0) // null 终止
+        }
+        pathBytes.push(0, 0) // 额外 null 终止
+
+        // DROPFILES 结构（20 字节头）
+        const header = Buffer.alloc(20)
+        header.writeUInt32LE(20, 0)   // pFiles = 结构大小
+        header.writeUInt32LE(0, 4)    // pt.x
+        header.writeUInt32LE(0, 8)    // pt.y
+        header.writeUInt32LE(0, 12)   // fNC = FALSE
+        header.writeUInt32LE(1, 16)   // fWide = TRUE (Unicode paths)
+
+        const full = Buffer.concat([header, Buffer.from(pathBytes)])
+        clipboard.writeBuffer('CF_HDROP', full)
+      }
     }
   )
 

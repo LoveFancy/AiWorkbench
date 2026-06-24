@@ -259,6 +259,8 @@ function mergeExpertGroups(
     result.push({
       ...local,
       categories: server?.categories ?? local.categories ?? [],
+      // 展示用接口版本（本地文件版本可能不准）；无服务端匹配时回退本地
+      serverVersion: server?.version,
       status: server && server.version !== local.sourcePluginVersion
         ? ('remote_update_available' as const)
         : local.status,
@@ -287,6 +289,7 @@ function mergeExpertGroups(
       sourcePluginId: '',
       sourceLabel: server.name,
       sourcePluginVersion: server.version,
+      serverVersion: server.version,
       sourcePluginKind: 'remote',
       sourcePluginPath: '',
       filePath: '',

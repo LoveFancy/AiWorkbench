@@ -78,8 +78,8 @@ export function TabBarItem({
   }, [])
 
   const handleMouseDown = (e: React.MouseEvent): void => {
-    // Scratch Pad 不可中键关闭
-    if (type === 'scratch') return
+    // Scratch Pad 和手册不可中键关闭
+    if (type === 'scratch' || type === 'manual') return
     if (e.button === 1) {
       e.preventDefault()
       onMiddleClick()
@@ -92,6 +92,8 @@ export function TabBarItem({
   }
 
   const isScratch = type === 'scratch'
+  const isManual = type === 'manual'
+  const showClose = !isScratch && !isManual
   const indicatorColor = isScratch
     ? undefined
     : isStreaming !== 'idle'
@@ -176,8 +178,8 @@ export function TabBarItem({
           </span>
         )}
 
-        {/* 关闭按钮（scratch 类型不显示） */}
-        {!isScratch && (
+        {/* 关闭按钮（scratch 和 manual 类型不显示） */}
+        {showClose && (
         <span
           role="button"
           tabIndex={-1}

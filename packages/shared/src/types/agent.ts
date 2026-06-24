@@ -1083,6 +1083,8 @@ export interface AgentExpertGroupInfo extends AgentExpertGroupManifest {
   sourceLabel: string
   /** 来源插件版本 */
   sourcePluginVersion: string
+  /** 服务端接口返回的版本号，仅用于展示（本地文件版本可能不准）；无服务端匹配时为 undefined */
+  serverVersion?: string
   sourcePluginKind: AgentPluginKind
   sourcePluginPath: string
   filePath: string
@@ -2082,6 +2084,10 @@ export const AGENT_IPC_CHANNELS = {
   SEARCH_WORKSPACE_FILES: 'agent:search-workspace-files',
   /** 将文本内容写入临时预览文件并返回绝对路径 */
   WRITE_CLIPBOARD_PREVIEW: 'agent:write-clipboard-preview',
+  /** 清除系统剪贴板（用于内部文件复制时清除旧文件列表，防止外部粘贴冲突） */
+  CLEAR_SYSTEM_CLIPBOARD: 'agent:clear-system-clipboard',
+  /** 将文件路径写入系统剪贴板（CF_HDROP / NSFilenamesPboardType） */
+  WRITE_PATHS_TO_SYSTEM_CLIPBOARD: 'agent:write-paths-to-system-clipboard',
 
   // 标题自动生成通知（主进程 → 渲染进程推送）
   /** 标题已更新（首次对话完成后自动生成） */

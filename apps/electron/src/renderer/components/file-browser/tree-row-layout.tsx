@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 
 const TREE_ROW_HEIGHT = 32
 const TREE_ROW_HORIZONTAL_MARGIN = 8
-const TREE_INDENT_WIDTH = 16
+const TREE_INDENT_WIDTH = 20
 /**
  * sticky 栈最多堆叠的层数，超出此深度的目录行不再 sticky（随滚动消失），
  * 避免多层重叠在同一 top 槽位导致下层覆盖上层。参考 VS Code Explorer 默认 = 7。

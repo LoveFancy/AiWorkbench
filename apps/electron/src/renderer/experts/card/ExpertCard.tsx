@@ -27,6 +27,9 @@ export function ExpertCard({ group, onOpen, onSummon, compact = false }: ExpertC
   const downloadProgress = useAtomValue(expertDownloadProgressFamily(group.id))
   const isDownloading = downloadProgress?.status === 'downloading' || downloadProgress?.status === 'installing'
 
+  // 展示版本号优先用服务端接口版本（本地文件版本可能不准），回退本地版本
+  const displayVersion = group.serverVersion ?? group.sourcePluginVersion
+
   const handleCancelDownload = React.useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
     void window.electronAPI.cancelRemoteDownload(group.id)
@@ -69,8 +72,13 @@ export function ExpertCard({ group, onOpen, onSummon, compact = false }: ExpertC
               {isTeam ? <Users size={compact ? 16 : 18} /> : <Bot size={compact ? 16 : 18} />}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2">
                 <h3 className="truncate text-sm font-medium text-foreground">{group.name}</h3>
+                {displayVersion && displayVersion !== '0.0.0' && (
+                  <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                    v{displayVersion}
+                  </span>
+                )}
               </div>
               <p className="mt-0.5 truncate text-xs text-muted-foreground">主角色：{group.mainRole.name || '未配置'}</p>
             </div>
@@ -95,47 +103,101 @@ export function ExpertCard({ group, onOpen, onSummon, compact = false }: ExpertC
           </div>
         </button>
         <div className="absolute right-4 top-4 flex items-center gap-2 pr-5">
-          {isDownloading ? (
-            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-              <div className="flex flex-col gap-1">
-                <div className="h-1.5 w-28 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-primary transition-all duration-200"
-                    style={{ width: `${downloadProgress?.status === 'installing' ? 100 : downloadProgress?.progress ?? 0}%` }}
-                  />
-                </div>
-                <span className="text-[11px] text-muted-foreground">
-                  {downloadProgress?.status === 'installing'
-                    ? '正在安装…'
-                    : `正在下载 ${downloadProgress?.progress ?? 0}%`}
-                </span>
-              </div>
+          {!isDownloading && onSummon && (
+            <Button
+              size="sm"
+              className={cn(
+                'pointer-events-none h-9 px-4 opacity-0 shadow-sm transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100',
+                compact && 'h-8 px-3',
+              )}
+              disabled={!isCardSummonActionable(group.status)}
+              onClick={() => onSummon(group)}
+            >
+              {group.status === 'remote_not_downloaded' ? '下载' : group.status === 'remote_downloading' ? '下载中...' : '召唤'}
+            </Button>
+          )}
+        </div>
+      </div>
+      {downloadProgress && (
+        <div className="mt-3 border-t border-border/60 pt-3" onClick={(e) => e.stopPropagation()}>
+          {/* 状态行 */}
+          <div className="flex items-center gap-2">
+            <span className="flex flex-1 items-center gap-1.5 text-xs">
+              {downloadProgress.status === 'error' ? (
+                <>
+                  <span className="inline-block size-1.5 rounded-full bg-red-500" />
+                  <span className="text-red-600 dark:text-red-400">下载失败</span>
+                </>
+              ) : downloadProgress.status === 'cancelled' ? (
+                <>
+                  <span className="inline-block size-1.5 rounded-full bg-muted-foreground/40" />
+                  <span className="text-muted-foreground">已取消</span>
+                </>
+              ) : downloadProgress.status === 'installing' ? (
+                <>
+                  <span className="inline-block size-1.5 rounded-full bg-violet-500" />
+                  <span>正在安装…</span>
+                </>
+              ) : (
+                <>
+                  <span className="inline-block size-1.5 rounded-full bg-blue-500" />
+                  <span>正在下载</span>
+                </>
+              )}
+            </span>
+            {downloadProgress.status === 'downloading' && (
+              <span className="text-xs tabular-nums text-muted-foreground">
+                {downloadProgress.progress}%
+              </span>
+            )}
+            {downloadProgress.status === 'error' ? (
+              <button
+                type="button"
+                onClick={() => { void window.electronAPI.downloadRemoteExpert(group.id) }}
+                className="rounded-md border border-border/60 px-2.5 py-0.5 text-xs font-medium transition-colors hover:bg-foreground/[0.06]"
+              >
+                重试
+              </button>
+            ) : downloadProgress.status === 'cancelled' ? (
+              <button
+                type="button"
+                onClick={() => { void window.electronAPI.downloadRemoteExpert(group.id) }}
+                className="rounded-md border border-border/60 px-2.5 py-0.5 text-xs font-medium transition-colors hover:bg-foreground/[0.06]"
+              >
+                下载
+              </button>
+            ) : (
               <button
                 type="button"
                 onClick={handleCancelDownload}
                 title="取消下载"
-                className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
+                className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
               >
-                <X size={14} />
+                <X size={13} />
               </button>
-            </div>
-          ) : (
-            onSummon && (
-              <Button
-                size="sm"
+            )}
+          </div>
+
+          {/* 进度条 */}
+          {(downloadProgress.status === 'downloading' || downloadProgress.status === 'installing') && (
+            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+              <div
                 className={cn(
-                  'pointer-events-none h-9 px-4 opacity-0 shadow-sm transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100',
-                  compact && 'h-8 px-3',
+                  'h-full rounded-full',
+                  downloadProgress.status === 'installing'
+                    ? 'w-2/5 bg-gradient-to-r from-transparent via-violet-500 to-transparent'
+                    : 'bg-primary transition-all duration-200',
                 )}
-                disabled={!isCardSummonActionable(group.status)}
-                onClick={() => onSummon(group)}
-              >
-                {group.status === 'remote_not_downloaded' ? '下载' : group.status === 'remote_downloading' ? '下载中...' : '召唤'}
-              </Button>
-            )
+                style={
+                  downloadProgress.status === 'installing'
+                    ? { animation: 'download-progress-slide 1.1s ease-in-out infinite' }
+                    : { width: `${downloadProgress.progress}%` }
+                }
+              />
+            </div>
           )}
         </div>
-      </div>
+      )}
     </div>
   )
 }

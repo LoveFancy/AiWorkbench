@@ -28,6 +28,7 @@ interface TocItem {
 function extractToc(markdown: string): TocItem[] {
   const headingRegex = /^(#{1,3})\s+(.+)$/gm
   const items: TocItem[] = []
+  const idCounts = new Map<string, number>()
   let match: RegExpExecArray | null
   while ((match = headingRegex.exec(markdown)) !== null) {
     const hashes = match[1]
@@ -35,7 +36,10 @@ function extractToc(markdown: string): TocItem[] {
     if (!hashes || !title) continue
     const level = hashes.length
     const text = title.trim()
-    const id = slugify(text)
+    const baseId = slugify(text)
+    const count = idCounts.get(baseId) ?? 0
+    idCounts.set(baseId, count + 1)
+    const id = count === 0 ? baseId : `${baseId}-${count}`
     items.push({ id, text, level })
   }
   return items
@@ -149,6 +153,14 @@ export function ManualView(): React.ReactElement {
   // 缓存 Markdown 渲染结果，避免 activeId 变化时重新解析
   const renderedContent = React.useMemo(() => {
     if (!content) return null
+    // 用于对同名标题生成唯一 ID（与 extractToc 保持一致的 slugify + 去重逻辑）
+    const headingIdCounts = new Map<string, number>()
+    const uniqueHeadingId = (text: string): string => {
+      const base = slugify(text)
+      const count = headingIdCounts.get(base) ?? 0
+      headingIdCounts.set(base, count + 1)
+      return count === 0 ? base : `${base}-${count}`
+    }
     return (
       <div className="max-w-3xl mx-auto px-8 pt-6 pb-10">
         <div
@@ -165,17 +177,17 @@ export function ManualView(): React.ReactElement {
             components={{
               h1: ({ children, ...props }) => {
                 const text = extractTextContent(children)
-                const id = slugify(text)
+                const id = uniqueHeadingId(text)
                 return <h1 id={id} {...props}>{children}</h1>
               },
               h2: ({ children, ...props }) => {
                 const text = extractTextContent(children)
-                const id = slugify(text)
+                const id = uniqueHeadingId(text)
                 return <h2 id={id} {...props}>{children}</h2>
               },
               h3: ({ children, ...props }) => {
                 const text = extractTextContent(children)
-                const id = slugify(text)
+                const id = uniqueHeadingId(text)
                 return <h3 id={id} {...props}>{children}</h3>
               },
               a: ({ href, children: linkChildren, ...linkProps }) => (

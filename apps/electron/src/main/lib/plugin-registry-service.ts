@@ -61,6 +61,8 @@ export class DownloadCancelledError extends Error {
 interface InstallAsyncOptions extends InstallUserPluginZipOptions {
   /** 安装期可取消信号；abort 后解压循环抛 DownloadCancelledError */
   signal?: AbortSignal
+  /** 覆盖 manifest 中的版本号写入 plugins.json（服务端下载时 manifest 可能无 version） */
+  version?: string
 }
 
 interface PluginMcpServerDefinition {
@@ -585,6 +587,42 @@ export function writePluginsConfig(config: AgentPluginsConfig, paths?: Pick<Plug
   writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8')
 }
 
+export async function listInstalledPluginsAsync(paths?: PluginRegistryPaths): Promise<AgentPluginInfo[]> {
+  const resolved = registryPaths(paths)
+  const config = readPluginsConfig({ configPath: resolved.configPath })
+  const plugins: AgentPluginInfo[] = []
+
+  if (existsSync(resolved.builtinDir)) {
+    const builtinEntries = await fsp.readdir(resolved.builtinDir, { withFileTypes: true })
+    for (const entry of builtinEntries) {
+      if (!entry.isDirectory()) continue
+      plugins.push(pluginInfoFromPath('builtin', join(resolved.builtinDir, entry.name), `builtin:${entry.name}`, config))
+      await new Promise((resolve) => setImmediate(resolve))
+    }
+  }
+
+  if (existsSync(resolved.userDir)) {
+    const marketEntries = await fsp.readdir(resolved.userDir, { withFileTypes: true })
+    for (const market of marketEntries) {
+      if (!market.isDirectory()) continue
+      const marketDir = join(resolved.userDir, market.name)
+      const userEntries = await fsp.readdir(marketDir, { withFileTypes: true })
+      for (const entry of userEntries) {
+        if (!entry.isDirectory()) continue
+        const pluginId = `user:${market.name}/${entry.name}`
+        const plugin = pluginInfoFromPath('user', join(marketDir, entry.name), pluginId, config)
+        plugins.push({
+          ...plugin,
+          sourceMarketplaceId: plugin.sourceMarketplaceId ?? market.name,
+        })
+        await new Promise((resolve) => setImmediate(resolve))
+      }
+    }
+  }
+
+  return plugins.sort((a, b) => a.id.localeCompare(b.id))
+}
+
 export function listInstalledPlugins(paths?: PluginRegistryPaths): AgentPluginInfo[] {
   const resolved = registryPaths(paths)
   const config = readPluginsConfig({ configPath: resolved.configPath })
@@ -802,6 +840,39 @@ function resolvePluginInstallSlug(pluginRoot: string, extractDir: string, manife
   return pluginSlug(manifest.name, '插件名称')
 }
 
+async function copyPluginAtomicallyAsync(
+  sourceDir: string,
+  targetDir: string,
+  overwrite: boolean,
+  signal?: AbortSignal,
+): Promise<'installed' | 'overwritten'> {
+  if (signal?.aborted) throw new DownloadCancelledError()
+  const existed = existsSync(targetDir)
+  if (existed && !overwrite) throw new Error(`插件已存在: ${basename(targetDir)}`)
+
+  const parent = dirname(targetDir)
+  const tmp = join(parent, `.${basename(targetDir)}.installing-${Date.now()}`)
+  await fsp.mkdir(parent, { recursive: true })
+  await fsp.rm(tmp, { recursive: true, force: true })
+  await fsp.cp(sourceDir, tmp, { recursive: true })
+
+  if (signal?.aborted) {
+    await fsp.rm(tmp, { recursive: true, force: true })
+    throw new DownloadCancelledError()
+  }
+
+  try {
+    if (existed) await fsp.rm(targetDir, { recursive: true, force: true })
+    await fsp.rename(tmp, targetDir)
+  } catch (error) {
+    await fsp.rm(tmp, { recursive: true, force: true })
+    if (!existed) await fsp.rm(targetDir, { recursive: true, force: true })
+    throw error
+  }
+
+  return existed ? 'overwritten' : 'installed'
+}
+
 function copyPluginAtomically(sourceDir: string, targetDir: string, overwrite: boolean): 'installed' | 'overwritten' {
   const existed = existsSync(targetDir)
   if (existed && !overwrite) throw new Error(`插件已存在: ${basename(targetDir)}`)
@@ -822,6 +893,33 @@ function copyPluginAtomically(sourceDir: string, targetDir: string, overwrite: b
   }
 
   return existed ? 'overwritten' : 'installed'
+}
+
+async function assertNoDuplicateExpertGroupsAsync(
+  pluginPath: string,
+  pluginId: string,
+  manifest: AgentPluginManifest,
+  paths: Required<PluginRegistryPaths>,
+  _signal?: AbortSignal,
+): Promise<void> {
+  const uploadedGroups = discoverExpertGroups(pluginPath, pluginId, manifest.name, true, manifest)
+  if (uploadedGroups.length === 0) return
+
+  const existingGroups = new Map<string, AgentPluginCapability>()
+  const plugins = await listInstalledPluginsAsync(paths)
+  for (const plugin of plugins) {
+    for (const capability of plugin.capabilities) {
+      if (capability.type === 'expert-group' && capability.sourcePluginId !== pluginId) {
+        existingGroups.set(capability.name, capability)
+      }
+    }
+  }
+
+  for (const group of uploadedGroups) {
+    const existing = existingGroups.get(group.name)
+    if (!existing) continue
+    throw new Error(`已存在相同专家团 ID: ${group.name}（来源: ${existing.sourceLabel}）`)
+  }
 }
 
 function assertNoDuplicateExpertGroups(
@@ -930,9 +1028,9 @@ export async function installUserPluginZipAsync(
     if (targetRel.startsWith('..') || isAbsolute(targetRel)) {
       throw new Error('插件名称包含不安全路径')
     }
-    assertNoDuplicateExpertGroups(pluginRoot, pluginId, manifest, resolved)
+    await assertNoDuplicateExpertGroupsAsync(pluginRoot, pluginId, manifest, resolved, options.signal)
 
-    const status = copyPluginAtomically(pluginRoot, targetDir, options.overwrite ?? false)
+    const status = await copyPluginAtomicallyAsync(pluginRoot, targetDir, options.overwrite ?? false, options.signal)
     const config = readPluginsConfig({ configPath: resolved.configPath })
     const previous = config.plugins[pluginId]
     const now = new Date().toISOString()
@@ -942,7 +1040,7 @@ export async function installUserPluginZipAsync(
       installedAt: previous?.installedAt ?? now,
       updatedAt: status === 'overwritten' ? now : previous?.updatedAt,
       sourceMarketplaceId: marketplaceId,
-      version: manifest.version,
+      version: options.version ?? manifest.version,
     }
     writePluginsConfig(config, { configPath: resolved.configPath })
 

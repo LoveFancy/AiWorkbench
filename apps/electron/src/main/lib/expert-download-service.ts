@@ -107,7 +107,7 @@ async function downloadFile(
 
 export function downloadAndInstallRemoteExpert(
   groupId: string,
-  options: { overwrite?: boolean } = {},
+  options: { overwrite?: boolean; version?: string } = {},
 ): Promise<AgentPluginInfo> {
   // 单飞：同一 groupId 已有进行中任务时复用，避免重复下载、目标目录写竞争与 controller 覆盖
   const existing = activeDownloads.get(groupId)
@@ -138,6 +138,7 @@ export function downloadAndInstallRemoteExpert(
         marketplaceId: 'remote',
         overwrite: options.overwrite ?? false,
         signal: controller.signal,
+        version: options.version,
       })
 
       // 5. 广播完成

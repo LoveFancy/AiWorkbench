@@ -92,7 +92,7 @@ export function ExpertPicker({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="w-[min(92vw,760px)] max-w-3xl gap-3 p-0">
+        <DialogContent className="flex max-h-[85vh] w-[min(92vw,760px)] max-w-3xl flex-col gap-3 overflow-hidden p-0">
           <DialogHeader className="px-5 pt-5">
             <div className="flex items-start justify-between gap-3 pr-8">
               <div>
@@ -167,7 +167,7 @@ export function ExpertPicker({
             )}
           </div>
 
-          <ScrollArea className="h-[500px] px-5 pb-5">
+          <ScrollArea className="min-h-0 flex-1 px-5 pb-5">
             {visibleGroups.length === 0 ? (
               <div className="rounded-lg bg-muted/50 px-4 py-10 text-center">
                 <Sparkles className="mx-auto size-8 text-muted-foreground" />
