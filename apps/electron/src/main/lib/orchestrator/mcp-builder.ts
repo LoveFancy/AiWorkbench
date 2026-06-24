@@ -20,11 +20,12 @@ import { join } from 'node:path'
 /**
  * 构建工作区 MCP 服务器配置
  *
- * 新旧格式合并加载：
- * 1. 遍历 connectors.json 中 enabled + type='mcp' 的连接器：
- *    - 优先从 connectors/{name}/mcp.json 加载
- *    - 不存在时兜底从旧 mcp.json 按 serverName 查找
- * 2. 旧 mcp.json 中未被连接器覆盖的 server 也一并加载
+ * mcp.json 是运行时配置的唯一来源，connectors.json 只管理状态（enabled/type/source）。
+ *
+ * 加载流程：
+ * 1. 构建 serverName → connectorId 映射（仅 enabled 的 MCP 连接器）
+ * 2. 从 mcp.json 读取配置，通过映射过滤并重命名为 connectorId
+ * 3. 向后兼容：未被 connectors.json 管理的 server 仍加载（如迁移前的旧配置）
  *
  * @param preReadConfig 可选，调用方已读好的配置，避免重复 I/O
  * @param selectedMcpServers 可选，只加载指定的 MCP server（空数组 = 全部）
@@ -47,54 +48,41 @@ export function buildMcpServers(
 
   const selectedNames = selectedMcpServers ? new Set(selectedMcpServers) : null
   const connectorsConfig = preReadConfig ?? getWorkspaceConnectorsConfig(workspaceSlug)
-  const oldMcpConfig = getWorkspaceMcpConfig(workspaceSlug)
+  const mcpConfig = getWorkspaceMcpConfig(workspaceSlug)
 
-  // 记录已被连接器覆盖的 serverName（避免兜底时重复加载）
-  const coveredServerNames = new Set<string>()
-  const connectorsDir = getConnectorsDir(workspaceSlug)
-
-  // 第一阶段：从连接器加载
-  for (const [name, connector] of Object.entries(connectorsConfig.connectors)) {
+  // 构建映射：mcp server name → connector ID（仅 enabled 的 MCP 连接器）
+  // 用于将 mcp.json 的 server 重命名为 connectorId（SDK 需要 connectorId 作为 server name）
+  const serverNameToConnectorId = new Map<string, string>()
+  for (const [connectorId, connector] of Object.entries(connectorsConfig.connectors)) {
     if (!connector.enabled) continue
     if (connector.type !== 'mcp') continue
-    if (selectedNames && !selectedNames.has(name)) continue
-
-    // 路径穿越防护
-    if (!/^[a-zA-Z0-9._-]+$/.test(name)) {
-      console.warn(`[Agent 编排] 跳过非法连接器名称: ${name}`)
-      continue
-    }
-
-    // 优先从 connectors/{name}/mcp.json 加载
-    const mcpPath = join(connectorsDir, name, 'mcp.json')
-    if (existsSync(mcpPath)) {
-      try {
-        const entry = JSON.parse(readFileSync(mcpPath, 'utf-8'))
-        registerMcpServer(name, entry, mcpServers)
-        if (connector.serverName) coveredServerNames.add(connector.serverName)
-        continue
-      } catch (err) {
-        console.error(`[Agent 编排] 读取连接器 MCP 配置失败 (${name}):`, err)
-      }
-    }
-
-    // 兜底：从旧 mcp.json 按 serverName 查找
-    if (connector.serverName) {
-      const oldEntry = oldMcpConfig.servers?.[connector.serverName]
-      if (oldEntry?.enabled) {
-        registerMcpServer(name, oldEntry, mcpServers)
-        coveredServerNames.add(connector.serverName)
-      }
-    }
+    const serverName = connector.serverName ?? connectorId
+    serverNameToConnectorId.set(serverName, connectorId)
   }
 
-  // 第二阶段：加载旧 mcp.json 中未被连接器覆盖的 server
-  for (const [name, entry] of Object.entries(oldMcpConfig.servers ?? {})) {
-    if (selectedNames && !selectedNames.has(name)) continue
+  const loadedServerNames = new Set<string>()
+
+  // 加载被 connectors.json 管理的 server（状态过滤 + serverName → connectorId 重命名）
+  for (const [serverName, entry] of Object.entries(mcpConfig.servers ?? {})) {
+    if (selectedNames && !selectedNames.has(serverName)) continue
     if (!entry.enabled) continue
-    if (name === 'memos-cloud') continue
-    if (coveredServerNames.has(name)) continue
-    registerMcpServer(name, entry, mcpServers)
+    if (serverName === 'memos-cloud') continue
+
+    const connectorId = serverNameToConnectorId.get(serverName)
+    if (!connectorId) continue
+
+    registerMcpServer(connectorId, entry, mcpServers)
+    loadedServerNames.add(serverName)
+  }
+
+  // 向后兼容：加载未被 connectors.json 管理的 server（如迁移前的旧用户配置）
+  for (const [serverName, entry] of Object.entries(mcpConfig.servers ?? {})) {
+    if (selectedNames && !selectedNames.has(serverName)) continue
+    if (!entry.enabled) continue
+    if (serverName === 'memos-cloud') continue
+    if (loadedServerNames.has(serverName)) continue
+
+    registerMcpServer(serverName, entry, mcpServers)
   }
 
   if (Object.keys(mcpServers).length > 0) {

@@ -46,12 +46,6 @@ function writeConnectorsConfig(workspaceSlug: string, connectors: Record<string,
   )
 }
 
-function writeConnectorMcp(workspaceSlug: string, name: string, config: Record<string, unknown>): void {
-  const dir = join(getConnectorsDir(workspaceSlug), name)
-  mkdirSync(dir, { recursive: true })
-  writeFileSync(join(dir, 'mcp.json'), JSON.stringify(config, null, 2), 'utf-8')
-}
-
 describe('buildMcpServers', () => {
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'proma-mcp-builder-'))
@@ -66,7 +60,7 @@ describe('buildMcpServers', () => {
     rmSync(root, { recursive: true, force: true })
   })
 
-  test('只有旧 mcp.json 时加载全部 enabled server', () => {
+  test('无 connectors.json 时加载 mcp.json 中全部 enabled server（向后兼容）', () => {
     writeWorkspaceMcp('default')
     const servers = buildMcpServers('default')
     expect(Object.keys(servers).sort()).toEqual(['docs', 'email'])
@@ -78,20 +72,20 @@ describe('buildMcpServers', () => {
     expect(Object.keys(servers).sort()).toEqual(['docs', 'email'])
   })
 
-  test('只加载指定名称的旧 MCP', () => {
+  test('select 指定加载部分 server', () => {
     writeWorkspaceMcp('default')
     const servers = buildMcpServers('default', undefined, ['email'])
     expect(Object.keys(servers)).toEqual(['email'])
     expect(servers.email).toMatchObject({ type: 'stdio', command: 'mcp-email-server' })
   })
 
-  test('不加载未启用的 server', () => {
+  test('不加载 mcp.json 中 enabled=false 的 server', () => {
     writeWorkspaceMcp('default')
     const servers = buildMcpServers('default', undefined, ['disabled'])
     expect(servers).toEqual({})
   })
 
-  test('连接器从 connectors/{name}/mcp.json 加载（新格式优先）', () => {
+  test('连接器通过 connectors.json 状态过滤并重命名为 connectorId', () => {
     writeWorkspaceMcp('default')
     writeConnectorsConfig('default', {
       'huatai-email': {
@@ -99,19 +93,15 @@ describe('buildMcpServers', () => {
         displayName: '华泰邮箱', serverName: 'email',
       },
     })
-    writeConnectorMcp('default', 'huatai-email', {
-      type: 'stdio', command: '/usr/local/bin/mcp-email-server',
-      args: ['stdio'],
-      env: { MCP_EMAIL_SERVER_ACCOUNT_NAME: 'htsc' },
-    })
 
     const servers = buildMcpServers('default')
+    // mcp.json 中 'email' 的配置被映射为 connectorId 'huatai-email'
     expect(Object.keys(servers).sort()).toEqual(['docs', 'huatai-email'])
-    expect(servers['huatai-email']).toBeDefined()
-    expect(servers['email']).toBeUndefined() // 被连接器覆盖，不再以旧名出现
+    expect(servers['huatai-email']).toMatchObject({ type: 'stdio', command: 'mcp-email-server' })
+    expect(servers['email']).toBeUndefined() // 被连接器重命名，旧名不再出现
   })
 
-  test('连接器无 mcp.json 时从旧 mcp.json 按 serverName 兜底', () => {
+  test('连接器从 mcp.json 取配置（connectors/{name}/mcp.json 不再作为配置源）', () => {
     writeWorkspaceMcp('default')
     writeConnectorsConfig('default', {
       'huatai-email': {
@@ -119,14 +109,13 @@ describe('buildMcpServers', () => {
         displayName: '华泰邮箱', serverName: 'email',
       },
     })
-    // 不写 connectors/huatai-email/mcp.json
 
     const servers = buildMcpServers('default')
     expect(Object.keys(servers).sort()).toEqual(['docs', 'huatai-email'])
-    expect(servers['email']).toBeUndefined() // 被连接器覆盖，旧名不再出现
+    expect(servers['email']).toBeUndefined()
   })
 
-  test('disabled 连接器不加载，但旧 mcp.json 中同名 server 也不被覆盖', () => {
+  test('disabled 连接器对应的 server 按原始名加载（不被重命名）', () => {
     writeWorkspaceMcp('default')
     writeConnectorsConfig('default', {
       'huatai-email': {
@@ -135,8 +124,8 @@ describe('buildMcpServers', () => {
       },
     })
 
-    // connector disabled → 不进入阶段1 → email 不被 coveredServerNames 标记
-    // 阶段2 加载 email 为旧名
+    // connector disabled → email 不在 serverNameToConnectorId 中
+    // → 通过向后兼容路径加载为原始名 'email'
     const servers = buildMcpServers('default')
     expect(Object.keys(servers).sort()).toEqual(['docs', 'email'])
     expect(servers.email).toBeDefined()

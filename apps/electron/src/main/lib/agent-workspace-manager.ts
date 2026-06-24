@@ -759,41 +759,41 @@ export function migrateMcpJsonToConnectors(workspaceSlug: string): void {
   try {
     const oldConfig = JSON.parse(readFileSync(mcpPath, 'utf-8')) as WorkspaceMcpConfig
     const connectors: Record<string, ConnectorEntry> = {}
+    const connectorsDir = getConnectorsDir(workspaceSlug)
 
     for (const [name, entry] of Object.entries(oldConfig.servers ?? {})) {
-      const safeName = assertValidSlug(name)
-      if (safeName === 'memos-cloud') continue // 系统保留
+      if (name === 'memos-cloud') continue // 系统保留
       if (!entry.command && !entry.url) continue // 无有效配置跳过
 
-      const mcpDir = join(getConnectorsDir(workspaceSlug), safeName)
-      if (!existsSync(mcpDir)) {
-        mkdirSync(mcpDir, { recursive: true })
+      // 创建 connectors/{name}/connector.json（元数据文件，不含运行时配置）
+      const connectorDir = join(connectorsDir, name)
+      if (!existsSync(connectorDir)) {
+        mkdirSync(connectorDir, { recursive: true })
       }
-
-      // 写入子目录 mcp.json（不含 enabled 字段，启用状态统一由 connectors.json 管理）
-      const serverConfig: Record<string, unknown> = {
-        type: entry.type,
+      const connectorJson: Record<string, unknown> = {
+        type: 'mcp',
+        source: 'user',
+        displayName: name,
+        category: '用户自定义',
+        status: 'available',
       }
-      if (entry.command) serverConfig.command = entry.command
-      if (entry.args && entry.args.length > 0) serverConfig.args = entry.args
-      if (entry.env && Object.keys(entry.env).length > 0) serverConfig.env = entry.env
-      if (entry.url) serverConfig.url = entry.url
-      if (entry.headers && Object.keys(entry.headers).length > 0) serverConfig.headers = entry.headers
-      if (entry.timeout) serverConfig.timeout = entry.timeout
-
-      writeFileSync(join(mcpDir, 'mcp.json'), JSON.stringify(serverConfig, null, 2), 'utf-8')
+      writeFileSync(join(connectorDir, 'connector.json'), JSON.stringify(connectorJson, null, 2), 'utf-8')
 
       connectors[name] = {
         type: 'mcp',
         enabled: entry.enabled ?? false,
         source: 'user',
         displayName: name,
+        category: '用户自定义',
+        status: 'available',
+        serverName: name,
       }
     }
 
     saveWorkspaceConnectorsConfig(workspaceSlug, { version: '1.0', connectors })
-    renameSync(mcpPath, mcpPath + '.bak')
-    console.log(`[Agent 工作区] 已迁移 mcp.json → connectors/ (${workspaceSlug})`)
+    // mcp.json 保持不变，它是运行时配置的唯一来源
+    // connectors.json 只管理状态（enabled/type/source）
+    console.log(`[Agent 工作区] 已从 mcp.json 迁移连接器 (${workspaceSlug})`)
   } catch (error) {
     console.error('[Agent 工作区] 迁移 MCP 配置失败:', error)
   }
