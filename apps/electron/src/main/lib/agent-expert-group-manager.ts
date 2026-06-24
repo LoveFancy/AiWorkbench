@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { basename, join } from 'node:path'
+import { basename, join, resolve, relative, isAbsolute } from 'node:path'
 import type {
   AgentDefinition,
   AgentExpertGroupInfo,
@@ -8,7 +8,7 @@ import type {
   AgentPluginIssueLevel,
   McpServerEntry,
 } from '@proma/shared'
-import { listInstalledPlugins } from './plugin-registry-service'
+import { listInstalledPlugins, listInstalledPluginsAsync } from './plugin-registry-service'
 import { getDefaultSkillsDir } from './config-paths'
 
 const SUPPORTED_BUILTIN_TOOLS = new Set(['web-search'])
@@ -205,12 +205,76 @@ function validateExpertReferences(pluginPath: string, manifest: AgentExpertGroup
   return issues
 }
 
+/**
+ * 将 capability.relativePath 解析为绝对路径，并确保它仍位于 pluginPath 内，
+ * 防止清单中的 `../` 等片段越权访问插件目录之外的文件。
+ * 越界时返回 null。
+ */
+function resolveCapabilityPath(pluginPath: string, relativePath: string): string | null {
+  const filePath = resolve(pluginPath, relativePath)
+  const rel = relative(resolve(pluginPath), filePath)
+  if (rel.startsWith('..') || isAbsolute(rel)) return null
+  return filePath
+}
+
 export function listAgentExpertGroups(paths?: ExpertGroupRegistryPaths): AgentExpertGroupInfo[] {
   const groups: AgentExpertGroupInfo[] = []
   for (const plugin of listInstalledPlugins(paths)) {
     const capabilities = plugin.capabilities.filter((capability) => capability.type === 'expert-group' && capability.relativePath)
     for (const capability of capabilities) {
-      const filePath = join(plugin.path, capability.relativePath!)
+      const filePath = resolveCapabilityPath(plugin.path, capability.relativePath!)
+      if (!filePath) continue
+      const { manifest, issues } = readExpertManifest(filePath, plugin.name)
+      if (!manifest) {
+        groups.push({
+          id: capability.name,
+          name: plugin.name,
+          mainRole: { name: '', prompt: '' },
+          expertType: capability.expertType,
+          sourcePluginId: plugin.id,
+          sourceLabel: plugin.name,
+          sourcePluginVersion: plugin.version,
+          sourcePluginKind: plugin.kind,
+          sourcePluginPath: plugin.path,
+          filePath,
+          enabled: plugin.enabled,
+          status: statusFor(plugin.enabled, issues),
+          issues,
+        })
+        continue
+      }
+
+      const allIssues = [
+        ...issues,
+        ...validateExpertReferences(plugin.path, manifest, paths),
+        ...(capability.issue ? [capability.issue] : []),
+      ]
+      groups.push({
+        ...manifest,
+        expertType: manifest.expertType ?? capability.expertType,
+        sourcePluginId: plugin.id,
+        sourceLabel: plugin.name,
+        sourcePluginVersion: plugin.version,
+        sourcePluginKind: plugin.kind,
+        sourcePluginPath: plugin.path,
+        filePath,
+        enabled: plugin.enabled,
+        status: statusFor(plugin.enabled, allIssues),
+        issues: allIssues,
+      })
+    }
+  }
+  return groups.sort((a, b) => a.name.localeCompare(b.name))
+}
+
+export async function listAgentExpertGroupsAsync(paths?: ExpertGroupRegistryPaths): Promise<AgentExpertGroupInfo[]> {
+  const groups: AgentExpertGroupInfo[] = []
+  const plugins = await listInstalledPluginsAsync(paths)
+  for (const plugin of plugins) {
+    const capabilities = plugin.capabilities.filter((capability) => capability.type === 'expert-group' && capability.relativePath)
+    for (const capability of capabilities) {
+      const filePath = resolveCapabilityPath(plugin.path, capability.relativePath!)
+      if (!filePath) continue
       const { manifest, issues } = readExpertManifest(filePath, plugin.name)
       if (!manifest) {
         groups.push({

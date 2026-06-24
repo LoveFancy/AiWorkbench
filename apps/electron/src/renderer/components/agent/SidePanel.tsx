@@ -44,6 +44,7 @@ import {
   getParentPath,
   isSameOrChildPath,
   normalizeFsPath,
+  filterMovablePaths,
   readFileTreeDragPayload,
 } from '@/components/file-browser'
 import { DiffPanelTabBar } from '@/components/diff/DiffPanelTabBar'
@@ -537,12 +538,7 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
   }, [])
 
   const movePathsToRootDirectory = React.useCallback(async (paths: string[], targetDir: string): Promise<void> => {
-    const uniquePaths = Array.from(new Set(paths))
-    const movablePaths = uniquePaths.filter((path) => {
-      if (normalizeFsPath(getParentPath(path)) === normalizeFsPath(targetDir)) return false
-      if (isSameOrChildPath(path, targetDir)) return false
-      return true
-    })
+    const movablePaths = filterMovablePaths(paths, targetDir)
     if (movablePaths.length === 0) return
 
     try {
@@ -993,6 +989,7 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                         focusedFileArea === 'session' && rootDropTarget !== 'session' && 'ring-1 ring-border/50 ring-inset',
                       )}
                       onClick={handleSessionFilesBlankClick}
+                      onContextMenu={(e) => e.preventDefault()}
                       onFocus={() => setFocusedFileArea('session')}
                       onBlur={() => setFocusedFileArea((current) => current === 'session' ? null : current)}
                       onDragOver={(event) => handleRootDragOver(event, 'session')}
@@ -1045,6 +1042,9 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                             clearDropZoneHighlight()
                             return saveExternalItemsToDirectory(payload, 'session', targetDir)
                           }}
+                          onExternalFilesPaste={(payload, targetDir) =>
+                            saveExternalItemsToDirectory(payload, 'session', targetDir)
+                          }
                         />
                       </>
                       <FileDropZone
@@ -1158,6 +1158,7 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                       focusedFileArea === 'workspace' && rootDropTarget !== 'workspace' && 'ring-1 ring-border/50 ring-inset',
                     )}
                     onClick={handleWorkspaceFilesBlankClick}
+                    onContextMenu={(e) => e.preventDefault()}
                     onFocus={() => setFocusedFileArea('workspace')}
                     onBlur={() => setFocusedFileArea((current) => current === 'workspace' ? null : current)}
                     onDragOver={(event) => handleRootDragOver(event, 'workspace')}
@@ -1211,6 +1212,9 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
                             clearDropZoneHighlight()
                             return saveExternalItemsToDirectory(payload, 'workspace', targetDir)
                           }}
+                          onExternalFilesPaste={(payload, targetDir) =>
+                            saveExternalItemsToDirectory(payload, 'workspace', targetDir)
+                          }
                         />
                       </>
                     )}

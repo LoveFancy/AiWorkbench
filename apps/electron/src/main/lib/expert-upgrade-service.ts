@@ -12,7 +12,7 @@ import { compareVersion } from './updater/workmate-version'
 /** 升级编排的依赖注入点（便于测试，默认走真实实现） */
 export interface EnsureExpertGroupLatestDeps {
   fetchDetail: (id: string) => Promise<ServerExpertGroupSummary | null>
-  download: (id: string, options: { overwrite?: boolean }) => Promise<AgentPluginInfo>
+  download: (id: string, options: { overwrite?: boolean; version?: string }) => Promise<AgentPluginInfo>
 }
 
 /** per-id 互斥：同一专家团的并发升级请求复用同一个 Promise，避免重复下载 + overwrite 写竞争 */
@@ -54,7 +54,7 @@ export function ensureExpertGroupLatest(
       if (compareVersion(detail.version, localVersion) <= 0) {
         return { updated: false }                                  // 无更新
       }
-      const plugin = await resolved.download(id, { overwrite: true })
+      const plugin = await resolved.download(id, { overwrite: true, version: detail.version })
       return { updated: true, plugin }
     } catch (err) {
       console.warn('[expert-upgrade] 召唤前版本检查/升级失败，降级本地版: id=%s', id, err)
