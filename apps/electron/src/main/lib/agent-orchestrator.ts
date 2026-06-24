@@ -611,6 +611,11 @@ export class AgentOrchestrator {
       })
       _diag('injectAutomationMcpServer 完成')
 
+      _diag('开始 injectEipRequestMcpServer (await)')
+      const { injectEipRequestMcpServer } = await import('./eip-request-mcp')
+      await injectEipRequestMcpServer(sdk, mcpServers)
+      _diag('injectEipRequestMcpServer 完成')
+
       // 注入自定义 HTTP 工具（Tool Builder 创建的 customTools）
       const { injectHttpCustomMcpServer } = await import('./chat-tools/http-custom-mcp')
       await injectHttpCustomMcpServer(sdk, mcpServers)
