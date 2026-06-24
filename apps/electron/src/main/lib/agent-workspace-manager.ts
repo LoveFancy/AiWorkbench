@@ -697,6 +697,49 @@ export function registerUserConnector(
 }
 
 /**
+ * 注销用户创建的连接器（删除 connectors/{name}/ 目录 + connectors.json 条目 + mcp.json 条目）
+ */
+export function unregisterUserConnector(workspaceSlug: string, name: string): void {
+  const safeName = assertValidSlug(name)
+  const connectorsDir = getConnectorsDir(workspaceSlug)
+  const connectorDir = join(connectorsDir, safeName)
+
+  // 1. 删除 connectors/{name}/ 目录
+  try {
+    if (existsSync(connectorDir)) {
+      rmSync(connectorDir, { recursive: true, force: true })
+      console.log(`[Agent 工作区] 已删除连接器目录: ${connectorDir}`)
+    }
+  } catch (err) {
+    console.warn(`[Agent 工作区] 删除连接器目录失败 (${safeName}):`, err)
+  }
+
+  // 2. 从 connectors.json 中移除
+  try {
+    const config = getWorkspaceConnectorsConfig(workspaceSlug)
+    if (config.connectors[name]) {
+      delete config.connectors[name]
+      saveWorkspaceConnectorsConfig(workspaceSlug, config)
+    }
+  } catch (err) {
+    console.warn(`[Agent 工作区] 从 connectors.json 移除连接器失败 (${safeName}):`, err)
+  }
+
+  // 3. 从 mcp.json 中移除
+  try {
+    const mcpConfig = getWorkspaceMcpConfig(workspaceSlug)
+    if (mcpConfig.servers[name]) {
+      delete mcpConfig.servers[name]
+      saveWorkspaceMcpConfig(workspaceSlug, mcpConfig)
+    }
+  } catch (err) {
+    console.warn(`[Agent 工作区] 从 mcp.json 移除连接器失败 (${safeName}):`, err)
+  }
+
+  console.log(`[Agent 工作区] 已注销用户连接器: ${name} (workspace: ${workspaceSlug})`)
+}
+
+/**
  * 一次性迁移：旧 mcp.json → 新 connectors/ 结构
  *
  * 如果 connectors.json 已存在则跳过（已迁移）。

@@ -163,7 +163,10 @@ export function AgentConnectorPicker({
     setConnectorsConfig((prev) => {
       if (!prev) return prev
       const c = prev.connectors[connectorId]
-      if (!c) return prev
+      if (!c) {
+        // 自定义连接器可能尚未注册到 connectors.json，补一个最小条目
+        return { ...prev, connectors: { ...prev.connectors, [connectorId]: { type: 'mcp', enabled, source: 'user' } } }
+      }
       return { ...prev, connectors: { ...prev.connectors, [connectorId]: { ...c, enabled } } }
     })
 
@@ -182,6 +185,12 @@ export function AgentConnectorPicker({
         await window.electronAPI.saveConnectorsConfig(workspaceSlug, {
           ...cc,
           connectors: { ...cc.connectors, [connectorId]: { ...c, enabled } },
+        })
+      } else {
+        // 补充缺失的自定义连接器条目
+        await window.electronAPI.saveConnectorsConfig(workspaceSlug, {
+          ...cc,
+          connectors: { ...cc.connectors, [connectorId]: { type: 'mcp', enabled, source: 'user' } },
         })
       }
     } catch (e) {

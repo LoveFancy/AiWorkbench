@@ -30,7 +30,6 @@ export interface AgentSkillsData {
   toggleSkill: (slug: string, enabled: boolean) => Promise<void>
   deleteSkill: (slug: string, name: string) => Promise<boolean>
   updateSkill: (slug: string) => Promise<void>
-  toggleMcp: (name: string, enabled: boolean) => Promise<void>
   deleteMcp: (name: string) => Promise<void>
 }
 
@@ -123,36 +122,23 @@ export function useAgentSkillsData(): AgentSkillsData {
     }
   }, [workspaceSlug, updatingSkill, bumpCapabilitiesVersion])
 
-  const toggleMcp = React.useCallback(async (name: string, enabled: boolean) => {
-    try {
-      const entry = mcpConfig.servers[name]
-      if (!entry) return
-      const newConfig: WorkspaceMcpConfig = {
-        servers: { ...mcpConfig.servers, [name]: { ...entry, enabled } },
-      }
-      await window.electronAPI.saveWorkspaceMcpConfig(workspaceSlug, newConfig)
-      setMcpConfig(newConfig)
-      bumpCapabilitiesVersion((v) => v + 1)
-    } catch (error) {
-      console.error('[Agent 技能] 切换 MCP 服务器状态失败:', error)
-      toast.error('切换 MCP 状态失败')
-    }
-  }, [workspaceSlug, mcpConfig, bumpCapabilitiesVersion])
-
   const deleteMcp = React.useCallback(async (name: string) => {
     const entry = mcpConfig.servers[name]
     if (entry?.isBuiltin) return
     try {
+      // 从 mcpConfig 中乐观移除
       const newServers = { ...mcpConfig.servers }
       delete newServers[name]
       const newConfig: WorkspaceMcpConfig = { servers: newServers }
-      await window.electronAPI.saveWorkspaceMcpConfig(workspaceSlug, newConfig)
       setMcpConfig(newConfig)
+
+      // 调用后端统一删除（connectors/{name}/ 目录 + connectors.json + mcp.json）
+      await window.electronAPI.unregisterUserConnector(workspaceSlug, name)
       bumpCapabilitiesVersion((v) => v + 1)
-      toast.success(`已删除 MCP 服务器：${name}`)
+      toast.success(`已删除连接器：${name}`)
     } catch (error) {
-      console.error('[Agent 技能] 删除 MCP 服务器失败:', error)
-      toast.error('删除 MCP 服务器失败')
+      console.error('[Agent 技能] 删除连接器失败:', error)
+      toast.error('删除连接器失败')
     }
   }, [workspaceSlug, mcpConfig, bumpCapabilitiesVersion])
 
@@ -169,7 +155,6 @@ export function useAgentSkillsData(): AgentSkillsData {
     toggleSkill,
     deleteSkill,
     updateSkill,
-    toggleMcp,
     deleteMcp,
   }
 }

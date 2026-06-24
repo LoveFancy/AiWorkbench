@@ -142,8 +142,12 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
       const config = await window.electronAPI.getConnectorsConfig(data.workspaceSlug)
       const connector = config.connectors[connectorId]
       if (!connector) {
-        // 回滚乐观 UI 更新
-        setConnectorEnabledMap((prev) => ({ ...prev, [connectorId]: !enabled }))
+        // 自定义连接器可能尚未注册，补一个最小条目
+        await window.electronAPI.saveConnectorsConfig(data.workspaceSlug, {
+          ...config,
+          connectors: { ...config.connectors, [connectorId]: { type: 'mcp', enabled, source: 'user' } },
+        })
+        bumpCapabilities((v) => v + 1)
         return
       }
       await window.electronAPI.saveConnectorsConfig(data.workspaceSlug, {
@@ -594,11 +598,7 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
                         }
                       }}
                       onToggle={(enabled) => {
-                        if (isPreset) {
-                          handleToggleDefaultConnector(connector.id, enabled)
-                        } else if (connector.serverName) {
-                          data.toggleMcp(connector.serverName, enabled)
-                        }
+                        handleToggleDefaultConnector(connector.id, enabled)
                       }}
                       onUnbindFeishu={handleUnbindFeishu}
                       unbindingFeishu={unbindingFeishu}
@@ -1331,20 +1331,20 @@ function HuataiEmailConnectorDialog({
         )}
 
         {initSteps.length > 0 && (
-          <div className="mt-5 min-w-0 overflow-hidden space-y-2 rounded-xl bg-muted/45 p-3">
+          <div className="mt-5 min-w-0 max-h-[240px] overflow-y-auto space-y-2 rounded-xl bg-muted/45 p-3">
             {initSteps.map((step) => (
-              <div key={step.id} className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+              <div key={step.id} className="flex min-w-0 items-start gap-2 text-xs text-muted-foreground">
                 {step.status === 'running' ? (
-                  <Loader2 size={14} className="shrink-0 animate-spin text-primary" />
+                  <Loader2 size={14} className="shrink-0 animate-spin text-primary mt-0.5" />
                 ) : step.status === 'success' || step.status === 'skipped' ? (
-                  <Check size={14} className="shrink-0 text-emerald-500" />
+                  <Check size={14} className="shrink-0 text-emerald-500 mt-0.5" />
                 ) : step.status === 'error' ? (
-                  <XCircle size={14} className="shrink-0 text-destructive" />
+                  <XCircle size={14} className="shrink-0 text-destructive mt-0.5" />
                 ) : (
-                  <span className="size-3.5 shrink-0 rounded-full border border-border" />
+                  <span className="size-3.5 shrink-0 rounded-full border border-border mt-0.5" />
                 )}
                 <span className="shrink-0 font-medium text-foreground/80">{step.label}</span>
-                {step.message && <span className="min-w-0 flex-1 truncate">{step.message}</span>}
+                {step.message && <span className="min-w-0 break-all">{step.message}</span>}
               </div>
             ))}
           </div>
