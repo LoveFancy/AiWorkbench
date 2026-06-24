@@ -8,7 +8,7 @@
  */
 
 import { getWorkspaceMcpConfig, getWorkspaceConnectorsConfig, readDisabledToolsFromConnectorJson } from '../agent-workspace-manager'
-import type { ConnectorsConfig } from '@proma/shared'
+import type { ConnectorsConfig, McpServerEntry } from '@proma/shared'
 import { getMemoryConfig } from '../memory-service'
 import { searchMemory, addMemory, formatSearchResult } from '../memos-client'
 import { getConnectorsDir } from '../config-paths'
@@ -110,7 +110,7 @@ export function buildMcpServers(
  */
 function registerMcpServer(
   name: string,
-  entry: Record<string, unknown>,
+  entry: McpServerEntry,
   mcpServers: Record<string, Record<string, unknown>>,
 ): void {
   if (typeof entry.type !== 'string') {
@@ -142,7 +142,7 @@ function registerMcpServer(
     mcpServers[name] = {
       type: entry.type,
       url: entry.url,
-      ...(entry.headers && typeof entry.headers === 'object' && Object.keys(entry.headers as Record<string, string>).length > 0 && { headers: entry.headers }),
+      ...(entry.headers && typeof entry.headers === 'object' && Object.keys(entry.headers).length > 0 && { headers: entry.headers as Record<string, string> }),
       required: false,
     }
   }

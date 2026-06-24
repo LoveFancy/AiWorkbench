@@ -85,7 +85,7 @@ async function resolveCommandPath(command: string, runCommand: (command: string,
   const result = await runCommand(probe, [command])
   if (!result.ok) return null
   // where/which 可能返回多行，取第一行
-  const path = result.stdout.trim().split('\n')[0].trim()
+  const path = result.stdout.trim().split('\n')[0]!.trim()
   return path || null
 }
 
