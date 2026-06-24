@@ -12,6 +12,7 @@ import {
   Trash2,
   FolderSearch,
   FolderInput,
+  FolderUp,
   Pencil,
   MessageSquarePlus,
   FilePlus,
@@ -51,6 +52,8 @@ import {
   eventHasExternalFiles,
   isPointerInsideElement,
 } from './file-drag-utils'
+import { PasteProgressIndicator } from './paste-progress-indicator'
+import { exportPathsToFolder, writePathsToSystemClipboard } from './file-export-service'
 
 // ===== FileTreeItem 子组件 =====
 
@@ -329,6 +332,10 @@ export function FileTreeItem({
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.setData(FILE_TREE_DRAG_MIME, JSON.stringify({ paths }))
     event.dataTransfer.setData('text/plain', paths.join('\n'))
+    // 支持拖出到外部资源管理器
+    const fileUris = paths.map((p) => `file:///${p.replace(/\\/g, '/')}`).join('\r\n')
+    event.dataTransfer.setData('text/uri-list', fileUris)
+    void writePathsToSystemClipboard(paths)
   }
 
   const handleDragEnd = (): void => {
@@ -635,6 +642,22 @@ export function FileTreeItem({
           重命名
         </ContextMenuItem>
       )}
+      {/* 导出到外部文件夹 */}
+      {onCreateEntry && (
+        <>
+          <ContextMenuSeparator className="my-1" />
+          <ContextMenuItem
+            className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4"
+            onSelect={() => {
+              const paths = isSelected ? Array.from(selectedPaths) : [entry.path]
+              void exportPathsToFolder(paths)
+            }}
+          >
+            <FolderUp />
+            {menuSelectedCount > 1 ? `导出选中 (${menuSelectedCount})` : '导出到...'}
+          </ContextMenuItem>
+        </>
+      )}
       <ContextMenuSeparator className="my-1" />
       <ContextMenuItem
         className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4 text-destructive"
@@ -733,6 +756,9 @@ export function FileTreeItem({
             ) : (
               <span className="truncate text-xs flex-1">{entry.name}</span>
             )}
+
+            {/* 粘贴进度指示器 */}
+            <PasteProgressIndicator sourcePath={entry.path} />
 
           </div>
         </ContextMenuTrigger>

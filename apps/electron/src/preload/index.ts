@@ -998,6 +998,8 @@ export interface ElectronAPI {
 
   /** 清除系统剪贴板（用于内部文件复制时清除残留文件对象） */
   clearSystemClipboard: () => Promise<void>
+  /** 将文件路径写入系统剪贴板（支持在外部资源管理器/Finder 中粘贴） */
+  writePathsToSystemClipboard: (paths: string[]) => Promise<void>
 
   /** 列出附加目录内容 */
   listAttachedDirectory: (dirPath: string, access?: import('@proma/shared').FileAccessOptions) => Promise<FileEntry[]>
@@ -2453,6 +2455,10 @@ const electronAPI: ElectronAPI = {
 
   clearSystemClipboard: () => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.CLEAR_SYSTEM_CLIPBOARD)
+  },
+
+  writePathsToSystemClipboard: (paths: string[]) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.WRITE_PATHS_TO_SYSTEM_CLIPBOARD, paths)
   },
 
   listAttachedDirectory: (dirPath: string, access?: import('@proma/shared').FileAccessOptions) => {

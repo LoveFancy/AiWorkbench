@@ -24,6 +24,8 @@ interface UseFileBrowserKeyboardParams {
   onSelectedDirectoryChange?: (dirPath: string | null) => void
   onFilePreview?: (filePath: string) => void
   clearSelection: () => void
+  /** 多选删除触发（Delete键，selectedPaths.size > 1 时调用） */
+  onRequestMultiDelete?: () => void
 }
 
 export function useFileBrowserKeyboard({
@@ -40,6 +42,7 @@ export function useFileBrowserKeyboard({
   onSelectedDirectoryChange,
   onFilePreview,
   clearSelection,
+  onRequestMultiDelete,
 }: UseFileBrowserKeyboardParams): React.KeyboardEventHandler<HTMLDivElement> {
   const selectedPathsRef = React.useRef(selectedPaths)
   selectedPathsRef.current = selectedPaths
@@ -67,6 +70,9 @@ export function useFileBrowserKeyboard({
   const onSelectedDirectoryChangeRef = React.useRef(onSelectedDirectoryChange)
   onSelectedDirectoryChangeRef.current = onSelectedDirectoryChange
 
+  const onRequestMultiDeleteRef = React.useRef(onRequestMultiDelete)
+  onRequestMultiDeleteRef.current = onRequestMultiDelete
+
   const handleKeyDown = React.useCallback((e: React.KeyboardEvent) => {
     if (renamingPath) return
     if (e.nativeEvent.isComposing) return
@@ -78,13 +84,17 @@ export function useFileBrowserKeyboard({
     if (isDeleteKey && !isMod && selectedPathsRef.current.size > 0) {
       e.preventDefault()
       e.stopPropagation()
-      const firstPath = [...selectedPathsRef.current][0]!
-      const meta = metaMapRef.current?.get(firstPath)
-      handleRequestDeleteRef.current({
-        path: firstPath,
-        name: meta?.name ?? firstPath.split(/[/\\]/).pop() ?? '',
-        isDirectory: meta?.isDirectory ?? false,
-      } as FileEntry)
+      if (selectedPathsRef.current.size > 1) {
+        onRequestMultiDeleteRef.current?.()
+      } else {
+        const firstPath = [...selectedPathsRef.current][0]!
+        const meta = metaMapRef.current?.get(firstPath)
+        handleRequestDeleteRef.current({
+          path: firstPath,
+          name: meta?.name ?? firstPath.split(/[/\\]/).pop() ?? '',
+          isDirectory: meta?.isDirectory ?? false,
+        } as FileEntry)
+      }
       return
     }
 

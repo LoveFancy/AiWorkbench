@@ -1,4 +1,4 @@
-﻿/**
+/**
  * FileBrowser — 通用文件浏览器面板
  *
  * 显示指定根路径下的文件树，支持：
@@ -60,6 +60,9 @@ import {
   type FileTreeDragPayload,
 } from './file-drag-utils'
 import { FileTreeItem } from './FileTreeItem'
+import { upsertPasteProgressAtom, clearPasteProgressAtom } from './paste-progress-atom'
+import { pastePathsToTarget } from './file-clipboard-service'
+import { writePathsToSystemClipboard } from './file-export-service'
 
 export { FILE_TREE_DRAG_MIME, readFileTreeDragPayload, eventHasFileTreeDrag, eventHasExternalFiles }
 export type { FileTreeDragPayload }
@@ -105,6 +108,8 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
   const [error, setError] = React.useState<string | null>(null)
   const filesVersion = useAtomValue(workspaceFilesVersionAtom)
   const [fileClipboard, setFileClipboard] = useAtom(fileClipboardAtom)
+  const [, setPasteProgress] = useAtom(upsertPasteProgressAtom)
+  const [, clearPasteProgress] = useAtom(clearPasteProgressAtom)
   const containerRef = React.useRef<HTMLDivElement>(null)
 
   // ===== 可见节点元信息追踪（供键盘快捷键使用） =====
@@ -176,6 +181,8 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
   const [moving, setMoving] = React.useState(false)
 
   const selectedCount = selectedPaths.size
+  const selectedPathsRef = React.useRef(selectedPaths)
+  selectedPathsRef.current = selectedPaths
   const clearSelection = React.useCallback(() => {
     setSelectedPaths(new Set())
     onSelectedDirectoryChange?.(null)
@@ -283,13 +290,27 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
     setDeleteCount(selectedCount > 1 ? selectedCount : 1)
   }, [selectedCount])
 
+  /** 多选删除确认（键盘 Delete 键触发） */
+  const handleRequestMultiDelete = React.useCallback(() => {
+    if (selectedPaths.size === 0) return
+    const firstPath = [...selectedPaths][0]!
+    const meta = entryMetaMapRef.current.get(firstPath)
+    setDeleteTarget({
+      path: firstPath,
+      name: meta?.name ?? firstPath.split(/[/\\]/).pop() ?? '',
+      isDirectory: meta?.isDirectory ?? false,
+    } as FileEntry)
+    setDeleteCount(selectedPaths.size)
+  }, [selectedPaths])
+
   /** 执行删除 */
   const handleDelete = React.useCallback(async () => {
     if (!deleteTarget) return
+    const pathsToDelete = selectedPathsRef.current
     try {
-      if (selectedPaths.size > 1) {
-        // 批量删除
-        for (const path of selectedPaths) {
+      if (pathsToDelete.size > 1) {
+        // 批量删除：使用操作发起时的选中路径快照
+        for (const path of pathsToDelete) {
           await window.electronAPI.deleteFile(path)
         }
       } else {
@@ -301,7 +322,7 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
       console.error('[FileBrowser] 删除失败:', err)
     }
     setDeleteTarget(null)
-  }, [deleteTarget, selectedPaths, loadRoot])
+  }, [deleteTarget, loadRoot])
 
   /** 移动文件 */
   const handleMove = React.useCallback(async (entry: FileEntry) => {
@@ -364,41 +385,36 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
     return rootPath
   }, [selectedPaths, rootPath])
 
-  const handlePaste = React.useCallback(async (clipboard: FileClipboard) => {
+  const handlePaste = React.useCallback((clipboard: FileClipboard) => {
     const targetDir = getPasteTargetDir()
     if (clipboard.mode === 'cut') {
-      try {
-        await movePathsToDirectory(clipboard.paths, targetDir)
-      } catch (err) {
-        console.error('[FileBrowser] 剪切粘贴失败:', err)
-      } finally {
-        setFileClipboard(null)
-      }
+      void movePathsToDirectory(clipboard.paths, targetDir)
+        .finally(() => setFileClipboard(null))
       return
     }
 
-    try {
-      let copiedCount = 0
-      for (const sourcePath of Array.from(new Set(clipboard.paths))) {
-        await window.electronAPI.copyFile(sourcePath, targetDir)
-        copiedCount++
-      }
-      if (copiedCount > 0) {
-        await loadRoot()
+    // 复制：并发异步，fire-and-forget
+    pastePathsToTarget(
+      Array.from(new Set(clipboard.paths)),
+      targetDir,
+      'copy',
+      (entry) => setPasteProgress(entry),
+      () => {
+        clearPasteProgress()
+        loadRoot()
         onFilesMoved?.()
-      }
-    } catch (err) {
-      console.error('[FileBrowser] 粘贴失败:', err)
-      await loadRoot()
-      onFilesMoved?.()
-    }
-  }, [getPasteTargetDir, loadRoot, onFilesMoved, movePathsToDirectory, setFileClipboard])
+      },
+    )
+  }, [getPasteTargetDir, loadRoot, onFilesMoved, movePathsToDirectory, setFileClipboard, setPasteProgress, clearPasteProgress])
 
   // ===== 右键菜单复制/剪切/粘贴处理 =====
   const copyOrCutToClipboard = React.useCallback((mode: 'copy' | 'cut') => {
     if (selectedPaths.size === 0) return
-    setFileClipboard({ paths: [...selectedPaths], mode, sourceRoot: rootPath })
+    const paths = [...selectedPaths]
+    setFileClipboard({ paths, mode, sourceRoot: rootPath })
     void window.electronAPI.clearSystemClipboard()
+    // 同时写入系统剪贴板，支持在外部资源管理器/Finder 中粘贴
+    void writePathsToSystemClipboard(paths)
   }, [selectedPaths, rootPath, setFileClipboard])
 
   const handleContextCopy = React.useCallback(() => copyOrCutToClipboard('copy'), [copyOrCutToClipboard])
@@ -462,6 +478,11 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
     return () => document.removeEventListener('paste', handlePasteEvent, true)
   }, [handlePasteEvent])
 
+  // 组件卸载时清理粘贴进度
+  React.useEffect(() => {
+    return () => { clearPasteProgress() }
+  }, [clearPasteProgress])
+
   // ===== 键盘快捷键处理 =====
   const handleKeyDown = useFileBrowserKeyboard({
     renamingPath,
@@ -477,6 +498,7 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
     onSelectedDirectoryChange,
     onFilePreview,
     clearSelection,
+    onRequestMultiDelete: handleRequestMultiDelete,
   })
 
   const handleRootDragOver = React.useCallback((event: React.DragEvent): void => {

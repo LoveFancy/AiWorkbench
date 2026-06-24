@@ -2084,6 +2084,8 @@ export const AGENT_IPC_CHANNELS = {
   WRITE_CLIPBOARD_PREVIEW: 'agent:write-clipboard-preview',
   /** 清除系统剪贴板（用于内部文件复制时清除旧文件列表，防止外部粘贴冲突） */
   CLEAR_SYSTEM_CLIPBOARD: 'agent:clear-system-clipboard',
+  /** 将文件路径写入系统剪贴板（CF_HDROP / NSFilenamesPboardType） */
+  WRITE_PATHS_TO_SYSTEM_CLIPBOARD: 'agent:write-paths-to-system-clipboard',
 
   // 标题自动生成通知（主进程 → 渲染进程推送）
   /** 标题已更新（首次对话完成后自动生成） */
