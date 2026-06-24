@@ -29,7 +29,7 @@ interface McpServerFormProps {
   server: EditingServer | null
   /** 当前工作区 slug */
   workspaceSlug: string
-  onSaved: () => void
+  onSaved: (serverName: string) => void
   onCancel: () => void
 }
 
@@ -225,7 +225,7 @@ export function McpServerForm({ server, workspaceSlug, onSaved, onCancel }: McpS
       console.log(`[MCP 表单] 注册用户连接器: ${serverName}, enabled: ${entry.enabled}, testResult: ${testResult?.success}`)
 
       await window.electronAPI.registerUserConnector(workspaceSlug, serverName, entry, serverName)
-      onSaved()
+      onSaved(serverName)
     } catch (error) {
       console.error('[MCP 表单] 注册连接器失败:', error)
     } finally {

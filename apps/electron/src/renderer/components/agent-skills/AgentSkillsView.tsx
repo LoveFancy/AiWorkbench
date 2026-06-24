@@ -30,7 +30,7 @@ import {
 } from '@/components/ui/popover'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Switch } from '@/components/ui/switch'
-import { agentExpertGroupsAtom, loadAgentExpertGroupsAtom, workspaceCapabilitiesVersionAtom } from '@/atoms/agent-atoms'
+import { agentExpertGroupsAtom, loadAgentExpertGroupsAtom, workspaceCapabilitiesVersionAtom, agentSelectedMcpServersAtom } from '@/atoms/agent-atoms'
 import { loadRemoteExpertDataAtom } from '@/experts/atoms/expert-remote'
 import { useProjectActions } from '@/hooks/useProjectActions'
 import { ExpertPageView } from '@/experts/views/ExpertPageView'
@@ -75,7 +75,21 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
   const loadExpertGroups = useSetAtom(loadAgentExpertGroupsAtom)
   const loadRemoteExpertData = useSetAtom(loadRemoteExpertDataAtom)
   const bumpCapabilities = useSetAtom(workspaceCapabilitiesVersionAtom)
+  const setSelectedMcpServersMap = useSetAtom(agentSelectedMcpServersAtom)
   const { workspaces, currentWorkspaceId, selectProject } = useProjectActions()
+
+  /** 将连接器 ID 加入到所有会话的 MCP 白名单中 */
+  const addConnectorToSelectedMcpServers = React.useCallback((connectorId: string): void => {
+    setSelectedMcpServersMap((prev) => {
+      const map = new Map(prev)
+      for (const [sid, names] of map) {
+        if (!names.includes(connectorId)) {
+          map.set(sid, [...names, connectorId])
+        }
+      }
+      return map
+    })
+  }, [setSelectedMcpServersMap])
 
   const [tab, setTab] = React.useState<CapabilityTab>(initialTab)
   const [skillView, setSkillView] = React.useState<'market' | 'installed'>('market')
@@ -682,7 +696,11 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
         server={editingMcp}
         workspaceSlug={data.workspaceSlug}
         onOpenChange={(open) => { setMcpSheetOpen(open); if (!open) bumpCapabilities((v) => v + 1) }}
-        onSaved={() => setMcpSheetOpen(false)}
+        onSaved={(serverName) => {
+          setMcpSheetOpen(false)
+          bumpCapabilities((v) => v + 1)
+          addConnectorToSelectedMcpServers(serverName)
+        }}
         onChanged={() => bumpCapabilities((v) => v + 1)}
       />
 
@@ -743,6 +761,7 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
           setActiveDefaultConnector(null)
           void loadConnectorEnabledMap()
           bumpCapabilities((v) => v + 1)
+          addConnectorToSelectedMcpServers('huatai-email')
         }}
       />
 

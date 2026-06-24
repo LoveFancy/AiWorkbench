@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { join } from 'node:path'
-import type { WorkspaceMcpConfig } from '@proma/shared'
+import type { ConnectorsConfig, WorkspaceMcpConfig } from '@proma/shared'
 import { getAvailableConnectorsForPicker } from './AgentConnectorPicker'
 
 const source = await Bun.file(join(import.meta.dir, 'AgentConnectorPicker.tsx')).text()
@@ -30,17 +30,43 @@ const config: WorkspaceMcpConfig = {
   },
 }
 
+const connectorsConfig: ConnectorsConfig = {
+  version: '1.0',
+  connectors: {
+    'huatai-email': {
+      type: 'mcp',
+      enabled: true,
+      source: 'preset',
+      displayName: '华泰邮箱',
+      serverName: 'email',
+    },
+    'feishu-cli': {
+      type: 'cli',
+      enabled: false,
+      source: 'preset',
+      displayName: '飞书 CLI',
+    },
+    'hi-agent': {
+      type: 'cli',
+      enabled: false,
+      source: 'preset',
+      displayName: 'HiAgent 泰为',
+      status: 'coming-soon',
+    },
+  },
+}
+
 describe('AgentConnectorPicker helpers', () => {
   test('只展示已配置或可用的连接器', () => {
-    expect(getAvailableConnectorsForPicker(config).map((item) => item.displayName)).toEqual(['华泰邮箱', '飞书 CLI', 'HiAgent 泰为', 'docs'])
+    expect(getAvailableConnectorsForPicker(config, connectorsConfig, false).map((item) => item.displayName)).toEqual(['华泰邮箱', '飞书 CLI', 'HiAgent 泰为', 'docs', 'disabled'])
     // 华泰邮箱因为有 email entry 所以 isConfigured=true；docs 也是自定义连接器，isConfigured=true
-    expect(getAvailableConnectorsForPicker(config).filter((item) => item.isConfigured).map((item) => item.name)).toEqual(['email', 'docs'])
+    expect(getAvailableConnectorsForPicker(config, connectorsConfig, false).filter((item) => item.isConfigured).map((item) => item.name)).toEqual(['email', 'docs', 'disabled'])
   })
 
   test('按名称和目标地址搜索连接器', () => {
-    expect(getAvailableConnectorsForPicker(config, 'mail').map((item) => item.name)).toEqual(['email'])
-    expect(getAvailableConnectorsForPicker(config, '飞书').map((item) => item.displayName)).toEqual(['飞书 CLI'])
-    expect(getAvailableConnectorsForPicker(config, 'example').map((item) => item.name)).toEqual(['docs'])
+    expect(getAvailableConnectorsForPicker(config, connectorsConfig, false, 'mail').map((item) => item.name)).toEqual(['email'])
+    expect(getAvailableConnectorsForPicker(config, connectorsConfig, false, '飞书').map((item) => item.displayName)).toEqual(['飞书 CLI'])
+    expect(getAvailableConnectorsForPicker(config, connectorsConfig, false, 'example').map((item) => item.name)).toEqual(['docs'])
   })
 
   test('连接器入口包含更多连接器和状态文案', () => {

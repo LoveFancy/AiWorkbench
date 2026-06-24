@@ -32,7 +32,7 @@ import { normalizeAnthropicBaseUrlForSdk, getPromaUserAgent } from '@proma/core'
 import pkg from '../../../package.json' with { type: 'json' }
 import { appendSDKMessages, updateAgentSessionMeta, getAgentSessionMeta, getAgentSessionMessages } from './agent-session-manager'
 import { getAgentWorkspace, ensurePluginManifest, getWorkspaceConnectorsConfig, migrateMcpJsonToConnectors, syncDefaultConnectorsToWorkspace, readSkillDirsFromConnectorJson } from './agent-workspace-manager'
-import { getAgentSessionWorkspacePath } from './config-paths'
+import { getAgentSessionWorkspacePath, getConnectorsDir } from './config-paths'
 import { getRuntimeStatus } from './runtime-init'
 import { getSettings } from './settings-service'
 import {

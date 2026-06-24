@@ -64,7 +64,7 @@ async function defaultCommandExists(command: string): Promise<boolean> {
 
 function defaultRunCommand(command: string, args: string[]): Promise<CommandResult> {
   return new Promise((resolve) => {
-    execFile(command, args, { timeout: 120_000, windowsHide: true }, (error, stdout, stderr) => {
+    execFile(command, args, { timeout: 10_000, windowsHide: true }, (error, stdout, stderr) => {
       resolve({
         ok: !error,
         stdout: stdout.toString(),
@@ -185,8 +185,13 @@ export async function initializeDefaultConnector(
   const connectorDef = connectorsConfig.connectors[input.connectorId]
   const serverName = connectorDef?.serverName ?? input.connectorId
 
-  const pythonCommand = await findFirstAvailable(['python3', 'python'], commandExists)
-  const pipCommand = await findFirstAvailable(['pip3', 'pip'], commandExists)
+  // Windows: python 优先（python3 通常是 Store 存根或不存在，where 搜索慢）
+  // macOS/Linux: python3 优先
+  const pythonCommands = process.platform === 'win32' ? ['python', 'python3'] : ['python3', 'python']
+  const pipCommands = process.platform === 'win32' ? ['pip', 'pip3'] : ['pip3', 'pip']
+
+  const pythonCommand = await findFirstAvailable(pythonCommands, commandExists)
+  const pipCommand = await findFirstAvailable(pipCommands, commandExists)
   if (!pythonCommand || !pipCommand) {
     logConnectorInfo('Python 环境检查失败', { pythonCommand, pipCommand })
     setStep(steps, 'check-python', 'error', '未检测到可用的 Python 或 pip')

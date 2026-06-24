@@ -103,7 +103,7 @@ function buildMcpTool(
         return { content: [{ type: 'text' as const, text: `HTTP 请求失败: ${msg}` }] }
       }
     },
-    { annotations: { readOnlyHint: meta.method === 'GET' } },
+    { annotations: { readOnlyHint: meta.httpConfig?.method === 'GET' } },
   )
 }
 
