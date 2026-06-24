@@ -1137,7 +1137,7 @@ function ConnectorCard({
         )}
 
         <div className="ml-auto flex items-center gap-1">
-          {isCli && isConfigured && (
+          {connector.id === 'feishu-cli' && isCli && isConfigured && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
