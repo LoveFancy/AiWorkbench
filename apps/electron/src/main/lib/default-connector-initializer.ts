@@ -1,4 +1,6 @@
 import { execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { isAbsolute } from 'node:path'
 import type {
   DefaultConnectorInitStep,
   DefaultConnectorInitStepId,
@@ -6,7 +8,8 @@ import type {
   InitializeDefaultConnectorResult,
   McpServerEntry,
 } from '@proma/shared'
-import { getWorkspaceMcpConfig, saveWorkspaceMcpConfig } from './agent-workspace-manager'
+import { buildHuataiEmailMcpEntry } from '@proma/shared'
+import { getWorkspaceConnectorsConfig, saveWorkspaceConnectorsConfig, getWorkspaceMcpConfig, saveWorkspaceMcpConfig } from './agent-workspace-manager'
 import { validateMcpServer } from './mcp-validator'
 
 interface CommandResult {
@@ -71,24 +74,19 @@ function defaultRunCommand(command: string, args: string[]): Promise<CommandResu
   })
 }
 
-function buildHuataiEmailMcpEntry(input: Required<Pick<InitializeDefaultConnectorInput, 'emailAddress' | 'password'>>): McpServerEntry {
-  const emailAddress = input.emailAddress.trim()
-  return {
-    type: 'stdio',
-    command: 'mcp-email-server',
-    args: ['stdio'],
-    env: {
-      MCP_EMAIL_SERVER_ACCOUNT_NAME: 'htsc',
-      MCP_EMAIL_SERVER_EMAIL_ADDRESS: emailAddress,
-      MCP_EMAIL_SERVER_PASSWORD: input.password.trim(),
-      MCP_EMAIL_SERVER_FULL_NAME: emailAddress,
-      MCP_EMAIL_SERVER_USER_NAME: emailAddress,
-      MCP_EMAIL_SERVER_IMAP_HOST: 'htemail.htsc.com.cn',
-      MCP_EMAIL_SERVER_IMAP_PORT: '993',
-      MCP_EMAIL_SERVER_IMAP_SSL: 'true',
-    },
-    enabled: true,
-  }
+/**
+ * 解析命令的全路径
+ *
+ * Windows: where command 返回完整路径（如 C:\Users\...\Scripts\mcp-email-server.exe）
+ * Unix: which command 返回完整路径
+ */
+async function resolveCommandPath(command: string, runCommand: (command: string, args: string[]) => Promise<CommandResult>): Promise<string | null> {
+  const probe = process.platform === 'win32' ? 'where' : 'which'
+  const result = await runCommand(probe, [command])
+  if (!result.ok) return null
+  // where/which 可能返回多行，取第一行
+  const path = result.stdout.trim().split('\n')[0].trim()
+  return path || null
 }
 
 function getCommandMessage(result: CommandResult): string {
@@ -161,7 +159,7 @@ export async function initializeDefaultConnector(
   input: InitializeDefaultConnectorInput,
   deps: InitializerDeps = {},
 ): Promise<InitializeDefaultConnectorResult> {
-  if (input.connectorId !== 'personal-email') {
+  if (input.connectorId !== 'huatai-email') {
     throw new Error(`暂不支持初始化连接器: ${input.connectorId}`)
   }
   if (!input.emailAddress?.trim() || !input.password?.trim()) {
@@ -182,6 +180,11 @@ export async function initializeDefaultConnector(
   })
   const steps = makeSteps()
 
+  // 从连接器配置读取 serverName
+  const connectorsConfig = getWorkspaceConnectorsConfig(workspaceSlug)
+  const connectorDef = connectorsConfig.connectors[input.connectorId]
+  const serverName = connectorDef?.serverName ?? input.connectorId
+
   const pythonCommand = await findFirstAvailable(['python3', 'python'], commandExists)
   const pipCommand = await findFirstAvailable(['pip3', 'pip'], commandExists)
   if (!pythonCommand || !pipCommand) {
@@ -189,7 +192,7 @@ export async function initializeDefaultConnector(
     setStep(steps, 'check-python', 'error', '未检测到可用的 Python 或 pip')
     return {
       connectorId: input.connectorId,
-      serverName: 'email',
+      serverName,
       success: false,
       steps,
       message: '未检测到可用的 Python 或 pip，请先安装 Python。',
@@ -211,7 +214,7 @@ export async function initializeDefaultConnector(
       setStep(steps, 'install-package', 'error', installResult.message)
       return {
         connectorId: input.connectorId,
-        serverName: 'email',
+        serverName,
         success: false,
         steps,
         message: '安装 mcp-email-server 失败。',
@@ -221,38 +224,74 @@ export async function initializeDefaultConnector(
     logConnectorInfo('mcp-email-server 安装完成', { message: installResult.message })
   }
 
-  const entry = buildHuataiEmailMcpEntry({
-    emailAddress: input.emailAddress,
-    password: input.password,
-  })
-  const config = getWorkspaceMcpConfig(workspaceSlug)
-  saveWorkspaceMcpConfig(workspaceSlug, {
-    servers: {
-      ...config.servers,
-      email: entry,
-    },
-  })
-  setStep(steps, 'write-config', 'success', '已写入 email MCP')
-  logConnectorInfo('已写入 MCP 配置', { workspaceSlug, serverName: 'email' })
+  // 解析 mcp-email-server 的全路径，避免 PATH 不一致导致后续校验失败
+  const resolvedPath = await resolveCommandPath('mcp-email-server', runCommand)
+  if (!resolvedPath) {
+    setStep(steps, 'check-package', 'error', 'mcp-email-server 安装后无法定位到可执行文件')
+    return {
+      connectorId: input.connectorId,
+      serverName,
+      success: false,
+      steps,
+      message: 'mcp-email-server 安装后无法定位到可执行文件，请检查 pip 安装路径是否在 PATH 中。',
+    }
+  }
 
-  const validation = await validate('email', entry)
+  // 校验可执行文件路径
+  if (!isAbsolute(resolvedPath) || !existsSync(resolvedPath)) {
+    setStep(steps, 'check-package', 'error', `mcp-email-server 路径无效: ${resolvedPath}`)
+    return {
+      connectorId: input.connectorId,
+      serverName,
+      success: false,
+      steps,
+      message: 'mcp-email-server 可执行文件路径无效。',
+    }
+  }
+
+  const entry = buildHuataiEmailMcpEntry({
+    emailAddress: input.emailAddress!,
+    password: input.password!,
+  })
+  // 用全路径替换命令名
+  entry.command = resolvedPath
+
+  const validation = await validate(serverName, entry)
   if (!validation.success) {
     logConnectorInfo('连接器自检失败', { message: validation.message })
     setStep(steps, 'self-check', 'error', validation.message)
     return {
       connectorId: input.connectorId,
-      serverName: 'email',
+      serverName,
       success: false,
       steps,
       message: validation.message,
     }
   }
+
+  const config = getWorkspaceMcpConfig(workspaceSlug)
+  saveWorkspaceMcpConfig(workspaceSlug, {
+    servers: {
+      ...config.servers,
+      [serverName]: entry,
+    },
+  })
+  logConnectorInfo('已写入 MCP 配置', { workspaceSlug, serverName })
+
+  // 启用 connectors.json 中的连接器条目（并补齐 serverName）
+  if (connectorDef) {
+    connectorDef.enabled = true
+    connectorDef.serverName = serverName
+    saveWorkspaceConnectorsConfig(workspaceSlug, connectorsConfig)
+  }
+
+  setStep(steps, 'write-config', 'success', `已写入 ${serverName} MCP`)
   setStep(steps, 'self-check', 'success', validation.message)
   logConnectorInfo('连接器初始化完成', { workspaceSlug, serverName: 'email' })
 
   return {
     connectorId: input.connectorId,
-    serverName: 'email',
+    serverName,
     success: true,
     steps,
     message: '华泰邮箱连接器初始化完成。',

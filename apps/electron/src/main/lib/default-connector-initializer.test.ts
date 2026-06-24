@@ -2,16 +2,24 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { clearConfigDirNameForTest, getWorkspaceMcpPath } from './config-paths'
+import { clearConfigDirNameForTest, getWorkspaceMcpPath, getConnectorsConfigPath } from './config-paths'
 import { clearConfigRootOverride, setConfigRoot } from './config-root-service'
 import { initializeDefaultConnector } from './default-connector-initializer'
-import type { WorkspaceMcpConfig } from '@proma/shared'
+import type { WorkspaceMcpConfig, ConnectorsConfig } from '@proma/shared'
 
 let root: string
 
 function readMcp(workspaceSlug: string): WorkspaceMcpConfig {
   return JSON.parse(readFileSync(getWorkspaceMcpPath(workspaceSlug), 'utf-8')) as WorkspaceMcpConfig
 }
+
+function readConnectorsConfig(workspaceSlug: string): ConnectorsConfig {
+  return JSON.parse(readFileSync(getConnectorsConfigPath(workspaceSlug), 'utf-8')) as ConnectorsConfig
+}
+
+const MOCK_MCP_EMAIL_SERVER_PATH = process.platform === 'win32'
+  ? 'C:\\Users\\test\\AppData\\Local\\Programs\\Python\\Scripts\\mcp-email-server.exe'
+  : '/usr/local/bin/mcp-email-server'
 
 describe('initializeDefaultConnector', () => {
   beforeEach(() => {
@@ -20,6 +28,7 @@ describe('initializeDefaultConnector', () => {
     clearConfigDirNameForTest()
     setConfigRoot(join(root, 'custom-next-run'), { homeDir: root, configDirName: '.workmate-dev' })
     mkdirSync(join(root, '.workmate-dev', 'agent-workspaces', 'default'), { recursive: true })
+    // 旧 mcp.json（兼容未迁移工作区）
     writeFileSync(getWorkspaceMcpPath('default'), JSON.stringify({
       servers: {
         docs: {
@@ -29,6 +38,18 @@ describe('initializeDefaultConnector', () => {
         },
       },
     } satisfies WorkspaceMcpConfig, null, 2), 'utf-8')
+    // connectors.json（预置条目默认 disabled）
+    writeFileSync(getConnectorsConfigPath('default'), JSON.stringify({
+      version: '1.0',
+      connectors: {
+        'huatai-email': {
+          type: 'mcp',
+          enabled: false,
+          source: 'preset',
+          displayName: '华泰邮箱',
+        },
+      },
+    } satisfies ConnectorsConfig, null, 2), 'utf-8')
   })
 
   afterEach(() => {
@@ -40,13 +61,18 @@ describe('initializeDefaultConnector', () => {
   test('华泰邮箱初始化会安装缺失包并写入 IMAP-only MCP 配置', async () => {
     const calls: string[] = []
     const result = await initializeDefaultConnector('default', {
-      connectorId: 'personal-email',
+      connectorId: 'huatai-email',
       emailAddress: ' qinxiao@htsc.com ',
       password: ' secret ',
     }, {
       commandExists: async (command) => command === 'python3' || command === 'pip3',
       runCommand: async (command, args) => {
         calls.push([command, ...args].join(' '))
+        // where/which mcp-email-server 返回全路径
+        const probe = process.platform === 'win32' ? 'where' : 'which'
+        if (command === probe && args[0] === 'mcp-email-server') {
+          return { ok: true, stdout: MOCK_MCP_EMAIL_SERVER_PATH, stderr: '' }
+        }
         return { ok: true, stdout: '', stderr: '' }
       },
       validateMcpServer: async () => ({ success: true, message: '连接成功' }),
@@ -66,7 +92,7 @@ describe('initializeDefaultConnector', () => {
     expect(config.servers.docs).toBeDefined()
     expect(config.servers.email).toEqual({
       type: 'stdio',
-      command: 'mcp-email-server',
+      command: MOCK_MCP_EMAIL_SERVER_PATH,
       args: ['stdio'],
       env: {
         MCP_EMAIL_SERVER_ACCOUNT_NAME: 'htsc',
@@ -81,25 +107,35 @@ describe('initializeDefaultConnector', () => {
       enabled: true,
     })
     expect(Object.keys(config.servers.email?.env ?? {}).some((key) => key.includes('SMTP'))).toBe(false)
+
+    // connectors.json 中 huatai-email 已启用
+    const connectorsCfg = readConnectorsConfig('default')
+    expect(connectorsCfg.connectors['huatai-email']?.enabled).toBe(true)
   })
 
   test('已安装 mcp-email-server 时跳过安装步骤', async () => {
     const calls: string[] = []
     const result = await initializeDefaultConnector('default', {
-      connectorId: 'personal-email',
+      connectorId: 'huatai-email',
       emailAddress: 'qinxiao@htsc.com',
       password: 'secret',
     }, {
       commandExists: async (command) => command === 'python3' || command === 'pip3' || command === 'mcp-email-server',
       runCommand: async (command, args) => {
         calls.push([command, ...args].join(' '))
+        const probe = process.platform === 'win32' ? 'where' : 'which'
+        if (command === probe && args[0] === 'mcp-email-server') {
+          return { ok: true, stdout: MOCK_MCP_EMAIL_SERVER_PATH, stderr: '' }
+        }
         return { ok: true, stdout: '', stderr: '' }
       },
       validateMcpServer: async () => ({ success: true, message: '连接成功' }),
     })
 
     expect(result.success).toBe(true)
-    expect(calls).toEqual([])
+    // 已安装时不调用 pip install，但会调用 where/which 解析全路径
+    const probe = process.platform === 'win32' ? 'where' : 'which'
+    expect(calls).toEqual([`${probe} mcp-email-server`])
     expect(result.steps.find((step) => step.id === 'install-package')?.status).toBe('skipped')
   })
 

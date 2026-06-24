@@ -8,6 +8,7 @@
 import type { ToolCall, ToolResult } from '@proma/core'
 import type { ChatToolMeta, ChatToolHttpConfig } from '@proma/shared'
 import { getChatToolsConfig } from '../chat-tool-config'
+import { getToken } from '../../../auth/auth-service'
 
 /** HTTP 请求超时（30 秒） */
 const HTTP_TIMEOUT_MS = 30_000
@@ -109,6 +110,26 @@ async function executeHttpRequest(
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...config.headers,
+  }
+
+  // EIP 网关认证：仅对 EIP 域名自动注入 Cookie（如果用户没自己设置 Cookie 的话）
+  if (config.useEipAuth && !headers.Cookie) {
+    const isEipDomain = (() => {
+      try {
+        const hostname = new URL(url).hostname
+        return hostname.endsWith('.htsc.com.cn') || hostname === 'htsc.com.cn'
+      } catch {
+        return false
+      }
+    })()
+    if (isEipDomain) {
+      const token = getToken()
+      if (token) {
+        headers.Cookie = `EIPGW-TOKEN=${token}`
+      }
+    } else {
+      console.warn('[HTTP 工具] EIP 认证请求目标非 EIP 域名，已跳过 Cookie 注入:', url)
+    }
   }
 
   // 请求配置

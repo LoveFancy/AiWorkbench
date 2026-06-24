@@ -6,7 +6,7 @@
  * - 工作区目录：~/.proma/agent-workspaces/{slug}/（Agent 的 cwd）
  */
 
-import { readFileSync, writeFileSync, existsSync, readdirSync, cpSync, rmSync, mkdirSync, statSync, renameSync, openSync, readSync, closeSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, readdirSync, cpSync, copyFileSync, rmSync, mkdirSync, statSync, renameSync, openSync, readSync, closeSync } from 'node:fs'
 import { writeJsonFileAtomic, readJsonFileSafe } from './safe-file'
 import { randomUUID } from 'node:crypto'
 import { join, resolve, relative, isAbsolute, dirname, basename } from 'node:path'
@@ -20,11 +20,15 @@ import {
   getWorkspaceSkillsDir,
   getInactiveSkillsDir,
   getDefaultSkillsDir,
+  getConnectorsDir,
+  getConnectorsConfigPath,
+  getDefaultConnectorsDir,
+  seedDefaultConnectors,
   parseSkillVersion,
 } from './config-paths'
 import { listInstalledPlugins } from './plugin-registry-service'
 import type { AgentPluginInfo } from '@proma/shared'
-import type { AgentWorkspace, WorkspaceMcpConfig, SkillMeta, SkillImportSource, OtherWorkspaceSkillsGroup, WorkspaceCapabilities, SkillFileNode, SkillFileContent } from '@proma/shared'
+import type { AgentWorkspace, WorkspaceMcpConfig, McpServerEntry, McpTransportType, SkillMeta, SkillImportSource, OtherWorkspaceSkillsGroup, WorkspaceCapabilities, SkillFileNode, SkillFileContent, ConnectorsConfig, ConnectorEntry } from '@proma/shared'
 import { isGeneralPlugin } from '@proma/shared'
 
 interface AgentWorkspacesIndex {
@@ -34,7 +38,6 @@ interface AgentWorkspacesIndex {
 
 const INDEX_VERSION = 3
 
-const DEFAULT_INACTIVE_SKILL_SLUGS = new Set(['feishu-lark-setup'])
 const DEFAULT_SKILLS_TO_ENABLE_ON_MIGRATION = ['huatai-email-setup', 'install-python'] as const
 const REMOVED_DEFAULT_SKILL_SLUGS = ['proma-coach'] as const
 
@@ -49,8 +52,8 @@ interface WorkspaceSkillDirs {
   inactiveDir?: string
 }
 
-export function getDefaultSkillInitialEnabled(skillSlug: string): boolean {
-  return !DEFAULT_INACTIVE_SKILL_SLUGS.has(skillSlug)
+export function getDefaultSkillInitialEnabled(_skillSlug: string): boolean {
+  return true
 }
 
 /** 读取工作区索引文件，自动执行版本迁移 */
@@ -256,6 +259,7 @@ export function createAgentWorkspace(name: string): AgentWorkspace {
   getAgentWorkspacePath(slug)
   ensurePluginManifest(slug, name)
   copyDefaultSkills(slug)
+  syncDefaultConnectorsToWorkspace(slug)
 
   index.workspaces.unshift(workspace)
   writeIndex(index)
@@ -580,7 +584,384 @@ export function saveWorkspaceMcpConfig(workspaceSlug: string, config: WorkspaceM
   }
 }
 
+// ===== 连接器（Connector）管理 =====
+
+/**
+ * 读取工作区连接器总配置文件
+ */
+export function getWorkspaceConnectorsConfig(workspaceSlug: string): ConnectorsConfig {
+  const configPath = getConnectorsConfigPath(workspaceSlug)
+
+  if (!existsSync(configPath)) {
+    return { version: '1.0', connectors: {} }
+  }
+
+  try {
+    const raw = readFileSync(configPath, 'utf-8')
+    return JSON.parse(raw) as ConnectorsConfig
+  } catch (error) {
+    console.error('[Agent 工作区] 读取连接器配置失败:', error)
+    return { version: '1.0', connectors: {} }
+  }
+}
+
+/**
+ * 保存工作区连接器总配置文件
+ */
+export function saveWorkspaceConnectorsConfig(workspaceSlug: string, config: ConnectorsConfig): void {
+  const configPath = getConnectorsConfigPath(workspaceSlug)
+
+  try {
+    if (!existsSync(getConnectorsDir(workspaceSlug))) {
+      mkdirSync(getConnectorsDir(workspaceSlug), { recursive: true })
+    }
+    writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8')
+    console.log(`[Agent 工作区] 已保存连接器配置: ${workspaceSlug}`)
+  } catch (error) {
+    console.error('[Agent 工作区] 保存连接器配置失败:', error)
+    throw new Error('保存连接器配置失败')
+  }
+}
+
+/**
+ * 注册用户创建的连接器
+ *
+ * 同时完成：
+ * 1. 创建 connectors/{name}/ 目录
+ * 2. 写入 connector.json 元数据
+ * 3. 写入 mcp.json 中的 MCP 配置
+ * 4. 注册到 connectors.json
+ */
+export function registerUserConnector(
+  workspaceSlug: string,
+  name: string,
+  entry: McpServerEntry,
+  displayName?: string,
+): void {
+  // 校验 transport type
+  const validTypes: McpTransportType[] = ['stdio', 'http', 'sse']
+  if (!validTypes.includes(entry.type)) {
+    throw new Error(`无效的传输类型: ${entry.type}，仅支持 ${validTypes.join(', ')}`)
+  }
+
+  // 校验必填字段
+  if (entry.type === 'stdio' && (!entry.command || typeof entry.command !== 'string')) {
+    throw new Error('stdio 类型连接器必须提供有效的 command 字段')
+  }
+  if ((entry.type === 'http' || entry.type === 'sse') && (!entry.url || typeof entry.url !== 'string')) {
+    throw new Error(`${entry.type} 类型连接器必须提供有效的 url 字段`)
+  }
+
+  const safeName = assertValidSlug(name)
+  const connectorsDir = getConnectorsDir(workspaceSlug)
+  const connectorDir = join(connectorsDir, safeName)
+
+  // 1. 创建 connectors/{name}/ 目录
+  if (!existsSync(connectorDir)) {
+    mkdirSync(connectorDir, { recursive: true })
+  }
+
+  // 2. 写入 connector.json 元数据（仅新建时，编辑不覆盖已有文件）
+  const connectorJsonPath = join(connectorDir, 'connector.json')
+  if (!existsSync(connectorJsonPath)) {
+    const connectorJson: Record<string, unknown> = {
+      type: 'mcp',
+      source: 'user',
+      displayName: displayName || name,
+      category: '用户自定义',
+      status: 'available',
+      serverName: name,
+    }
+    writeFileSync(connectorJsonPath, JSON.stringify(connectorJson, null, 2), 'utf-8')
+  }
+
+  // 3. 写入 mcp.json
+  const mcpConfig = getWorkspaceMcpConfig(workspaceSlug)
+  mcpConfig.servers[name] = entry
+  saveWorkspaceMcpConfig(workspaceSlug, mcpConfig)
+
+  // 4. 注册到 connectors.json
+  const config = getWorkspaceConnectorsConfig(workspaceSlug)
+  config.connectors[name] = {
+    type: 'mcp',
+    enabled: entry.enabled ?? false,
+    source: 'user',
+    displayName: displayName || name,
+    category: '用户自定义',
+    status: 'available',
+    serverName: name,
+  }
+  saveWorkspaceConnectorsConfig(workspaceSlug, config)
+
+  console.log(`[Agent 工作区] 已注册用户连接器: ${name} (workspace: ${workspaceSlug})`)
+}
+
+/**
+ * 一次性迁移：旧 mcp.json → 新 connectors/ 结构
+ *
+ * 如果 connectors.json 已存在则跳过（已迁移）。
+ * 迁移后旧 mcp.json 重命名为 mcp.json.bak。
+ */
+export function migrateMcpJsonToConnectors(workspaceSlug: string): void {
+  const configPath = getConnectorsConfigPath(workspaceSlug)
+
+  // 已迁移则跳过
+  if (existsSync(configPath)) return
+
+  const mcpPath = getWorkspaceMcpPath(workspaceSlug)
+
+  // 旧 mcp.json 不存在则跳过
+  if (!existsSync(mcpPath)) return
+
+  try {
+    const oldConfig = JSON.parse(readFileSync(mcpPath, 'utf-8')) as WorkspaceMcpConfig
+    const connectors: Record<string, ConnectorEntry> = {}
+
+    for (const [name, entry] of Object.entries(oldConfig.servers ?? {})) {
+      const safeName = assertValidSlug(name)
+      if (safeName === 'memos-cloud') continue // 系统保留
+      if (!entry.command && !entry.url) continue // 无有效配置跳过
+
+      const mcpDir = join(getConnectorsDir(workspaceSlug), safeName)
+      if (!existsSync(mcpDir)) {
+        mkdirSync(mcpDir, { recursive: true })
+      }
+
+      // 写入子目录 mcp.json（不含 enabled 字段，启用状态统一由 connectors.json 管理）
+      const serverConfig: Record<string, unknown> = {
+        type: entry.type,
+      }
+      if (entry.command) serverConfig.command = entry.command
+      if (entry.args && entry.args.length > 0) serverConfig.args = entry.args
+      if (entry.env && Object.keys(entry.env).length > 0) serverConfig.env = entry.env
+      if (entry.url) serverConfig.url = entry.url
+      if (entry.headers && Object.keys(entry.headers).length > 0) serverConfig.headers = entry.headers
+      if (entry.timeout) serverConfig.timeout = entry.timeout
+
+      writeFileSync(join(mcpDir, 'mcp.json'), JSON.stringify(serverConfig, null, 2), 'utf-8')
+
+      connectors[name] = {
+        type: 'mcp',
+        enabled: entry.enabled ?? false,
+        source: 'user',
+        displayName: name,
+      }
+    }
+
+    saveWorkspaceConnectorsConfig(workspaceSlug, { version: '1.0', connectors })
+    renameSync(mcpPath, mcpPath + '.bak')
+    console.log(`[Agent 工作区] 已迁移 mcp.json → connectors/ (${workspaceSlug})`)
+  } catch (error) {
+    console.error('[Agent 工作区] 迁移 MCP 配置失败:', error)
+  }
+}
+
+/**
+ * 同步预置连接器到当前工作区
+ *
+ * 时机：用户打开/切换工作区时调用。
+ * 1. 将 default-connectors/ 复制到工作区 connectors/（缺失的）
+ * 2. 更新 connectors.json（添加新预置连接器，默认 disabled）
+ */
+export function syncDefaultConnectorsToWorkspace(workspaceSlug: string): void {
+  const defaultDir = getDefaultConnectorsDir()
+  const workspaceConnectorsDir = getConnectorsDir(workspaceSlug)
+
+  // 如果工作区连接器目录已存在，跳过重复同步
+  if (existsSync(workspaceConnectorsDir)) {
+    try {
+      const entries = readdirSync(workspaceConnectorsDir, { withFileTypes: true })
+      if (entries.some((e) => e.isDirectory())) return
+    } catch {
+      // 目录可能尚不存在，继续执行
+    }
+  }
+
+  // 1. 复制预置连接器文件
+  try {
+    if (!existsSync(defaultDir)) return
+
+    const entries = readdirSync(defaultDir, { withFileTypes: true })
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      const source = join(defaultDir, entry.name)
+      const target = join(workspaceConnectorsDir, entry.name)
+
+      if (!existsSync(target)) {
+        // 防御性复制：跳过 .git / node_modules 等
+        const blocklist = new Set(['.git', 'node_modules', '__pycache__', '.DS_Store'])
+        cpSync(source, target, {
+          recursive: true,
+          filter: (src) => !blocklist.has(basename(src)),
+        })
+        console.log(`[Agent 工作区] 已同步预置连接器: ${entry.name}`)
+      } else {
+        // 目录已存在：仅补齐缺失文件，不覆盖用户已自定义的 connector.json
+        const srcMeta = join(source, 'connector.json')
+        const dstMeta = join(target, 'connector.json')
+        if (!existsSync(dstMeta) && existsSync(srcMeta)) {
+          copyFileSync(srcMeta, dstMeta)
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[Agent 工作区] 同步预置连接器文件失败:', err)
+  }
+
+  // 2. 更新 connectors.json
+  const config = getWorkspaceConnectorsConfig(workspaceSlug)
+  const presetConnectors = getDefaultConnectorEntries()
+  let changed = false
+  for (const [name, entry] of Object.entries(presetConnectors)) {
+    const existing = config.connectors[name]
+    if (existing) {
+      // 已存在：补齐元数据字段（保留用户的 enabled 状态）
+      const preservedEnabled = existing.enabled
+      // 只更新非状态字段，不覆盖 enabled
+      existing.type = entry.type
+      if (entry.displayName) existing.displayName = entry.displayName
+      if (entry.description) existing.description = entry.description
+      if (entry.category) existing.category = entry.category
+      if (entry.status) existing.status = entry.status
+      if (entry.serverName) existing.serverName = entry.serverName
+      if (entry.version) existing.version = entry.version
+      if (entry.sortOrder !== undefined) existing.sortOrder = entry.sortOrder
+      existing.enabled = preservedEnabled
+      changed = true
+      continue
+    }
+    config.connectors[name] = entry
+    changed = true
+    console.log(`[Agent 工作区] 添加预置连接器: ${name}`)
+  }
+
+  if (changed) {
+    saveWorkspaceConnectorsConfig(workspaceSlug, config)
+  }
+}
+
+/**
+ * 启动时将预置连接器同步到所有已有工作区。
+ *
+ * 只同步不存在 connectors/ 目录的工作区（新建工作区已在 createAgentWorkspace 中同步）。
+ */
+export function syncDefaultConnectorsToAllWorkspaces(): void {
+  const index = readIndex()
+  for (const workspace of index.workspaces) {
+    try {
+      const connectorsDir = getConnectorsDir(workspace.slug)
+      // 如果 connectors 目录不存在或为空，执行初始同步
+      if (!existsSync(connectorsDir)) {
+        syncDefaultConnectorsToWorkspace(workspace.slug)
+        console.log(`[Agent 工作区] 为已有工作区同步预置连接器: ${workspace.slug}`)
+      }
+    } catch (err) {
+      console.warn(`[Agent 工作区] 同步预置连接器到 ${workspace.slug} 失败:`, err)
+    }
+  }
+}
+
+/**
+ * 读取所有预置连接器的默认条目
+ *
+ * 从 default-connectors/{name}/connector.json 读取元数据，
+ * 转换为 connectors.json 的 ConnectorEntry 格式。
+ * 新增的预置连接器默认 enabled: false。
+ */
+function getDefaultConnectorEntries(): Record<string, ConnectorEntry> {
+  const defaultDir = getDefaultConnectorsDir()
+  const entries: Record<string, ConnectorEntry> = {}
+
+  let dirEntries: { name: string }[] = []
+  try {
+    dirEntries = readdirSync(defaultDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+  } catch {
+    return entries
+  }
+
+  for (const dirEnt of dirEntries) {
+    const connectorJsonPath = join(defaultDir, dirEnt.name, 'connector.json')
+    if (!existsSync(connectorJsonPath)) continue
+
+    try {
+      const raw = JSON.parse(readFileSync(connectorJsonPath, 'utf-8'))
+
+      const entry: ConnectorEntry = {
+        type: raw.type ?? 'mcp',
+        enabled: false,
+        source: 'preset',
+      }
+      if (raw.displayName) entry.displayName = raw.displayName
+      if (raw.description) entry.description = raw.description
+      if (raw.category) entry.category = raw.category
+      if (raw.status) entry.status = raw.status
+      if (raw.serverName) entry.serverName = raw.serverName
+      if (raw.version) entry.version = raw.version
+      if (raw.sortOrder !== undefined) entry.sortOrder = raw.sortOrder
+      // skillDirs / disabledTools 不写入 connectors.json，
+      // 由运行时从 connectors/{name}/connector.json 读取
+
+      // 以 connector.json 中的 serverName 为连接器 ID（兜底用目录名）
+      const connectorId = (raw.serverName as string | undefined) || dirEnt.name
+      entries[connectorId] = entry
+    } catch (err) {
+      console.warn(`[Agent 工作区] 读取预置连接器元数据失败 (${dirEnt.name}):`, err)
+    }
+  }
+
+  return entries
+}
+
 // ===== Skill 目录扫描 =====
+
+/**
+ * 从工作区 connectors/{name}/connector.json 读取 skillDirs
+ *
+ * 与 connectors.json 职责分离：connectors.json 只管状态（enabled/type/source），
+ * skillDirs 属于连接器自身配置，存在子目录 connector.json 中。
+ *
+ * @returns skillDirs 数组，文件不存在或读取失败返回 null
+ */
+export function readSkillDirsFromConnectorJson(connectorsDir: string, name: string): string[] | null {
+  const safeName = assertValidSlug(name)
+  const metaPath = join(connectorsDir, safeName, 'connector.json')
+  if (!existsSync(metaPath)) return null
+
+  try {
+    const raw = JSON.parse(readFileSync(metaPath, 'utf-8'))
+    if (Array.isArray(raw.skillDirs) && raw.skillDirs.length > 0) {
+      return raw.skillDirs
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 从工作区 connectors/{name}/connector.json 读取 disabledTools
+ *
+ * 与 connectors.json 职责分离：connectors.json 只管状态（enabled/type/source），
+ * disabledTools 属于 MCP 连接器自身配置，存在子目录 connector.json 中。
+ *
+ * @returns disabledTools 数组，文件不存在或读取失败返回 null
+ */
+export function readDisabledToolsFromConnectorJson(connectorsDir: string, name: string): string[] | null {
+  const safeName = assertValidSlug(name)
+  const metaPath = join(connectorsDir, safeName, 'connector.json')
+  if (!existsSync(metaPath)) return null
+
+  try {
+    const raw = JSON.parse(readFileSync(metaPath, 'utf-8'))
+    if (Array.isArray(raw.disabledTools) && raw.disabledTools.length > 0) {
+      return raw.disabledTools
+    }
+    return null
+  } catch {
+    return null
+  }
+}
 
 /** 扫描工作区活跃 Skills，仅返回 skills/ 下的 Skill */
 export function getWorkspaceSkills(workspaceSlug: string): SkillMeta[] {
@@ -727,7 +1108,7 @@ interface DeleteWorkspaceSkillOptions {
 }
 
 export function deleteWorkspaceSkill(workspaceSlug: string, skillSlug: string, options: DeleteWorkspaceSkillOptions = {}): void {
-  const normalizedSkillSlug = normalizeSkillSlug(skillSlug)
+  const normalizedSkillSlug = assertValidSlug(skillSlug)
   const activeDir = options.activeDir ?? getWorkspaceSkillsDir(workspaceSlug)
   const inactiveDir = options.inactiveDir ?? getInactiveSkillsDir(workspaceSlug)
   const activePath = join(activeDir, normalizedSkillSlug)
@@ -838,7 +1219,7 @@ export function installSkillZipToWorkspace(
     extractSkillZipSafely(zipPath, extractDir)
 
     const skillRoot = resolveExtractedSkillRoot(extractDir, zipPath)
-    const slug = normalizeSkillSlug(skillRoot.slug)
+    const slug = assertValidSlug(skillRoot.slug)
     const targetPath = join(activeDir, slug)
     const inactivePath = join(inactiveDir, slug)
 
@@ -897,10 +1278,10 @@ function resolveExtractedSkillRoot(extractDir: string, zipPath: string): { path:
   throw new Error('Skill zip 包必须在根目录或唯一顶层目录中包含 SKILL.md')
 }
 
-function normalizeSkillSlug(slug: string): string {
+function assertValidSlug(slug: string): string {
   const trimmed = slug.trim()
   if (!trimmed || trimmed === '.' || trimmed === '..' || trimmed.includes('/') || trimmed.includes('\\')) {
-    throw new Error('Skill 名称包含不安全路径')
+    throw new Error(`非法名称: ${slug}`)
   }
   return trimmed
 }

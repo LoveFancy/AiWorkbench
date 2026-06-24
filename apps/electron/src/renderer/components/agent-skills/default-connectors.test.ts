@@ -1,17 +1,43 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
+import { buildHuataiEmailMcpEntry } from '@proma/shared'
 import {
-  buildHuataiEmailMcpEntry,
-  DEFAULT_CONNECTOR_DEFINITIONS,
+  getPresetConnectorDefinitions,
+  getPresetConnectorServerNames,
 } from './default-connectors'
+import type { ConnectorsConfig } from '@proma/shared'
 
 const agentSkillsViewSource = readFileSync(join(import.meta.dir, 'AgentSkillsView.tsx'), 'utf-8')
 
-test('默认连接器包含华泰邮箱、飞书 CLI 和 HiAgent 泰为', () => {
-  expect(DEFAULT_CONNECTOR_DEFINITIONS.map((connector) => connector.id)).toEqual(['personal-email', 'feishu-cli', 'hiagent-taiwei'])
-  expect(DEFAULT_CONNECTOR_DEFINITIONS.map((connector) => connector.name)).toEqual(['华泰邮箱', '飞书 CLI', 'HiAgent 泰为'])
-  expect(DEFAULT_CONNECTOR_DEFINITIONS.map((connector) => connector.status)).toEqual(['available', 'coming-soon', 'coming-soon'])
+function makeConfig(connectors: ConnectorsConfig['connectors']): ConnectorsConfig {
+  return { version: '1.0', connectors }
+}
+
+test('预设连接器从 connectors.json 派生展示定义', () => {
+  const config = makeConfig({
+    'huatai-email': { type: 'mcp', enabled: false, source: 'preset', displayName: '华泰邮箱', description: '...', category: '邮件服务', status: 'available', serverName: 'email' },
+    'feishu-cli': { type: 'cli', enabled: false, source: 'preset', displayName: '飞书 CLI', description: '...', category: '办公协同', status: 'available' },
+    'hiagent-taiwei': { type: 'mcp', enabled: false, source: 'preset', displayName: 'HiAgent 泰为', description: '...', category: '企业智能体', status: 'coming-soon' },
+  })
+  const defs = getPresetConnectorDefinitions(config)
+  expect(defs.map((d) => d.id)).toEqual(['huatai-email', 'feishu-cli', 'hiagent-taiwei'])
+  expect(defs.map((d) => d.name)).toEqual(['华泰邮箱', '飞书 CLI', 'HiAgent 泰为'])
+  expect(defs.map((d) => d.status)).toEqual(['available', 'available', 'coming-soon'])
+  expect(defs.map((d) => d.connectorType)).toEqual(['mcp', 'cli', 'mcp'])
+})
+
+test('getPresetConnectorServerNames 只返回有 serverName 的预设连接器', () => {
+  const config = makeConfig({
+    'huatai-email': { type: 'mcp', enabled: false, source: 'preset', serverName: 'email' },
+    'feishu-cli': { type: 'cli', enabled: false, source: 'preset' },
+  })
+  expect(getPresetConnectorServerNames(config)).toEqual(new Set(['email']))
+})
+
+test('null 配置返回空列表', () => {
+  expect(getPresetConnectorDefinitions(null)).toEqual([])
+  expect(getPresetConnectorServerNames(null)).toEqual(new Set())
 })
 
 test('华泰个人邮箱绑定生成 email MCP 配置', () => {

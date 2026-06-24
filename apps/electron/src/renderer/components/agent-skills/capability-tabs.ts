@@ -1,4 +1,4 @@
-export type CapabilityTab = 'experts' | 'skills' | 'mcp'
+export type CapabilityTab = 'experts' | 'skills' | 'connectors'
 
 export interface CapabilityTabItem {
   value: CapabilityTab
@@ -16,6 +16,6 @@ export function getCapabilityTabs(counts: CapabilityTabCounts): CapabilityTabIte
   return [
     { value: 'experts', label: '专家', count: counts.experts },
     { value: 'skills', label: '技能', count: counts.skills },
-    { value: 'mcp', label: '连接器', count: counts.connectors },
+    { value: 'connectors', label: '连接器', count: counts.connectors },
   ]
 }

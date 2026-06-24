@@ -7,51 +7,94 @@
  * - 联网搜索工具（WebSearch）
  */
 
-import { getWorkspaceMcpConfig } from '../agent-workspace-manager'
+import { getWorkspaceMcpConfig, getWorkspaceConnectorsConfig, readDisabledToolsFromConnectorJson } from '../agent-workspace-manager'
+import type { ConnectorsConfig } from '@proma/shared'
 import { getMemoryConfig } from '../memory-service'
 import { searchMemory, addMemory, formatSearchResult } from '../memos-client'
+import { getConnectorsDir } from '../config-paths'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 // ---- MCP 服务器 ----
 
 /**
  * 构建工作区 MCP 服务器配置
+ *
+ * 新旧格式合并加载：
+ * 1. 遍历 connectors.json 中 enabled + type='mcp' 的连接器：
+ *    - 优先从 connectors/{name}/mcp.json 加载
+ *    - 不存在时兜底从旧 mcp.json 按 serverName 查找
+ * 2. 旧 mcp.json 中未被连接器覆盖的 server 也一并加载
+ *
+ * @param preReadConfig 可选，调用方已读好的配置，避免重复 I/O
+ * @param selectedMcpServers 可选，只加载指定的 MCP server（空数组 = 全部）
  */
 export function buildMcpServers(
   workspaceSlug: string | undefined,
-  selectedMcpServers: readonly string[] = [],
+  preReadConfig?: ConnectorsConfig,
+  selectedMcpServers?: readonly string[],
 ): Record<string, Record<string, unknown>> {
   const mcpServers: Record<string, Record<string, unknown>> = {}
   if (!workspaceSlug) return mcpServers
-  if (selectedMcpServers.length === 0) return mcpServers
 
-  const selectedNames = new Set(selectedMcpServers)
-  const mcpConfig = getWorkspaceMcpConfig(workspaceSlug)
-  for (const [name, entry] of Object.entries(mcpConfig.servers ?? {})) {
-    if (!selectedNames.has(name)) continue
-    if (!entry.enabled) continue
-    if (name === 'memos-cloud') continue
+  // selectedMcpServers:
+  //   undefined → 加载全部 server
+  //   []        → 一个都不加载
+  //   ['name']  → 只加载指定 server
+  if (Array.isArray(selectedMcpServers) && selectedMcpServers.length === 0) {
+    return mcpServers
+  }
 
-    if (entry.type === 'stdio' && entry.command) {
-      const mergedEnv: Record<string, string> = {
-        ...(process.env.PATH && { PATH: process.env.PATH }),
-        ...entry.env,
-      }
-      mcpServers[name] = {
-        type: 'stdio',
-        command: entry.command,
-        ...(entry.args && entry.args.length > 0 && { args: entry.args }),
-        ...(Object.keys(mergedEnv).length > 0 && { env: mergedEnv }),
-        required: false,
-        startup_timeout_sec: entry.timeout ?? 30,
-      }
-    } else if ((entry.type === 'http' || entry.type === 'sse') && entry.url) {
-      mcpServers[name] = {
-        type: entry.type,
-        url: entry.url,
-        ...(entry.headers && Object.keys(entry.headers).length > 0 && { headers: entry.headers }),
-        required: false,
+  const selectedNames = selectedMcpServers ? new Set(selectedMcpServers) : null
+  const connectorsConfig = preReadConfig ?? getWorkspaceConnectorsConfig(workspaceSlug)
+  const oldMcpConfig = getWorkspaceMcpConfig(workspaceSlug)
+
+  // 记录已被连接器覆盖的 serverName（避免兜底时重复加载）
+  const coveredServerNames = new Set<string>()
+  const connectorsDir = getConnectorsDir(workspaceSlug)
+
+  // 第一阶段：从连接器加载
+  for (const [name, connector] of Object.entries(connectorsConfig.connectors)) {
+    if (!connector.enabled) continue
+    if (connector.type !== 'mcp') continue
+    if (selectedNames && !selectedNames.has(name)) continue
+
+    // 路径穿越防护
+    if (!/^[a-zA-Z0-9._-]+$/.test(name)) {
+      console.warn(`[Agent 编排] 跳过非法连接器名称: ${name}`)
+      continue
+    }
+
+    // 优先从 connectors/{name}/mcp.json 加载
+    const mcpPath = join(connectorsDir, name, 'mcp.json')
+    if (existsSync(mcpPath)) {
+      try {
+        const entry = JSON.parse(readFileSync(mcpPath, 'utf-8'))
+        registerMcpServer(name, entry, mcpServers)
+        if (connector.serverName) coveredServerNames.add(connector.serverName)
+        continue
+      } catch (err) {
+        console.error(`[Agent 编排] 读取连接器 MCP 配置失败 (${name}):`, err)
       }
     }
+
+    // 兜底：从旧 mcp.json 按 serverName 查找
+    if (connector.serverName) {
+      const oldEntry = oldMcpConfig.servers?.[connector.serverName]
+      if (oldEntry?.enabled) {
+        registerMcpServer(name, oldEntry, mcpServers)
+        coveredServerNames.add(connector.serverName)
+      }
+    }
+  }
+
+  // 第二阶段：加载旧 mcp.json 中未被连接器覆盖的 server
+  for (const [name, entry] of Object.entries(oldMcpConfig.servers ?? {})) {
+    if (selectedNames && !selectedNames.has(name)) continue
+    if (!entry.enabled) continue
+    if (name === 'memos-cloud') continue
+    if (coveredServerNames.has(name)) continue
+    registerMcpServer(name, entry, mcpServers)
   }
 
   if (Object.keys(mcpServers).length > 0) {
@@ -59,6 +102,94 @@ export function buildMcpServers(
   }
 
   return mcpServers
+}
+
+/**
+ * 注册单个 MCP Server 到配置表
+ */
+function registerMcpServer(
+  name: string,
+  entry: Record<string, unknown>,
+  mcpServers: Record<string, Record<string, unknown>>,
+): void {
+  if (typeof entry.type !== 'string') {
+    console.warn(`[MCP Builder] 跳过非法连接器 ${name}: type 不是字符串`)
+    return
+  }
+  if (entry.type === 'stdio') {
+    if (typeof entry.command !== 'string' || !entry.command) {
+      console.warn(`[MCP Builder] 跳过非法连接器 ${name}: stdio 缺少 command`)
+      return
+    }
+    const mergedEnv: Record<string, string> = {
+      ...(process.env.PATH && { PATH: process.env.PATH }),
+      ...(entry.env && typeof entry.env === 'object' ? (entry.env as Record<string, string>) : {}),
+    }
+    mcpServers[name] = {
+      type: 'stdio',
+      command: entry.command,
+      ...(Array.isArray(entry.args) && entry.args.length > 0 && { args: entry.args }),
+      ...(Object.keys(mergedEnv).length > 0 && { env: mergedEnv }),
+      required: false,
+      startup_timeout_sec: typeof entry.timeout === 'number' ? entry.timeout : 30,
+    }
+  } else if (entry.type === 'http' || entry.type === 'sse') {
+    if (typeof entry.url !== 'string' || !entry.url) {
+      console.warn(`[MCP Builder] 跳过非法连接器 ${name}: ${entry.type} 缺少 url`)
+      return
+    }
+    mcpServers[name] = {
+      type: entry.type,
+      url: entry.url,
+      ...(entry.headers && typeof entry.headers === 'object' && Object.keys(entry.headers as Record<string, string>).length > 0 && { headers: entry.headers }),
+      required: false,
+    }
+  }
+}
+
+/**
+ * 收集连接器级别的禁用工具列表
+ *
+ * 优先从 connectors/{name}/connector.json 读取 disabledTools（新格式），
+ * 兜底从 connectors.json 的 ConnectorEntry.disabledTools 读取（旧格式兼容）。
+ * 转为 SDK 格式 mcp__<connectorName>__<toolName>，由 agent-orchestrator
+ * 合并到 disallowedTools 中传给 SDK。
+ *
+ * @param workspaceSlug 工作区 slug
+ * @param preReadConfig 可选，调用方已读好的配置，避免重复 I/O
+ */
+export function collectConnectorDisabledTools(
+  workspaceSlug: string | undefined,
+  preReadConfig?: ConnectorsConfig,
+): string[] {
+  if (!workspaceSlug) return []
+
+  const connectorsConfig = preReadConfig ?? getWorkspaceConnectorsConfig(workspaceSlug)
+  const disabled: string[] = []
+  const connectorsDir = getConnectorsDir(workspaceSlug)
+
+  for (const [name, connector] of Object.entries(connectorsConfig.connectors)) {
+    if (!connector.enabled) continue
+    if (connector.type !== 'mcp') continue
+
+    // 路径穿越防护（与 buildMcpServers 保持一致）
+    if (!/^[a-zA-Z0-9._-]+$/.test(name)) {
+      console.warn(`[Agent 编排] 跳过非法连接器名称: ${name}`)
+      continue
+    }
+
+    // 优先从 connectors/{name}/connector.json 读取（新格式）
+    // 兜底从 connectors.json 的 disabledTools 字段读取（旧格式兼容）
+    const tools = readDisabledToolsFromConnectorJson(connectorsDir, name)
+      ?? connector.disabledTools
+      ?? []
+
+    for (const tool of tools) {
+      disabled.push(`mcp__${name}__${tool}`)
+    }
+  }
+
+  return disabled
 }
 
 // ---- 工具注入 ----

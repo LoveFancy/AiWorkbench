@@ -9,7 +9,7 @@
  */
 
 import { existsSync } from 'node:fs'
-import { execSync } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import type { McpServerEntry } from '@proma/shared'
 
 /**
@@ -106,15 +106,13 @@ async function isCommandAvailable(command: string): Promise<boolean> {
     return existsSync(command)
   }
 
-  // 相对命令：使用 which 查找
-  try {
-    // 跨平台 which 查找
-    const whichCommand = process.platform === 'win32' ? 'where' : 'which'
-    execSync(`${whichCommand} ${command}`, { stdio: 'ignore' })
-    return true
-  } catch {
-    return false
-  }
+  // 相对命令：使用 which/where 查找
+  const whichCommand = process.platform === 'win32' ? 'where' : 'which'
+  return new Promise((resolve) => {
+    execFile(whichCommand, [command], { windowsHide: true }, (error) => {
+      resolve(!error)
+    })
+  })
 }
 
 /**

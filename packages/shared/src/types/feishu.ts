@@ -329,7 +329,7 @@ export interface FeishuRegisterAppStatus {
 export interface FeishuRegisterAppResult {
   /** 创建出的飞书应用 App ID */
   appId: string
-  /** 应用 App Secret（明文，仅一次性返回）*/
+  /** 应用 App Secret（明文，仅一次性返回，CLI OAuth 流程必需）*/
   appSecret: string
   /** 租户品牌（feishu / lark）*/
   tenantBrand?: 'feishu' | 'lark'

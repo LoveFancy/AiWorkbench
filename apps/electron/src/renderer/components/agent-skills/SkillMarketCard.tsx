@@ -1,6 +1,5 @@
 import * as React from 'react'
-import { Loader2, Plus, ShieldCheck, Sparkles } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Loader2, Lock, Plus, ShieldCheck, Sparkles } from 'lucide-react'
 import type { SkillMarketItem } from './skill-market-types'
 
 interface SkillMarketCardProps {
@@ -50,23 +49,32 @@ export function SkillMarketCard({ skill, installing, onOpen, onInstall }: SkillM
           <ShieldCheck size={12} /> 华泰 SkillHub
         </span>
         {skill.category && <span className="truncate rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">{skill.category}</span>}
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation()
-            onInstall()
-          }}
-          disabled={installing || skill.installed}
-          className={cn(
-            'ml-auto flex shrink-0 items-center justify-center rounded-md transition-colors disabled:cursor-not-allowed',
-            skill.installed
-              ? 'h-7 px-2 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300'
-              : 'size-7 bg-muted text-muted-foreground hover:bg-primary hover:text-primary-foreground',
-          )}
-          title={skill.installed ? '已安装' : '安装'}
-        >
-          {installing ? <Loader2 size={15} className="animate-spin" /> : skill.installed ? <span className="text-xs font-medium">已安装</span> : <Plus size={15} />}
-        </button>
+        {skill.installed ? (
+          <span className="ml-auto shrink-0 flex items-center rounded-md h-7 px-2 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 text-xs font-medium">
+            已安装
+          </span>
+        ) : skill.canDownload === false ? (
+          <span
+            className="ml-auto shrink-0 flex items-center gap-1 rounded-md h-7 px-2 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs font-medium"
+            title="该 Skill 需要审批授权后才能下载"
+          >
+            <Lock size={11} />
+            需授权
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              onInstall()
+            }}
+            disabled={installing}
+            className="ml-auto flex shrink-0 items-center justify-center size-7 rounded-md bg-muted text-muted-foreground hover:bg-primary hover:text-primary-foreground transition-colors disabled:cursor-not-allowed"
+            title="安装"
+          >
+            {installing ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
+          </button>
+        )}
       </div>
     </div>
   )

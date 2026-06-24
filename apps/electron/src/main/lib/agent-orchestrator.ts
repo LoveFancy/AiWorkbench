@@ -31,7 +31,7 @@ import { injectAutomationMcpServer } from './automation-agent-tools'
 import { normalizeAnthropicBaseUrlForSdk, getPromaUserAgent } from '@proma/core'
 import pkg from '../../../package.json' with { type: 'json' }
 import { appendSDKMessages, updateAgentSessionMeta, getAgentSessionMeta, getAgentSessionMessages } from './agent-session-manager'
-import { getAgentWorkspace, ensurePluginManifest } from './agent-workspace-manager'
+import { getAgentWorkspace, ensurePluginManifest, getWorkspaceConnectorsConfig, migrateMcpJsonToConnectors, syncDefaultConnectorsToWorkspace, readSkillDirsFromConnectorJson } from './agent-workspace-manager'
 import { getAgentSessionWorkspacePath } from './config-paths'
 import { getRuntimeStatus } from './runtime-init'
 import { getSettings } from './settings-service'
@@ -70,6 +70,7 @@ import { buildSdkEnv } from './orchestrator/sdk-env'
 import { buildAgentUserContent } from './orchestrator/agent-user-content'
 import {
   buildMcpServers,
+  collectConnectorDisabledTools,
   injectMemoryTools,
   injectNanoBananaTools,
   injectWebSearchTools,
@@ -535,6 +536,14 @@ export class AgentOrchestrator {
           workspace = ws
           console.log(`[Agent 编排] 使用 session 级别 cwd: ${agentCwd} (${ws.name}/${sessionId})`)
 
+          // 连接器：迁移旧 mcp.json + 同步预置连接器
+          try {
+            migrateMcpJsonToConnectors(ws.slug)
+            syncDefaultConnectorsToWorkspace(ws.slug)
+          } catch (err) {
+            console.warn('[Agent 编排] 连接器同步失败:', err)
+          }
+
           ensurePluginManifest(ws.slug, ws.name)
 
           if (existingSdkSessionId) {
@@ -583,10 +592,10 @@ export class AgentOrchestrator {
         console.log(`[Agent 编排] 将直接使用已保存的 sdkSessionId 进行 resume: ${existingSdkSessionId}`)
       }
 
-      // 10. 构建 MCP 服务器配置 + 记忆工具 + 生图工具 + 自定义工具
-      _diag('开始构建 MCP 服务器配置')
-      const mcpServers = buildMcpServers(workspaceSlug, selectedMcpServers)
-       _diag('buildMcpServers 完成, 开始 injectMemoryTools (await)')
+// 10. 构建 MCP 服务器配置
+      // 预读连接器配置一次，避免 buildMcpServers + collectConnectorDisabledTools 重复 I/O
+      const connectorsConfig = workspaceSlug ? getWorkspaceConnectorsConfig(workspaceSlug) : { version: '1.0', connectors: {} }
+      const mcpServers = buildMcpServers(workspaceSlug, connectorsConfig, selectedMcpServers)
       await injectMemoryTools(sdk, mcpServers)
       _diag('injectMemoryTools 完成, 开始 injectNanoBananaTools (await)')
       await injectNanoBananaTools(sdk, mcpServers, sessionId, agentCwd)
@@ -601,6 +610,10 @@ export class AgentOrchestrator {
         triggeredBy: input.triggeredBy,
       })
       _diag('injectAutomationMcpServer 完成')
+
+      // 注入自定义 HTTP 工具（Tool Builder 创建的 customTools）
+      const { injectHttpCustomMcpServer } = await import('./chat-tools/http-custom-mcp')
+      await injectHttpCustomMcpServer(sdk, mcpServers)
 
       const expertRuntime = resolveExpertGroupRuntime({
         expertGroupId: sessionMeta?.expertGroupId,
@@ -982,6 +995,36 @@ export class AgentOrchestrator {
           ]
           return plugins.length > 0 ? { plugins } : {}
         })(),
+        // 连接器 CLI Skill 扫描：外层 connectors.json 拿 enabled/type，
+        // 内层 connectors/{name}/connector.json 拿 skillDirs
+        ...(() => {
+          const connectorsDir = workspaceSlug ? getConnectorsDir(workspaceSlug) : ''
+          if (!connectorsDir) return {}
+
+          const skillDirs: string[] = []
+          try {
+            const config = workspaceSlug ? getWorkspaceConnectorsConfig(workspaceSlug) : { version: '1.0', connectors: {} }
+            for (const [name, connector] of Object.entries(config.connectors)) {
+              if (!connector.enabled) continue
+              if (connector.type !== 'cli') continue
+
+              // 优先从 connectors/{name}/connector.json 读取 skillDirs（新格式）
+              // 兜底从 connectors.json 的 skillDirs 字段读取（旧格式兼容）
+              const dirs = readSkillDirsFromConnectorJson(connectorsDir, name) ?? connector.skillDirs ?? []
+              for (const d of dirs) {
+                if (d === '.' || d === '..' || !/^[a-zA-Z0-9._-]+$/.test(d)) {
+                  console.warn(`[Agent 编排] 跳过非法 skill 目录: ${name}/${d}`)
+                  continue
+                }
+                skillDirs.push(join(connectorsDir, name, d))
+              }
+            }
+          } catch (err) {
+            console.warn('[Agent 编排] 读取 connector skill 目录失败:', err)
+          }
+
+          return skillDirs.length > 0 ? { additionalSkillDirs: skillDirs } : {}
+        })(),
         // 合并附加目录：用户当次输入 + 会话级 + 工作区级（详见 collectAttachedDirectories）
         ...(() => {
           const allDirs = collectAttachedDirectories({
@@ -999,7 +1042,10 @@ export class AgentOrchestrator {
         ...(appSettings.agentMaxBudgetUsd != null && appSettings.agentMaxBudgetUsd > 0 && {
           maxBudgetUsd: appSettings.agentMaxBudgetUsd,
         }),
-        disallowedTools: mergeDisallowedTools(expertRuntime?.disallowedTools),
+        disallowedTools: mergeDisallowedTools([
+          ...(expertRuntime?.disallowedTools ?? []),
+          ...collectConnectorDisabledTools(workspaceSlug, connectorsConfig),
+        ]),
         // 1M context window: 支持的模型自动启用 beta（Claude: Sonnet 4+ / Opus 4.6+ / 4.7 / 4.8、DeepSeek V4 系列）
         // 未启用时 SDK 默认 200K 并在约 150K 触发压缩；启用后上限提升至 1M
         ...(supports1MContext(modelId || DEFAULT_MODEL_ID) && {

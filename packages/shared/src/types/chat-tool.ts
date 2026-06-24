@@ -34,6 +34,8 @@ export interface ChatToolHttpConfig {
   bodyTemplate?: string
   /** 响应结果提取的 JSONPath（可选，默认取全部） */
   resultPath?: string
+  /** 是否注入 EIP 网关认证 Cookie（EIPGW-TOKEN），默认 false */
+  useEipAuth?: boolean
 }
 
 /** 工具元数据（描述一个工具"是什么"） */

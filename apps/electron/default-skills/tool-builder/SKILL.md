@@ -1,9 +1,9 @@
 ---
 name: tool-builder
 description: 交互式创建和管理 Chat 模式的自定义 HTTP 工具。当用户想要创建新的 API 工具、配置 Chat 工具、添加自定义工具、管理自定义工具、或说"帮我创建一个 XX 工具"时使用此 Skill。也适用于调试、修复或删除已有的自定义工具。
-version: "1.0.0"
+version: "1.1.0"
 ---
-version: "1.0.0"
+version: "1.1.0"
 ---
 # Tool Builder
 
@@ -62,7 +62,7 @@ version: "1.0.0"
 |------|------|------|
 | `id` | 是 | 唯一标识，必须以 `custom-` 前缀 + slug 格式（如 `custom-weather`） |
 | `name` | 是 | 显示名称 |
-| `description` | 是 | 工具描述，AI 据此决定何时调用 |
+| `description` | 是 | 工具描述，AI 据此决定何时调用。**不超过两句话**（40-80 字），聚焦"做什么、什么时候用"。不要写 API 文档式长描述 |
 | `params` | 是 | 参数列表，每个含 `name`/`type`/`description`/`required` |
 | `category` | 是 | 固定为 `"custom"` |
 | `executorType` | 是 | 固定为 `"http"` |
@@ -79,10 +79,14 @@ version: "1.0.0"
 | `headers` | 否 | 请求头，常用于 API Key 认证：`{ "Authorization": "Bearer xxx" }` |
 | `bodyTemplate` | 否 | POST 请求体 JSON 模板，`{{paramName}}` 占位符会被替换（不编码） |
 | `resultPath` | 否 | 点号路径提取响应中的特定字段（如 `"data.results"`） |
+| `useEipAuth` | 否 | 是否注入 EIP 网关认证 Cookie（EIPGW-TOKEN）。当 URL 域名包含 `eip` 时自动设为 `true` |
 
 #### 参数类型
 
 `params[].type` 支持：`"string"` / `"number"` / `"boolean"`
+
+- 参数描述不超过 **一句话**（15 字以内），简洁说明参数含义
+- `enum` 仅用于 `string` 类型参数，限制可选值
 
 可选添加 `enum` 字段限制可选值：
 ```json
@@ -102,10 +106,10 @@ version: "1.0.0"
 ### 4. 测试引导
 
 告知用户：
-- "工具已创建并启用，请切换到 Chat 模式测试"
+- "工具已创建并启用，可在 Chat 或 Agent 模式中使用"
 - "在 Chat 输入框左下角的工具选择器中应该能看到新工具"
 - "试着问一个需要用到这个工具的问题"
-- "如果有问题，回到 Agent 模式告诉我，我帮你调试"
+- "如果有问题，告诉我，我帮你调试"
 
 ### 5. 调试修复
 
@@ -164,3 +168,29 @@ version: "1.0.0"
   }
 }
 ```
+
+## 完整示例：EIP 网关内部接口工具
+
+当接口域名包含 `eip` 时，自动启用 `useEipAuth: true`，会注入当前登录的 EIPGW-TOKEN Cookie。
+
+```json
+{
+  "id": "custom-eip-staff-query",
+  "name": "员工查询",
+  "description": "通过工号查询员工信息，使用 EIP 网关认证。",
+  "params": [
+    { "name": "jobId", "type": "string", "description": "员工工号", "required": true }
+  ],
+  "category": "custom",
+  "executorType": "http",
+  "httpConfig": {
+    "urlTemplate": "http://eip.htsc.com.cn/api/staff/{{jobId}}",
+    "method": "GET",
+    "useEipAuth": true
+  }
+}
+```
+
+## 关于 EIP 认证
+
+当创建的工具 URL 域名包含 `eip` 时，请自动添加 `"useEipAuth": true`。这样工具执行时会自动获取当前登录用户的 EIPGW-TOKEN 并注入到请求头中，无需用户手动配置认证信息。

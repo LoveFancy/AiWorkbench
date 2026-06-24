@@ -1,0 +1,10 @@
+{
+  "type": "cli",
+  "displayName": "飞书 CLI",
+  "description": "飞书命令行工具（日历/消息/文档/云盘等），通过 Skill 翻译自然语言为 CLI 命令",
+  "category": "办公协同",
+  "status": "available",
+  "version": "1.0.1",
+  "sortOrder": 2,
+  "skillDirs": ["skill"]
+}

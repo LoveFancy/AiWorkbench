@@ -233,6 +233,11 @@ import {
   ensureDefaultWorkspace,
   getWorkspaceMcpConfig,
   saveWorkspaceMcpConfig,
+  getWorkspaceConnectorsConfig,
+  saveWorkspaceConnectorsConfig,
+  registerUserConnector,
+  migrateMcpJsonToConnectors,
+  syncDefaultConnectorsToWorkspace,
   getAllWorkspaceSkills,
   getOtherWorkspaceSkills,
   getDefaultSkillSlugs,
@@ -2121,6 +2126,133 @@ export function registerIpcHandlers(): void {
     }
   )
 
+  // 获取飞书 CLI 授权状态
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.GET_FEISHU_CLI_AUTH_STATUS,
+    async (): Promise<import('@proma/shared').FeishuCliAuthState> => {
+      const { getFeishuCliAuthStatus } = await import('./lib/feishu-device-auth')
+      return getFeishuCliAuthStatus()
+    }
+  )
+
+  // 注册飞书 CLI 应用（SDK registerApp）
+  let activeFeishuCliRegisterAbort: AbortController | null = null
+  /** 注册成功后暂存 appSecret，避免返回到渲染进程，由 SAVE_BOT_CONFIG 消费后清除 */
+  let pendingFeishuAppSecret: string | null = null
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.REGISTER_FEISHU_APP,
+    async (event): Promise<{ appId: string; appSecret: string }> => {
+      if (activeFeishuCliRegisterAbort) {
+        activeFeishuCliRegisterAbort.abort()
+      }
+      const abort = new AbortController()
+      activeFeishuCliRegisterAbort = abort
+
+      try {
+        const lark = await import('@larksuiteoapi/node-sdk')
+        await configureFeishuDefaultHttpInstance(lark.defaultHttpInstance)
+
+        const result = await lark.registerApp({
+          source: 'proma-cli',
+          signal: abort.signal,
+          onQRCodeReady: (info) => {
+            if (event.sender.isDestroyed()) return
+            event.sender.send(AGENT_IPC_CHANNELS.FEISHU_CLI_REGISTER_QRCODE, {
+              url: info.url,
+              expireIn: info.expireIn,
+            })
+          },
+          onStatusChange: (info) => {
+            if (event.sender.isDestroyed()) return
+            event.sender.send(AGENT_IPC_CHANNELS.FEISHU_CLI_REGISTER_STATUS, {
+              status: info.status,
+              interval: info.interval,
+            })
+          },
+        })
+        pendingFeishuAppSecret = result.client_secret
+        return {
+          appId: result.client_id,
+          appSecret: result.client_secret,
+        }
+      } finally {
+        if (activeFeishuCliRegisterAbort === abort) {
+          activeFeishuCliRegisterAbort = null
+        }
+      }
+    }
+  )
+
+  // 取消飞书 CLI 应用注册
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.CANCEL_FEISHU_CLI_REGISTER,
+    async (): Promise<void> => {
+      activeFeishuCliRegisterAbort?.abort()
+      activeFeishuCliRegisterAbort = null
+    }
+  )
+
+  // 发起设备授权
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.START_FEISHU_DEVICE_AUTH,
+    async (_, appId: string, appSecret: string): Promise<import('@proma/shared').FeishuCliDeviceCodeData> => {
+      const { startFeishuDeviceAuth } = await import('./lib/feishu-device-auth')
+      return startFeishuDeviceAuth(appId, appSecret)
+    }
+  )
+
+  // 轮询设备授权 Token（含两阶段认证）
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.POLL_FEISHU_DEVICE_AUTH,
+    async (_, appId: string, appSecret: string, deviceCode: string, phase: number): Promise<import('@proma/shared').FeishuCliPollResult> => {
+      const { pollFeishuDeviceAuth } = await import('./lib/feishu-device-auth')
+      return pollFeishuDeviceAuth(appId, appSecret, deviceCode, phase)
+    }
+  )
+
+  // 解绑飞书 CLI
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.UNBIND_FEISHU_CLI,
+    async (): Promise<boolean> => {
+      const { unbindFeishuCli } = await import('./lib/feishu-device-auth')
+      return unbindFeishuCli()
+    }
+  )
+
+  // 获取工作区连接器配置
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.GET_CONNECTORS_CONFIG,
+    async (_, workspaceSlug: string): Promise<import('@proma/shared').ConnectorsConfig> => {
+      return getWorkspaceConnectorsConfig(workspaceSlug)
+    }
+  )
+
+  // 保存工作区连接器配置
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.SAVE_CONNECTORS_CONFIG,
+    async (_, workspaceSlug: string, config: import('@proma/shared').ConnectorsConfig): Promise<void> => {
+      return saveWorkspaceConnectorsConfig(workspaceSlug, config)
+    }
+  )
+
+  // 注册用户创建的连接器
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.REGISTER_USER_CONNECTOR,
+    async (_, workspaceSlug: string, name: string, entry: import('@proma/shared').McpServerEntry, displayName?: string): Promise<void> => {
+      return registerUserConnector(workspaceSlug, name, entry, displayName)
+    }
+  )
+
+  // 同步预置连接器到当前工作区
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.SYNC_DEFAULT_CONNECTORS,
+    async (_, workspaceSlug: string): Promise<void> => {
+      migrateMcpJsonToConnectors(workspaceSlug)
+      syncDefaultConnectorsToWorkspace(workspaceSlug)
+    }
+  )
+
   // 获取工作区 Skill 列表（含活跃和不活跃，设置页 UI 用）
   ipcMain.handle(
     AGENT_IPC_CHANNELS.GET_SKILLS,
@@ -2286,11 +2418,13 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     AGENT_IPC_CHANNELS.INSTALL_HT_SKILLHUB_SKILL,
     async (_, workspaceSlug: string, skillName: string, overwrite: boolean): Promise<HtSkillHubInstallResult> => {
-      const { fetchHtSkillHubIndex, installHtSkillHubSkill } = await import('./lib/skillhub-service')
-      const skills = await fetchHtSkillHubIndex(workspaceSlug)
-      const key = skillName.toLowerCase()
-      const skill = skills.find((item) => item.name.toLowerCase() === key)
-      if (!skill) throw new Error(`华泰 SkillHub 未找到 Skill: ${skillName}`)
+      const { fetchSkillHubDetail, installHtSkillHubSkill, canDownloadSkill, SKILLHUB_APPLY_URL } = await import('./lib/skillhub-service')
+      // 直接用 API 按名称查询，不依赖分页列表
+      const detail = await fetchSkillHubDetail(skillName)
+      if (!canDownloadSkill(detail.type, detail.permission)) {
+        throw new Error(`该 Skill 需要审批授权才能下载，请通过 ${SKILLHUB_APPLY_URL} 进行申请。`)
+      }
+      const skill: HtSkillHubSkill = { name: detail.skillName, description: detail.description, files: [] }
       return installHtSkillHubSkill({ workspaceSlug, skill, overwrite })
     }
   )
@@ -4081,6 +4215,11 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     FEISHU_IPC_CHANNELS.SAVE_BOT_CONFIG,
     async (_, input: import('@proma/shared').FeishuBotConfigInput) => {
+      // 如果注册流程刚完成，用暂存的 appSecret 填充
+      if (!input.appSecret && pendingFeishuAppSecret) {
+        input = { ...input, appSecret: pendingFeishuAppSecret }
+        pendingFeishuAppSecret = null
+      }
       const saved = saveFeishuBotConfig(input)
       // 配置变更后自动重启或停止（不阻塞保存结果）
       if (saved.enabled && saved.appId && saved.appSecret) {
