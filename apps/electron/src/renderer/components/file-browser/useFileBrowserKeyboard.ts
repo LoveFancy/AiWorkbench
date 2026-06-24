@@ -15,6 +15,8 @@ interface UseFileBrowserKeyboardParams {
   entries: FileEntry[]
   /** 可见节点元信息 Map，供键盘操作查找 isDirectory / name */
   entryMetaMapRef: React.RefObject<Map<string, { name: string; isDirectory: boolean }>>
+  /** Shift+Click 范围选择锚点 */
+  lastClickedPathRef: React.MutableRefObject<string | null>
   copyOrCutToClipboard: (mode: 'copy' | 'cut') => void
   handleRequestDelete: (entry: FileEntry) => void
   setRenamingPath: React.Dispatch<React.SetStateAction<string | null>>
@@ -33,6 +35,7 @@ export function useFileBrowserKeyboard({
   selectedPaths,
   entries,
   entryMetaMapRef,
+  lastClickedPathRef,
   copyOrCutToClipboard,
   handleRequestDelete,
   setRenamingPath,
@@ -122,6 +125,7 @@ export function useFileBrowserKeyboard({
       e.preventDefault()
       e.stopPropagation()
       setSelectedPaths(new Set(entriesRef.current.map(item => item.path)))
+      lastClickedPathRef.current = null
       onSelectedDirectoryChangeRef.current?.(null)
       return
     }

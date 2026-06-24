@@ -112,6 +112,9 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
   const [, clearPasteProgress] = useAtom(clearPasteProgressAtom)
   const containerRef = React.useRef<HTMLDivElement>(null)
 
+  // ===== Shift+Click 范围选择锚点 =====
+  const lastClickedPathRef = React.useRef<string | null>(null)
+
   // ===== 可见节点元信息追踪（供键盘快捷键使用） =====
   const entryMetaMapRef = React.useRef(new Map<string, { name: string; isDirectory: boolean }>())
   const registerEntryMeta = React.useCallback((entry: FileEntry): (() => void) => {
@@ -152,6 +155,7 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
     if (revealTs <= consumedSelectTsRef.current) return
     consumedSelectTsRef.current = revealTs
     setSelectedPaths(new Set([revealTarget]))
+    lastClickedPathRef.current = revealTarget
     onSelectedDirectoryChange?.(null)
   }, [revealTs, revealForThisRoot?.select, revealTarget, onSelectedDirectoryChange])
 
@@ -188,6 +192,13 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
     onSelectedDirectoryChange?.(null)
   }, [onSelectedDirectoryChange])
 
+  // 当选中列表清空时自动重置 Shift+Click 锚点
+  React.useEffect(() => {
+    if (selectedPaths.size === 0) {
+      lastClickedPathRef.current = null
+    }
+  }, [selectedPaths.size])
+
   React.useEffect(() => {
     if (clearSelectionSignal === 0) return
     clearSelection()
@@ -218,8 +229,49 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
   /** 选中项 */
   const handleSelect = React.useCallback((entry: FileEntry, event: React.MouseEvent) => {
     containerRef.current?.focus()
+    const isShift = event.shiftKey
     const isMulti = event.metaKey || event.ctrlKey
-    if (isMulti) {
+
+    if (isShift) {
+      // Shift+Click: 范围选择
+      const anchor = lastClickedPathRef.current
+      if (!anchor) {
+        // 无锚点，退化为普通点击
+        setSelectedPaths(new Set([entry.path]))
+        onSelectedDirectoryChange?.(entry.isDirectory ? entry.path : null)
+        lastClickedPathRef.current = entry.path
+        return
+      }
+      // 获取可见项的扁平有序列表（entryMetaMapRef 按渲染顺序维护）
+      const visiblePaths = [...entryMetaMapRef.current.keys()]
+      const anchorIdx = visiblePaths.indexOf(anchor)
+      const clickedIdx = visiblePaths.indexOf(entry.path)
+      if (anchorIdx === -1 || clickedIdx === -1) {
+        // 锚点或点击项不在可见列表中，退化为普通点击
+        setSelectedPaths(new Set([entry.path]))
+        onSelectedDirectoryChange?.(entry.isDirectory ? entry.path : null)
+        lastClickedPathRef.current = entry.path
+        return
+      }
+      const start = Math.min(anchorIdx, clickedIdx)
+      const end = Math.max(anchorIdx, clickedIdx)
+      const rangePaths = visiblePaths.slice(start, end + 1)
+      if (isMulti) {
+        // Shift+Ctrl+Click: 合并范围到现有选中
+        setSelectedPaths((prev) => {
+          const next = new Set(prev)
+          for (const p of rangePaths) {
+            next.add(p)
+          }
+          return next
+        })
+      } else {
+        setSelectedPaths(new Set(rangePaths))
+      }
+      onSelectedDirectoryChange?.(null)
+      // 不更新锚点，保持范围选择的起始点
+    } else if (isMulti) {
+      // Ctrl/Cmd+Click: 切换单个项
       setSelectedPaths((prev) => {
         const next = new Set(prev)
         if (next.has(entry.path)) {
@@ -230,9 +282,11 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
         return next
       })
       onSelectedDirectoryChange?.(null)
+      lastClickedPathRef.current = entry.path
     } else {
       setSelectedPaths(new Set([entry.path]))
       onSelectedDirectoryChange?.(entry.isDirectory ? entry.path : null)
+      lastClickedPathRef.current = entry.path
     }
   }, [onSelectedDirectoryChange])
 
@@ -278,6 +332,7 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
       await loadRoot()
       setRenamingPath(null)
       setSelectedPaths(new Set())
+      lastClickedPathRef.current = null
       return null
     } catch (err) {
       return err instanceof Error ? err.message : '重命名失败'
@@ -317,14 +372,13 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
         await window.electronAPI.deleteFile(deleteTarget.path)
       }
       setSelectedPaths(new Set())
+      lastClickedPathRef.current = null
       await loadRoot()
     } catch (err) {
       console.error('[FileBrowser] 删除失败:', err)
     }
     setDeleteTarget(null)
   }, [deleteTarget, loadRoot])
-
-  /** 移动文件 */
   const handleMove = React.useCallback(async (entry: FileEntry) => {
     setMoving(true)
     try {
@@ -489,6 +543,7 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
     selectedPaths,
     entries,
     entryMetaMapRef,
+    lastClickedPathRef,
     copyOrCutToClipboard,
     handleRequestDelete,
     setRenamingPath,
