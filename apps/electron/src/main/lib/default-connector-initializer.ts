@@ -64,7 +64,7 @@ async function defaultCommandExists(command: string): Promise<boolean> {
 
 function defaultRunCommand(command: string, args: string[]): Promise<CommandResult> {
   return new Promise((resolve) => {
-    execFile(command, args, { timeout: 10_000, windowsHide: true }, (error, stdout, stderr) => {
+    execFile(command, args, { timeout: 120_000, windowsHide: true }, (error, stdout, stderr) => {
       resolve({
         ok: !error,
         stdout: stdout.toString(),

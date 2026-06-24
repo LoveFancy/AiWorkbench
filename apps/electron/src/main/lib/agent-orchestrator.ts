@@ -17,7 +17,7 @@
 import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import type { AgentSendInput, AgentMessage, AgentProviderAdapter, AgentSessionMeta, TypedError, RetryAttempt, SDKMessage, RewindSessionResult, SdkBeta, AgentGenerateTitleInput } from '@proma/shared'
 import {
   PROMA_DEFAULT_PERMISSION_MODE,
@@ -999,11 +999,15 @@ export class AgentOrchestrator {
         // 内层 connectors/{name}/connector.json 拿 skillDirs
         ...(() => {
           const connectorsDir = workspaceSlug ? getConnectorsDir(workspaceSlug) : ''
+          console.log(`[Agent 编排] additionalSkillDirs 扫描: connectorsDir=${connectorsDir || '(无)'}`)
           if (!connectorsDir) return {}
 
           const skillDirs: string[] = []
           try {
             const config = workspaceSlug ? getWorkspaceConnectorsConfig(workspaceSlug) : { version: '1.0', connectors: {} }
+            const connectorEntries = Object.entries(config.connectors)
+            const cliConnectors = connectorEntries.filter(([, c]) => c.enabled && c.type === 'cli')
+            console.log(`[Agent 编排] additionalSkillDirs: 共 ${connectorEntries.length} 个连接器, ${cliConnectors.length} 个 CLI 已启用`)
             for (const [name, connector] of Object.entries(config.connectors)) {
               if (!connector.enabled) continue
               if (connector.type !== 'cli') continue
@@ -1011,14 +1015,20 @@ export class AgentOrchestrator {
               // 优先从 connectors/{name}/connector.json 读取 skillDirs（新格式）
               // 兜底从 connectors.json 的 skillDirs 字段读取（旧格式兼容）
               const dirs = readSkillDirsFromConnectorJson(connectorsDir, name) ?? connector.skillDirs ?? []
+              console.log(`[Agent 编排] additionalSkillDirs: CLI 连接器 '${name}' skillDirs=${JSON.stringify(dirs)}`)
               for (const d of dirs) {
                 if (d === '.' || d === '..' || !/^[a-zA-Z0-9._-]+$/.test(d)) {
                   console.warn(`[Agent 编排] 跳过非法 skill 目录: ${name}/${d}`)
                   continue
                 }
-                skillDirs.push(join(connectorsDir, name, d))
+                const absPath = join(connectorsDir, name, d)
+                const exists = existsSync(absPath)
+                const files = exists ? readdirSync(absPath).filter((f) => f.endsWith('.md')) : []
+                console.log(`[Agent 编排] additionalSkillDirs: ${absPath} exists=${exists}, mdFiles=${JSON.stringify(files)}`)
+                skillDirs.push(absPath)
               }
             }
+            console.log(`[Agent 编排] additionalSkillDirs: 最终注入 ${skillDirs.length} 个目录: ${JSON.stringify(skillDirs)}`)
           } catch (err) {
             console.warn('[Agent 编排] 读取 connector skill 目录失败:', err)
           }
