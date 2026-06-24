@@ -11,7 +11,7 @@
 import * as React from 'react'
 import { useAtom, useSetAtom, useAtomValue, useStore } from 'jotai'
 import { toast } from 'sonner'
-import { Pin, PinOff, Settings, Plus, Trash2, Pencil, ChevronDown, ChevronRight, Plug, Zap, PanelLeftClose, PanelLeftOpen, ArrowRightLeft, Search, Archive, ArchiveRestore, ArrowLeft, Hammer, Bot, MessageSquare, MoreHorizontal, User, Check, FolderOpen, GripVertical, Clock, AlarmClock } from 'lucide-react'
+import { Pin, PinOff, Settings, Plus, Trash2, Pencil, ChevronDown, ChevronRight, Plug, PanelLeftClose, PanelLeftOpen, ArrowRightLeft, Search, Archive, ArchiveRestore, ArrowLeft, Hammer, Bot, MessageSquare, MoreHorizontal, User, Check, FolderOpen, GripVertical, Clock, AlarmClock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { ModeSwitcher } from './ModeSwitcher'
@@ -43,7 +43,6 @@ import {
   agentSessionModelMapAtom,
   currentAgentWorkspaceIdAtom,
   agentWorkspacesAtom,
-  workspaceCapabilitiesVersionAtom,
   agentDiffPanelTabAtom,
   agentDiffRefreshVersionAtom,
   agentDiffUnseenChangesAtom,
@@ -122,7 +121,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
-import type { ConversationMeta, AgentSessionMeta, AgentWorkspace, WorkspaceCapabilities } from '@proma/shared'
+import type { ConversationMeta, AgentSessionMeta, AgentWorkspace } from '@proma/shared'
 
 function formatAutomationCount(count: number): string {
   return count > 99 ? '99+' : String(count)
@@ -168,16 +167,15 @@ function AutomationSidebarEntry({ count, active, onClick }: AutomationSidebarEnt
 }
 
 interface SkillsSidebarEntryProps {
-  count: number
   active: boolean
   onClick: () => void
 }
 
-function SkillsSidebarEntry({ count, active, onClick }: SkillsSidebarEntryProps): React.ReactElement {
+function SkillsSidebarEntry({ active, onClick }: SkillsSidebarEntryProps): React.ReactElement {
   return (
     <button
       type="button"
-      aria-label={`Agent 技能，${count} 个能力`}
+      aria-label="Agent 技能"
       onClick={onClick}
       className={cn(
         'group w-full flex items-center justify-between px-3 py-2 rounded-md text-[13px] transition-colors duration-100 titlebar-no-drag',
@@ -186,7 +184,7 @@ function SkillsSidebarEntry({ count, active, onClick }: SkillsSidebarEntryProps)
           : 'text-foreground/60 hover:bg-accent-foreground/[0.08] hover:text-foreground',
       )}
     >
-      <span className="flex items-center gap-3 min-w-0">
+      <span className="flex min-w-0 items-center gap-3">
         <span className={cn('flex-shrink-0 w-[18px] h-[18px]', active ? 'text-accent-foreground' : 'text-foreground/45')}>
           <Plug size={16} className="block" />
         </span>
@@ -194,16 +192,6 @@ function SkillsSidebarEntry({ count, active, onClick }: SkillsSidebarEntryProps)
       </span>
       <span className="ml-2 flex flex-shrink-0 items-center gap-1.5">
         <span className="text-[11px] text-foreground/35">专家·技能·连接器</span>
-        <span
-          className={cn(
-            'flex h-5 min-w-[22px] items-center justify-center rounded-full px-1.5 text-[11px] font-medium tabular-nums',
-            active
-              ? 'bg-accent-foreground/[0.26] text-primary-foreground'
-              : 'bg-foreground/[0.045] text-foreground/[0.42] group-hover:text-foreground/65',
-          )}
-        >
-          {formatAutomationCount(count)}
-        </span>
       </span>
     </button>
   )
@@ -459,10 +447,6 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
   const [workspaces, setWorkspaces] = useAtom(agentWorkspacesAtom)
   const setMode = useSetAtom(appModeAtom)
 
-  // 当前项目能力（MCP + Skill 计数）
-  const [capabilities, setCapabilities] = React.useState<WorkspaceCapabilities | null>(null)
-  const capabilitiesVersion = useAtomValue(workspaceCapabilitiesVersionAtom)
-
   // Tab 状态
   const [tabs, setTabs] = useAtom(tabsAtom)
   const [activeTabId, setActiveTabId] = useAtom(activeTabIdAtom)
@@ -471,7 +455,9 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
     const result = openTab(tabs, { type: 'manual', sessionId: MANUAL_TAB_ID, title: MANUAL_TAB_TITLE })
     setTabs(result.tabs)
     setActiveTabId(result.activeTabId)
-  }, [tabs, setTabs, setActiveTabId])
+    setActiveView('conversations')
+    setAutomationForm({ open: false, draft: null })
+  }, [tabs, setTabs, setActiveTabId, setActiveView, setAutomationForm])
 
   // 会话高亮按"激活 Tab 所属会话"判定：预览 Tab 激活时其 owner 会话仍保持高亮
   const activeSessionId = useAtomValue(activeSessionIdAtom)
@@ -569,11 +555,6 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
     clearPreviewCacheForSession(id)
   }, [setConvModels, setConvContextLength, setConvThinking, setConvParallel, setConvPromptId, setPreviewPanelOpen, setPreviewFile, setDiffPanelTab, setDiffRefreshVersion, setDiffUnseen, setDiffUnseenFiles, setDiffData, setSessionChannelMap, setSessionModelMap, setSessionViewStateMap, setStreamingStates, setLiveMessagesMap, setSessionPendingFiles, store])
 
-  const currentWorkspaceSlug = React.useMemo(() => {
-    if (!currentWorkspaceId) return null
-    return workspaces.find((w) => w.id === currentWorkspaceId)?.slug ?? null
-  }, [currentWorkspaceId, workspaces])
-
   const workspaceNameMap = React.useMemo(() => {
     const map = new Map<string, string>()
     for (const w of workspaces) map.set(w.id, w.name)
@@ -584,17 +565,6 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
     () => workspaces.find((workspace) => workspace.id === pendingDeleteWorkspaceId) ?? null,
     [pendingDeleteWorkspaceId, workspaces],
   )
-
-  React.useEffect(() => {
-    if (!currentWorkspaceSlug || mode !== 'agent') {
-      setCapabilities(null)
-      return
-    }
-    window.electronAPI
-      .getWorkspaceCapabilities(currentWorkspaceSlug)
-      .then(setCapabilities)
-      .catch(console.error)
-  }, [currentWorkspaceSlug, mode, activeView, capabilitiesVersion])
 
   /** 置顶对话列表（仅活跃模式显示，排除 draft） */
   const pinnedConversations = React.useMemo(
@@ -1756,25 +1726,24 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
         </Tooltip>
       </div>
 
+      {/* Agent 技能入口：仅展开侧栏展示，底部能力指示器已移除。 */}
+      {mode === 'agent' && (
+        <div className="px-3 pt-2 pb-0.5">
+          <SkillsSidebarEntry
+            active={activeView === 'agent-skills'}
+            onClick={handleOpenAgentSkills}
+          />
+        </div>
+      )}
+
       {/* 自动任务入口：作为任务中心入口放在置顶区上方，不参与置顶列表层级。 */}
-      <div className="px-3 pt-2 pb-0.5">
+      <div className="px-3 pt-1 pb-0.5">
         <AutomationSidebarEntry
           count={automationCount}
           active={activeView === 'automations'}
           onClick={handleOpenAutomations}
         />
       </div>
-
-      {/* Agent 技能入口：Skills / MCP 能力中心，仅 Agent 模式可见。 */}
-      {mode === 'agent' && capabilities && (
-        <div className="px-3 pt-1 pb-0.5">
-          <SkillsSidebarEntry
-            count={capabilities.skills.length + capabilities.mcpServers.filter((s) => s.enabled).length}
-            active={activeView === 'agent-skills'}
-            onClick={handleOpenAgentSkills}
-          />
-        </div>
-      )}
 
       {/* Chat 模式 active 视图：置顶 + 对话历史，结构与 Agent active 视图保持一致 */}
       {mode === 'chat' && viewMode === 'active' ? (
@@ -2065,35 +2034,6 @@ export function LeftSidebar({ width }: LeftSidebarProps): React.ReactElement {
           </button>
         )}
       </div>
-
-      {/* Agent 模式：项目能力指示器 */}
-      {mode === 'agent' && capabilities && (
-        <div className="px-3 pb-1">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={handleOpenAgentSkills}
-                className="w-full flex items-center gap-3 px-3 py-2 rounded-[10px] text-[12px] text-foreground/50 hover:bg-foreground/[0.04] hover:text-foreground/70 transition-colors titlebar-no-drag"
-              >
-                <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                  <span className="flex items-center gap-1">
-                    <Plug size={13} className="text-foreground/40" />
-                    <span className="tabular-nums">{capabilities.mcpServers.filter((s) => s.enabled).length}</span>
-                    <span className="text-foreground/30">MCP</span>
-                  </span>
-                  <span className="text-foreground/20">·</span>
-                  <span className="flex items-center gap-1">
-                    <Zap size={13} className="text-foreground/40" />
-                    <span className="tabular-nums">{capabilities.skills.length}</span>
-                    <span className="text-foreground/30">Skills</span>
-                  </span>
-                </div>
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="top">打开 Agent 技能</TooltipContent>
-          </Tooltip>
-        </div>
-      )}
 
       {/* 底部：账户中心入口 */}
       <div className="px-3 pb-3 flex flex-col gap-1">
