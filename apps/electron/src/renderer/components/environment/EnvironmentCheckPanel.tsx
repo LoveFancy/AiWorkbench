@@ -34,35 +34,49 @@ export function EnvironmentCheckPanel({
 
   const refresh = React.useCallback(async () => {
     setIsChecking(true)
+    // 运行时检测与安装包清单解耦：任一失败都不应清空另一方的结果，
+    // 否则 reinit 偶发失败会让 runtime 变回 null，环境卡片陷入"永久转圈"。
     try {
-      const [status, manifest] = await Promise.all([
-        window.electronAPI.reinitRuntime(),
-        window.electronAPI.fetchInstallerManifest(),
-      ])
+      const status = await window.electronAPI.reinitRuntime()
       setRuntime(status)
+    } catch (error) {
+      console.error('[EnvironmentCheckPanel] 运行时检测失败:', error)
+    }
+    try {
+      const manifest = await window.electronAPI.fetchInstallerManifest()
       setManifest(manifest)
     } catch (error) {
-      console.error('[EnvironmentCheckPanel] 检测失败:', error)
-    } finally {
-      setIsChecking(false)
+      console.error('[EnvironmentCheckPanel] 安装包清单获取失败:', error)
     }
+    setIsChecking(false)
   }, [setRuntime, setManifest])
 
   React.useEffect(() => {
+    // 始终先读取主进程已检测/缓存的运行时状态：首屏即可展示真实结果，避免"假转圈"。
+    // 若后台检测尚未完成（返回 null），会由下面的 onRuntimeStatusUpdated 推送补齐。
+    window.electronAPI.getRuntimeStatus().then((status) => {
+      if (status) setRuntime(status)
+    })
+    window.electronAPI
+      .fetchInstallerManifest()
+      .then((m) => setManifest(m))
+      .catch(() => {})
+
+    // Onboarding 等场景要求强制重新检测；此时即便 reinit 偶发失败，
+    // 上面已 seed 的缓存值仍在，不会回到 null，故不会再永久转圈。
     if (autoDetectOnMount) {
       refresh()
-    } else if (!runtime) {
-      // 至少拿一次当前状态
-      window.electronAPI.getRuntimeStatus().then((status) => {
-        if (status) setRuntime(status)
-      })
-      window.electronAPI
-        .fetchInstallerManifest()
-        .then((m) => setManifest(m))
-        .catch(() => {})
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // 订阅后台运行时检测完成的推送：面板打开期间若后台刚检测完，实时刷新状态
+  React.useEffect(() => {
+    const unsubscribe = window.electronAPI.onRuntimeStatusUpdated((status) => {
+      setRuntime(status)
+    })
+    return unsubscribe
+  }, [setRuntime])
 
   // ----- Shell 环境卡片 -----
   const shell = runtime?.shell

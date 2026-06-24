@@ -14,9 +14,12 @@
 
 import { existsSync } from 'fs'
 import { join, dirname } from 'path'
-import { execSync, spawnSync } from 'child_process'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
 import { app } from 'electron'
 import type { BunRuntimeStatus, PlatformArch } from '@proma/shared'
+
+const execFileAsync = promisify(execFile)
 
 /**
  * 获取当前平台架构标识
@@ -113,18 +116,18 @@ export function getVendorBunPath(): string | null {
  *
  * @returns Bun 二进制路径，如果未找到返回 null
  */
-export function getSystemBunPath(): string | null {
+export async function getSystemBunPath(): Promise<string | null> {
   try {
     // 使用 which/where 命令查找 bun
-    const command = process.platform === 'win32' ? 'where bun' : 'which bun'
+    const command = process.platform === 'win32' ? 'where' : 'which'
 
-    const result = execSync(command, {
+    const { stdout } = await execFileAsync(command, ['bun'], {
       encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
       timeout: 5000,
+      windowsHide: true,
     })
 
-    const bunPath = result.trim().split('\n')[0]
+    const bunPath = stdout.trim().split('\n')[0]
 
     if (bunPath && existsSync(bunPath)) {
       return bunPath
@@ -142,21 +145,20 @@ export function getSystemBunPath(): string | null {
  * @param bunPath - Bun 二进制路径
  * @returns 版本号，如果无效返回 null
  */
-export function validateBunExecutable(bunPath: string): string | null {
+export async function validateBunExecutable(bunPath: string): Promise<string | null> {
   if (!existsSync(bunPath)) {
     return null
   }
 
   try {
-    // 使用 spawnSync 执行，更可靠
-    const result = spawnSync(bunPath, ['--version'], {
+    const { stdout } = await execFileAsync(bunPath, ['--version'], {
       encoding: 'utf-8',
       timeout: 5000,
-      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
     })
 
-    if (result.status === 0 && result.stdout) {
-      return result.stdout.trim()
+    if (stdout) {
+      return stdout.trim()
     }
   } catch {
     // 执行失败
@@ -180,7 +182,7 @@ export function validateBunExecutable(bunPath: string): string | null {
  */
 export async function detectBunRuntime(): Promise<BunRuntimeStatus> {
   const candidates: Array<{
-    getPath: () => string | null
+    getPath: () => string | null | Promise<string | null>
     source: 'bundled' | 'system' | 'vendor'
   }> = [
     { getPath: getBundledBunPath, source: 'bundled' },
@@ -189,10 +191,10 @@ export async function detectBunRuntime(): Promise<BunRuntimeStatus> {
   ]
 
   for (const { getPath, source } of candidates) {
-    const bunPath = getPath()
+    const bunPath = await getPath()
     if (!bunPath) continue
 
-    const version = validateBunExecutable(bunPath)
+    const version = await validateBunExecutable(bunPath)
     if (!version) {
       console.warn(`[Bun 检测] ${source} 位置的 Bun 无法执行: ${bunPath}`)
       continue
