@@ -1,0 +1,26 @@
+{
+  "type":"mcp",
+  "displayName": "华泰邮箱",
+  "description": "华泰证券企业邮箱 IMAP/SMTP，基于 mcp-email-server",
+  "category": "邮件服务",
+  "status": "available",
+  "serverName": "huatai-email",
+  "version": "1.0.1",
+  "sortOrder": 1,
+  "disabledTools": ["send_email", "delete_email"],
+  "mcpServer": {
+    "type": "stdio",
+    "command": "mcp-email-server",
+    "args": ["stdio"],
+    "env": {
+      "MCP_EMAIL_SERVER_ACCOUNT_NAME": "htsc",
+      "MCP_EMAIL_SERVER_EMAIL_ADDRESS": "",
+      "MCP_EMAIL_SERVER_PASSWORD": "",
+      "MCP_EMAIL_SERVER_FULL_NAME": "",
+      "MCP_EMAIL_SERVER_USER_NAME": "",
+      "MCP_EMAIL_SERVER_IMAP_HOST": "htemail.htsc.com.cn",
+      "MCP_EMAIL_SERVER_IMAP_PORT": "993",
+      "MCP_EMAIL_SERVER_IMAP_SSL": "true"
+    }
+  }
+}

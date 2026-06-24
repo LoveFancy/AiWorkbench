@@ -774,7 +774,46 @@ export interface WorkspaceMcpConfig {
   servers: Record<string, McpServerEntry>
 }
 
-export type DefaultConnectorId = 'personal-email' | 'feishu-cli' | 'hiagent-taiwei'
+// ===== 连接器（Connector）类型 =====
+
+/** 连接器类型 */
+export type ConnectorType = 'mcp' | 'cli'
+
+/** 连接器来源 */
+export type ConnectorSource = 'preset' | 'user'
+
+/** 连接器状态条目 */
+export interface ConnectorEntry {
+  type: ConnectorType
+  enabled: boolean
+  source: ConnectorSource
+  /** 展示名称 */
+  displayName?: string
+  /** 功能描述 */
+  description?: string
+  /** UI 分类（如 "邮件服务"、"办公协同"） */
+  category?: string
+  /** 状态：available 可用，coming-soon 敬请期待 */
+  status?: 'available' | 'coming-soon'
+  /** MCP 类型专用：在 mcp.json 中注册的 server name（如 personal-email → email） */
+  serverName?: string
+  /** CLI 类型专用：Skill 所在子目录名列表 */
+  skillDirs?: string[]
+  /** 版本号（用于预置连接器升级判断） */
+  version?: string
+  /** 排序权重（越小越靠前，预置连接器 UI 排序用） */
+  sortOrder?: number
+  /** MCP 类型专用：禁用的工具名列表（不暴露给 Agent） */
+  disabledTools?: string[]
+}
+
+/** 工作区连接器总配置文件 */
+export interface ConnectorsConfig {
+  version: string
+  connectors: Record<string, ConnectorEntry>
+}
+
+// ===== 内置连接器初始化 =====
 
 export type DefaultConnectorInitStepId = 'check-python' | 'check-package' | 'install-package' | 'write-config' | 'self-check'
 
@@ -786,17 +825,60 @@ export interface DefaultConnectorInitStep {
 }
 
 export interface InitializeDefaultConnectorInput {
-  connectorId: DefaultConnectorId
+  connectorId: string
   emailAddress?: string
   password?: string
 }
 
 export interface InitializeDefaultConnectorResult {
-  connectorId: DefaultConnectorId
+  connectorId: string
   serverName: string
   success: boolean
   steps: DefaultConnectorInitStep[]
   message: string
+}
+
+// ===== 飞书 CLI OAuth 类型（设备授权流） =====
+
+export interface FeishuCliAuthState {
+  status: 'disconnected' | 'authorizing' | 'connected' | 'expired' | 'error'
+  appId?: string
+  userName?: string
+  errorMessage?: string
+}
+
+/** 设备流第 1 步返回 */
+export interface FeishuCliDeviceCodeData {
+  deviceCode: string
+  verificationUri: string
+  expiresIn: number
+  interval: number
+}
+
+/** 设备流轮询结果（含两阶段认证信息） */
+export interface FeishuCliPollResult {
+  /** true=继续轮询，false=认证完成 */
+  pending: boolean
+  /** 当前认证阶段（1 或 2） */
+  phase?: number
+  /** Phase-2 的新 device_code（前端需切换轮询目标） */
+  deviceCode?: string
+  /** Phase-2 的新 verification_uri（前端需重新展示） */
+  verificationUri?: string
+  /** device_code 有效期（秒） */
+  expiresIn?: number
+  /** 轮询间隔（秒） */
+  interval?: number
+  /** 用户 access_token */
+  accessToken?: string
+  /** 刷新 token */
+  refreshToken?: string
+  /** 授权范围 */
+  scope?: string
+  /** 用户名 */
+  userName?: string
+  /** 用户 Open ID */
+  openId?: string
 }
 
 // ===== Skill 元数据 =====
@@ -888,6 +970,8 @@ export interface HtSkillHubSkill {
   files: string[]
   installed: boolean
   enabled?: boolean
+  /** 当前用户是否允许下载此 Skill（取决于 type 和 permission.role） */
+  canDownload?: boolean
 }
 
 /** 华泰 SkillHub 市场分页结果 */
@@ -1794,8 +1878,32 @@ export const AGENT_IPC_CHANNELS = {
   SAVE_MCP_CONFIG: 'agent:save-mcp-config',
   /** 测试 MCP 服务器连接 */
   TEST_MCP_SERVER: 'agent:test-mcp-server',
+  /** 获取工作区连接器配置 */
+  GET_CONNECTORS_CONFIG: 'agent:get-connectors-config',
+  /** 保存工作区连接器配置 */
+  SAVE_CONNECTORS_CONFIG: 'agent:save-connectors-config',
+  /** 注册用户创建的连接器（创建目录 + connector.json + mcp.json + connectors.json） */
+  REGISTER_USER_CONNECTOR: 'agent:register-user-connector',
+  /** 同步预置连接器到工作区 */
+  SYNC_DEFAULT_CONNECTORS: 'agent:sync-default-connectors',
   /** 初始化内置连接器 */
   INITIALIZE_DEFAULT_CONNECTOR: 'agent:initialize-default-connector',
+  /** 获取飞书 CLI 授权状态 */
+  GET_FEISHU_CLI_AUTH_STATUS: 'agent:get-feishu-cli-auth-status',
+  /** 注册飞书 CLI 应用（SDK registerApp） */
+  REGISTER_FEISHU_APP: 'agent:register-feishu-app',
+  /** 飞书 CLI 注册 QR 码就绪（主→渲染 push） */
+  FEISHU_CLI_REGISTER_QRCODE: 'agent:feishu-cli-register-qrcode',
+  /** 飞书 CLI 注册状态变更（主→渲染 push） */
+  FEISHU_CLI_REGISTER_STATUS: 'agent:feishu-cli-register-status',
+  /** 取消飞书 CLI 注册 */
+  CANCEL_FEISHU_CLI_REGISTER: 'agent:cancel-feishu-cli-register',
+  /** 发起设备授权（获取 device_code + verification_uri） */
+  START_FEISHU_DEVICE_AUTH: 'agent:start-feishu-device-auth',
+  /** 轮询设备授权 Token（含两阶段认证） */
+  POLL_FEISHU_DEVICE_AUTH: 'agent:poll-feishu-device-auth',
+  /** 解绑飞书 CLI（清除凭据） */
+  UNBIND_FEISHU_CLI: 'agent:unbind-feishu-cli',
   /** 获取工作区 Skill 列表 */
   GET_SKILLS: 'agent:get-skills',
   /** 获取工作区 Skills 目录绝对路径 */

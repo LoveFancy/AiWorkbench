@@ -25,3 +25,5 @@ export {
   shouldLoadInGeneralRuntime,
   shouldLoadInExpertRuntime,
 } from './plugin-utils'
+export { buildHuataiEmailMcpEntry } from './huatai-email'
+export type { HuataiEmailInput } from './huatai-email'

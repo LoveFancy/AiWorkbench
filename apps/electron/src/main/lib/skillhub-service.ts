@@ -23,6 +23,7 @@ export interface HtSkillHubSkill {
   downloadCount?: number
   installed?: boolean
   files: string[]
+  canDownload?: boolean
 }
 
 export interface HtSkillHubSkillWithStatus extends HtSkillHubSkill {
@@ -246,6 +247,7 @@ interface SkillMetadataRaw {
   status?: string
   permission?: { role: string; grantedAt: string; grantedBy: string; grantedByName: string }
   permissionApplicationStatus?: number
+  type?: number
   createdAt?: string
   updatedAt?: string
   businessOwnerId?: string
@@ -464,8 +466,35 @@ function mapSkillHubSkill(raw: SkillMetadataRaw): HtSkillHubSkill {
     author: raw.ownerName,
     downloadCount: raw.downloadCount,
     files: [],
+    canDownload: canDownloadSkill(raw.type, raw.permission),
   }
 }
+
+/**
+ * 判断 Skill 是否允许用户直接下载。
+ *
+ * type=1,3,4 → 可直接下载
+ * type=0,2 → 需要 permission.role === 'user' 才可下载
+ * 其他类型 → 不可下载，需通过 EIP 申请
+ */
+export function canDownloadSkill(
+  type: number | undefined,
+  permission: { role: string } | undefined,
+): boolean {
+  // 可直接下载的类型
+  if (type === 1 || type === 3 || type === 4) return true
+
+  // 需权限判断的类型
+  if (type === 0 || type === 2) {
+    return permission?.role === 'user'
+  }
+
+  // 未知类型默认不可下载
+  return false
+}
+
+/** 权限不足时的提示页面 */
+export const SKILLHUB_APPLY_URL = 'http://eip.htsc.com.cn/skillhub/#/skillhub/skillMarket'
 
 function applyWorkspaceInstallStatus(skills: HtSkillHubSkill[], workspaceSlug?: string): HtSkillHubSkillWithStatus[] {
   if (!workspaceSlug) {

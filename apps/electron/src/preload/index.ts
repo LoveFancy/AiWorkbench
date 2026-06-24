@@ -66,6 +66,10 @@ import type {
   WorkspaceMcpConfig,
   InitializeDefaultConnectorInput,
   InitializeDefaultConnectorResult,
+  FeishuCliAuthState,
+  FeishuCliDeviceCodeData,
+  FeishuCliPollResult,
+  ConnectorsConfig,
   AgentSlashCommand,
   SkillMeta,
   OtherWorkspaceSkillsGroup,
@@ -692,6 +696,29 @@ export interface ElectronAPI {
 
   /** 初始化内置连接器 */
   initializeDefaultConnector: (workspaceSlug: string, input: InitializeDefaultConnectorInput) => Promise<InitializeDefaultConnectorResult>
+  /** 获取飞书 CLI 授权状态 */
+  getFeishuCliAuthStatus: () => Promise<FeishuCliAuthState>
+  /** 注册飞书 CLI 应用（SDK registerApp，阻塞直至用户扫码完成） */
+  registerFeishuCliApp: () => Promise<{ appId: string; appSecret: string }>
+  /** 取消飞书 CLI 注册 */
+  cancelFeishuCliRegister: () => Promise<void>
+  /** 监听注册 QR 码就绪 */
+  onFeishuCliRegisterQrcode: (callback: (payload: { url: string; expireIn: number }) => void) => () => void
+  /** 监听注册状态变更 */
+  onFeishuCliRegisterStatus: (callback: (payload: { status: string; interval?: number }) => void) => () => void
+  /** 发起设备授权（获取 device_code + verification_uri） */
+  startFeishuDeviceAuth: (appId: string, appSecret: string) => Promise<FeishuCliDeviceCodeData>
+  /** 轮询设备授权 Token（含两阶段认证） */
+  pollFeishuDeviceAuth: (appId: string, appSecret: string, deviceCode: string, phase: number) => Promise<FeishuCliPollResult>
+  /** 解绑飞书 CLI（清除凭据） */
+  unbindFeishuCli: () => Promise<boolean>
+
+  /** 获取工作区连接器配置 */
+  getConnectorsConfig: (workspaceSlug: string) => Promise<ConnectorsConfig>
+  /** 保存工作区连接器配置 */
+  saveConnectorsConfig: (workspaceSlug: string, config: ConnectorsConfig) => Promise<void>
+  /** 注册用户创建的连接器（创建目录 + connector.json + mcp.json + connectors.json） */
+  registerUserConnector: (workspaceSlug: string, name: string, entry: import('@proma/shared').McpServerEntry, displayName?: string) => Promise<void>
 
   /** 获取工作区 Skill 列表（含活跃和不活跃） */
   getWorkspaceSkills: (workspaceSlug: string) => Promise<SkillMeta[]>
@@ -1973,6 +2000,49 @@ const electronAPI: ElectronAPI = {
 
   initializeDefaultConnector: (workspaceSlug: string, input: InitializeDefaultConnectorInput) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.INITIALIZE_DEFAULT_CONNECTOR, workspaceSlug, input)
+  },
+
+  getFeishuCliAuthStatus: () => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_FEISHU_CLI_AUTH_STATUS)
+  },
+
+  registerFeishuCliApp: () => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.REGISTER_FEISHU_APP)
+  },
+  cancelFeishuCliRegister: () => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.CANCEL_FEISHU_CLI_REGISTER)
+  },
+  onFeishuCliRegisterQrcode: (callback) => {
+    const listener = (_: unknown, payload: { url: string; expireIn: number }) => callback(payload)
+    ipcRenderer.on(AGENT_IPC_CHANNELS.FEISHU_CLI_REGISTER_QRCODE, listener)
+    return () => { ipcRenderer.removeListener(AGENT_IPC_CHANNELS.FEISHU_CLI_REGISTER_QRCODE, listener) }
+  },
+  onFeishuCliRegisterStatus: (callback) => {
+    const listener = (_: unknown, payload: { status: string; interval?: number }) => callback(payload)
+    ipcRenderer.on(AGENT_IPC_CHANNELS.FEISHU_CLI_REGISTER_STATUS, listener)
+    return () => { ipcRenderer.removeListener(AGENT_IPC_CHANNELS.FEISHU_CLI_REGISTER_STATUS, listener) }
+  },
+  startFeishuDeviceAuth: (appId: string, appSecret: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.START_FEISHU_DEVICE_AUTH, appId, appSecret)
+  },
+  pollFeishuDeviceAuth: (appId: string, appSecret: string, deviceCode: string, phase: number) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.POLL_FEISHU_DEVICE_AUTH, appId, appSecret, deviceCode, phase)
+  },
+
+  unbindFeishuCli: () => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.UNBIND_FEISHU_CLI)
+  },
+
+  getConnectorsConfig: (workspaceSlug: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_CONNECTORS_CONFIG, workspaceSlug)
+  },
+
+  saveConnectorsConfig: (workspaceSlug: string, config: ConnectorsConfig) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.SAVE_CONNECTORS_CONFIG, workspaceSlug, config)
+  },
+
+  registerUserConnector: (workspaceSlug: string, name: string, entry: import('@proma/shared').McpServerEntry, displayName?: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.REGISTER_USER_CONNECTOR, workspaceSlug, name, entry, displayName)
   },
 
   getWorkspaceSkills: (workspaceSlug: string) => {
