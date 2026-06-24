@@ -18,7 +18,7 @@ jobs:
       PATH: /home/appadmin/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
       OCR_LLM_URL: https://api.deepseek.com/anthropic
       OCR_LLM_TOKEN: ${{ secrets.OCR_LLM_TOKEN }}
-      OCR_LLM_MODEL: deepseek-v4-pro
+      OCR_LLM_MODEL: deepseek-v4-flash
       OCR_USE_ANTHROPIC: "true"
       OCR_LLM_AUTH_HEADER: authorization
       PR_URL: ${{ github.event.pull_request.html_url }}
