@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { basename, join } from 'node:path'
+import { basename, join, resolve, relative, isAbsolute } from 'node:path'
 import type {
   AgentDefinition,
   AgentExpertGroupInfo,
@@ -205,12 +205,25 @@ function validateExpertReferences(pluginPath: string, manifest: AgentExpertGroup
   return issues
 }
 
+/**
+ * 将 capability.relativePath 解析为绝对路径，并确保它仍位于 pluginPath 内，
+ * 防止清单中的 `../` 等片段越权访问插件目录之外的文件。
+ * 越界时返回 null。
+ */
+function resolveCapabilityPath(pluginPath: string, relativePath: string): string | null {
+  const filePath = resolve(pluginPath, relativePath)
+  const rel = relative(resolve(pluginPath), filePath)
+  if (rel.startsWith('..') || isAbsolute(rel)) return null
+  return filePath
+}
+
 export function listAgentExpertGroups(paths?: ExpertGroupRegistryPaths): AgentExpertGroupInfo[] {
   const groups: AgentExpertGroupInfo[] = []
   for (const plugin of listInstalledPlugins(paths)) {
     const capabilities = plugin.capabilities.filter((capability) => capability.type === 'expert-group' && capability.relativePath)
     for (const capability of capabilities) {
-      const filePath = join(plugin.path, capability.relativePath!)
+      const filePath = resolveCapabilityPath(plugin.path, capability.relativePath!)
+      if (!filePath) continue
       const { manifest, issues } = readExpertManifest(filePath, plugin.name)
       if (!manifest) {
         groups.push({
@@ -260,7 +273,8 @@ export async function listAgentExpertGroupsAsync(paths?: ExpertGroupRegistryPath
   for (const plugin of plugins) {
     const capabilities = plugin.capabilities.filter((capability) => capability.type === 'expert-group' && capability.relativePath)
     for (const capability of capabilities) {
-      const filePath = join(plugin.path, capability.relativePath!)
+      const filePath = resolveCapabilityPath(plugin.path, capability.relativePath!)
+      if (!filePath) continue
       const { manifest, issues } = readExpertManifest(filePath, plugin.name)
       if (!manifest) {
         groups.push({

@@ -1460,6 +1460,6 @@
 }
 
 @keyframes download-progress-slide {
-  0% { transform: translateX(-120%); }
-  100% { transform: translateX(320%); }
+  0% { transform: translate3d(-120%, 0, 0); }
+  100% { transform: translate3d(320%, 0, 0); }
 }

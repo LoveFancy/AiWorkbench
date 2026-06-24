@@ -28,6 +28,12 @@ export interface PostToolUseDocumentScrubOutput {
   }
 }
 
+function isDocumentBlock(item: unknown): boolean {
+  if (item === null || item === undefined || typeof item !== 'object') return false
+  if (Array.isArray(item)) return false
+  return (item as Record<string, unknown>).type === 'document'
+}
+
 /**
  * 递归扫描 toolResponse，剥离所有 `type:'document'` 块。
  *
@@ -86,6 +92,12 @@ export function scrubDocumentBlocks(toolResponse: unknown): ScrubResult {
         }
         result[key] = filtered
       } else {
+        // 非 content 字段：document 块作为属性值时同样剥离，
+        // 直接跳过该键，避免残留 `key: undefined`
+        if (isDocumentBlock(val)) {
+          hit = true
+          continue
+        }
         result[key] = walk(val)
       }
     }
@@ -95,12 +107,6 @@ export function scrubDocumentBlocks(toolResponse: unknown): ScrubResult {
 
   const output = walk(toolResponse)
   return { hit, output }
-}
-
-function isDocumentBlock(item: unknown): boolean {
-  if (item === null || item === undefined || typeof item !== 'object') return false
-  if (Array.isArray(item)) return false
-  return (item as Record<string, unknown>).type === 'document'
 }
 
 /**

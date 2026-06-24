@@ -337,7 +337,9 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
       lastClickedPathRef.current = null
       return null
     } catch (err) {
-      return err instanceof Error ? err.message : '重命名失败'
+      // 完整错误仅记录到控制台；UI 展示通用文案，避免泄露绝对路径等敏感信息
+      console.error('[FileBrowser] 重命名失败:', err)
+      return '重命名失败'
     }
   }, [loadRoot])
 

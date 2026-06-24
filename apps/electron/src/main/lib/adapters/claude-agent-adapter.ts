@@ -883,8 +883,6 @@ export class ClaudeAgentAdapter implements AgentProviderAdapter {
               const scrubbed = scrubDocumentBlocks(hookInput.tool_response)
               const output = buildPostToolUseDocumentScrubOutput(scrubbed)
               if (output) {
-                // 一次性诊断日志：取证 tool_response 结构，确认后移除
-                console.log('[PostToolUse document guard] 命中 document 块，已剥离并替换')
                 return output
               }
               return { continue: true }

@@ -3,12 +3,12 @@ import { atom } from 'jotai'
 export type PasteStatus = 'pending' | 'done' | 'error'
 
 export interface PasteProgressEntry {
-  targetPath: string
+  sourcePath: string
   status: PasteStatus
   errorMessage?: string
 }
 
-/** 粘贴进度 Map：key 为目标路径 */
+/** 粘贴进度 Map：key 为源文件路径 */
 export const pasteProgressAtom = atom<Map<string, PasteProgressEntry>>(new Map())
 
 /** 添加/更新进度条目 */
@@ -16,7 +16,7 @@ export const upsertPasteProgressAtom = atom(
   null,
   (get, set, entry: PasteProgressEntry) => {
     const prev = new Map(get(pasteProgressAtom))
-    prev.set(entry.targetPath, entry)
+    prev.set(entry.sourcePath, entry)
     set(pasteProgressAtom, prev)
   }
 )
@@ -24,9 +24,9 @@ export const upsertPasteProgressAtom = atom(
 /** 批量清除指定路径 */
 export const removePasteProgressAtom = atom(
   null,
-  (get, set, targetPath: string) => {
+  (get, set, sourcePath: string) => {
     const prev = new Map(get(pasteProgressAtom))
-    prev.delete(targetPath)
+    prev.delete(sourcePath)
     set(pasteProgressAtom, prev)
   }
 )

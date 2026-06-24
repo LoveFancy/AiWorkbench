@@ -10,26 +10,25 @@ interface PasteProgressIndicatorProps {
 export function PasteProgressIndicator({ sourcePath }: PasteProgressIndicatorProps): React.ReactElement | null {
   const progressMap = useAtomValue(pasteProgressAtom)
   const entry = progressMap.get(sourcePath)
-  const [visible, setVisible] = React.useState(false)
-  const [entryData, setEntryData] = React.useState<PasteProgressEntry | null>(null)
+  // 单一状态：记录当前展示的条目；条目从 map 移除后，保留最后状态 2s 做淡出
+  const [displayEntry, setDisplayEntry] = React.useState<PasteProgressEntry | null>(null)
 
   React.useEffect(() => {
-    if (!entry) {
-      if (visible) {
-        const t = setTimeout(() => setVisible(false), 2000)
-        return () => clearTimeout(t)
-      }
+    if (entry) {
+      setDisplayEntry(entry)
       return
     }
-    setVisible(true)
-    setEntryData(entry)
-  }, [entry, visible])
+    if (displayEntry) {
+      const t = setTimeout(() => setDisplayEntry(null), 2000)
+      return () => clearTimeout(t)
+    }
+  }, [entry, displayEntry])
 
-  if (!visible || !entryData) return null
+  if (!displayEntry) return null
 
-  const isPending = entryData.status === 'pending'
-  const isDone = entryData.status === 'done'
-  const isError = entryData.status === 'error'
+  const isPending = displayEntry.status === 'pending'
+  const isDone = displayEntry.status === 'done'
+  const isError = displayEntry.status === 'error'
 
   return (
     <span
@@ -39,7 +38,7 @@ export function PasteProgressIndicator({ sourcePath }: PasteProgressIndicatorPro
         isDone && 'text-emerald-500',
         isError && 'text-destructive',
       )}
-      title={entryData.errorMessage ?? (isDone ? '完成' : '处理中...')}
+      title={displayEntry.errorMessage ?? (isDone ? '完成' : '处理中...')}
     >
       {isPending && (
         <>
@@ -57,7 +56,7 @@ export function PasteProgressIndicator({ sourcePath }: PasteProgressIndicatorPro
           <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
             <path d="M18 6L6 18M6 6l12 12" />
           </svg>
-          <span className="hidden sm:inline">{entryData.errorMessage ?? '失败'}</span>
+          <span className="hidden sm:inline">{displayEntry.errorMessage ?? '失败'}</span>
         </>
       )}
     </span>

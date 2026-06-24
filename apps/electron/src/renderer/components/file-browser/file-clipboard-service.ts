@@ -25,7 +25,7 @@ export async function pastePathsToTarget(
 
   // 标记所有路径为 pending
   for (const p of uniquePaths) {
-    onProgress({ targetPath: p, status: 'pending' })
+    onProgress({ sourcePath: p, status: 'pending' })
   }
 
   // 并发控制：信号量
@@ -39,16 +39,17 @@ export async function pastePathsToTarget(
 
     try {
       if (mode === 'copy') {
-        const destPath = await window.electronAPI.copyFile(sourcePath, targetDir)
-        onProgress({ targetPath: sourcePath, status: 'done' })
+        await window.electronAPI.copyFile(sourcePath, targetDir)
+        onProgress({ sourcePath, status: 'done' })
       } else {
         await window.electronAPI.moveFile(sourcePath, targetDir)
-        onProgress({ targetPath: sourcePath, status: 'done' })
+        onProgress({ sourcePath, status: 'done' })
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '操作失败'
+      // 完整错误仅记录到控制台；UI 展示通用文案，避免泄露绝对路径等敏感信息
       console.error(`[ClipboardService] ${mode} 失败: ${sourcePath}`, err)
-      onProgress({ targetPath: sourcePath, status: 'error', errorMessage: msg })
+      const errorMessage = mode === 'copy' ? '复制失败' : '移动失败'
+      onProgress({ sourcePath, status: 'error', errorMessage })
     } finally {
       running--
       await processNext()

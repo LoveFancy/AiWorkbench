@@ -3702,13 +3702,21 @@ export function registerIpcHandlers(): void {
     AGENT_IPC_CHANNELS.WRITE_PATHS_TO_SYSTEM_CLIPBOARD,
     async (_: Electron.IpcMainInvokeEvent, paths: string[]): Promise<void> => {
       const { clipboard } = await import('electron')
-      const { resolve } = await import('node:path')
+      const { resolve, relative, isAbsolute } = await import('node:path')
+      const { statSync } = await import('node:fs')
+
+      const workspacesRoot = resolve(getAgentWorkspacesDir())
+      const isInsideWorkspaces = (candidate: string): boolean => {
+        const rel = relative(workspacesRoot, candidate)
+        return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+      }
 
       const validPaths = paths
         .map((p) => resolve(p))
+        // 仅允许工作区内路径，避免对任意路径做存在性探测
+        .filter((p) => isInsideWorkspaces(p))
         .filter((p) => {
           try {
-            const { statSync } = require('node:fs')
             statSync(p)
             return true
           } catch { return false }
@@ -3720,11 +3728,17 @@ export function registerIpcHandlers(): void {
 
       if (isMac) {
         // macOS: NSFilenamesPboardType
+        const escapeXml = (s: string): string =>
+          s.replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&apos;')
         const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <array>
-${validPaths.map((p) => `  <string>file://${p}</string>`).join('\n')}
+${validPaths.map((p) => `  <string>file://${escapeXml(p)}</string>`).join('\n')}
 </array>
 </plist>`
         clipboard.writeBuffer('NSFilenamesPboardType', Buffer.from(plist, 'utf-8'))
