@@ -85,6 +85,7 @@ export interface FileTreeItemProps {
   onCancelRename: () => void
   onRename: (filePath: string, newName: string) => Promise<string | null>
   onDelete: (entry: FileEntry) => void
+  onMultiDelete?: () => void
   onMove: (entry: FileEntry) => void
   onRefresh: () => Promise<void>
   onClearSelection: () => void
@@ -131,6 +132,7 @@ export function FileTreeItem({
   onCancelRename,
   onRename,
   onDelete,
+  onMultiDelete,
   onMove,
   onRefresh,
   onClearSelection,
@@ -661,7 +663,13 @@ export function FileTreeItem({
       <ContextMenuSeparator className="my-1" />
       <ContextMenuItem
         className="text-[13px] py-2 gap-3 rounded-md [&>svg]:size-4 text-destructive"
-        onSelect={() => onDelete(entry)}
+        onSelect={() => {
+          if (menuSelectedCount > 1 && onMultiDelete) {
+            onMultiDelete()
+          } else {
+            onDelete(entry)
+          }
+        }}
       >
         <Trash2 />
         {menuSelectedCount > 1 ? `删除选中 (${menuSelectedCount})` : '删除'}
@@ -808,6 +816,7 @@ export function FileTreeItem({
               onCancelRename={onCancelRename}
               onRename={onRename}
               onDelete={onDelete}
+              onMultiDelete={onMultiDelete}
               onMove={onMove}
               onRefresh={handleRefreshAfterDelete}
               onClearSelection={onClearSelection}

@@ -179,6 +179,8 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
   // 删除确认状态
   const [deleteTarget, setDeleteTarget] = React.useState<FileEntry | null>(null)
   const [deleteCount, setDeleteCount] = React.useState(1)
+  /** 发起删除时的选中路径快照，确保确认时使用正确的路径集合 */
+  const deletePathsSnapshotRef = React.useRef<Set<string>>(new Set())
   // 重命名状态
   const [renamingPath, setRenamingPath] = React.useState<string | null>(null)
   // 移动中状态
@@ -341,13 +343,15 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
 
   /** 触发删除（支持多选） */
   const handleRequestDelete = React.useCallback((entry: FileEntry) => {
+    deletePathsSnapshotRef.current = new Set(selectedPaths)
     setDeleteTarget(entry)
-    setDeleteCount(selectedCount > 1 ? selectedCount : 1)
-  }, [selectedCount])
+    setDeleteCount(selectedPaths.size > 1 ? selectedPaths.size : 1)
+  }, [selectedPaths])
 
   /** 多选删除确认（键盘 Delete 键触发） */
   const handleRequestMultiDelete = React.useCallback(() => {
     if (selectedPaths.size === 0) return
+    deletePathsSnapshotRef.current = new Set(selectedPaths)
     const firstPath = [...selectedPaths][0]!
     const meta = entryMetaMapRef.current.get(firstPath)
     setDeleteTarget({
@@ -361,10 +365,10 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
   /** 执行删除 */
   const handleDelete = React.useCallback(async () => {
     if (!deleteTarget) return
-    const pathsToDelete = selectedPathsRef.current
+    // 使用请求删除时的选中路径快照，避免期间选中状态变化导致删错文件
+    const pathsToDelete = deletePathsSnapshotRef.current
     try {
       if (pathsToDelete.size > 1) {
-        // 批量删除：使用操作发起时的选中路径快照
         for (const path of pathsToDelete) {
           await window.electronAPI.deleteFile(path)
         }
@@ -610,6 +614,7 @@ export function FileBrowser({ rootPath, hideToolbar, embedded, hideEmpty, displa
           onCancelRename={handleCancelRename}
           onRename={handleRename}
           onDelete={handleRequestDelete}
+          onMultiDelete={handleRequestMultiDelete}
           onMove={handleMove}
           onRefresh={loadRoot}
           onClearSelection={clearSelection}
