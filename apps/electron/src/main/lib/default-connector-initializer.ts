@@ -30,10 +30,10 @@ const LOG_PREFIX = '[连接器:华泰邮箱]'
 
 const STEP_LABELS: Record<DefaultConnectorInitStepId, string> = {
   'check-python': '检查 Python 环境',
-  'check-package': '检查 mcp-email-server',
-  'install-package': '安装 mcp-email-server',
-  'write-config': '写入 MCP 配置',
-  'self-check': '自检连接器',
+  'check-package': '检查邮箱连接环境',
+  'install-package': '准备邮箱连接能力',
+  'write-config': '启用邮箱能力',
+  'self-check': '自检邮箱连接',
 }
 
 function makeSteps(): DefaultConnectorInitStep[] {
@@ -85,7 +85,8 @@ async function resolveCommandPath(command: string, runCommand: (command: string,
   const result = await runCommand(probe, [command])
   if (!result.ok) return null
   // where/which 可能返回多行，取第一行
-  const path = result.stdout.trim().split('\n')[0].trim()
+  const [firstPath] = result.stdout.trim().split('\n')
+  const path = firstPath?.trim() ?? ''
   return path || null
 }
 
@@ -217,7 +218,7 @@ export async function initializeDefaultConnector(
         serverName,
         success: false,
         steps,
-        message: '安装 mcp-email-server 失败。',
+        message: '准备华泰邮箱连接能力失败。',
       }
     }
     setStep(steps, 'install-package', 'success', installResult.message)
@@ -227,25 +228,25 @@ export async function initializeDefaultConnector(
   // 解析 mcp-email-server 的全路径，避免 PATH 不一致导致后续校验失败
   const resolvedPath = await resolveCommandPath('mcp-email-server', runCommand)
   if (!resolvedPath) {
-    setStep(steps, 'check-package', 'error', 'mcp-email-server 安装后无法定位到可执行文件')
+    setStep(steps, 'check-package', 'error', '邮箱连接能力准备完成后无法定位可执行文件')
     return {
       connectorId: input.connectorId,
       serverName,
       success: false,
       steps,
-      message: 'mcp-email-server 安装后无法定位到可执行文件，请检查 pip 安装路径是否在 PATH 中。',
+      message: '邮箱连接能力准备完成后无法定位可执行文件，请检查 pip 安装路径是否在 PATH 中。',
     }
   }
 
   // 校验可执行文件路径
   if (!isAbsolute(resolvedPath) || !existsSync(resolvedPath)) {
-    setStep(steps, 'check-package', 'error', `mcp-email-server 路径无效: ${resolvedPath}`)
+    setStep(steps, 'check-package', 'error', `邮箱连接可执行文件路径无效: ${resolvedPath}`)
     return {
       connectorId: input.connectorId,
       serverName,
       success: false,
       steps,
-      message: 'mcp-email-server 可执行文件路径无效。',
+      message: '邮箱连接可执行文件路径无效。',
     }
   }
 
@@ -285,7 +286,7 @@ export async function initializeDefaultConnector(
     saveWorkspaceConnectorsConfig(workspaceSlug, connectorsConfig)
   }
 
-  setStep(steps, 'write-config', 'success', `已写入 ${serverName} MCP`)
+  setStep(steps, 'write-config', 'success', '已启用华泰邮箱读取能力')
   setStep(steps, 'self-check', 'success', validation.message)
   logConnectorInfo('连接器初始化完成', { workspaceSlug, serverName: 'email' })
 

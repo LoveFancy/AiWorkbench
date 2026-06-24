@@ -79,6 +79,15 @@ test('未登录触发器使用账户中心语义而不是重复登录动作', ()
   expect(guestMenuSource).not.toContain('<span className="flex-1 truncate text-left text-sm">\n              登录 OA 账号\n            </span>')
 })
 
+test('账户菜单触发器不展示副标题，设置图标和展开箭头分开展示', () => {
+  expect(menuSource).toContain('AccountTriggerHint')
+  expect(menuSource).toContain('AccountTriggerActions')
+  expect(menuSource).toContain('ChevronUp')
+  expect(menuSource).not.toContain('个人偏好 · 支持')
+  expect(menuSource).toContain('aria-hidden="true"')
+  expect(menuSource).toContain('data-[state=open]:')
+})
+
 test('未登录弹窗只保留一个登录主动作', () => {
   expect(guestMenuSource.match(/登录 OA 账号/g)?.length).toBe(1)
   expect(guestMenuSource).toContain('onLogin()')

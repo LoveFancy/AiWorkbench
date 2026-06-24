@@ -76,3 +76,6 @@ workmate-server-java/data/
 
 # ===== Debug tools =====
 .superpowers/
+
+# ===== Generated build resources =====
+apps/electron/resources/dpapi-prebuilds/

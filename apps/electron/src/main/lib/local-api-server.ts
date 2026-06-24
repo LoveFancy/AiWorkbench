@@ -297,7 +297,9 @@ export class LocalApiServer {
       permissionModeOverride: permissionMode,
       mentionedSkills: Array.isArray(body.value.mentionedSkills) ? body.value.mentionedSkills : [],
       mentionedSessionIds: Array.isArray(body.value.mentionedSessionIds) ? body.value.mentionedSessionIds : [],
-      selectedMcpServers: Array.isArray(body.value.selectedMcpServers) ? body.value.selectedMcpServers : [],
+      ...(Array.isArray(body.value.selectedMcpServers) && body.value.selectedMcpServers.length > 0 && {
+        selectedMcpServers: body.value.selectedMcpServers,
+      }),
       startedAt: run.startedAt,
     }
 

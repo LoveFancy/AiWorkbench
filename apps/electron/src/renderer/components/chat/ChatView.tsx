@@ -47,6 +47,7 @@ import {
 import { registerPendingTitle } from '@/hooks/useGlobalChatListeners'
 import { draftSessionIdsAtom } from '@/atoms/draft-session-atoms'
 import { cn } from '@/lib/utils'
+import { createPerfTrace } from '@/lib/performance-diagnostics'
 import type {
   ChatMessage,
   ChatSendInput,
@@ -218,6 +219,15 @@ function ChatViewInner({ conversationId }: ChatViewProps): React.ReactElement {
     },
   ): Promise<void> => {
     if (!selectedModel) return
+    const trace = createPerfTrace('ChatView.handleSend', {
+      conversationId,
+      contentLength: content.length,
+      messageCount: messages.length,
+      pendingAttachmentCount: pendingAttachments.length,
+      channelId: selectedModel.channelId,
+      modelId: selectedModel.modelId,
+    })
+    trace('入口')
 
     const consumePending = options?.consumePendingAttachments ?? true
 
@@ -242,6 +252,7 @@ function ChatViewInner({ conversationId }: ChatViewProps): React.ReactElement {
     const messageCountBeforeSend = options?.messageCountBeforeSend ?? messages.length
     const isFirstMessage = messageCountBeforeSend === 0
     console.log('[ChatView] 发送消息 - isFirstMessage:', isFirstMessage, 'messageCountBeforeSend:', messageCountBeforeSend, 'conversationId:', conversationId)
+    trace('基础状态清理完成', { isFirstMessage, consumePending })
     if (isFirstMessage && content) {
       console.log('[ChatView] 设置待生成标题:', { conversationId, userMessage: content.slice(0, 50) })
       registerPendingTitle(conversationId, {
@@ -263,6 +274,7 @@ function ChatViewInner({ conversationId }: ChatViewProps): React.ReactElement {
     if (consumePending) {
       // 获取当前待发送附件的快照
       const currentAttachments = [...pendingAttachments]
+      trace('开始保存附件', { attachmentCount: currentAttachments.length })
 
       // 保存附件到磁盘（通过 IPC）
       savedAttachments = []
@@ -292,6 +304,7 @@ function ChatViewInner({ conversationId }: ChatViewProps): React.ReactElement {
         window.__pendingAttachmentData?.delete(att.id)
       }
       setPendingAttachments([])
+      trace('附件处理完成', { savedAttachmentCount: savedAttachments.length })
     }
 
     // 初始化当前对话的流式状态
@@ -307,6 +320,7 @@ function ChatViewInner({ conversationId }: ChatViewProps): React.ReactElement {
       })
       return map
     })
+    trace('流式状态初始化完成')
 
     const input: ChatSendInput = {
       conversationId,
@@ -333,16 +347,21 @@ function ChatViewInner({ conversationId }: ChatViewProps): React.ReactElement {
         attachments: savedAttachments.length > 0 ? savedAttachments : undefined,
       },
     ])
+    trace('乐观消息写入完成')
 
-    window.electronAPI.sendMessage(input).catch((error) => {
-      console.error('[ChatView] 发送消息失败:', error)
-      setStreamingStates((prev) => {
-        if (!prev.has(conversationId)) return prev
-        const map = new Map(prev)
-        map.delete(conversationId)
-        return map
+    trace('调用主进程 sendMessage')
+    window.electronAPI.sendMessage(input)
+      .then(() => trace('主进程 sendMessage Promise resolved'))
+      .catch((error) => {
+        trace('主进程 sendMessage Promise rejected', { error: error instanceof Error ? error.message : String(error) })
+        console.error('[ChatView] 发送消息失败:', error)
+        setStreamingStates((prev) => {
+          if (!prev.has(conversationId)) return prev
+          const map = new Map(prev)
+          map.delete(conversationId)
+          return map
+        })
       })
-    })
   }, [
     conversationId,
     selectedModel,

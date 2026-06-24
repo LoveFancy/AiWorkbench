@@ -61,6 +61,7 @@ import { buildExternalAgentRunActivation, type ExternalAgentRunTab } from '@/lib
 import { getAgentCompletionMarkers } from '@/lib/agent-completion-presence'
 import { getPlanModeChangeFromToolName, updatePlanModeSessionSet } from '@/lib/agent-plan-mode'
 import { isHtmlPreviewPath } from '@/components/diff/html-preview-utils'
+import { logIfSlow } from '@/lib/performance-diagnostics'
 
 /** 触发右侧文件浏览器自动定位的写入类工具集合 */
 const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Update'])
@@ -578,6 +579,7 @@ export function useGlobalAgentListeners(): void {
     // ===== 1. 流式事件 =====
     const cleanupEvent = window.electronAPI.onAgentStreamEvent(
       (streamEvent: AgentStreamEvent) => {
+        const handlerStartedAt = performance.now()
         unstable_batchedUpdates(() => {
         const { sessionId, payload } = streamEvent
 
@@ -875,12 +877,25 @@ export function useGlobalAgentListeners(): void {
           }
         }
         }) // unstable_batchedUpdates
+        logIfSlow('GlobalAgentListeners', 'stream event 处理', handlerStartedAt, {
+          sessionId: streamEvent.sessionId,
+          payloadKind: streamEvent.payload.kind,
+          messageType: streamEvent.payload.kind === 'sdk_message'
+            ? (streamEvent.payload.message as Record<string, unknown>).type
+            : streamEvent.payload.event.type,
+        })
       }
     )
 
     // ===== 2. 流式完成 =====
     const cleanupComplete = window.electronAPI.onAgentStreamComplete(
       (data: AgentStreamCompletePayload) => {
+        const handlerStartedAt = performance.now()
+        console.log('[性能诊断][GlobalAgentListeners] stream complete 入口', {
+          sessionId: data.sessionId,
+          backgroundTasksPending: data.backgroundTasksPending === true,
+          resultSubtype: data.resultSubtype,
+        })
         unstable_batchedUpdates(() => {
         // 后台任务等待态：turn 主体结束但仍有后台任务在飞行，UI 进入"空闲可输入"。
         // 不发"任务已完成"通知（任务并未真正完成）、不清后台任务列表、不重载消息——
@@ -1040,12 +1055,17 @@ export function useGlobalAgentListeners(): void {
         }
         finalize()
         }) // unstable_batchedUpdates
+        logIfSlow('GlobalAgentListeners', 'stream complete 处理', handlerStartedAt, {
+          sessionId: data.sessionId,
+          backgroundTasksPending: data.backgroundTasksPending === true,
+        }, 0)
       }
     )
 
     // ===== 3. 流式错误 =====
     const cleanupError = window.electronAPI.onAgentStreamError(
       (data: { sessionId: string; error: string }) => {
+        const handlerStartedAt = performance.now()
         unstable_batchedUpdates(() => {
         console.error('[GlobalAgentListeners] 流式错误:', data.error)
 
@@ -1066,6 +1086,9 @@ export function useGlobalAgentListeners(): void {
           })
         }
         }) // unstable_batchedUpdates
+        logIfSlow('GlobalAgentListeners', 'stream error 处理', handlerStartedAt, {
+          sessionId: data.sessionId,
+        }, 0)
       }
     )
 
