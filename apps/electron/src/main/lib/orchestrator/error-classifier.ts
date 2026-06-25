@@ -125,7 +125,25 @@ export function classifySdkError(input: ClassifyInput): ClassifyResult {
     }
   }
 
-  // ===== 4. "empty or malformed" 响应（不依赖 apiError，防止误匹配的假 apiError 导致分支被跳过） =====
+  // ===== 4. 子进程退出（SDK 进程启动/运行时的瞬态故障） =====
+  const processExitedMatch = /process exited with code\s+(\d+)/i.exec(rawErrorMessage)
+  if (processExitedMatch) {
+    const exitCode = parseInt(processExitedMatch[1]!, 10)
+    return {
+      category: 'api_retryable',
+      display: {
+        errorCode: 'process_exit',
+        errorTitle: '暂时性错误',
+        errorContent: `Agent 进程异常退出 (code ${exitCode})，将自动重试`,
+        errorActions: [{ key: 'r', label: '重试', action: 'retry' }],
+      },
+      isMalformedResponse: false,
+      rawErrorMessage,
+      apiError,
+    }
+  }
+
+  // ===== 5. "empty or malformed" 响应（不依赖 apiError，防止误匹配的假 apiError 导致分支被跳过） =====
   const isMalformed = rawErrorMessage.includes('empty or malformed')
   if (isMalformed) {
     return {
@@ -142,7 +160,7 @@ export function classifySdkError(input: ClassifyInput): ClassifyResult {
     }
   }
 
-  // ===== 5. 可自动重试 =====
+  // ===== 6. 可自动重试 =====
   if (isAutoRetryable(apiError, rawErrorMessage, stderrOutput)) {
     return {
       category: 'api_retryable',
@@ -157,16 +175,32 @@ export function classifySdkError(input: ClassifyInput): ClassifyResult {
     }
   }
 
-  // ===== 6. 不可重试的未知错误 =====
+  // ===== 7. API 4xx 客户端错误（非 429）→ 不可重试 =====
+  if (apiError && apiError.statusCode >= 400 && apiError.statusCode < 500 && apiError.statusCode !== 429) {
+    return {
+      category: 'api_fatal',
+      display: {
+        errorCode: 'api_client_error',
+        errorTitle: '请求错误',
+        errorContent: friendlyErrorMessage(`API 错误 (${apiError.statusCode}):\n${apiError.message}`),
+      },
+      isMalformedResponse: false,
+      rawErrorMessage,
+      apiError,
+    }
+  }
+
+  // ===== 8. 其余错误 → 可重试 =====
   const userFacing = apiError
     ? friendlyErrorMessage(`API 错误 (${apiError.statusCode}):\n${apiError.message}`)
     : friendlyErrorMessage(rawErrorMessage) || '未知错误'
   return {
-    category: 'api_fatal',
+    category: 'api_retryable',
     display: {
       errorCode: 'unknown_error',
-      errorTitle: '执行错误',
+      errorTitle: '暂时性错误',
       errorContent: userFacing,
+      errorActions: [{ key: 'r', label: '重试', action: 'retry' }],
     },
     isMalformedResponse: false,
     rawErrorMessage,
