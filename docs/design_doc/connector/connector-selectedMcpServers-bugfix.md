@@ -1,7 +1,7 @@
-# selectedMcpServers 内存状态未同步 Bug 修复
+# selectedMcpServers 内存状态未同步 Bug 修复 + CLI Skill 加载修复
 
-> 日期：2026-06-24
-> 状态：待修复
+> 日期：2026-06-24（MCP 修复）/ 2026-06-25（CLI Skill 修复）
+> 状态：已修复
 
 ---
 
@@ -105,15 +105,60 @@ onSaved={() => {
 
 ---
 
-## 六、CLI 类型不受影响
+## 六、CLI 类型 Skill 加载修复
 
-CLI 连接器（如飞书 CLI）通过 `additionalSkillDirs` 注入 SDK，走 `connectors.json.enabled` 判断，不经过 `selectedMcpServers` → `buildMcpServers` 链路，无需修改。
+### 6.1 问题
+
+CLI 连接器（如飞书 CLI、hi-agent）的 skill 无法被 SDK 加载。根因是 SDK 的 plugin 机制要求插件目录下存在 `.claude-plugin/plugin.json`，而连接器目录（`connectors/{name}/`）只有 `connector.json`。
+
+```
+connectors/feishu-cli/
+├── connector.json          ← 有
+├── skills/
+│   └── SKILL.md            ← skill 文件存在但无法被发现
+└── .claude-plugin/         ← 缺失！
+    └── plugin.json
+```
+
+### 6.2 修复
+
+在 `syncDefaultConnectorsToWorkspace()` 中，为每个 CLI 类型连接器自动生成 `.claude-plugin/plugin.json`：
+
+```ts
+// agent-workspace-manager.ts — ensureConnectorPluginManifest()
+const manifest = {
+  name: `connector-${connectorId}`,
+   version: '1.0.0',
+   description: `WorkMate 预置连接器: ${connectorId}`,
+}
+writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf-8')
+```
+
+同时简化 `agent-orchestrator.ts` 的 CLI plugin 扫描逻辑：SDK plugin 机制会自动扫描 `skills/` 子目录，无需手动检查 `skillDirs`。
+
+### 6.3 影响
+
+| 连接器 | skills 目录 | 修复前 | 修复后 |
+|--------|------------|:---:|:---:|
+| feishu-cli | `skills/` (1 个 SKILL.md) | 不加载 | 自动加载 |
+| hi-agent | `skills/talents-cli/` (1 个 SKILL.md) | 不加载 | 自动加载 |
+
+多个 skill 子目录也自动支持，SDK 会扫描 `skills/` 下所有 `SKILL.md`。
 
 ---
 
 ## 七、改动文件
 
+### MCP 修复
+
 | 文件 | 改动 |
 |------|------|
 | `AgentSkillsView.tsx` | 两处 `onSaved` 回调补充 `setSelectedMcpServersMap` |
 | `McpDetailSheet.tsx` | `onSaved` 可能需要回传 `connectorId`（可选优化） |
+
+### CLI Skill 加载修复
+
+| 文件 | 改动 |
+|------|------|
+| `agent-workspace-manager.ts` | 新增 `ensureConnectorPluginManifest()`，在 `syncDefaultConnectorsToWorkspace()` 中为 CLI 连接器生成 `.claude-plugin/plugin.json` |
+| `agent-orchestrator.ts` | 简化 CLI plugin 扫描逻辑：移除 `readSkillDirsFromConnectorJson` / `skillDirs` 检查，SDK plugin 机制自动扫描 `skills/` 子目录 |

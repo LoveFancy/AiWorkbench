@@ -31,7 +31,7 @@ import { injectAutomationMcpServer } from './automation-agent-tools'
 import { normalizeAnthropicBaseUrlForSdk, getPromaUserAgent } from '@proma/core'
 import pkg from '../../../package.json' with { type: 'json' }
 import { appendSDKMessages, updateAgentSessionMeta, getAgentSessionMeta, getAgentSessionMessages } from './agent-session-manager'
-import { getAgentWorkspace, ensurePluginManifest, getWorkspaceConnectorsConfig, migrateMcpJsonToConnectors, syncDefaultConnectorsToWorkspace, readSkillDirsFromConnectorJson } from './agent-workspace-manager'
+import { getAgentWorkspace, ensurePluginManifest, getWorkspaceConnectorsConfig, migrateMcpJsonToConnectors, syncDefaultConnectorsToWorkspace } from './agent-workspace-manager'
 import { getAgentSessionWorkspacePath, getConnectorsDir } from './config-paths'
 import { getRuntimeStatus } from './runtime-init'
 import { getSettings } from './settings-service'
@@ -1006,8 +1006,6 @@ export class AgentOrchestrator {
             const connectorsConfig = getWorkspaceConnectorsConfig(workspaceSlug)
             for (const [name, connector] of Object.entries(connectorsConfig.connectors)) {
               if (!connector.enabled || connector.type !== 'cli') continue
-              const dirs = readSkillDirsFromConnectorJson(connectorsDir, name) ?? connector.skillDirs ?? []
-              if (dirs.length === 0) continue
 
               const connectorPath = join(connectorsDir, name)
               cliPluginPaths.push({ type: 'local' as const, path: connectorPath })
