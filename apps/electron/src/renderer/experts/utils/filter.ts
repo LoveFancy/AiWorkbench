@@ -1,4 +1,5 @@
 import type { AgentExpertGroupInfo } from '@proma/shared'
+import { isExpertGroupFaulted } from '@proma/shared'
 import { getExpertGroupSearchTerms } from '@/experts/card/subagents'
 
 export function filterByTag(
@@ -15,11 +16,8 @@ export function filterByTag(
       return r.sort((a, b) => (recent[b.id] ?? 0) - (recent[a.id] ?? 0)).slice(0, 8)
     }
     case 'available': return groups.filter(g => g.status === 'available')
-    /** 不可用：排除 normal 和 remote 类条目 */
-    case 'unavailable': return groups.filter(g => {
-      if (g.status === 'available') return false
-      return g.sourcePluginKind !== 'remote'
-    })
+    /** 不可用：仅故障型状态（与主进程日志判定一致，排除未下载/可更新等正常过渡态） */
+    case 'unavailable': return groups.filter(g => isExpertGroupFaulted(g.status))
     case 'expert': return groups.filter(g => g.expertType !== 'team')
     case 'team': return groups.filter(g => g.expertType === 'team' || (g.subagents && g.subagents.length > 0))
     /** 未下载：仅服务端未本地安装的 remote 条目 */

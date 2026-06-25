@@ -1,5 +1,6 @@
 import * as React from 'react'
 import type { AgentExpertGroupInfo } from '@proma/shared'
+import { isExpertGroupFaulted } from '@proma/shared'
 import { Bot, Star, Users, X } from 'lucide-react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { Button } from '@/components/ui/button'
@@ -9,6 +10,7 @@ import {
   toggleFollowExpertGroupAtom,
 } from '@/experts/atoms/expert-follow'
 import { expertDownloadProgressFamily } from '@/experts/atoms/expert-remote'
+import { ExpertStatusBadge } from '@/experts/card/ExpertStatusBadge'
 import { isCardSummonActionable } from '@/experts/utils/summon'
 
 interface ExpertCardProps {
@@ -26,6 +28,10 @@ export function ExpertCard({ group, onOpen, onSummon, compact = false }: ExpertC
 
   const downloadProgress = useAtomValue(expertDownloadProgressFamily(group.id))
   const isDownloading = downloadProgress?.status === 'downloading' || downloadProgress?.status === 'installing'
+
+  // 仅故障型不可用才在卡片上报红（与主进程判定一致），下载中由进度区承载
+  const errorIssues = group.issues.filter((issue) => issue.level === 'error')
+  const showUnavailableReason = !downloadProgress && isExpertGroupFaulted(group.status)
 
   // 展示版本号优先用服务端接口版本（本地文件版本可能不准），回退本地版本
   const displayVersion = group.serverVersion ?? group.sourcePluginVersion
@@ -118,6 +124,22 @@ export function ExpertCard({ group, onOpen, onSummon, compact = false }: ExpertC
           )}
         </div>
       </div>
+      {showUnavailableReason && (
+        <div className={cn('flex flex-col gap-1.5 border-t border-border/60 pt-2.5', compact && 'gap-1 pt-2')}>
+          <div>
+            <ExpertStatusBadge status={group.status} />
+          </div>
+          {errorIssues.length > 0 && (
+            <ul className="space-y-0.5">
+              {errorIssues.map((issue, index) => (
+                <li key={`${issue.message}-${index}`} className="text-xs leading-5 text-destructive">
+                  {issue.message}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       {downloadProgress && (
         <div className="mt-3 border-t border-border/60 pt-3" onClick={(e) => e.stopPropagation()}>
           {/* 状态行 */}

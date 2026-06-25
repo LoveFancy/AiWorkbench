@@ -8,6 +8,7 @@ import type {
   AgentPluginIssueLevel,
   McpServerEntry,
 } from '@proma/shared'
+import { isExpertGroupFaulted, EXPERT_GROUP_STATUS_REASONS } from '@proma/shared'
 import { listInstalledPlugins, listInstalledPluginsAsync } from './plugin-registry-service'
 import { getDefaultSkillsDir } from './config-paths'
 
@@ -137,6 +138,31 @@ function statusFor(enabled: boolean, issues: ExpertIssue[]): AgentExpertGroupSta
   return 'available'
 }
 
+let lastUnavailableLogSignature = ''
+
+/** 逐条打印不可用专家团及其精确原因，便于排查；内容未变时去重避免刷屏 */
+function logUnavailableExpertGroups(groups: AgentExpertGroupInfo[]): void {
+  const faulted = groups.filter((group) => isExpertGroupFaulted(group.status))
+  const signature = faulted.map((group) => `${group.sourcePluginId}/${group.id}:${group.status}`).join('|')
+  if (signature === lastUnavailableLogSignature) return
+  lastUnavailableLogSignature = signature
+
+  if (faulted.length === 0) {
+    console.info('[专家团] 已加载，全部可用，无不可用项')
+    return
+  }
+
+  console.warn(`[专家团] 检测到 ${faulted.length} 个不可用专家团：`)
+  for (const group of faulted) {
+    const detail = group.issues.length > 0
+      ? group.issues.map((issue) => `${issue.level === 'error' ? '✗' : '⚠'} ${issue.message}`).join('；')
+      : (EXPERT_GROUP_STATUS_REASONS[group.status] ?? '（仅状态标记，无明细）')
+    console.warn(
+      `  - ${group.name} [${group.id}] 状态=${group.status} 来源=${group.sourceLabel}(${group.sourcePluginKind}) 启用=${group.enabled}\n    原因: ${detail}`,
+    )
+  }
+}
+
 function mcpServerNames(pluginPath: string): Set<string> {
   const mcpPath = join(pluginPath, '.mcp.json')
   if (!existsSync(mcpPath)) return new Set()
@@ -264,7 +290,9 @@ export function listAgentExpertGroups(paths?: ExpertGroupRegistryPaths): AgentEx
       })
     }
   }
-  return groups.sort((a, b) => a.name.localeCompare(b.name))
+  const sorted = groups.sort((a, b) => a.name.localeCompare(b.name))
+  logUnavailableExpertGroups(sorted)
+  return sorted
 }
 
 export async function listAgentExpertGroupsAsync(paths?: ExpertGroupRegistryPaths): Promise<AgentExpertGroupInfo[]> {
@@ -315,7 +343,9 @@ export async function listAgentExpertGroupsAsync(paths?: ExpertGroupRegistryPath
       })
     }
   }
-  return groups.sort((a, b) => a.name.localeCompare(b.name))
+  const sorted = groups.sort((a, b) => a.name.localeCompare(b.name))
+  logUnavailableExpertGroups(sorted)
+  return sorted
 }
 
 export function getAgentExpertGroup(
