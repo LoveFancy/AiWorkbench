@@ -1,7 +1,7 @@
 /**
  * DiffPanelTabBar — 右侧面板顶部 Tab 栏
  *
- * 切换「工作区文件」和「代码改动」两个视图。最右侧有关闭按钮。
+ * 切换「项目文件」和「代码改动」两个视图。最右侧有关闭按钮。
  */
 
 import * as React from 'react'
@@ -72,7 +72,7 @@ export function DiffPanelTabBar({ activeTab, onTabChange, onClose }: DiffPanelTa
               : 'text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/50',
           )}
         >
-          工作区文件
+          项目文件
         </button>
         <button
           type="button"
