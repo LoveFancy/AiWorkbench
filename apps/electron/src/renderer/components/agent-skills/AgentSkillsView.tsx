@@ -36,7 +36,7 @@ import { useProjectActions } from '@/hooks/useProjectActions'
 import { ExpertPageView } from '@/experts/views/ExpertPageView'
 import { ExpertImportButton } from '@/experts/shared/ExpertImportDropdown'
 import { ExpertFilterPills, type FilterTag } from '@/experts/shared/ExpertFilterPills'
-import type { AgentPluginInfo, DefaultConnectorInitStep, McpServerEntry, SkillMeta } from '@proma/shared'
+import type { AgentPluginInfo, ConnectorInitProgressEvent, DefaultConnectorInitStep, McpServerEntry, SkillMeta } from '@proma/shared'
 import { isVisibleInSkillsView } from '@proma/shared'
 import { getCapabilityTabs, type CapabilityTab } from './capability-tabs'
 import { useAgentSkillsData } from './useAgentSkillsData'
@@ -1101,7 +1101,7 @@ function ConnectorCard({
       className={cn(
         'group relative flex h-full flex-col gap-3 rounded-xl border border-border/60 bg-content-area p-4 text-left transition-all cursor-pointer',
         'hover:border-border hover:shadow-sm focus:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-        isComingSoon ? 'cursor-not-allowed opacity-55' : !enabled && 'opacity-55',
+        isComingSoon ? 'cursor-not-allowed opacity-55' : isConfigured && !enabled && 'opacity-55',
       )}
     >
       <div className="flex items-start gap-3">
@@ -1117,7 +1117,7 @@ function ConnectorCard({
             <span className={cn(
               'shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium',
               isComingSoon ? 'bg-muted text-muted-foreground'
-                : isConfigured ? 'bg-green-500/10 text-green-600 dark:text-green-400'
+                : isConfigured ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
                   : 'bg-muted text-muted-foreground',
             )}>
               {isComingSoon ? '敬请期待' : isConfigured ? '已连接' : '待配置'}
@@ -1161,7 +1161,7 @@ function ConnectorCard({
               checked={enabled}
               onCheckedChange={onToggle}
               onClick={(e) => e.stopPropagation()}
-              className="shrink-0 scale-75 data-[state=checked]:bg-green-500"
+              className="shrink-0 scale-75"
             />
           )}
           {connector.id === 'feishu-cli' && isCli && isConfigured && (
@@ -1205,6 +1205,28 @@ function ConnectorCard({
   )
 }
 
+function createConnectorInitRunId(connectorId: string): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `${connectorId}-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+function useConnectorInitProgress(
+  workspaceSlug: string,
+  connectorId: string,
+  setInitSteps: React.Dispatch<React.SetStateAction<DefaultConnectorInitStep[]>>,
+): () => { runId: string; unsubscribe: () => void } {
+  return React.useCallback(() => {
+    const runId = createConnectorInitRunId(connectorId)
+    const unsubscribe = window.electronAPI.onConnectorInitProgress((event: ConnectorInitProgressEvent) => {
+      if (event.workspaceSlug !== workspaceSlug || event.connectorId !== connectorId || event.runId !== runId) return
+      setInitSteps(event.steps)
+    })
+    return { runId, unsubscribe }
+  }, [connectorId, setInitSteps, workspaceSlug])
+}
+
 function HuataiEmailConnectorDialog({
   open,
   workspaceSlug,
@@ -1225,6 +1247,7 @@ function HuataiEmailConnectorDialog({
   const [initSteps, setInitSteps] = React.useState<DefaultConnectorInitStep[]>([])
   const isInitialized = Boolean(server)
   const currentEmail = server?.env?.MCP_EMAIL_SERVER_EMAIL_ADDRESS ?? ''
+  const beginConnectorInitProgress = useConnectorInitProgress(workspaceSlug, 'huatai-email', setInitSteps)
 
   React.useEffect(() => {
     if (!open) {
@@ -1243,6 +1266,7 @@ function HuataiEmailConnectorDialog({
 
   const handleSave = async (): Promise<void> => {
     if (!canSave || saving) return
+    const { runId, unsubscribe } = beginConnectorInitProgress()
     setSaving(true)
     setInitSteps([
       { id: 'check-python', label: '检查 Python 环境', status: 'running' },
@@ -1254,6 +1278,7 @@ function HuataiEmailConnectorDialog({
     try {
       const result = await window.electronAPI.initializeDefaultConnector(workspaceSlug, {
         connectorId: 'huatai-email',
+        runId,
         emailAddress: fullEmailAddress,
         password,
       })
@@ -1269,6 +1294,7 @@ function HuataiEmailConnectorDialog({
       console.error('[连接器] 初始化华泰邮箱失败:', error)
       toast.error('初始化华泰邮箱失败')
     } finally {
+      unsubscribe()
       setSaving(false)
     }
   }
@@ -1302,16 +1328,17 @@ function HuataiEmailConnectorDialog({
                 重新绑定
               </Button>
             </div>
-            <div className="grid gap-2 text-xs text-muted-foreground">
+            <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
               <ConnectorDetailRow label="状态" value={server.enabled ? '已启用' : '未启用'} />
               <ConnectorDetailRow label="类型" value={server.type} />
-              <ConnectorDetailRow label="命令" value={server.type === 'stdio' ? server.command : server.url} mono />
+              <ConnectorDetailRow label="命令" value={server.type === 'stdio' ? server.command : server.url} mono wide />
               <ConnectorDetailRow label="账号" value={currentEmail || '未配置'} mono />
               <ConnectorDetailRow label="IMAP" value={`${server.env?.MCP_EMAIL_SERVER_IMAP_HOST ?? '未配置'}:${server.env?.MCP_EMAIL_SERVER_IMAP_PORT ?? ''}`} mono />
               {server.lastTestResult && (
                 <ConnectorDetailRow
                   label="最近自检"
                   value={`${server.lastTestResult.success ? '成功' : '失败'} · ${server.lastTestResult.message}`}
+                  wide
                 />
               )}
             </div>
@@ -1407,6 +1434,7 @@ function HiAgentConnectorDialog({
   const [editing, setEditing] = React.useState(false)
   const [initSteps, setInitSteps] = React.useState<DefaultConnectorInitStep[]>([])
   const canSave = token.trim().length > 0 && env.trim().length > 0
+  const beginConnectorInitProgress = useConnectorInitProgress(workspaceSlug, 'hi-agent', setInitSteps)
 
   React.useEffect(() => {
     if (!open) {
@@ -1420,6 +1448,7 @@ function HiAgentConnectorDialog({
 
   const handleSave = async (): Promise<void> => {
     if (!canSave || saving) return
+    const { runId, unsubscribe } = beginConnectorInitProgress()
     setSaving(true)
     setInitSteps([
       { id: 'check-runtime', label: '检查 Node/npm 环境', status: 'running' },
@@ -1432,6 +1461,7 @@ function HiAgentConnectorDialog({
     try {
       const result = await window.electronAPI.initializeDefaultConnector(workspaceSlug, {
         connectorId: 'hi-agent',
+        runId,
         userProvidedData: {
           HTSKILL_TOKEN: token,
           AGENTOS_ENV: env,
@@ -1449,6 +1479,7 @@ function HiAgentConnectorDialog({
       console.error('[连接器] 初始化泰为 hiagent 失败:', error)
       toast.error('初始化泰为 hiagent 失败')
     } finally {
+      unsubscribe()
       setSaving(false)
     }
   }
@@ -1482,7 +1513,7 @@ function HiAgentConnectorDialog({
                 重新绑定
               </Button>
             </div>
-            <div className="grid gap-2 text-xs text-muted-foreground">
+            <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
               <ConnectorDetailRow label="状态" value="已启用" />
               <ConnectorDetailRow label="类型" value="CLI" />
               <ConnectorDetailRow label="认证" value="已配置" />
@@ -1558,11 +1589,23 @@ function HiAgentConnectorDialog({
   )
 }
 
-function ConnectorDetailRow({ label, value, mono = false }: { label: string; value: string | undefined; mono?: boolean }): React.ReactElement {
+function ConnectorDetailRow({
+  label,
+  value,
+  mono = false,
+  wide = false,
+}: {
+  label: string
+  value: string | undefined
+  mono?: boolean
+  wide?: boolean
+}): React.ReactElement {
   return (
-    <div className="flex items-start justify-between gap-3 rounded-lg bg-background/70 px-3 py-2">
-      <span className="shrink-0 text-muted-foreground">{label}</span>
-      <span className={cn('min-w-0 break-all text-right text-foreground/80', mono && 'font-mono')}>{value || '未配置'}</span>
+    <div className={cn('flex flex-col gap-1.5 rounded-lg bg-background/70 px-3.5 py-3 text-left', wide && 'sm:col-span-2')}>
+      <span className="text-[11px] font-medium text-muted-foreground">{label}</span>
+      <span className={cn('min-w-0 break-words text-[13px] leading-relaxed text-foreground/85', mono && 'font-mono')}>
+        {value || '未配置'}
+      </span>
     </div>
   )
 }

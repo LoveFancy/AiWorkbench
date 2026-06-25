@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { clearConfigDirNameForTest, getWorkspaceMcpPath, getConnectorsConfigPath, getConnectorsDir } from './config-paths'
 import { clearConfigRootOverride, setConfigRoot } from './config-root-service'
 import { initializeDefaultConnector } from './default-connector-initializer'
-import type { WorkspaceMcpConfig, ConnectorsConfig } from '@proma/shared'
+import type { WorkspaceMcpConfig, ConnectorsConfig, ConnectorInitProgressEvent } from '@proma/shared'
 
 let root: string
 let mockMcpEmailServerPath: string
@@ -209,6 +209,58 @@ describe('initializeDefaultConnector', () => {
     expect(connectorsCfg.connectors['hi-agent']?.enabled).toBe(true)
   })
 
+  test('hi-agent 初始化步骤变化时推送通用连接器进度事件', async () => {
+    const progressEvents: ConnectorInitProgressEvent[] = []
+    const probe = process.platform === 'win32' ? 'where' : 'which'
+
+    const result = await initializeDefaultConnector('default', {
+      connectorId: 'hi-agent',
+      runId: 'run-hi-agent-progress-1',
+      userProvidedData: {
+        HTSKILL_TOKEN: 'talents-token',
+        AGENTOS_ENV: 'uat',
+      },
+    }, {
+      commandExists: async (command) => command === 'node' || command === 'npm',
+      runCommand: async (command, args, options) => {
+        if (command === 'node' && args[0] === '-v') {
+          return { ok: true, stdout: 'v20.11.0\n', stderr: '' }
+        }
+        if (command === probe && (args[0] === 'talents' || args[0] === 'talents.cmd')) {
+          return { ok: true, stdout: `${mockTalentsPath}\n`, stderr: '' }
+        }
+        if (command === mockTalentsPath && args[0] === '-V') {
+          return { ok: true, stdout: '1.0.2\n', stderr: '' }
+        }
+        if (command === mockTalentsPath && args.join(' ') === 'workspace --json') {
+          expect(options?.env?.HTSKILL_TOKEN).toBe('talents-token')
+          return { ok: true, stdout: '{"ok":true}', stderr: '' }
+        }
+        return { ok: true, stdout: '', stderr: '' }
+      },
+      reportProgress: (event: ConnectorInitProgressEvent) => {
+        progressEvents.push(event)
+      },
+    })
+
+    expect(result.success).toBe(true)
+    expect(progressEvents.length).toBeGreaterThan(1)
+    expect(progressEvents.every((event) => event.workspaceSlug === 'default')).toBe(true)
+    expect(progressEvents.every((event) => event.connectorId === 'hi-agent')).toBe(true)
+    expect(progressEvents.every((event) => event.runId === 'run-hi-agent-progress-1')).toBe(true)
+    expect(progressEvents[0]?.steps.find((step) => step.id === 'check-runtime')?.status).toBe('running')
+    expect(progressEvents.at(-1)?.steps.map((step) => [step.id, step.status])).toEqual([
+      ['check-runtime', 'success'],
+      ['check-package', 'success'],
+      ['install-package', 'skipped'],
+      ['install-skill', 'success'],
+      ['write-config', 'success'],
+      ['self-check', 'success'],
+    ])
+    expect(JSON.stringify(progressEvents)).not.toContain('talents-token')
+    expect(progressEvents[0]?.steps).not.toBe(progressEvents.at(-1)?.steps)
+  })
+
   test('已安装 mcp-email-server 时跳过安装步骤', async () => {
     const calls: string[] = []
     const result = await initializeDefaultConnector('default', {
@@ -233,6 +285,46 @@ describe('initializeDefaultConnector', () => {
     const probe = process.platform === 'win32' ? 'where' : 'which'
     expect(calls).toEqual([`${probe} mcp-email-server`])
     expect(result.steps.find((step) => step.id === 'install-package')?.status).toBe('skipped')
+  })
+
+  test('初始化步骤变化时推送通用连接器进度事件', async () => {
+    const progressEvents: ConnectorInitProgressEvent[] = []
+
+    const result = await initializeDefaultConnector('default', {
+      connectorId: 'huatai-email',
+      runId: 'run-progress-1',
+      emailAddress: 'qinxiao@htsc.com',
+      password: 'secret',
+    }, {
+      commandExists: async (command) => command === 'python3' || command === 'pip3' || command === 'mcp-email-server',
+      runCommand: async (command, args) => {
+        const probe = process.platform === 'win32' ? 'where' : 'which'
+        if (command === probe && args[0] === 'mcp-email-server') {
+          return { ok: true, stdout: mockMcpEmailServerPath, stderr: '' }
+        }
+        return { ok: true, stdout: '', stderr: '' }
+      },
+      validateMcpServer: async () => ({ success: true, message: '连接成功' }),
+      reportProgress: (event: ConnectorInitProgressEvent) => {
+        progressEvents.push(event)
+      },
+    })
+
+    expect(result.success).toBe(true)
+    expect(progressEvents.length).toBeGreaterThan(1)
+    expect(progressEvents.every((event) => event.workspaceSlug === 'default')).toBe(true)
+    expect(progressEvents.every((event) => event.connectorId === 'huatai-email')).toBe(true)
+    expect(progressEvents.every((event) => event.runId === 'run-progress-1')).toBe(true)
+    expect(progressEvents[0]?.steps.find((step) => step.id === 'check-python')?.status).toBe('running')
+    expect(progressEvents.at(-1)?.steps.map((step) => [step.id, step.status])).toEqual([
+      ['check-python', 'success'],
+      ['check-package', 'success'],
+      ['install-package', 'skipped'],
+      ['write-config', 'success'],
+      ['self-check', 'success'],
+    ])
+    expect(JSON.stringify(progressEvents)).not.toContain('secret')
+    expect(progressEvents[0]?.steps).not.toBe(progressEvents.at(-1)?.steps)
   })
 
   test('安装 mcp-email-server 超时时使用镜像源重试', async () => {
