@@ -19,23 +19,25 @@ test('预设连接器从 connectors.json 派生展示定义', () => {
   const config = makeConfig({
     'huatai-email': { type: 'mcp', enabled: false, source: 'preset', displayName: '华泰邮箱', description: '...', category: '邮件服务', status: 'available', serverName: 'email' },
     'feishu-cli': { type: 'cli', enabled: false, source: 'preset', displayName: '飞书 CLI', description: '...', category: '办公协同', status: 'available' },
-    'hiagent-taiwei': { type: 'mcp', enabled: false, source: 'preset', displayName: '泰为智能体', description: '...', category: '企业智能体', status: 'coming-soon' },
+    'hi-agent': { type: 'cli', enabled: false, source: 'preset', displayName: '泰为 hiagent', description: '...', category: '办公协同', status: 'available' },
   })
   const defs = getPresetConnectorDefinitions(config)
-  expect(defs.map((d) => d.id)).toEqual(['huatai-email', 'feishu-cli', 'hiagent-taiwei'])
-  expect(defs.map((d) => d.name)).toEqual(['华泰邮箱', '飞书 CLI', '泰为智能体'])
-  expect(defs.map((d) => d.status)).toEqual(['available', 'available', 'coming-soon'])
-  expect(defs.map((d) => d.connectorType)).toEqual(['mcp', 'cli', 'mcp'])
+  expect(defs.map((d) => d.id)).toEqual(['huatai-email', 'feishu-cli', 'hi-agent'])
+  expect(defs.map((d) => d.name)).toEqual(['华泰邮箱', '飞书 CLI', '泰为 hiagent'])
+  expect(defs.map((d) => d.status)).toEqual(['available', 'available', 'available'])
+  expect(defs.map((d) => d.connectorType)).toEqual(['mcp', 'cli', 'cli'])
 })
 
-test('默认泰为智能体连接器使用中文名称并保持未实现状态', () => {
+test('默认泰为 hiagent 连接器已开放 CLI 能力', () => {
   const hiAgentConnector = JSON.parse(
     readFileSync(join(import.meta.dir, '../../../../default-connectors/hi-agent/connector.json'), 'utf-8'),
-  ) as { displayName?: string; status?: string; version?: string }
+  ) as { displayName?: string; status?: string; version?: string; type?: string; skillDirs?: string[] }
 
-  expect(hiAgentConnector.displayName).toBe('泰为智能体')
-  expect(hiAgentConnector.status).toBe('coming-soon')
+  expect(hiAgentConnector.displayName).toBe('泰为 hiagent')
+  expect(hiAgentConnector.type).toBe('cli')
+  expect(hiAgentConnector.status).toBe('available')
   expect(hiAgentConnector.version).toBe('1.0.2')
+  expect(hiAgentConnector.skillDirs).toEqual(['skills/talents-cli'])
 })
 
 test('getPresetConnectorServerNames 只返回有 serverName 的预设连接器', () => {

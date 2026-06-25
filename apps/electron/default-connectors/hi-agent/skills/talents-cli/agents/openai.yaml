@@ -1,0 +1,4 @@
+interface:
+  display_name: "Talents CLI管理工具"
+  short_description: "管理Talents工作区、知识库、Agent代理和文件上传"
+  default_prompt: "使用 $talents-cli 查询工作区、搜索知识库内容、与Agent对话或上传文件到Talents平台。"
