@@ -46,7 +46,7 @@ const groups: AgentExpertGroupInfo[] = [
     sourcePluginPath: '/plugins/broken-team',
     filePath: '/plugins/broken-team/expert-groups/broken-team.json',
     enabled: true,
-    status: 'error',
+    status: 'invalid_manifest',
     issues: [{ level: 'error', message: '配置错误' }],
   },
 ]

@@ -989,51 +989,29 @@ export class AgentOrchestrator {
         ...(rewindResumeAt && { resumeSessionAt: rewindResumeAt }),
         ...(Object.keys(mcpServers).length > 0 && { mcpServers }),
         ...(() => {
+          const connectorsDir = getConnectorsDir(workspaceSlug)
+          const cliPluginPaths: Array<{ type: 'local'; path: string }> = []
+          try {
+            const connectorsConfig = getWorkspaceConnectorsConfig(workspaceSlug)
+            for (const [name, connector] of Object.entries(connectorsConfig.connectors)) {
+              if (!connector.enabled || connector.type !== 'cli') continue
+              const dirs = readSkillDirsFromConnectorJson(connectorsDir, name) ?? connector.skillDirs ?? []
+              if (dirs.length === 0) continue
+
+              const connectorPath = join(connectorsDir, name)
+              cliPluginPaths.push({ type: 'local' as const, path: connectorPath })
+              console.log(`[Agent 编排] CLI 连接器 plugin: ${name}, path=${connectorPath}`)
+            }
+          } catch (err) {
+            console.warn('[Agent 编排] CLI 连接器 plugin 扫描失败:', err)
+          }
+
           const plugins = [
             ...getAgentPluginPaths(workspaceSlug),
             ...(expertRuntime?.pluginPaths ?? []),
+            ...cliPluginPaths,
           ]
           return plugins.length > 0 ? { plugins } : {}
-        })(),
-        // 连接器 CLI Skill 扫描：外层 connectors.json 拿 enabled/type，
-        // 内层 connectors/{name}/connector.json 拿 skillDirs
-        ...(() => {
-          const connectorsDir = workspaceSlug ? getConnectorsDir(workspaceSlug) : ''
-          console.log(`[Agent 编排] additionalSkillDirs 扫描: connectorsDir=${connectorsDir || '(无)'}`)
-          if (!connectorsDir) return {}
-
-          const skillDirs: string[] = []
-          try {
-            const config = workspaceSlug ? getWorkspaceConnectorsConfig(workspaceSlug) : { version: '1.0', connectors: {} }
-            const connectorEntries = Object.entries(config.connectors)
-            const cliConnectors = connectorEntries.filter(([, c]) => c.enabled && c.type === 'cli')
-            console.log(`[Agent 编排] additionalSkillDirs: 共 ${connectorEntries.length} 个连接器, ${cliConnectors.length} 个 CLI 已启用`)
-            for (const [name, connector] of Object.entries(config.connectors)) {
-              if (!connector.enabled) continue
-              if (connector.type !== 'cli') continue
-
-              // 优先从 connectors/{name}/connector.json 读取 skillDirs（新格式）
-              // 兜底从 connectors.json 的 skillDirs 字段读取（旧格式兼容）
-              const dirs = readSkillDirsFromConnectorJson(connectorsDir, name) ?? connector.skillDirs ?? []
-              console.log(`[Agent 编排] additionalSkillDirs: CLI 连接器 '${name}' skillDirs=${JSON.stringify(dirs)}`)
-              for (const d of dirs) {
-                if (d === '.' || d === '..' || !/^[a-zA-Z0-9._-]+$/.test(d)) {
-                  console.warn(`[Agent 编排] 跳过非法 skill 目录: ${name}/${d}`)
-                  continue
-                }
-                const absPath = join(connectorsDir, name, d)
-                const exists = existsSync(absPath)
-                const files = exists ? readdirSync(absPath).filter((f) => f.endsWith('.md')) : []
-                console.log(`[Agent 编排] additionalSkillDirs: ${absPath} exists=${exists}, mdFiles=${JSON.stringify(files)}`)
-                skillDirs.push(absPath)
-              }
-            }
-            console.log(`[Agent 编排] additionalSkillDirs: 最终注入 ${skillDirs.length} 个目录: ${JSON.stringify(skillDirs)}`)
-          } catch (err) {
-            console.warn('[Agent 编排] 读取 connector skill 目录失败:', err)
-          }
-
-          return skillDirs.length > 0 ? { additionalSkillDirs: skillDirs } : {}
         })(),
         // 合并附加目录：用户当次输入 + 会话级 + 工作区级（详见 collectAttachedDirectories）
         ...(() => {

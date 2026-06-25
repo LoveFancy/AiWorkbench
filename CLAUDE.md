@@ -89,6 +89,9 @@ cd packages/core && bun run typecheck
 # 测试
 bun test
 
+# 终止所有 bun / Electron 进程
+Get-Process -Name bun, electron -ErrorAction SilentlyContinue | Stop-Process -Force
+
 # 打包分发
 cd apps/electron
 bun run dist:mac      # macOS
