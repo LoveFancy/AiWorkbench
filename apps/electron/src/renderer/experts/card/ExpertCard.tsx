@@ -1,7 +1,7 @@
 import * as React from 'react'
 import type { AgentExpertGroupInfo } from '@proma/shared'
 import { isExpertGroupFaulted } from '@proma/shared'
-import { Bot, Star, Users, X } from 'lucide-react'
+import { Bot, Star, Users } from 'lucide-react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -12,6 +12,7 @@ import {
 import { expertDownloadProgressFamily } from '@/experts/atoms/expert-remote'
 import { ExpertStatusBadge } from '@/experts/card/ExpertStatusBadge'
 import { isCardSummonActionable } from '@/experts/utils/summon'
+import { ExpertDownloadStatus } from '@/experts/card/ExpertDownloadStatus'
 
 interface ExpertCardProps {
   group: AgentExpertGroupInfo
@@ -35,11 +36,6 @@ export function ExpertCard({ group, onOpen, onSummon, compact = false }: ExpertC
 
   // 展示版本号优先用服务端接口版本（本地文件版本可能不准），回退本地版本
   const displayVersion = group.serverVersion ?? group.sourcePluginVersion
-
-  const handleCancelDownload = React.useCallback((e: React.MouseEvent) => {
-    e.stopPropagation()
-    void window.electronAPI.cancelRemoteDownload(group.id)
-  }, [group.id])
 
   const handleToggleFollow = React.useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
@@ -146,86 +142,7 @@ export function ExpertCard({ group, onOpen, onSummon, compact = false }: ExpertC
           )}
         </div>
       )}
-      {downloadProgress && (
-        <div className="mt-3 border-t border-border/60 pt-3" onClick={(e) => e.stopPropagation()}>
-          {/* 状态行 */}
-          <div className="flex items-center gap-2">
-            <span className="flex flex-1 items-center gap-1.5 text-xs">
-              {downloadProgress.status === 'error' ? (
-                <>
-                  <span className="inline-block size-1.5 rounded-full bg-red-500" />
-                  <span className="text-red-600 dark:text-red-400">下载失败</span>
-                </>
-              ) : downloadProgress.status === 'cancelled' ? (
-                <>
-                  <span className="inline-block size-1.5 rounded-full bg-muted-foreground/40" />
-                  <span className="text-muted-foreground">已取消</span>
-                </>
-              ) : downloadProgress.status === 'installing' ? (
-                <>
-                  <span className="inline-block size-1.5 rounded-full bg-violet-500" />
-                  <span>正在安装…</span>
-                </>
-              ) : (
-                <>
-                  <span className="inline-block size-1.5 rounded-full bg-blue-500" />
-                  <span>正在下载</span>
-                </>
-              )}
-            </span>
-            {downloadProgress.status === 'downloading' && (
-              <span className="text-xs tabular-nums text-muted-foreground">
-                {downloadProgress.progress}%
-              </span>
-            )}
-            {downloadProgress.status === 'error' ? (
-              <button
-                type="button"
-                onClick={() => { void window.electronAPI.downloadRemoteExpert(group.id) }}
-                className="rounded-md border border-border/60 px-2.5 py-0.5 text-xs font-medium transition-colors hover:bg-foreground/[0.06]"
-              >
-                重试
-              </button>
-            ) : downloadProgress.status === 'cancelled' ? (
-              <button
-                type="button"
-                onClick={() => { void window.electronAPI.downloadRemoteExpert(group.id) }}
-                className="rounded-md border border-border/60 px-2.5 py-0.5 text-xs font-medium transition-colors hover:bg-foreground/[0.06]"
-              >
-                下载
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleCancelDownload}
-                title="取消下载"
-                className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
-              >
-                <X size={13} />
-              </button>
-            )}
-          </div>
-
-          {/* 进度条 */}
-          {(downloadProgress.status === 'downloading' || downloadProgress.status === 'installing') && (
-            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-              <div
-                className={cn(
-                  'h-full rounded-full',
-                  downloadProgress.status === 'installing'
-                    ? 'w-2/5 bg-gradient-to-r from-transparent via-violet-500 to-transparent'
-                    : 'bg-primary transition-all duration-200',
-                )}
-                style={
-                  downloadProgress.status === 'installing'
-                    ? { animation: 'download-progress-slide 1.1s ease-in-out infinite' }
-                    : { width: `${downloadProgress.progress}%` }
-                }
-              />
-            </div>
-          )}
-        </div>
-      )}
+      {downloadProgress && <ExpertDownloadStatus group={group} progress={downloadProgress} />}
     </div>
   )
 }
