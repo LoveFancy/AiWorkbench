@@ -78,11 +78,17 @@ export function ExpertCard({ group, onOpen, onSummon, compact = false }: ExpertC
               {isTeam ? <Users size={compact ? 16 : 18} /> : <Bot size={compact ? 16 : 18} />}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 items-center gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                 <h3 className="truncate text-sm font-medium text-foreground">{group.name}</h3>
                 {displayVersion && displayVersion !== '0.0.0' && (
                   <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
                     v{displayVersion}
+                  </span>
+                )}
+                {isTeam && (
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-indigo-100 px-1.5 py-0.5 text-[11px] font-semibold text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300">
+                    <Users size={12} />
+                    专家团
                   </span>
                 )}
               </div>
