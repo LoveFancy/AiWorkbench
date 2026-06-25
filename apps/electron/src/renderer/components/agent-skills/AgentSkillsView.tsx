@@ -1409,25 +1409,7 @@ function HuataiEmailConnectorDialog({
           </div>
         )}
 
-        {initSteps.length > 0 && (
-          <div className="mt-5 min-w-0 overflow-hidden space-y-2 rounded-xl bg-muted/45 p-3">
-            {initSteps.map((step) => (
-              <div key={step.id} className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-                {step.status === 'running' ? (
-                  <Loader2 size={14} className="shrink-0 animate-spin text-primary" />
-                ) : step.status === 'success' || step.status === 'skipped' ? (
-                  <Check size={14} className="shrink-0 text-emerald-500" />
-                ) : step.status === 'error' ? (
-                  <XCircle size={14} className="shrink-0 text-destructive" />
-                ) : (
-                  <span className="size-3.5 shrink-0 rounded-full border border-border" />
-                )}
-                <span className="shrink-0 font-medium text-foreground/80">{step.label}</span>
-                {step.message && <span className="min-w-0 flex-1 truncate">{step.message}</span>}
-              </div>
-            ))}
-          </div>
-        )}
+        {initSteps.length > 0 && <ConnectorInitStepList steps={initSteps} />}
 
       </DialogContent>
     </Dialog>
@@ -1584,27 +1566,68 @@ function HiAgentConnectorDialog({
           </div>
         )}
 
-        {initSteps.length > 0 && (
-          <div className="mt-5 min-w-0 space-y-2 overflow-hidden rounded-xl bg-muted/45 p-3">
-            {initSteps.map((step) => (
-              <div key={step.id} className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-                {step.status === 'running' ? (
-                  <Loader2 size={14} className="shrink-0 animate-spin text-primary" />
-                ) : step.status === 'success' || step.status === 'skipped' ? (
-                  <Check size={14} className="shrink-0 text-emerald-500" />
-                ) : step.status === 'error' ? (
-                  <XCircle size={14} className="shrink-0 text-destructive" />
-                ) : (
-                  <span className="size-3.5 shrink-0 rounded-full border border-border" />
-                )}
-                <span className="shrink-0 font-medium text-foreground/80">{step.label}</span>
-                {step.message && <span className="min-w-0 flex-1 truncate">{step.message}</span>}
-              </div>
-            ))}
-          </div>
-        )}
+        {initSteps.length > 0 && <ConnectorInitStepList steps={initSteps} />}
       </DialogContent>
     </Dialog>
+  )
+}
+
+function getConnectorInitStepSummary(step: DefaultConnectorInitStep): string | undefined {
+  if (!step.message) return undefined
+  const firstLine = step.message.split('\n')[0]?.trim() ?? ''
+  if (!firstLine) return undefined
+  return firstLine.length > 96 ? `${firstLine.slice(0, 96)}...` : firstLine
+}
+
+function ConnectorInitStepList({ steps }: { steps: DefaultConnectorInitStep[] }): React.ReactElement | null {
+  const [expandedInitStepId, setExpandedInitStepId] = React.useState<string | null>(null)
+  if (steps.length === 0) return null
+
+  return (
+    <div className="mt-5 min-w-0 overflow-hidden space-y-2 rounded-xl bg-muted/45 p-3">
+      {steps.map((step) => {
+        const summary = getConnectorInitStepSummary(step)
+        const canExpand = step.status === 'error' && Boolean(step.message)
+        const expanded = expandedInitStepId === step.id
+
+        return (
+          <div key={step.id} className="min-w-0 rounded-lg">
+            <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+              {step.status === 'running' ? (
+                <Loader2 size={14} className="shrink-0 animate-spin text-primary" />
+              ) : step.status === 'success' || step.status === 'skipped' ? (
+                <Check size={14} className="shrink-0 text-emerald-500" />
+              ) : step.status === 'error' ? (
+                <XCircle size={14} className="shrink-0 text-destructive" />
+              ) : (
+                <span className="size-3.5 shrink-0 rounded-full border border-border" />
+              )}
+              <span className="shrink-0 font-medium text-foreground/80">{step.label}</span>
+              {summary && (
+                <span className="min-w-0 flex-1 truncate">
+                  <span className={cn(step.status === 'error' && 'text-destructive')}>{summary}</span>
+                </span>
+              )}
+              {canExpand && (
+                <button
+                  type="button"
+                  aria-expanded={expanded}
+                  onClick={() => setExpandedInitStepId(expanded ? null : step.id)}
+                  className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10"
+                >
+                  {expanded ? '收起详情' : '展开详情'}
+                </button>
+              )}
+            </div>
+            {canExpand && expanded && step.message && (
+              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-background/75 p-2 text-[11px] leading-relaxed text-foreground/75">
+                {step.message}
+              </pre>
+            )}
+          </div>
+        )
+      })}
+    </div>
   )
 }
 

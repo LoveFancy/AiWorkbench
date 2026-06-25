@@ -137,6 +137,17 @@ test('华泰个人邮箱初始化日志不会撑宽弹窗', () => {
   expect(agentSkillsViewSource).not.toContain('className="truncate">{step.message}</span>')
 })
 
+test('连接器初始化错误信息支持展开查看明确详情', () => {
+  expect(agentSkillsViewSource).toContain('function ConnectorInitStepList')
+  expect(agentSkillsViewSource).toContain('expandedInitStepId')
+  expect(agentSkillsViewSource).toContain('getConnectorInitStepSummary')
+  expect(agentSkillsViewSource).toContain('展开详情')
+  expect(agentSkillsViewSource).toContain('收起详情')
+  expect(agentSkillsViewSource).toContain('whitespace-pre-wrap')
+  expect(agentSkillsViewSource).toContain('aria-expanded')
+  expect(agentSkillsViewSource).not.toContain('{initSteps.map((step) => (')
+})
+
 test('华泰个人邮箱已绑定信息使用左对齐信息块避免左右割裂', () => {
   expect(agentSkillsViewSource).toContain("function ConnectorDetailRow")
   expect(agentSkillsViewSource).toContain('className="flex flex-col gap-1.5')
