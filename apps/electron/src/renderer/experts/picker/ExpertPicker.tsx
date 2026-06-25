@@ -2,6 +2,7 @@ import * as React from 'react'
 import { RefreshCw, Search, Sparkles, Star, Clock } from 'lucide-react'
 import { useAtomValue } from 'jotai'
 import type { AgentExpertGroupInfo } from '@proma/shared'
+import { isExpertGroupFaulted } from '@proma/shared'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -13,6 +14,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { ExpertCard } from '@/experts/card/ExpertCard'
+import { isCardSummonActionable } from '@/experts/utils/summon'
 import { ExpertDetailDialog } from '@/experts/detail/ExpertDetailDialog'
 import { getExpertGroupSearchTerms } from '@/experts/card/subagents'
 import { ExpertCategoryFilter } from '@/experts/shared/ExpertCategoryFilter'
@@ -76,13 +78,10 @@ export function ExpertPicker({
     return filtered.filter((group) => matchesGroup(group, query))
   }, [groups, query, filter, category, followed, recent])
 
-  // 可召唤：状态正常，或远程条目（支持下载后召唤）
-  const availableGroups = visibleGroups.filter(
-    (group) => group.status === 'available' || group.sourcePluginKind === 'remote'
-  )
-  const issueGroups = visibleGroups.filter(
-    (group) => group.status !== 'available' && group.sourcePluginKind !== 'remote'
-  )
+  // 可召唤：状态正常或远程可下载（与卡片 isCardSummonActionable 口径一致）
+  const availableGroups = visibleGroups.filter((group) => isCardSummonActionable(group.status))
+  // 问题组：故障型不可用（与主列表「不可用」筛选口径一致）
+  const issueGroups = visibleGroups.filter((group) => isExpertGroupFaulted(group.status))
 
   const handleSummon = React.useCallback((group: AgentExpertGroupInfo): void => {
     setSelected(null)

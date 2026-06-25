@@ -1,6 +1,13 @@
 import { expect, test } from 'bun:test'
 import type { AgentExpertGroupInfo, AgentExpertGroupStatus } from '@proma/shared'
+import { EXPERT_GROUP_STATUS_LABELS, isExpertGroupFaulted } from '@proma/shared'
 import { isCardSummonActionable, isRemoteSourced, isSummonableLocal } from './summon'
+
+/**
+ * 状态全集真相源：EXPERT_GROUP_STATUS_LABELS 是非 Partial 的 Record<Status,string>，
+ * 新增状态时 shared 会编译报错强制补齐，故其 key 即为当前全部状态。
+ */
+const ALL_STATUSES = Object.keys(EXPERT_GROUP_STATUS_LABELS) as AgentExpertGroupStatus[]
 
 function makeGroup(overrides: Partial<AgentExpertGroupInfo> = {}): AgentExpertGroupInfo {
   return {
@@ -65,5 +72,19 @@ test('卡片召唤按钮：异常/不可召唤状态禁用', () => {
   ]
   for (const status of disabled) {
     expect(isCardSummonActionable(status)).toBe(false)
+  }
+})
+
+test('全集真相源非空（防止 partition 断言空跑）', () => {
+  expect(ALL_STATUSES.length).toBeGreaterThan(0)
+})
+
+test('不变式：每个状态恰好属于「可召唤」或「故障不可用」之一（互斥且完备）', () => {
+  // ExpertPicker 的 availableGroups / issueGroups 依赖该不变式做到「不漏不重」；
+  // 二者分处不同文件/包，新增状态时极易破坏，故此处统一锁定。
+  for (const status of ALL_STATUSES) {
+    const summonable = isCardSummonActionable(status)
+    const faulted = isExpertGroupFaulted(status)
+    expect(summonable).not.toBe(faulted) // 异或：恰好命中其一
   }
 })
