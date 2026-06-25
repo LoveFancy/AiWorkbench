@@ -1,4 +1,5 @@
 export { ExpertCard } from './ExpertCard'
+export { ExpertDownloadStatus } from './ExpertDownloadStatus'
 export { ExpertStatusBadge } from './ExpertStatusBadge'
 export { getExpertGroupIdentifierLabel } from './card-labels'
 export { getExpertSubagentLabel, getExpertGroupSearchTerms } from './subagents'

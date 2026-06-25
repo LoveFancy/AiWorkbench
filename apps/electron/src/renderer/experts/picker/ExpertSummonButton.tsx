@@ -15,6 +15,7 @@ import { activeViewAtom, agentSkillsInitialTabAtom } from '@/atoms/active-view'
 import { loadRemoteExpertDataAtom } from '@/experts/atoms/expert-remote'
 import { recentExpertGroupsAtom } from '@/experts/atoms/expert-follow'
 import { useSummonExpert } from '@/experts/hooks/useSummonExpert'
+import { isCardSummonActionable } from '@/experts/utils/summon'
 import { ExpertPicker } from './ExpertPicker'
 import { ExpertSummoningOverlay } from '@/components/agent/ExpertSummoningOverlay'
 import { cn } from '@/lib/utils'
@@ -31,7 +32,7 @@ export function getRecentExpertGroups(
   limit = 3,
 ): AgentExpertGroupInfo[] {
   return groups
-    .filter((group) => recent[group.id] && (group.status === 'available' || group.sourcePluginKind === 'remote'))
+    .filter((group) => recent[group.id] && isCardSummonActionable(group.status))
     .sort((a, b) => (recent[b.id] ?? 0) - (recent[a.id] ?? 0))
     .slice(0, limit)
 }
@@ -154,7 +155,15 @@ export function ExpertSummonButton({ variant = 'header', sessionId }: ExpertSumm
                       <Users className="size-4" />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium text-foreground">{group.name}</span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="block truncate text-sm font-medium text-foreground">{group.name}</span>
+                        {(group.expertType === 'team' || (group.subagents && group.subagents.length > 0)) && (
+                          <span className="inline-flex shrink-0 items-center gap-0.5 rounded bg-indigo-100 px-1 py-0.5 text-[10px] font-semibold text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300">
+                            <Users size={10} />
+                            团
+                          </span>
+                        )}
+                      </span>
                       <span className="block truncate text-xs text-muted-foreground">{group.mainRole.name || '专家团'}</span>
                     </span>
                     {selected ? <Check className="size-4 shrink-0 text-primary" /> : null}

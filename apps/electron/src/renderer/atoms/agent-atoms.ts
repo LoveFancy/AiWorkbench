@@ -8,7 +8,7 @@
 import { atom } from 'jotai'
 import { atomFamily, atomWithStorage } from 'jotai/utils'
 import type { AgentSessionMeta, AgentEvent, AgentWorkspace, AgentPendingFile, RetryAttempt, PromaPermissionMode, PermissionRequest, AskUserRequest, ExitPlanModeRequest, ThinkingConfig, AgentEffort, SDKMessage, UnstagedChangesResult, AgentExpertGroupInfo, ServerExpertGroupSummary } from '@proma/shared'
-import { PROMA_DEFAULT_PERMISSION_MODE } from '@proma/shared'
+import { PROMA_DEFAULT_PERMISSION_MODE, isExpertGroupFaulted } from '@proma/shared'
 import { calculateDockBadgeCount, countPendingRequests } from '@/lib/dock-badge-count'
 import { serverExpertGroupsAtom } from '@/experts/atoms/expert-remote'
 
@@ -261,9 +261,13 @@ function mergeExpertGroups(
       categories: server?.categories ?? local.categories ?? [],
       // 展示用接口版本（本地文件版本可能不准）；无服务端匹配时回退本地
       serverVersion: server?.version,
-      status: server && server.version !== local.sourcePluginVersion
-        ? ('remote_update_available' as const)
-        : local.status,
+      // 故障状态（缺技能/子专家/配置错误等）优先级最高，不应被「可更新」提示覆盖，
+      // 否则不可用专家团会被误标成 remote_update_available 而无法被「不可用」筛选识别
+      status: isExpertGroupFaulted(local.status)
+        ? local.status
+        : server && server.version !== local.sourcePluginVersion
+          ? ('remote_update_available' as const)
+          : local.status,
     })
   }
 

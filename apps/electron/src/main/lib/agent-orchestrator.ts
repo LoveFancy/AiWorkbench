@@ -166,21 +166,7 @@ export class AgentOrchestrator {
     return stoppedByUser
   }
 
-  /**
-   * Session-not-found 恢复：清除失效的 sdkSessionId，切换到上下文回填模式
-   *
-   * 当 resume 的目标 session 已过期/被清理时，SDK 会抛出 "No conversation found" 错误。
-   * 此方法执行恢复的公共逻辑，调用方负责设置 existingSdkSessionId = undefined 和流程控制（break/continue）。
-   *
-   * @returns lastRetryableError 描述字符串
-   */
-  /**
-   * Resume 失败恢复：清除 SDK resume 关系，注入 session 自引用让 Agent 读取完整历史继续工作。
-   *
-   * 适用于 SDK session 过期、thinking signature 跨模型不兼容等场景。
-   * 使用 <session_recovery> 标签指向当前会话的 JSONL 历史文件，Agent 会自动读取并恢复上下文，
-   * 比 buildContextPrompt（仅注入 20 条摘要）提供完整得多的上下文连续性。
-   */
+
   /**
    * 发送消息并流式推送事件
    *

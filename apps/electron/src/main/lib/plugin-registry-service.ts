@@ -58,11 +58,18 @@ export class DownloadCancelledError extends Error {
   }
 }
 
+/** 安装进度事件：解压逐文件（节流）+ 收尾阶段 */
+export type InstallProgress =
+  | { stage: 'extracting'; processed: number; total: number }
+  | { stage: 'finalizing' }
+
 interface InstallAsyncOptions extends InstallUserPluginZipOptions {
   /** 安装期可取消信号；abort 后解压循环抛 DownloadCancelledError */
   signal?: AbortSignal
   /** 覆盖 manifest 中的版本号写入 plugins.json（服务端下载时 manifest 可能无 version） */
   version?: string
+  /** 安装进度回调：解压逐文件（按整数百分比节流）+ 解压完成后 finalizing */
+  onProgress?: (progress: InstallProgress) => void
 }
 
 interface PluginMcpServerDefinition {
@@ -798,10 +805,15 @@ async function extractPluginZipAsync(
   zipPath: string,
   extractDir: string,
   signal?: AbortSignal,
+  onProgress?: (processed: number, total: number) => void,
 ): Promise<void> {
   const zip = new AdmZip(zipPath)
+  const entries = zip.getEntries()
+  const total = entries.length
+  let processed = 0
+  let lastPercent = -1
 
-  for (const entry of zip.getEntries()) {
+  for (const entry of entries) {
     if (signal?.aborted) throw new DownloadCancelledError()
 
     const entryName = entry.entryName
@@ -814,11 +826,19 @@ async function extractPluginZipAsync(
 
     if (entry.isDirectory) {
       await fsp.mkdir(targetPath, { recursive: true })
-      continue
+    } else {
+      await fsp.mkdir(dirname(targetPath), { recursive: true })
+      await fsp.writeFile(targetPath, entry.getData())
     }
 
-    await fsp.mkdir(dirname(targetPath), { recursive: true })
-    await fsp.writeFile(targetPath, entry.getData())
+    processed += 1
+    if (onProgress) {
+      const percent = total > 0 ? Math.floor((processed / total) * 100) : 100
+      if (percent !== lastPercent) {
+        lastPercent = percent
+        onProgress(processed, total)
+      }
+    }
   }
 }
 
@@ -838,39 +858,6 @@ function resolveExtractedPluginRoot(extractDir: string): string {
 function resolvePluginInstallSlug(pluginRoot: string, extractDir: string, manifest: AgentPluginManifest): string {
   if (pluginRoot !== extractDir) return pluginSlug(basename(pluginRoot), '插件目录名')
   return pluginSlug(manifest.name, '插件名称')
-}
-
-async function copyPluginAtomicallyAsync(
-  sourceDir: string,
-  targetDir: string,
-  overwrite: boolean,
-  signal?: AbortSignal,
-): Promise<'installed' | 'overwritten'> {
-  if (signal?.aborted) throw new DownloadCancelledError()
-  const existed = existsSync(targetDir)
-  if (existed && !overwrite) throw new Error(`插件已存在: ${basename(targetDir)}`)
-
-  const parent = dirname(targetDir)
-  const tmp = join(parent, `.${basename(targetDir)}.installing-${Date.now()}`)
-  await fsp.mkdir(parent, { recursive: true })
-  await fsp.rm(tmp, { recursive: true, force: true })
-  await fsp.cp(sourceDir, tmp, { recursive: true })
-
-  if (signal?.aborted) {
-    await fsp.rm(tmp, { recursive: true, force: true })
-    throw new DownloadCancelledError()
-  }
-
-  try {
-    if (existed) await fsp.rm(targetDir, { recursive: true, force: true })
-    await fsp.rename(tmp, targetDir)
-  } catch (error) {
-    await fsp.rm(tmp, { recursive: true, force: true })
-    if (!existed) await fsp.rm(targetDir, { recursive: true, force: true })
-    throw error
-  }
-
-  return existed ? 'overwritten' : 'installed'
 }
 
 function copyPluginAtomically(sourceDir: string, targetDir: string, overwrite: boolean): 'installed' | 'overwritten' {
@@ -1010,18 +997,26 @@ export async function installUserPluginZipAsync(
   }
 
   const resolved = registryPaths(options)
-  const tempRoot = options.tempRoot ?? tmpdir()
-  const extractDir = join(tempRoot, `proma-plugin-${Date.now()}`)
+  const marketplaceId = options.marketplaceId ?? 'local'
+  // staging 与最终安装目录同盘，收尾只做一次原子 rename（消除第二趟全量拷贝）
+  const staging = join(resolved.userDir, marketplaceId, `.installing-${Date.now()}`)
 
   try {
-    await fsp.mkdir(extractDir, { recursive: true })
-    await extractPluginZipAsync(zipPath, extractDir, options.signal)
+    await fsp.mkdir(staging, { recursive: true })
+    await extractPluginZipAsync(
+      zipPath,
+      staging,
+      options.signal,
+      options.onProgress
+        ? (processed, total) => options.onProgress!({ stage: 'extracting', processed, total })
+        : undefined,
+    )
     if (options.signal?.aborted) throw new DownloadCancelledError()
+    options.onProgress?.({ stage: 'finalizing' })
 
-    const pluginRoot = resolveExtractedPluginRoot(extractDir)
+    const pluginRoot = resolveExtractedPluginRoot(staging)
     const manifest = normalizeManifest(readJsonFile(join(pluginRoot, '.claude-plugin', 'plugin.json')), basename(pluginRoot))
-    const installSlug = resolvePluginInstallSlug(pluginRoot, extractDir, manifest)
-    const marketplaceId = options.marketplaceId ?? 'local'
+    const installSlug = resolvePluginInstallSlug(pluginRoot, staging, manifest)
     const pluginId = `user:${marketplaceId}/${installSlug}`
     const targetDir = join(resolved.userDir, marketplaceId, installSlug)
     const targetRel = relative(resolved.userDir, targetDir)
@@ -1029,8 +1024,17 @@ export async function installUserPluginZipAsync(
       throw new Error('插件名称包含不安全路径')
     }
     await assertNoDuplicateExpertGroupsAsync(pluginRoot, pluginId, manifest, resolved, options.signal)
+    if (options.signal?.aborted) throw new DownloadCancelledError()
 
-    const status = await copyPluginAtomicallyAsync(pluginRoot, targetDir, options.overwrite ?? false, options.signal)
+    // 原子收尾：rename 替代 cp（同盘瞬时）
+    const existed = existsSync(targetDir)
+    if (existed && !(options.overwrite ?? false)) {
+      throw new Error(`插件已存在: ${basename(targetDir)}`)
+    }
+    if (existed) await fsp.rm(targetDir, { recursive: true, force: true })
+    await fsp.rename(pluginRoot, targetDir)
+    const status: 'installed' | 'overwritten' = existed ? 'overwritten' : 'installed'
+
     const config = readPluginsConfig({ configPath: resolved.configPath })
     const previous = config.plugins[pluginId]
     const now = new Date().toISOString()
@@ -1049,7 +1053,8 @@ export async function installUserPluginZipAsync(
       sourceMarketplaceId: marketplaceId,
     }
   } finally {
-    await fsp.rm(extractDir, { recursive: true, force: true })
+    // staging 若已被 rename 走，force 使 rm 安全 no-op；包裹子目录场景清理残留空目录
+    await fsp.rm(staging, { recursive: true, force: true })
   }
 }
 
