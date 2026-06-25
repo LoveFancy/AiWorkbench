@@ -4,28 +4,32 @@
  * 负责检测系统中 Git 的可用性和获取 Git 仓库状态
  */
 
-import { execSync, spawnSync } from 'child_process'
+import { execFile, execSync, spawnSync } from 'child_process'
+import { promisify } from 'util'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import type { GitRuntimeStatus, GitRepoStatus } from '@proma/shared'
 import { getGitForWindowsInstallPath } from './windows-env'
 import { decodeCommandOutput } from './windows-command-output'
 
+const execFileAsync = promisify(execFile)
+
 /**
  * 从系统 PATH 查找 Git
  *
  * @returns Git 可执行路径，如果未找到返回 null
  */
-function findGitPath(): string | null {
+async function findGitPath(): Promise<string | null> {
   try {
-    const command = process.platform === 'win32' ? 'where git' : 'which git'
+    const command = process.platform === 'win32' ? 'where' : 'which'
 
-    const result = execSync(command, {
-      stdio: ['pipe', 'pipe', 'pipe'],
+    const { stdout } = await execFileAsync(command, ['git'], {
+      encoding: 'buffer',
       timeout: 5000,
+      windowsHide: true,
     })
 
-    const gitPath = decodeCommandOutput(result).trim().split(/\r?\n/)[0]
+    const gitPath = decodeCommandOutput(stdout).trim().split(/\r?\n/)[0]
 
     if (gitPath && existsSync(gitPath)) {
       return gitPath
@@ -95,18 +99,18 @@ function findGitPath(): string | null {
  * @param gitPath - Git 可执行路径
  * @returns 版本号，如果无法获取返回 null
  */
-function getGitVersion(gitPath: string): string | null {
+async function getGitVersion(gitPath: string): Promise<string | null> {
   try {
-    const result = spawnSync(gitPath, ['--version'], {
+    const { stdout } = await execFileAsync(gitPath, ['--version'], {
       encoding: 'utf-8',
       timeout: 5000,
-      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
     })
 
-    if (result.status === 0 && result.stdout) {
+    if (stdout) {
       // git version 2.39.0 -> 2.39.0
-      const match = result.stdout.match(/git version (\d+\.\d+\.\d+)/)
-      return match ? match[1]! : result.stdout.trim()
+      const match = stdout.match(/git version (\d+\.\d+\.\d+)/)
+      return match ? match[1]! : stdout.trim()
     }
   } catch {
     // 执行失败
@@ -121,7 +125,7 @@ function getGitVersion(gitPath: string): string | null {
  * @returns Git 运行时状态
  */
 export async function detectGitRuntime(): Promise<GitRuntimeStatus> {
-  const gitPath = findGitPath()
+  const gitPath = await findGitPath()
 
   if (!gitPath) {
     console.warn('[Git 检测] 未找到 Git')
@@ -133,7 +137,7 @@ export async function detectGitRuntime(): Promise<GitRuntimeStatus> {
     }
   }
 
-  const version = getGitVersion(gitPath)
+  const version = await getGitVersion(gitPath)
 
   if (!version) {
     console.warn(`[Git 检测] Git 无法执行: ${gitPath}`)

@@ -361,6 +361,8 @@ export const IPC_CHANNELS = {
   GET_RUNTIME_STATUS: 'runtime:get-status',
   /** 重新初始化运行时（用户安装完 Git/Node 后触发） */
   REINIT_RUNTIME: 'runtime:reinit',
+  /** 主进程 → 渲染层：后台运行时检测完成后推送最新状态 */
+  RUNTIME_STATUS_UPDATED: 'runtime:status-updated',
   /** 获取指定目录的 Git 仓库状态 */
   GET_GIT_REPO_STATUS: 'git:get-repo-status',
   /** 获取未暂存的变更文件列表 */

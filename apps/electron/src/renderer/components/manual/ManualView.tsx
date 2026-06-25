@@ -13,9 +13,11 @@ import * as React from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
+import { useAtom } from 'jotai'
 import { ExternalLink, Loader2 } from 'lucide-react'
 import { CodeBlock } from '@proma/ui'
 import type { ManualContent } from '@proma/shared'
+import { manualInitialSectionAtom } from '@/atoms/tab-atoms'
 
 /** 目录项 */
 interface TocItem {
@@ -134,10 +136,30 @@ export function ManualView(): React.ReactElement {
       : `版本 ${content.version} · 更新于 ${new Date(content.cachedAt).toLocaleString('zh-CN')}`
   }, [content])
 
-  const handleTocClick = React.useCallback((id: string) => {
-    const el = contentRef.current?.querySelector(`#${CSS.escape(id)}`)
-    el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  /**
+   * 滚动到指定标题。
+   * 直接遍历 DOM 标题节点，优先按 id 精确匹配，回退按文本内容匹配，
+   * 避免 CSS 选择器对中文 id 的转义问题，以及 TOC 与正文 slug 不一致的问题。
+   */
+  const scrollToHeading = React.useCallback((id: string, text?: string): boolean => {
+    const root = contentRef.current
+    if (!root) return false
+    const headings = Array.from(root.querySelectorAll<HTMLElement>('h1[id], h2[id], h3[id]'))
+    let target = id ? headings.find((h) => h.id === id) : undefined
+    if (!target && text) {
+      const wanted = text.trim()
+      target = headings.find((h) => (h.textContent ?? '').trim() === wanted)
+    }
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      return true
+    }
+    return false
   }, [])
+
+  const handleTocClick = React.useCallback((id: string, text: string) => {
+    scrollToHeading(id, text)
+  }, [scrollToHeading])
 
   const handleOpenHtmlManual = React.useCallback(() => {
     setHtmlManualError(null)
@@ -149,6 +171,37 @@ export function ManualView(): React.ReactElement {
         setHtmlManualError(msg)
       })
   }, [])
+
+  // 打开手册时滚动到指定章节（由外部 atom 触发，存的是章节标题文本）
+  const [initialSection, setInitialSection] = useAtom(manualInitialSectionAtom)
+
+  React.useEffect(() => {
+    if (!content || !initialSection) return
+
+    let attempts = 0
+    let timer = 0
+
+    const attempt = (): void => {
+      // 按标题文本匹配，避免 slug/转义带来的问题
+      if (scrollToHeading('', initialSection)) {
+        setInitialSection(null)
+        return
+      }
+      // Markdown 通过 useMemo 异步渲染，DOM 可能尚未就绪，重试若干次
+      if (attempts < 20) {
+        attempts++
+        timer = window.setTimeout(attempt, 50)
+      } else {
+        setInitialSection(null)
+      }
+    }
+
+    attempt()
+
+    return () => {
+      if (timer) window.clearTimeout(timer)
+    }
+  }, [content, initialSection, setInitialSection, scrollToHeading])
 
   // 缓存 Markdown 渲染结果，避免 activeId 变化时重新解析
   const renderedContent = React.useMemo(() => {
@@ -267,7 +320,7 @@ export function ManualView(): React.ReactElement {
             {toc.map((item) => (
               <li key={item.id}>
                 <button
-                  onClick={() => handleTocClick(item.id)}
+                  onClick={() => handleTocClick(item.id, item.text)}
                   className={`
                     w-full text-left text-[13px] py-1.5 rounded-md transition-colors
                     hover:bg-muted ${tocIndent[item.level]}
