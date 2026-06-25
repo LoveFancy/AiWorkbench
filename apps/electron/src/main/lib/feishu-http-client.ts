@@ -16,10 +16,10 @@ interface FeishuAxiosConfig {
 
 export interface FeishuSdkTransport {
   httpInstance: AxiosInstance
-  agent?: HttpsProxyAgent<string>
+  agent?: HttpsProxyAgent
 }
 
-async function applyFeishuProxy(httpInstance: AxiosInstance): Promise<HttpsProxyAgent<string> | undefined> {
+async function applyFeishuProxy(httpInstance: AxiosInstance): Promise<HttpsProxyAgent | undefined> {
   const proxyUrl = await getEffectiveProxyUrl()
   httpInstance.defaults.proxy = false
 

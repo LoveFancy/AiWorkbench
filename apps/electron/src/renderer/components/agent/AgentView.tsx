@@ -583,6 +583,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       return map
     })
   }, [sessionId, setSelectedMcpServersMap])
+
   React.useEffect(() => {
     if (!workspaceSlug) {
       setWorkspaceSkills([])

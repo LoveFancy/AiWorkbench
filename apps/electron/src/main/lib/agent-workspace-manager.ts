@@ -553,6 +553,27 @@ export function ensurePluginManifest(workspaceSlug: string, workspaceName: strin
   console.log(`[Agent 工作区] 已创建 plugin manifest: ${workspaceSlug}`)
 }
 
+/** 确保 CLI 连接器目录包含 .claude-plugin/plugin.json，SDK plugin 机制需要此文件发现 skills/ 子目录 */
+export function ensureConnectorPluginManifest(connectorDir: string, connectorId: string): void {
+  const pluginDir = join(connectorDir, '.claude-plugin')
+  const manifestPath = join(pluginDir, 'plugin.json')
+
+  if (existsSync(manifestPath)) return
+
+  if (!existsSync(pluginDir)) {
+    mkdirSync(pluginDir, { recursive: true })
+  }
+
+  const manifest = {
+    name: `connector-${connectorId}`,
+    version: '1.0.0',
+    description: `WorkMate 预置连接器: ${connectorId}`,
+  }
+
+  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf-8')
+  console.log(`[Agent 工作区] 已创建连接器 plugin manifest: ${connectorId}`)
+}
+
 // ===== MCP 配置管理 =====
 
 export function getWorkspaceMcpConfig(workspaceSlug: string): WorkspaceMcpConfig {
@@ -807,6 +828,7 @@ export function migrateMcpJsonToConnectors(workspaceSlug: string): void {
  * 2. 更新 connectors.json（添加新预置连接器，默认 disabled）
  */
 export function syncDefaultConnectorsToWorkspace(workspaceSlug: string): void {
+  console.log(`[Agent 工作区] 🔄 开始同步预置连接器到工作区: ${workspaceSlug}`)
   const defaultDir = getDefaultConnectorsDir()
   const workspaceConnectorsDir = getConnectorsDir(workspaceSlug)
 
@@ -850,6 +872,12 @@ export function syncDefaultConnectorsToWorkspace(workspaceSlug: string): void {
 
   if (changed) {
     saveWorkspaceConnectorsConfig(workspaceSlug, config)
+  }
+
+  // 3. 为 CLI 连接器生成 .claude-plugin/plugin.json（SDK plugin 机制需要此文件发现 skills）
+  for (const [name, connector] of Object.entries(config.connectors)) {
+    if (connector.type !== 'cli') continue
+    ensureConnectorPluginManifest(join(workspaceConnectorsDir, name), name)
   }
 }
 

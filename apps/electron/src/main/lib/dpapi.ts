@@ -112,8 +112,10 @@ function loadDpapi(): DpapiBindings {
 
 try {
   dpapi = loadDpapi()
+  console.log('[DPAPI] prebuild 加载成功')
 } catch (error) {
   // 非 Windows 环境不抛错，由 protectData / unprotectData 内部报错
+  console.warn('[DPAPI] prebuild 加载失败，DPAPI 不可用:', (error as Error).message)
   dpapi = null
   dpapiLoadError = error instanceof Error ? error : new Error(String(error))
 }
@@ -125,13 +127,19 @@ export function protectData(account: string, data: string): string {
   if (!dpapi) {
     throw new Error(dpapiLoadError?.message ?? 'DPAPI is not supported on this platform.')
   }
-  const entropy = Buffer.concat([
-    Buffer.from('lark-cli', 'utf-8'),
-    Buffer.from([0]),
-    Buffer.from(account, 'utf-8'),
-  ])
-  const encrypted = dpapi.protectData(Buffer.from(data, 'utf-8'), entropy, 'CurrentUser')
-  return encrypted.toString('base64')
+  try {
+    const entropy = Buffer.concat([
+      Buffer.from('lark-cli', 'utf-8'),
+      Buffer.from([0]),
+      Buffer.from(account, 'utf-8'),
+    ])
+    const encrypted = dpapi.protectData(Buffer.from(data, 'utf-8'), entropy, 'CurrentUser')
+    console.log('[DPAPI] 加密成功, account:', account.substring(0, 8) + '...')
+    return encrypted.toString('base64')
+  } catch (err) {
+    console.error('[DPAPI] 加密失败, account:', account.substring(0, 8) + '...', (err as Error).message)
+    throw err
+  }
 }
 
 /** DPAPI 解密，返回原文 */
@@ -143,11 +151,17 @@ export function unprotectData(account: string, encryptedB64: string): string {
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encryptedB64)) {
     throw new Error('无效的 base64 编码')
   }
-  const entropy = Buffer.concat([
-    Buffer.from('lark-cli', 'utf-8'),
-    Buffer.from([0]),
-    Buffer.from(account, 'utf-8'),
-  ])
-  const decrypted = dpapi.unprotectData(Buffer.from(encryptedB64, 'base64'), entropy, 'CurrentUser')
-  return decrypted.toString('utf-8')
+  try {
+    const entropy = Buffer.concat([
+      Buffer.from('lark-cli', 'utf-8'),
+      Buffer.from([0]),
+      Buffer.from(account, 'utf-8'),
+    ])
+    const decrypted = dpapi.unprotectData(Buffer.from(encryptedB64, 'base64'), entropy, 'CurrentUser')
+    console.log('[DPAPI] 解密成功, account:', account.substring(0, 8) + '...')
+    return decrypted.toString('utf-8')
+  } catch (err) {
+    console.error('[DPAPI] 解密失败, account:', account.substring(0, 8) + '...', (err as Error).message)
+    throw err
+  }
 }

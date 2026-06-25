@@ -732,6 +732,9 @@ export interface ElectronAPI {
   /** 注销用户创建的连接器（删除目录 + connectors.json 条目 + mcp.json 条目） */
   unregisterUserConnector: (workspaceSlug: string, name: string) => Promise<void>
 
+  /** 同步预置连接器到指定工作区（补齐缺失的 skill 文件等） */
+  syncDefaultConnectors: (workspaceSlug: string) => Promise<void>
+
   /** 获取工作区 Skill 列表（含活跃和不活跃） */
   getWorkspaceSkills: (workspaceSlug: string) => Promise<SkillMeta[]>
 
@@ -2076,6 +2079,10 @@ const electronAPI: ElectronAPI = {
 
   unregisterUserConnector: (workspaceSlug: string, name: string) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.UNREGISTER_USER_CONNECTOR, workspaceSlug, name)
+  },
+
+  syncDefaultConnectors: (workspaceSlug: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.SYNC_DEFAULT_CONNECTORS, workspaceSlug)
   },
 
   getWorkspaceSkills: (workspaceSlug: string) => {

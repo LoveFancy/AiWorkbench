@@ -17,7 +17,7 @@
 import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import type { AgentSendInput, AgentMessage, AgentProviderAdapter, AgentSessionMeta, TypedError, RetryAttempt, SDKMessage, RewindSessionResult, SdkBeta, AgentGenerateTitleInput } from '@proma/shared'
 import {
   PROMA_DEFAULT_PERMISSION_MODE,
@@ -31,7 +31,7 @@ import { injectAutomationMcpServer } from './automation-agent-tools'
 import { normalizeAnthropicBaseUrlForSdk, getPromaUserAgent } from '@proma/core'
 import pkg from '../../../package.json' with { type: 'json' }
 import { appendSDKMessages, updateAgentSessionMeta, getAgentSessionMeta, getAgentSessionMessages } from './agent-session-manager'
-import { getAgentWorkspace, ensurePluginManifest, getWorkspaceConnectorsConfig, migrateMcpJsonToConnectors, syncDefaultConnectorsToWorkspace, readSkillDirsFromConnectorJson } from './agent-workspace-manager'
+import { getAgentWorkspace, ensurePluginManifest, getWorkspaceConnectorsConfig, migrateMcpJsonToConnectors } from './agent-workspace-manager'
 import { getAgentSessionWorkspacePath, getConnectorsDir } from './config-paths'
 import { getRuntimeStatus } from './runtime-init'
 import { getSettings } from './settings-service'
@@ -537,12 +537,11 @@ export class AgentOrchestrator {
           workspace = ws
           console.log(`[Agent 编排] 使用 session 级别 cwd: ${agentCwd} (${ws.name}/${sessionId})`)
 
-          // 连接器：迁移旧 mcp.json + 同步预置连接器
+          // 连接器：迁移旧 mcp.json（一次性的配置迁移）
           try {
             migrateMcpJsonToConnectors(ws.slug)
-            syncDefaultConnectorsToWorkspace(ws.slug)
           } catch (err) {
-            console.warn('[Agent 编排] 连接器同步失败:', err)
+            console.warn('[Agent 编排] MCP 迁移失败:', err)
           }
 
           ensurePluginManifest(ws.slug, ws.name)
@@ -1000,41 +999,27 @@ export class AgentOrchestrator {
         ...(rewindResumeAt && { resumeSessionAt: rewindResumeAt }),
         ...(Object.keys(mcpServers).length > 0 && { mcpServers }),
         ...(() => {
+          const connectorsDir = getConnectorsDir(workspaceSlug)
+          const cliPluginPaths: Array<{ type: 'local'; path: string }> = []
+          try {
+            const connectorsConfig = getWorkspaceConnectorsConfig(workspaceSlug)
+            for (const [name, connector] of Object.entries(connectorsConfig.connectors)) {
+              if (!connector.enabled || connector.type !== 'cli') continue
+
+              const connectorPath = join(connectorsDir, name)
+              cliPluginPaths.push({ type: 'local' as const, path: connectorPath })
+              console.log(`[Agent 编排] CLI 连接器 plugin: ${name}, path=${connectorPath}`)
+            }
+          } catch (err) {
+            console.warn('[Agent 编排] CLI 连接器 plugin 扫描失败:', err)
+          }
+
           const plugins = [
             ...getAgentPluginPaths(workspaceSlug),
             ...(expertRuntime?.pluginPaths ?? []),
+            ...cliPluginPaths,
           ]
           return plugins.length > 0 ? { plugins } : {}
-        })(),
-        // 连接器 CLI Skill 扫描：外层 connectors.json 拿 enabled/type，
-        // 内层 connectors/{name}/connector.json 拿 skillDirs
-        ...(() => {
-          const connectorsDir = workspaceSlug ? getConnectorsDir(workspaceSlug) : ''
-          if (!connectorsDir) return {}
-
-          const skillDirs: string[] = []
-          try {
-            const config = workspaceSlug ? getWorkspaceConnectorsConfig(workspaceSlug) : { version: '1.0', connectors: {} }
-            for (const [name, connector] of Object.entries(config.connectors)) {
-              if (!connector.enabled) continue
-              if (connector.type !== 'cli') continue
-
-              // 优先从 connectors/{name}/connector.json 读取 skillDirs（新格式）
-              // 兜底从 connectors.json 的 skillDirs 字段读取（旧格式兼容）
-              const dirs = readSkillDirsFromConnectorJson(connectorsDir, name) ?? connector.skillDirs ?? []
-              for (const d of dirs) {
-                if (d === '.' || d === '..' || !/^[a-zA-Z0-9._-]+$/.test(d)) {
-                  console.warn(`[Agent 编排] 跳过非法 skill 目录: ${name}/${d}`)
-                  continue
-                }
-                skillDirs.push(join(connectorsDir, name, d))
-              }
-            }
-          } catch (err) {
-            console.warn('[Agent 编排] 读取 connector skill 目录失败:', err)
-          }
-
-          return skillDirs.length > 0 ? { additionalSkillDirs: skillDirs } : {}
         })(),
         // 合并附加目录：用户当次输入 + 会话级 + 工作区级（详见 collectAttachedDirectories）
         ...(() => {

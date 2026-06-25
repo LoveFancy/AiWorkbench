@@ -1293,6 +1293,7 @@ function FeishuConfigTab(): React.ReactElement {
         name: defaultBotName(bots.length),
         enabled: true,
         appId: result.appId,
+        appSecret: '',
         defaultWorkspaceId: undefined,
         defaultChannelId: undefined,
         defaultModelId: undefined,
