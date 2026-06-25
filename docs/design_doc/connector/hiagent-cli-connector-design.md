@@ -449,6 +449,20 @@ export interface InitializeDefaultConnectorInput {
 }
 ```
 
+当前返回类型还要求 `serverName: string`：
+
+```ts
+export interface InitializeDefaultConnectorResult {
+  connectorId: string
+  serverName: string
+  success: boolean
+  steps: DefaultConnectorInitStep[]
+  message: string
+}
+```
+
+`serverName` 对 MCP 连接器有意义，因为初始化会写入 `mcp.json.servers[serverName]`；CLI 连接器不创建 MCP Server entry，不应被迫返回虚假的 serverName。
+
 主进程初始化实现位于：
 
 ```text
@@ -478,7 +492,17 @@ export interface InitializeDefaultConnectorInput {
   // generic cli connector, including hi-agent
   userProvidedData?: Record<string, string>
 }
+
+export interface InitializeDefaultConnectorResult {
+  connectorId: string
+  serverName?: string
+  success: boolean
+  steps: DefaultConnectorInitStep[]
+  message: string
+}
 ```
+
+前端展示需要按连接器类型处理：`type === "mcp"` 可展示 `serverName`，`type === "cli"` 展示 `connectorId` 或 `displayName`。
 
 前端 hiagent 调用：
 
@@ -521,12 +545,11 @@ export async function initializeDefaultConnector(
 
 ## 九、初始化步骤
 
-扩展 Step 类型：
+建议把 Step 类型从具体运行时中解耦。当前 `check-python` 对华泰邮箱可用，但对 Node CLI 连接器不合适。推荐改为通用步骤：
 
 ```ts
 export type DefaultConnectorInitStepId =
-  | 'check-python'
-  | 'check-node'
+  | 'check-runtime'
   | 'check-package'
   | 'install-package'
   | 'install-skill'
@@ -538,7 +561,7 @@ hiagent 步骤：
 
 ```ts
 [
-  { id: 'check-node', label: '检查 Node/npm 环境', status: 'pending' },
+  { id: 'check-runtime', label: '检查 Node/npm 环境', status: 'pending' },
   { id: 'check-package', label: '检查 talents CLI', status: 'pending' },
   { id: 'install-package', label: '安装 talents CLI', status: 'pending' },
   { id: 'install-skill', label: '启用 talents Skill', status: 'pending' },
@@ -556,15 +579,35 @@ hiagent 步骤：
 5. 检查 `talents -V`
 6. 缺失或版本不足时执行 `init`
 7. 再次执行 `versionCheck`
-8. 写入 `secrets.json`
-9. 启用 `connectors.json` 中的 `hi-agent`
-10. 注入 env 执行 `status` 自检
+8. 解析 `talents` 可执行文件全路径并写入 `runtime.json`
+9. 加密写入 `secrets.json`
+10. 启用 `connectors.json` 中的 `hi-agent`
+11. 解析 `cli.json.env` 并注入 env 执行 `status` 自检
 
 ***
 
 ## 十、运行时环境注入
 
-当前 Agent 运行时已经支持 CLI connector 的 `skillDirs` 注入。需要新增 `secrets.json` 环境变量注入。
+当前 Agent 运行时已经支持 CLI connector 的 `skillDirs` 注入，但没有读取 `secrets.json` 或 `cli.json.env`。这不是可选增强，而是 hiagent CLI 连接器的硬依赖；否则 Agent 调用 `talents` 时拿不到 Token 和环境信息。
+
+必须修改：
+
+```text
+apps/electron/src/main/lib/agent-orchestrator.ts
+```
+
+可选修改：
+
+```text
+apps/electron/src/main/lib/orchestrator/sdk-env.ts
+```
+
+实现方式可以二选一：
+
+1. 扩展 `buildSdkEnv()` 的输入，让它接收 `workspaceSlug` 后合并 CLI connector env
+2. 保持 `buildSdkEnv()` 只负责模型 SDK env，在 `agent-orchestrator.ts` 调用后追加 `collectCliConnectorEnv(workspaceSlug)`
+
+建议采用第 2 种，边界更清晰：`buildSdkEnv()` 继续只处理模型、代理和 shell 环境，连接器 env 在编排层合并。无论采用哪种方式，都必须在创建 Agent SDK query options 前把连接器 env 合并进 `sdkEnv`，否则 `talents` 子进程收不到认证变量。
 
 逻辑：
 
@@ -574,28 +617,26 @@ hiagent 步骤：
 
 ```text
 connectors/{connectorId}/secrets.json
+connectors/{connectorId}/cli.json
+connectors/{connectorId}/runtime.json
 ```
 
-4. 将其中允许的字段注入 Agent 子进程 env：
+4. 解密 `secrets.json`
+5. 按 `cli.json.env` 解析模板
+6. 只注入 `cli.json.env` 显式声明的 key
+7. 将 `runtime.json.binDir` 追加到 `PATH`
+
+示例：
 
 ```ts
 {
-  HTSKILL_TOKEN: secrets.HTSKILL_TOKEN,
-  AGENTOS_ENV: secrets.AGENTOS_ENV,
-  PATH: `${npmGlobalBin}:${process.env.PATH ?? ''}`
+  HTSKILL_TOKEN: resolvedEnv.HTSKILL_TOKEN,
+  AGENTOS_ENV: resolvedEnv.AGENTOS_ENV,
+  PATH: `${runtime.binDir}:${sdkEnv.PATH ?? process.env.PATH ?? ''}`
 }
 ```
 
-字段白名单：
-
-```ts
-const ALLOWED_CLI_SECRET_ENV_KEYS = new Set([
-  'HTSKILL_TOKEN',
-  'AGENTOS_ENV',
-])
-```
-
-不要无条件注入任意 secrets 字段，避免用户写入危险环境变量。
+不要无条件注入任意 `secrets.json` 字段，避免用户写入危险环境变量；但也不要把 `HTSKILL_TOKEN` / `AGENTOS_ENV` 写成全局硬编码白名单，否则新增 CLI 连接器时每次都要改主进程代码。
 
 ***
 
@@ -729,17 +770,18 @@ apps/electron/default-connectors/hi-agent/cli.json
 apps/electron/default-connectors/hi-agent/skills/talents-cli/**
 packages/shared/src/types/agent.ts
 apps/electron/src/main/lib/default-connector-initializer.ts
+apps/electron/src/main/lib/agent-orchestrator.ts
 apps/electron/src/renderer/components/agent-skills/HiAgentConnectorDialog.tsx
 apps/electron/src/renderer/components/agent-skills/AgentSkillsView.tsx
 ```
 
-可能需要修改：
+可选修改：
 
 ```text
-apps/electron/src/main/lib/agent-orchestrator.ts
+apps/electron/src/main/lib/orchestrator/sdk-env.ts
 ```
 
-用于读取 `secrets.json` 并注入 Agent 运行时环境变量。
+只有选择在 `buildSdkEnv()` 内部合并连接器 env 时才需要修改该文件；若在 `agent-orchestrator.ts` 中对 `sdkEnv` 做后置合并，则不需要改。
 
 ***
 
@@ -754,10 +796,13 @@ apps/electron/src/main/lib/agent-orchestrator.ts
 3. Token 缺失时初始化失败
 4. Node/npm 缺失时初始化失败
 5. npm 安装失败时返回错误步骤
-6. 安装成功后写入 `secrets.json`
-7. 安装成功后启用 `connectors.json`
-8. 自检失败时不标记为成功
-9. 日志和返回 message 不包含完整 Token
+6. 安装成功后解析 `talents` 可执行文件全路径并写入 `runtime.json`
+7. 安装成功后加密写入 `secrets.json`
+8. 安装成功后启用 `connectors.json`
+9. 自检失败时不标记为成功
+10. 日志和返回 message 不包含完整 Token
+11. `cli.json.env` 引用未知字段时初始化失败
+12. 运行时只注入 `cli.json.env` 显式声明的 key
 
 ### 15.2 集成验证
 
@@ -773,7 +818,7 @@ apps/electron/src/main/lib/agent-orchestrator.ts
 talents workspace --json
 ```
 
-6. 切换 `uat` / `prd` 后环境变量正确
+6. 切换 `uat` / `prd` 后环境变量或显式 `--env` 参数正确
 
 ***
 
@@ -793,7 +838,8 @@ talents workspace --json
 2. 将 `default-connector-initializer.ts` 改为分发模式
 3. 新增 `initializeCliConnector`
 4. 支持读取 `cli.json`
-5. 支持写入 `secrets.json`
+5. 支持写入加密 `secrets.json`
+6. 支持写入 `runtime.json`
 
 ### 阶段 3：前端
 
@@ -803,9 +849,10 @@ talents workspace --json
 
 ### 阶段 4：运行时注入与验收
 
-1. Agent 运行时读取 enabled CLI connector 的 `secrets.json`
-2. 注入白名单环境变量
-3. 验证 Skill 能正常调用 `talents`
+1. Agent 运行时读取 enabled CLI connector 的 `cli.json`、`secrets.json`、`runtime.json`
+2. 解密密钥并按 `cli.json.env` 派生允许注入的环境变量
+3. 将 `runtime.json.binDir` 合并到 `PATH`
+4. 验证 Skill 能正常调用 `talents`
 
 ***
 
@@ -814,13 +861,14 @@ talents workspace --json
 1. 连接器列表显示“泰为 hiagent”，状态为可连接
 2. 用户可输入 Token 并选择环境
 3. 初始化器可自动安装 `@ht/talents-cli`
-4. 初始化成功后写入本地 `secrets.json`
+4. 初始化成功后写入本地加密 `secrets.json` 和 `runtime.json`
 5. 初始化成功后启用 `hi-agent`
 6. Agent 运行时自动加载 `talents-cli` Skill
 7. Agent 调用 `talents` 时无需用户再次输入 Token
 8. `uat` 和 `prd` 能正确区分
 9. 日志、错误信息、对话内容不泄漏完整 Token
 10. 安装失败、认证失败、环境错误均有明确提示
+11. `AGENTOS_ENV` 环境变量若经实测不可用，则命令路径必须显式传 `--env`
 
 ***
 

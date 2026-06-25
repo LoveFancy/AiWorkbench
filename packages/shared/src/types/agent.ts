@@ -815,7 +815,7 @@ export interface ConnectorsConfig {
 
 // ===== 内置连接器初始化 =====
 
-export type DefaultConnectorInitStepId = 'check-python' | 'check-package' | 'install-package' | 'write-config' | 'self-check'
+export type DefaultConnectorInitStepId = 'check-python' | 'check-runtime' | 'check-package' | 'install-package' | 'install-skill' | 'write-config' | 'self-check'
 
 export interface DefaultConnectorInitStep {
   id: DefaultConnectorInitStepId
@@ -828,11 +828,12 @@ export interface InitializeDefaultConnectorInput {
   connectorId: string
   emailAddress?: string
   password?: string
+  userProvidedData?: Record<string, string>
 }
 
 export interface InitializeDefaultConnectorResult {
   connectorId: string
-  serverName: string
+  serverName?: string
   success: boolean
   steps: DefaultConnectorInitStep[]
   message: string

@@ -211,10 +211,10 @@ describe('Agent 工作区预设连接器同步', () => {
         type: 'cli',
         enabled: false,
         source: 'preset',
-        displayName: '泰为智能体',
-        description: '泰为智能体，用于处理办公协同任务',
+        displayName: '泰为 hiagent',
+        description: '泰为 hiagent 大模型应用平台，支持工作区查询、知识库召回和智能体对话',
         category: '办公协同',
-        status: 'coming-soon',
+        status: 'available',
         version: '1.0.2',
         sortOrder: 3,
       },
@@ -230,9 +230,9 @@ describe('Agent 工作区预设连接器同步', () => {
     })
     expect(config.connectors['hi-agent']).toMatchObject({
       enabled: false,
-      displayName: '泰为智能体',
-      description: '泰为智能体，用于处理办公协同任务',
-      status: 'coming-soon',
+      displayName: '泰为 hiagent',
+      description: '泰为 hiagent 大模型应用平台，支持工作区查询、知识库召回和智能体对话',
+      status: 'available',
       version: '1.0.2',
     })
   })

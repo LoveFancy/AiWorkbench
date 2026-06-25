@@ -67,6 +67,7 @@ import {
   logStderr,
 } from './orchestrator/error-presenter'
 import { buildSdkEnv } from './orchestrator/sdk-env'
+import { collectCliConnectorEnv } from './cli-connector-runtime'
 import { buildAgentUserContent } from './orchestrator/agent-user-content'
 import {
   buildMcpServers,
@@ -595,6 +596,11 @@ export class AgentOrchestrator {
 // 10. 构建 MCP 服务器配置
       // 预读连接器配置一次，避免 buildMcpServers + collectConnectorDisabledTools 重复 I/O
       const connectorsConfig = workspaceSlug ? getWorkspaceConnectorsConfig(workspaceSlug) : { version: '1.0', connectors: {} }
+      const applyCliConnectorEnv = (): void => {
+        if (!workspaceSlug) return
+        Object.assign(sdkEnv, collectCliConnectorEnv(workspaceSlug, connectorsConfig))
+      }
+      applyCliConnectorEnv()
       const mcpServers = buildMcpServers(workspaceSlug, connectorsConfig, selectedMcpServers)
       await injectMemoryTools(sdk, mcpServers)
       _diag('injectMemoryTools 完成, 开始 injectNanoBananaTools (await)')
@@ -1122,6 +1128,7 @@ export class AgentOrchestrator {
         sdkEnv = await buildSdkEnv(apiKey, chInfo.baseUrl, chInfo.provider)
         const newRouting = resolveAgentModelRouting({ modelId: newModelId, provider: chInfo.provider })
         applyAgentModelRoutingToEnv(sdkEnv, newRouting)
+        applyCliConnectorEnv()
         queryOptions.env = sdkEnv
       }
 

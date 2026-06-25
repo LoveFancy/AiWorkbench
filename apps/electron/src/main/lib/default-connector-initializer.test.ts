@@ -2,13 +2,14 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { clearConfigDirNameForTest, getWorkspaceMcpPath, getConnectorsConfigPath } from './config-paths'
+import { clearConfigDirNameForTest, getWorkspaceMcpPath, getConnectorsConfigPath, getConnectorsDir } from './config-paths'
 import { clearConfigRootOverride, setConfigRoot } from './config-root-service'
 import { initializeDefaultConnector } from './default-connector-initializer'
 import type { WorkspaceMcpConfig, ConnectorsConfig } from '@proma/shared'
 
 let root: string
 let mockMcpEmailServerPath: string
+let mockTalentsPath: string
 
 function readMcp(workspaceSlug: string): WorkspaceMcpConfig {
   return JSON.parse(readFileSync(getWorkspaceMcpPath(workspaceSlug), 'utf-8')) as WorkspaceMcpConfig
@@ -22,7 +23,9 @@ describe('initializeDefaultConnector', () => {
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'proma-default-connector-'))
     mockMcpEmailServerPath = join(root, process.platform === 'win32' ? 'mcp-email-server.exe' : 'mcp-email-server')
+    mockTalentsPath = join(root, process.platform === 'win32' ? 'talents.cmd' : 'talents')
     writeFileSync(mockMcpEmailServerPath, '', 'utf-8')
+    writeFileSync(mockTalentsPath, '', 'utf-8')
     clearConfigRootOverride()
     clearConfigDirNameForTest()
     setConfigRoot(join(root, 'custom-next-run'), { homeDir: root, configDirName: '.workmate-dev' })
@@ -48,8 +51,37 @@ describe('initializeDefaultConnector', () => {
           displayName: '华泰邮箱',
           serverName: 'email',
         },
+        'hi-agent': {
+          type: 'cli',
+          enabled: false,
+          source: 'preset',
+          displayName: '泰为 hiagent',
+          status: 'available',
+        },
       },
     } satisfies ConnectorsConfig, null, 2), 'utf-8')
+    mkdirSync(join(getConnectorsDir('default'), 'hi-agent'), { recursive: true })
+    writeFileSync(join(getConnectorsDir('default'), 'hi-agent', 'cli.json'), JSON.stringify({
+      runtime: { type: 'node', version: '>=20' },
+      init: {
+        darwin: 'npm install -g @ht/talents-cli',
+        linux: 'npm install -g @ht/talents-cli',
+        win32: 'npm install -g @ht/talents-cli',
+      },
+      userProvidedData: [
+        { name: 'HTSKILL_TOKEN', label: 'Talents Token', type: 'password', required: true },
+        { name: 'AGENTOS_ENV', label: '环境', type: 'select', default: 'uat', options: ['dev', 'sit', 'uat', 'prd'], required: true },
+      ],
+      status: {
+        darwin: 'talents workspace --json',
+        linux: 'talents workspace --json',
+        win32: 'talents.cmd workspace --json',
+      },
+      env: {
+        HTSKILL_TOKEN: '{{HTSKILL_TOKEN}}',
+        AGENTOS_ENV: '{{AGENTOS_ENV}}',
+      },
+    }, null, 2), 'utf-8')
   })
 
   afterEach(() => {
@@ -118,6 +150,63 @@ describe('initializeDefaultConnector', () => {
     // connectors.json 中 huatai-email 已启用
     const connectorsCfg = readConnectorsConfig('default')
     expect(connectorsCfg.connectors['huatai-email']?.enabled).toBe(true)
+  })
+
+  test('hi-agent 初始化会写入 CLI runtime、secrets 并启用连接器', async () => {
+    const calls: string[] = []
+    const probe = process.platform === 'win32' ? 'where' : 'which'
+    const result = await initializeDefaultConnector('default', {
+      connectorId: 'hi-agent',
+      userProvidedData: {
+        HTSKILL_TOKEN: 'talents-token',
+        AGENTOS_ENV: 'uat',
+      },
+    }, {
+      commandExists: async (command) => command === 'node' || command === 'npm',
+      runCommand: async (command, args, options) => {
+        calls.push([command, ...args].join(' '))
+        if (command === 'node' && args[0] === '-v') {
+          return { ok: true, stdout: 'v20.11.0\n', stderr: '' }
+        }
+        if (command === probe && (args[0] === 'talents' || args[0] === 'talents.cmd')) {
+          return { ok: true, stdout: `${mockTalentsPath}\n`, stderr: '' }
+        }
+        if (command === mockTalentsPath && args[0] === '-V') {
+          return { ok: true, stdout: '1.0.2\n', stderr: '' }
+        }
+        if (command === mockTalentsPath && args.join(' ') === 'workspace --json') {
+          expect(options?.env?.HTSKILL_TOKEN).toBe('talents-token')
+          expect(options?.env?.AGENTOS_ENV).toBe('uat')
+          return { ok: true, stdout: '{"ok":true}', stderr: '' }
+        }
+        return { ok: true, stdout: '', stderr: '' }
+      },
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.serverName).toBeUndefined()
+    expect(result.steps.map((step) => [step.id, step.status])).toEqual([
+      ['check-runtime', 'success'],
+      ['check-package', 'success'],
+      ['install-package', 'skipped'],
+      ['install-skill', 'success'],
+      ['write-config', 'success'],
+      ['self-check', 'success'],
+    ])
+    expect(calls).toContain(`${probe} ${process.platform === 'win32' ? 'talents.cmd' : 'talents'}`)
+    const connectorDir = join(getConnectorsDir('default'), 'hi-agent')
+    const runtime = JSON.parse(readFileSync(join(connectorDir, 'runtime.json'), 'utf-8')) as { commandPath?: string; binDir?: string; packageName?: string }
+    expect(runtime.commandPath).toBe(mockTalentsPath)
+    expect(runtime.binDir).toBe(root)
+    expect(runtime.packageName).toBe('@ht/talents-cli')
+
+    const secrets = JSON.parse(readFileSync(join(connectorDir, 'secrets.json'), 'utf-8')) as { version?: number; data?: Record<string, { value: string }> }
+    expect(secrets.version).toBe(1)
+    expect(secrets.data?.HTSKILL_TOKEN?.value).toBe('talents-token')
+    expect(secrets.data?.AGENTOS_ENV?.value).toBe('uat')
+
+    const connectorsCfg = readConnectorsConfig('default')
+    expect(connectorsCfg.connectors['hi-agent']?.enabled).toBe(true)
   })
 
   test('已安装 mcp-email-server 时跳过安装步骤', async () => {

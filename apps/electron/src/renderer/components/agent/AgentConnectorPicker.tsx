@@ -49,12 +49,13 @@ export function getAvailableConnectorsForPicker(
     const mcpEntry = connector.serverName ? config.servers?.[connector.serverName] : undefined
     const entry = isCli ? undefined : mcpEntry
 
+    const connectorEnabled = connectorsConfig?.connectors?.[connector.id]?.enabled ?? false
     const isConfigured = isComingSoon ? false
-      : isCli ? feishuConnected
+      : isCli ? (connector.id === 'feishu-cli' ? feishuConnected : connectorEnabled)
       : Boolean(mcpEntry)
 
     const enabled = isConfigured
-      ? (connectorsConfig?.connectors?.[connector.id]?.enabled ?? false)
+      ? connectorEnabled
       : false
 
     return {

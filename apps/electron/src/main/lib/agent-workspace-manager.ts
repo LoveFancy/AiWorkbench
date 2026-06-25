@@ -830,7 +830,8 @@ export function syncDefaultConnectorsToWorkspace(workspaceSlug: string): void {
         })
         console.log(`[Agent 工作区] 已同步预置连接器: ${entry.name}`)
       } else {
-        // 目录已存在：仅补齐缺失文件，不覆盖用户已自定义的 connector.json
+        // 目录已存在：补齐缺失文件，不覆盖用户已自定义的 connector.json
+        copyMissingConnectorFiles(source, target)
         const srcMeta = join(source, 'connector.json')
         const dstMeta = join(target, 'connector.json')
         if (!existsSync(dstMeta) && existsSync(srcMeta)) {
@@ -879,6 +880,7 @@ export function mergePresetConnectorEntries(
     if (entry.serverName) existing.serverName = entry.serverName
     if (entry.version) existing.version = entry.version
     if (entry.sortOrder !== undefined) existing.sortOrder = entry.sortOrder
+    if (entry.skillDirs) existing.skillDirs = entry.skillDirs
     existing.enabled = preservedEnabled
 
     if (JSON.stringify(existing) !== before) changed = true
@@ -942,7 +944,8 @@ function getDefaultConnectorEntries(): Record<string, ConnectorEntry> {
       if (raw.serverName) entry.serverName = raw.serverName
       if (raw.version) entry.version = raw.version
       if (raw.sortOrder !== undefined) entry.sortOrder = raw.sortOrder
-      // skillDirs / disabledTools 不写入 connectors.json，
+      if (raw.type === 'cli' && Array.isArray(raw.skillDirs)) entry.skillDirs = raw.skillDirs
+      // disabledTools 不写入 connectors.json，
       // 由运行时从 connectors/{name}/connector.json 读取
 
       // 以 connector.json 中的 serverName 为连接器 ID（兜底用目录名）
@@ -954,6 +957,24 @@ function getDefaultConnectorEntries(): Record<string, ConnectorEntry> {
   }
 
   return entries
+}
+
+function copyMissingConnectorFiles(source: string, target: string): void {
+  const blocklist = new Set(['.git', 'node_modules', '__pycache__', '.DS_Store'])
+  for (const entry of readdirSync(source, { withFileTypes: true })) {
+    if (blocklist.has(entry.name)) continue
+    if (entry.name === 'connector.json') continue
+    const srcPath = join(source, entry.name)
+    const dstPath = join(target, entry.name)
+    if (existsSync(dstPath)) {
+      if (entry.isDirectory()) copyMissingConnectorFiles(srcPath, dstPath)
+      continue
+    }
+    cpSync(srcPath, dstPath, {
+      recursive: entry.isDirectory(),
+      filter: (src) => !blocklist.has(basename(src)),
+    })
+  }
 }
 
 // ===== Skill 目录扫描 =====

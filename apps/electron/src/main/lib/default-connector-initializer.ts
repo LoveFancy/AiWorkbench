@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { isAbsolute } from 'node:path'
+import { dirname, isAbsolute, join } from 'node:path'
 import type {
   DefaultConnectorInitStep,
   DefaultConnectorInitStepId,
@@ -11,6 +11,16 @@ import type {
 import { buildHuataiEmailMcpEntry } from '@proma/shared'
 import { getWorkspaceConnectorsConfig, saveWorkspaceConnectorsConfig, getWorkspaceMcpConfig, saveWorkspaceMcpConfig } from './agent-workspace-manager'
 import { validateMcpServer } from './mcp-validator'
+import { getConnectorsDir } from './config-paths'
+import {
+  getPlatformCommand,
+  parseCommandLine,
+  readCliConnectorDefinition,
+  resolveCliConnectorEnv,
+  validateCliUserProvidedData,
+  writeCliConnectorRuntime,
+  writeCliConnectorSecrets,
+} from './cli-connector-runtime'
 
 interface CommandResult {
   ok: boolean
@@ -18,9 +28,14 @@ interface CommandResult {
   stderr: string
 }
 
+interface CommandOptions {
+  env?: Record<string, string | undefined>
+  timeoutMs?: number
+}
+
 interface InitializerDeps {
   commandExists?: (command: string) => Promise<boolean>
-  runCommand?: (command: string, args: string[]) => Promise<CommandResult>
+  runCommand?: (command: string, args: string[], options?: CommandOptions) => Promise<CommandResult>
   validateMcpServer?: (name: string, entry: McpServerEntry) => Promise<{ success: boolean; message: string }>
 }
 
@@ -28,18 +43,18 @@ const PIP_INSTALL_BASE_ARGS = ['-m', 'pip', 'install', '--disable-pip-version-ch
 const PYPI_MIRROR_URL = 'https://pypi.tuna.tsinghua.edu.cn/simple'
 const LOG_PREFIX = '[连接器:华泰邮箱]'
 
-const STEP_LABELS: Record<DefaultConnectorInitStepId, string> = {
+const EMAIL_STEP_LABELS = {
   'check-python': '检查 Python 环境',
   'check-package': '检查邮箱连接环境',
   'install-package': '准备邮箱连接能力',
   'write-config': '启用邮箱能力',
   'self-check': '自检邮箱连接',
-}
+} satisfies Partial<Record<DefaultConnectorInitStepId, string>>
 
 function makeSteps(): DefaultConnectorInitStep[] {
-  return (Object.keys(STEP_LABELS) as DefaultConnectorInitStepId[]).map((id) => ({
+  return (Object.keys(EMAIL_STEP_LABELS) as DefaultConnectorInitStepId[]).map((id) => ({
     id,
-    label: STEP_LABELS[id],
+    label: EMAIL_STEP_LABELS[id as keyof typeof EMAIL_STEP_LABELS] ?? id,
     status: 'pending',
   }))
 }
@@ -62,9 +77,9 @@ async function defaultCommandExists(command: string): Promise<boolean> {
   return result.ok
 }
 
-function defaultRunCommand(command: string, args: string[]): Promise<CommandResult> {
+function defaultRunCommand(command: string, args: string[], options: CommandOptions = {}): Promise<CommandResult> {
   return new Promise((resolve) => {
-    execFile(command, args, { timeout: 120_000, windowsHide: true }, (error, stdout, stderr) => {
+    execFile(command, args, { timeout: options.timeoutMs ?? 120_000, windowsHide: true, env: options.env ? { ...process.env, ...options.env } : process.env }, (error, stdout, stderr) => {
       resolve({
         ok: !error,
         stdout: stdout.toString(),
@@ -80,7 +95,7 @@ function defaultRunCommand(command: string, args: string[]): Promise<CommandResu
  * Windows: where command 返回完整路径（如 C:\Users\...\Scripts\mcp-email-server.exe）
  * Unix: which command 返回完整路径
  */
-async function resolveCommandPath(command: string, runCommand: (command: string, args: string[]) => Promise<CommandResult>): Promise<string | null> {
+async function resolveCommandPath(command: string, runCommand: (command: string, args: string[], options?: CommandOptions) => Promise<CommandResult>): Promise<string | null> {
   const probe = process.platform === 'win32' ? 'where' : 'which'
   const result = await runCommand(probe, [command])
   if (!result.ok) return null
@@ -122,7 +137,7 @@ function isLikelyNetworkInstallError(result: CommandResult): boolean {
   return /ReadTimeout|timeout|timed out|Connection.*broken|Temporary failure|Network is unreachable|Connection reset|SSL/i.test(message)
 }
 
-async function installEmailServer(pythonCommand: string, runCommand: (command: string, args: string[]) => Promise<CommandResult>): Promise<{ ok: boolean; message: string }> {
+async function installEmailServer(pythonCommand: string, runCommand: (command: string, args: string[], options?: CommandOptions) => Promise<CommandResult>): Promise<{ ok: boolean; message: string }> {
   const firstArgs = [...PIP_INSTALL_BASE_ARGS, 'mcp-email-server']
   logConnectorInfo('开始安装 mcp-email-server', { command: [pythonCommand, ...firstArgs].join(' ') })
   const firstResult = await runCommand(pythonCommand, firstArgs)
@@ -160,9 +175,21 @@ export async function initializeDefaultConnector(
   input: InitializeDefaultConnectorInput,
   deps: InitializerDeps = {},
 ): Promise<InitializeDefaultConnectorResult> {
-  if (input.connectorId !== 'huatai-email') {
-    throw new Error(`暂不支持初始化连接器: ${input.connectorId}`)
+  switch (input.connectorId) {
+    case 'huatai-email':
+      return initializeHuataiEmailConnector(workspaceSlug, input, deps)
+    case 'hi-agent':
+      return initializeCliConnector(workspaceSlug, input, deps)
+    default:
+      throw new Error(`暂不支持初始化连接器: ${input.connectorId}`)
   }
+}
+
+async function initializeHuataiEmailConnector(
+  workspaceSlug: string,
+  input: InitializeDefaultConnectorInput,
+  deps: InitializerDeps = {},
+): Promise<InitializeDefaultConnectorResult> {
   if (!input.emailAddress?.trim() || !input.password?.trim()) {
     throw new Error('邮箱账号和密码不能为空')
   }
@@ -297,4 +324,209 @@ export async function initializeDefaultConnector(
     steps,
     message: '华泰邮箱连接器初始化完成。',
   }
+}
+
+function makeCliSteps(): DefaultConnectorInitStep[] {
+  return [
+    { id: 'check-runtime', label: '检查 Node/npm 环境', status: 'pending' },
+    { id: 'check-package', label: '检查 talents CLI', status: 'pending' },
+    { id: 'install-package', label: '安装 talents CLI', status: 'pending' },
+    { id: 'install-skill', label: '启用 talents Skill', status: 'pending' },
+    { id: 'write-config', label: '保存认证配置', status: 'pending' },
+    { id: 'self-check', label: '自检连接', status: 'pending' },
+  ]
+}
+
+async function initializeCliConnector(
+  workspaceSlug: string,
+  input: InitializeDefaultConnectorInput,
+  deps: InitializerDeps = {},
+): Promise<InitializeDefaultConnectorResult> {
+  const commandExists = deps.commandExists ?? defaultCommandExists
+  const runCommand = deps.runCommand ?? defaultRunCommand
+  const steps = makeCliSteps()
+
+  const connectorsConfig = getWorkspaceConnectorsConfig(workspaceSlug)
+  const connectorDef = connectorsConfig.connectors[input.connectorId]
+  if (!connectorDef || connectorDef.type !== 'cli') {
+    throw new Error(`连接器不是 CLI 类型: ${input.connectorId}`)
+  }
+
+  const connectorDir = join(getConnectorsDir(workspaceSlug), input.connectorId)
+  const definition = readCliConnectorDefinition(connectorDir)
+  const userValues = validateCliUserProvidedData(definition, input.userProvidedData)
+
+  const nodeExists = await commandExists('node')
+  const npmExists = await commandExists('npm')
+  if (!nodeExists || !npmExists) {
+    setStep(steps, 'check-runtime', 'error', '未检测到 Node.js 或 npm')
+    return {
+      connectorId: input.connectorId,
+      success: false,
+      steps,
+      message: '未检测到 Node.js 或 npm，请先安装 Node.js 20 及以上版本。',
+    }
+  }
+
+  const nodeVersionResult = await runCommand('node', ['-v'])
+  const nodeVersion = nodeVersionResult.stdout.trim()
+  if (!isNodeVersionSupported(nodeVersion, definition.runtime?.version ?? '>=20')) {
+    setStep(steps, 'check-runtime', 'error', `当前 Node 版本 ${nodeVersion || '未知'}，需要 Node.js 20+`)
+    return {
+      connectorId: input.connectorId,
+      success: false,
+      steps,
+      message: '当前 Node.js 版本不满足要求，请安装 Node.js 20 及以上版本。',
+    }
+  }
+  setStep(steps, 'check-runtime', 'success', nodeVersion)
+
+  const commandName = process.platform === 'win32' ? 'talents.cmd' : 'talents'
+  let resolvedPath = await resolveCommandPath(commandName, runCommand)
+  const alreadyInstalled = Boolean(resolvedPath)
+  setStep(steps, 'check-package', alreadyInstalled ? 'success' : 'skipped', alreadyInstalled ? '已安装' : '未安装')
+
+  if (!alreadyInstalled) {
+    const installCommand = getPlatformCommand(definition.init)
+    if (!installCommand) {
+      setStep(steps, 'install-package', 'error', '当前平台缺少安装命令')
+      return {
+        connectorId: input.connectorId,
+        success: false,
+        steps,
+        message: '当前平台缺少 CLI 安装命令。',
+      }
+    }
+
+    const installArgs = parseCommandLine(installCommand)
+    const [command, ...args] = installArgs
+    if (!command) throw new Error('CLI 安装命令为空')
+    const installResult = await runCommand(command, args, { timeoutMs: 180_000 })
+    if (!installResult.ok) {
+      setStep(steps, 'install-package', 'error', sanitizeMessage(getCommandMessage(installResult), userValues))
+      return {
+        connectorId: input.connectorId,
+        success: false,
+        steps,
+        message: '安装 talents CLI 失败。',
+      }
+    }
+    setStep(steps, 'install-package', 'success', '安装完成')
+    resolvedPath = await resolveTalentsCommandPath(commandName, runCommand)
+  } else {
+    setStep(steps, 'install-package', 'skipped', '已安装，跳过')
+  }
+
+  if (!resolvedPath) {
+    resolvedPath = await resolveTalentsCommandPath(commandName, runCommand)
+  }
+  if (!resolvedPath || !isAbsolute(resolvedPath) || !existsSync(resolvedPath)) {
+    setStep(steps, 'check-package', 'error', '无法定位 talents 可执行文件')
+    return {
+      connectorId: input.connectorId,
+      success: false,
+      steps,
+      message: 'talents CLI 已安装但无法定位可执行文件，请检查 npm 全局 bin 目录是否在 PATH 中。',
+    }
+  }
+  setStep(steps, 'check-package', 'success', resolvedPath)
+
+  setStep(steps, 'install-skill', 'success', '已随连接器启用')
+  writeCliConnectorRuntime(connectorDir, {
+    commandPath: resolvedPath,
+    binDir: dirname(resolvedPath),
+    packageName: '@ht/talents-cli',
+    packageVersion: await readTalentsVersion(resolvedPath, runCommand),
+  })
+  writeCliConnectorSecrets(connectorDir, definition, userValues)
+  setStep(steps, 'write-config', 'success', '已保存')
+
+  const resolvedEnv = resolveCliConnectorEnv(definition, userValues)
+  const selfCheck = await runCliStatusCheck(definition, resolvedPath, resolvedEnv, runCommand)
+  if (!selfCheck.ok) {
+    const message = sanitizeMessage(getCommandMessage(selfCheck), userValues) || 'Talents Token 校验失败'
+    setStep(steps, 'self-check', 'error', message)
+    return {
+      connectorId: input.connectorId,
+      success: false,
+      steps,
+      message,
+    }
+  }
+
+  connectorDef.enabled = true
+  saveWorkspaceConnectorsConfig(workspaceSlug, connectorsConfig)
+  setStep(steps, 'self-check', 'success', '连接成功')
+
+  return {
+    connectorId: input.connectorId,
+    success: true,
+    steps,
+    message: '泰为 hiagent 连接器初始化完成。',
+  }
+}
+
+async function resolveTalentsCommandPath(commandName: string, runCommand: (command: string, args: string[], options?: CommandOptions) => Promise<CommandResult>): Promise<string | null> {
+  const direct = await resolveCommandPath(commandName, runCommand)
+  if (direct) return direct
+
+  const npmBin = await resolveNpmGlobalBin(runCommand)
+  if (!npmBin) return null
+  const candidate = join(npmBin, commandName)
+  return existsSync(candidate) ? candidate : null
+}
+
+async function resolveNpmGlobalBin(runCommand: (command: string, args: string[], options?: CommandOptions) => Promise<CommandResult>): Promise<string | null> {
+  const binResult = await runCommand('npm', ['bin', '-g'])
+  const binPath = binResult.stdout.trim()
+  if (binResult.ok && binPath && existsSync(binPath)) return binPath
+
+  const prefixResult = await runCommand('npm', ['prefix', '-g'])
+  const prefix = prefixResult.stdout.trim()
+  if (!prefixResult.ok || !prefix) return null
+  const candidate = process.platform === 'win32' ? prefix : join(prefix, 'bin')
+  return existsSync(candidate) ? candidate : null
+}
+
+async function readTalentsVersion(commandPath: string, runCommand: (command: string, args: string[], options?: CommandOptions) => Promise<CommandResult>): Promise<string | undefined> {
+  const result = await runCommand(commandPath, ['-V'])
+  const version = (result.stdout || result.stderr).trim()
+  return result.ok && version ? version : undefined
+}
+
+async function runCliStatusCheck(
+  definition: ReturnType<typeof readCliConnectorDefinition>,
+  commandPath: string,
+  env: Record<string, string>,
+  runCommand: (command: string, args: string[], options?: CommandOptions) => Promise<CommandResult>,
+): Promise<CommandResult> {
+  const statusCommand = getPlatformCommand(definition.status)
+  if (!statusCommand) return { ok: true, stdout: '', stderr: '' }
+  const parts = parseCommandLine(statusCommand)
+  if (parts.length === 0) return { ok: true, stdout: '', stderr: '' }
+  const [, ...args] = parts
+  return runCommand(commandPath, args, { env, timeoutMs: 120_000 })
+}
+
+function isNodeVersionSupported(version: string, requirement: string): boolean {
+  const major = Number(version.trim().replace(/^v/, '').split('.')[0])
+  if (!Number.isFinite(major)) return false
+  const match = requirement.match(/>=\s*(\d+)/)
+  const minMajor = match ? Number(match[1]) : 20
+  return major >= minMajor
+}
+
+function sanitizeMessage(message: string, secrets: Record<string, string>): string {
+  let sanitized = message
+  for (const value of Object.values(secrets)) {
+    if (value.length >= 6) {
+      sanitized = sanitized.split(value).join(maskSecret(value))
+    }
+  }
+  return sanitized
+}
+
+function maskSecret(value: string): string {
+  if (value.length <= 8) return '********'
+  return `${value.slice(0, 4)}********${value.slice(-4)}`
 }
