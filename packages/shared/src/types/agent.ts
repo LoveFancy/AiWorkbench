@@ -1263,6 +1263,12 @@ export interface RemoteDownloadProgress {
   downloadedBytes: number
   totalBytes: number
   error?: string
+  /** 安装子阶段：解压中 / 收尾中（仅 status === 'installing' 时有意义） */
+  installStage?: 'extracting' | 'finalizing'
+  /** 已解压文件数（extracting 阶段展示用） */
+  processedFiles?: number
+  /** 总文件数（extracting 阶段展示用） */
+  totalFiles?: number
 }
 
 /** 召唤前确保专家团为最新版的结果 */
