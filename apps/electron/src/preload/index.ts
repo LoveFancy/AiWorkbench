@@ -198,6 +198,13 @@ export interface ElectronAPI {
   getRuntimeStatus: () => Promise<RuntimeStatus | null>
 
   /**
+   * 订阅后台运行时检测完成的推送
+   * @param callback 收到最新运行时状态时回调
+   * @returns 取消订阅函数
+   */
+  onRuntimeStatusUpdated: (callback: (status: RuntimeStatus) => void) => () => void
+
+  /**
    * 重新初始化运行时状态（重新跑 Node / Bun / Git / Shell 检测）
    * 用户安装完 Git / Node 后触发，强制刷新缓存
    */
@@ -1326,6 +1333,12 @@ const electronAPI: ElectronAPI = {
 
   reinitRuntime: () => {
     return ipcRenderer.invoke(IPC_CHANNELS.REINIT_RUNTIME)
+  },
+
+  onRuntimeStatusUpdated: (callback: (status: RuntimeStatus) => void) => {
+    const listener = (_: unknown, status: RuntimeStatus): void => callback(status)
+    ipcRenderer.on(IPC_CHANNELS.RUNTIME_STATUS_UPDATED, listener)
+    return () => { ipcRenderer.removeListener(IPC_CHANNELS.RUNTIME_STATUS_UPDATED, listener) }
   },
 
   getGitRepoStatus: (dirPath: string) => {

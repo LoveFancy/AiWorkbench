@@ -1,11 +1,20 @@
 import React from 'react'
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
-import { RefreshCw, LogIn, CheckCircle2 } from 'lucide-react'
+import { RefreshCw, LogIn, CheckCircle2, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SettingsSection, SettingsCard, SettingsRow } from '@/components/settings/primitives'
 import { cn } from '@/lib/utils'
 import { authStateAtom, loginDialogOpenAtom } from '@/auth/renderer'
 import { settingsOpenAtom } from '@/atoms/settings-tab'
+import {
+  tabsAtom,
+  activeTabIdAtom,
+  openTab,
+  MANUAL_TAB_ID,
+  MANUAL_TAB_TITLE,
+  manualInitialSectionAtom,
+} from '@/atoms/tab-atoms'
+import { activeViewAtom } from '@/atoms/active-view'
 import {
   platformModelsAtom,
   platformApiKeyAtom,
@@ -18,6 +27,10 @@ export function PlatformModelsSection(): React.ReactElement {
   const authState = useAtomValue(authStateAtom)
   const setLoginDialogOpen = useSetAtom(loginDialogOpenAtom)
   const setSettingsOpen = useSetAtom(settingsOpenAtom)
+  const [tabs, setTabs] = useAtom(tabsAtom)
+  const setActiveTabId = useSetAtom(activeTabIdAtom)
+  const setManualSection = useSetAtom(manualInitialSectionAtom)
+  const setActiveView = useSetAtom(activeViewAtom)
   const [models, setModels] = useAtom(platformModelsAtom)
   const [apiKey, setApiKey] = useAtom(platformApiKeyAtom)
   const [loading, setLoading] = useAtom(platformModelsLoadingAtom)
@@ -65,6 +78,17 @@ export function PlatformModelsSection(): React.ReactElement {
     setTimeout(() => setLoginDialogOpen(true), 200)
   }, [setSettingsOpen, setLoginDialogOpen])
 
+  /** 打开使用手册并定位到防火墙申请章节 */
+  const handleOpenManualToFirewall = React.useCallback(() => {
+    // 传入章节标题文本，由 ManualView 按文本匹配定位
+    setManualSection('内部网络与 API Key 前置条件')
+    const result = openTab(tabs, { type: 'manual', sessionId: MANUAL_TAB_ID, title: MANUAL_TAB_TITLE })
+    setTabs(result.tabs)
+    setActiveTabId(result.activeTabId)
+    setActiveView('conversations')
+    setSettingsOpen(false)
+  }, [tabs, setTabs, setActiveTabId, setManualSection, setActiveView, setSettingsOpen])
+
   const lastFetchLabel = lastFetch
     ? `上次更新: ${new Date(lastFetch).toLocaleTimeString()}`
     : ''
@@ -74,12 +98,32 @@ export function PlatformModelsSection(): React.ReactElement {
       title="华泰泰为平台"
       description="登录后可使用华泰泰为平台为WorkMate提供的默认模型"
       action={
-        isLoggedIn ? (
-          <Button size="sm" variant="outline" onClick={handleFetch} disabled={loading}>
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            <span className="ml-1">刷新</span>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleOpenManualToFirewall}
+            className="gap-1.5"
+          >
+            <ExternalLink size={13} />
+            <span>防火墙申请</span>
           </Button>
-        ) : undefined
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void window.electronAPI.openExternal('http://eip.htsc.com.cn/modelPlatform/#/apiManage/list')}
+            className="gap-1.5"
+          >
+            <ExternalLink size={13} />
+            <span>申请更多模型</span>
+          </Button>
+          {isLoggedIn ? (
+            <Button size="sm" variant="outline" onClick={handleFetch} disabled={loading}>
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+              <span className="ml-1">刷新</span>
+            </Button>
+          ) : null}
+        </div>
       }
     >
       {!isLoggedIn ? (

@@ -105,6 +105,9 @@ export const sidebarCollapsedAtom = atomWithStorage<boolean>(
   false,
 )
 
+/** 打开使用手册时滚动到的章节标题文本（消费后由 ManualView 清除） */
+export const manualInitialSectionAtom = atom<string | null>(null)
+
 /** Tab 迷你地图缓存（每个 Tab 的消息预览列表，在消息组件中填充） */
 export interface TabMinimapItem {
   id: string
@@ -292,8 +295,8 @@ export function openTab(
     sessionId: item.sessionId,
     title: item.title,
   }
-  // 保留固定的 Scratch Pad 和手册 Tab（手册 Tab 始终存在，避免 useDeferredValue 导致的 transient 警告）
-  const manualTab = tabs.find((t) => t.id === MANUAL_TAB_ID) ?? createManualTab()
+  // 保留已打开的手册 Tab（未打开则不自动创建，允许用户关闭后保持关闭）
+  const manualTab = tabs.find((t) => t.id === MANUAL_TAB_ID)
 
   // 切回带预览的会话：重建该会话的预览 Tab，并按 lastView 决定激活哪个。
   if (restore?.previewTabOpen) {
@@ -339,14 +342,14 @@ export function buildOpenTabRestore(
   }
 }
 
-/** 关闭标签页（scratch tab 和 manual tab 不可关闭） */
+/** 关闭标签页（scratch tab 不可关闭） */
 export function closeTab(
   tabs: TabItem[],
   activeTabId: string | null,
   tabId: string,
 ): { tabs: TabItem[]; activeTabId: string | null } {
-  // Scratch Pad 和手册不可关闭
-  if (tabId === SCRATCH_PAD_ID || tabId === MANUAL_TAB_ID) return { tabs, activeTabId }
+  // Scratch Pad 不可关闭
+  if (tabId === SCRATCH_PAD_ID) return { tabs, activeTabId }
 
   const tabIndex = tabs.findIndex((t) => t.id === tabId)
   if (tabIndex === -1) return { tabs, activeTabId }
@@ -395,15 +398,15 @@ export function updateTabTitle(
   )
 }
 
-/** 确保 Scratch Pad + 使用手册标签存在，只保留一个会话入口 */
+/** 确保 Scratch Pad 标签存在，只保留一个会话入口；已打开的手册 Tab 一并保留 */
 export function ensureScratchPadTab(tabs: TabItem[]): TabItem[] {
   const scratchTab = tabs.find((t) => t.id === SCRATCH_PAD_ID) ?? createScratchPadTab()
-  const manualTab = tabs.find((t) => t.id === MANUAL_TAB_ID) ?? createManualTab()
+  const manualTab = tabs.find((t) => t.id === MANUAL_TAB_ID)
   const sessionTab = tabs.filter((t) =>
     t.id !== SCRATCH_PAD_ID && t.id !== MANUAL_TAB_ID && !isPreviewTab(t)).at(-1)
 
   const result: TabItem[] = [scratchTab]
   if (sessionTab) result.push(sessionTab)
-  result.push(manualTab)
+  if (manualTab) result.push(manualTab)
   return result
 }

@@ -7,7 +7,7 @@
 
 import * as React from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
-import { ChevronDown, Cpu, Search, Settings2, Shield } from 'lucide-react'
+import { ChevronDown, Cpu, ExternalLink, Search, Settings2, Shield } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Button } from '@/components/ui/button'
@@ -399,9 +399,19 @@ export function ModelSelector({
                         alt={first.channelName}
                         className="size-[18px] rounded object-cover"
                       />
-                      <span className="text-xs font-medium text-muted-foreground">
+                      <span className="text-xs font-medium text-muted-foreground flex-1">
                         {first.channelName}
                       </span>
+                      {channelId === '__platform__' && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); void window.electronAPI.openExternal('http://eip.htsc.com.cn/modelPlatform/#/apiManage/list') }}
+                          className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-primary transition-colors flex-shrink-0"
+                        >
+                          <ExternalLink size={11} />
+                          <span>申请更多模型</span>
+                        </button>
+                      )}
                     </div>
 
                     {/* 该渠道下的模型 */}

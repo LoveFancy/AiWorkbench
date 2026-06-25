@@ -3,7 +3,7 @@
  *
  * 在 Agent 模式下显示文件面板，样式与 LeftSidebar 一致。
  * 从全局 atom 读取当前会话 ID 和路径。
- * 管理「工作区文件 / 代码改动」Tab 切换。
+ * 管理「项目文件 / 代码改动」Tab 切换。
  */
 
 import * as React from 'react'
