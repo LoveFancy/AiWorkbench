@@ -999,6 +999,7 @@ export class AgentOrchestrator {
         ...(rewindResumeAt && { resumeSessionAt: rewindResumeAt }),
         ...(Object.keys(mcpServers).length > 0 && { mcpServers }),
         ...(() => {
+          if (!workspaceSlug) return {}
           const connectorsDir = getConnectorsDir(workspaceSlug)
           const cliPluginPaths: Array<{ type: 'local'; path: string }> = []
           try {
