@@ -31,7 +31,7 @@ import { injectAutomationMcpServer } from './automation-agent-tools'
 import { normalizeAnthropicBaseUrlForSdk, getPromaUserAgent } from '@proma/core'
 import pkg from '../../../package.json' with { type: 'json' }
 import { appendSDKMessages, updateAgentSessionMeta, getAgentSessionMeta, getAgentSessionMessages } from './agent-session-manager'
-import { getAgentWorkspace, ensurePluginManifest, getWorkspaceConnectorsConfig, migrateMcpJsonToConnectors, syncDefaultConnectorsToWorkspace } from './agent-workspace-manager'
+import { getAgentWorkspace, ensurePluginManifest, getWorkspaceConnectorsConfig, migrateMcpJsonToConnectors } from './agent-workspace-manager'
 import { getAgentSessionWorkspacePath, getConnectorsDir } from './config-paths'
 import { getRuntimeStatus } from './runtime-init'
 import { getSettings } from './settings-service'
@@ -537,12 +537,11 @@ export class AgentOrchestrator {
           workspace = ws
           console.log(`[Agent 编排] 使用 session 级别 cwd: ${agentCwd} (${ws.name}/${sessionId})`)
 
-          // 连接器：迁移旧 mcp.json + 同步预置连接器
+          // 连接器：迁移旧 mcp.json（一次性的配置迁移）
           try {
             migrateMcpJsonToConnectors(ws.slug)
-            syncDefaultConnectorsToWorkspace(ws.slug)
           } catch (err) {
-            console.warn('[Agent 编排] 连接器同步失败:', err)
+            console.warn('[Agent 编排] MCP 迁移失败:', err)
           }
 
           ensurePluginManifest(ws.slug, ws.name)
