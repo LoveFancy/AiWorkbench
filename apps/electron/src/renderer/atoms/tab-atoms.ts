@@ -105,6 +105,9 @@ export const sidebarCollapsedAtom = atomWithStorage<boolean>(
   false,
 )
 
+/** 打开使用手册时滚动到的章节标题文本（消费后由 ManualView 清除） */
+export const manualInitialSectionAtom = atom<string | null>(null)
+
 /** Tab 迷你地图缓存（每个 Tab 的消息预览列表，在消息组件中填充） */
 export interface TabMinimapItem {
   id: string
