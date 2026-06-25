@@ -64,6 +64,7 @@ import type {
   GetTaskOutputResult,
   StopTaskInput,
   WorkspaceMcpConfig,
+  ConnectorInitProgressEvent,
   InitializeDefaultConnectorInput,
   InitializeDefaultConnectorResult,
   FeishuCliAuthState,
@@ -703,6 +704,8 @@ export interface ElectronAPI {
 
   /** 初始化内置连接器 */
   initializeDefaultConnector: (workspaceSlug: string, input: InitializeDefaultConnectorInput) => Promise<InitializeDefaultConnectorResult>
+  /** 订阅内置连接器初始化进度 */
+  onConnectorInitProgress: (callback: (event: ConnectorInitProgressEvent) => void) => () => void
   /** 获取飞书 CLI 授权状态 */
   getFeishuCliAuthStatus: () => Promise<FeishuCliAuthState>
   /** 注册飞书 CLI 应用（SDK registerApp，阻塞直至用户扫码完成） */
@@ -2020,6 +2023,12 @@ const electronAPI: ElectronAPI = {
 
   initializeDefaultConnector: (workspaceSlug: string, input: InitializeDefaultConnectorInput) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.INITIALIZE_DEFAULT_CONNECTOR, workspaceSlug, input)
+  },
+
+  onConnectorInitProgress: (callback: (event: ConnectorInitProgressEvent) => void) => {
+    const listener = (_: unknown, event: ConnectorInitProgressEvent): void => callback(event)
+    ipcRenderer.on(AGENT_IPC_CHANNELS.CONNECTOR_INIT_PROGRESS, listener)
+    return () => { ipcRenderer.removeListener(AGENT_IPC_CHANNELS.CONNECTOR_INIT_PROGRESS, listener) }
   },
 
   getFeishuCliAuthStatus: () => {
