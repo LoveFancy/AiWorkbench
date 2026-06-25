@@ -1038,7 +1038,7 @@ export function seedDefaultConnectors(): void {
         // 已存在则比较版本：bundled 更新时覆盖
         const bundledVer = parseConnectorVersion(source)
         const existingVer = parseConnectorVersion(target)
-        if (compareSemver(bundledVer, existingVer) > 0) {
+        if (compareSemver(bundledVer, existingVer) > 0 || isConnectorMetadataChanged(source, target)) {
           rmSync(target, { recursive: true, force: true })
           cpSync(source, target, { recursive: true, filter: defaultSkillCopyFilter })
           console.log(`[配置] 已升级默认连接器: ${entry.name} (${existingVer} → ${bundledVer})`)
@@ -1049,5 +1049,16 @@ export function seedDefaultConnectors(): void {
     }
   } catch (err) {
     console.warn('[配置] 同步默认连接器失败:', err)
+  }
+}
+
+function isConnectorMetadataChanged(source: string, target: string): boolean {
+  const sourceMeta = join(source, 'connector.json')
+  const targetMeta = join(target, 'connector.json')
+  if (!existsSync(sourceMeta) || !existsSync(targetMeta)) return false
+  try {
+    return readFileSync(sourceMeta, 'utf-8') !== readFileSync(targetMeta, 'utf-8')
+  } catch {
+    return false
   }
 }

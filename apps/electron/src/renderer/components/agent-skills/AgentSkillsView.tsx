@@ -36,7 +36,7 @@ import { useProjectActions } from '@/hooks/useProjectActions'
 import { ExpertPageView } from '@/experts/views/ExpertPageView'
 import { ExpertImportButton } from '@/experts/shared/ExpertImportDropdown'
 import { ExpertFilterPills, type FilterTag } from '@/experts/shared/ExpertFilterPills'
-import type { AgentPluginInfo, DefaultConnectorInitStep, McpServerEntry, SkillMeta } from '@proma/shared'
+import type { AgentPluginInfo, ConnectorInitProgressEvent, DefaultConnectorInitStep, McpServerEntry, SkillMeta } from '@proma/shared'
 import { isVisibleInSkillsView } from '@proma/shared'
 import { getCapabilityTabs, type CapabilityTab } from './capability-tabs'
 import { useAgentSkillsData } from './useAgentSkillsData'
@@ -786,6 +786,18 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
           bumpCapabilities((v) => v + 1)
         }}
       />
+
+      <HiAgentConnectorDialog
+        open={activeDefaultConnector === 'hi-agent'}
+        workspaceSlug={data.workspaceSlug}
+        isEnabled={connectorEnabledMap['hi-agent'] ?? false}
+        onOpenChange={(open) => setActiveDefaultConnector(open ? 'hi-agent' : null)}
+        onSaved={() => {
+          setActiveDefaultConnector(null)
+          void loadConnectorEnabledMap()
+          bumpCapabilities((v) => v + 1)
+        }}
+      />
     </div>
   )
 }
@@ -1074,7 +1086,7 @@ function ConnectorCard({
   const isComingSoon = connector.status === 'coming-soon'
   const isInitialized = Boolean(server)
   // MCP 类型：MCP server 存在才算已配置；CLI 类型：凭据连接才算已配置
-  const isConfigured = isCli ? isFeishuConnected : isMcp ? isInitialized : false
+  const isConfigured = isCli ? (connector.id === 'feishu-cli' ? isFeishuConnected : enabled) : isMcp ? isInitialized : false
   const isUserConnector = connector.source === 'user'
   const isPresetConnector = connector.source === 'preset'
 
@@ -1108,7 +1120,7 @@ function ConnectorCard({
       className={cn(
         'group relative flex h-full flex-col gap-3 rounded-xl border border-border/60 bg-content-area p-4 text-left transition-all cursor-pointer',
         'hover:border-border hover:shadow-sm focus:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-        isComingSoon ? 'cursor-not-allowed opacity-55' : !enabled && 'opacity-55',
+        isComingSoon ? 'cursor-not-allowed opacity-55' : isConfigured && !enabled && 'opacity-55',
       )}
     >
       <div className="flex items-start gap-3">
@@ -1124,7 +1136,7 @@ function ConnectorCard({
             <span className={cn(
               'shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium',
               isComingSoon ? 'bg-muted text-muted-foreground'
-                : isConfigured ? 'bg-green-500/10 text-green-600 dark:text-green-400'
+                : isConfigured ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
                   : 'bg-muted text-muted-foreground',
             )}>
               {isComingSoon ? '敬请期待' : isConfigured ? '已连接' : '待配置'}
@@ -1168,7 +1180,7 @@ function ConnectorCard({
               checked={enabled}
               onCheckedChange={onToggle}
               onClick={(e) => e.stopPropagation()}
-              className="shrink-0 scale-75 data-[state=checked]:bg-green-500"
+              className="shrink-0 scale-75"
             />
           )}
           {connector.id === 'feishu-cli' && isCli && isConfigured && (
@@ -1212,6 +1224,28 @@ function ConnectorCard({
   )
 }
 
+function createConnectorInitRunId(connectorId: string): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `${connectorId}-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+function useConnectorInitProgress(
+  workspaceSlug: string,
+  connectorId: string,
+  setInitSteps: React.Dispatch<React.SetStateAction<DefaultConnectorInitStep[]>>,
+): () => { runId: string; unsubscribe: () => void } {
+  return React.useCallback(() => {
+    const runId = createConnectorInitRunId(connectorId)
+    const unsubscribe = window.electronAPI.onConnectorInitProgress((event: ConnectorInitProgressEvent) => {
+      if (event.workspaceSlug !== workspaceSlug || event.connectorId !== connectorId || event.runId !== runId) return
+      setInitSteps(event.steps)
+    })
+    return { runId, unsubscribe }
+  }, [connectorId, setInitSteps, workspaceSlug])
+}
+
 function HuataiEmailConnectorDialog({
   open,
   workspaceSlug,
@@ -1232,6 +1266,7 @@ function HuataiEmailConnectorDialog({
   const [initSteps, setInitSteps] = React.useState<DefaultConnectorInitStep[]>([])
   const isInitialized = Boolean(server)
   const currentEmail = server?.env?.MCP_EMAIL_SERVER_EMAIL_ADDRESS ?? ''
+  const beginConnectorInitProgress = useConnectorInitProgress(workspaceSlug, 'huatai-email', setInitSteps)
 
   React.useEffect(() => {
     if (!open) {
@@ -1250,6 +1285,7 @@ function HuataiEmailConnectorDialog({
 
   const handleSave = async (): Promise<void> => {
     if (!canSave || saving) return
+    const { runId, unsubscribe } = beginConnectorInitProgress()
     setSaving(true)
     setInitSteps([
       { id: 'check-python', label: '检查 Python 环境', status: 'running' },
@@ -1261,6 +1297,7 @@ function HuataiEmailConnectorDialog({
     try {
       const result = await window.electronAPI.initializeDefaultConnector(workspaceSlug, {
         connectorId: 'huatai-email',
+        runId,
         emailAddress: fullEmailAddress,
         password,
       })
@@ -1276,6 +1313,7 @@ function HuataiEmailConnectorDialog({
       console.error('[连接器] 初始化华泰邮箱失败:', error)
       toast.error('初始化华泰邮箱失败')
     } finally {
+      unsubscribe()
       setSaving(false)
     }
   }
@@ -1309,16 +1347,17 @@ function HuataiEmailConnectorDialog({
                 重新绑定
               </Button>
             </div>
-            <div className="grid gap-2 text-xs text-muted-foreground">
+            <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
               <ConnectorDetailRow label="状态" value={server.enabled ? '已启用' : '未启用'} />
               <ConnectorDetailRow label="类型" value={server.type} />
-              <ConnectorDetailRow label="命令" value={server.type === 'stdio' ? server.command : server.url} mono />
+              <ConnectorDetailRow label="命令" value={server.type === 'stdio' ? server.command : server.url} mono wide />
               <ConnectorDetailRow label="账号" value={currentEmail || '未配置'} mono />
               <ConnectorDetailRow label="IMAP" value={`${server.env?.MCP_EMAIL_SERVER_IMAP_HOST ?? '未配置'}:${server.env?.MCP_EMAIL_SERVER_IMAP_PORT ?? ''}`} mono />
               {server.lastTestResult && (
                 <ConnectorDetailRow
                   label="最近自检"
                   value={`${server.lastTestResult.success ? '成功' : '失败'} · ${server.lastTestResult.message}`}
+                  wide
                 />
               )}
             </div>
@@ -1395,11 +1434,197 @@ function HuataiEmailConnectorDialog({
   )
 }
 
-function ConnectorDetailRow({ label, value, mono = false }: { label: string; value: string | undefined; mono?: boolean }): React.ReactElement {
+function HiAgentConnectorDialog({
+  open,
+  workspaceSlug,
+  isEnabled,
+  onOpenChange,
+  onSaved,
+}: {
+  open: boolean
+  workspaceSlug: string
+  isEnabled: boolean
+  onOpenChange: (open: boolean) => void
+  onSaved: () => void
+}): React.ReactElement {
+  const [token, setToken] = React.useState('')
+  const [env, setEnv] = React.useState('uat')
+  const [saving, setSaving] = React.useState(false)
+  const [editing, setEditing] = React.useState(false)
+  const [initSteps, setInitSteps] = React.useState<DefaultConnectorInitStep[]>([])
+  const canSave = token.trim().length > 0 && env.trim().length > 0
+  const beginConnectorInitProgress = useConnectorInitProgress(workspaceSlug, 'hi-agent', setInitSteps)
+
+  React.useEffect(() => {
+    if (!open) {
+      setToken('')
+      setEnv('uat')
+      setSaving(false)
+      setEditing(false)
+      setInitSteps([])
+    }
+  }, [open])
+
+  const handleSave = async (): Promise<void> => {
+    if (!canSave || saving) return
+    const { runId, unsubscribe } = beginConnectorInitProgress()
+    setSaving(true)
+    setInitSteps([
+      { id: 'check-runtime', label: '检查 Node/npm 环境', status: 'running' },
+      { id: 'check-package', label: '检查 talents CLI', status: 'pending' },
+      { id: 'install-package', label: '安装 talents CLI', status: 'pending' },
+      { id: 'install-skill', label: '启用 talents Skill', status: 'pending' },
+      { id: 'write-config', label: '保存认证配置', status: 'pending' },
+      { id: 'self-check', label: '自检连接', status: 'pending' },
+    ])
+    try {
+      const result = await window.electronAPI.initializeDefaultConnector(workspaceSlug, {
+        connectorId: 'hi-agent',
+        runId,
+        userProvidedData: {
+          HTSKILL_TOKEN: token,
+          AGENTOS_ENV: env,
+        },
+      })
+      setInitSteps(result.steps)
+      if (!result.success) {
+        toast.error('泰为 hiagent 连接器初始化失败', { description: result.message })
+        return
+      }
+      toast.success('泰为 hiagent 连接器已初始化')
+      setEditing(false)
+      onSaved()
+    } catch (error) {
+      console.error('[连接器] 初始化泰为 hiagent 失败:', error)
+      toast.error('初始化泰为 hiagent 失败')
+    } finally {
+      unsubscribe()
+      setSaving(false)
+    }
+  }
+
   return (
-    <div className="flex items-start justify-between gap-3 rounded-lg bg-background/70 px-3 py-2">
-      <span className="shrink-0 text-muted-foreground">{label}</span>
-      <span className={cn('min-w-0 break-all text-right text-foreground/80', mono && 'font-mono')}>{value || '未配置'}</span>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="w-[min(calc(100vw-48px),560px)] max-w-none overflow-hidden rounded-2xl border-0 p-8 shadow-2xl">
+        <DialogTitle className="text-2xl font-semibold tracking-normal">连接泰为 hiagent</DialogTitle>
+        <DialogDescription className="sr-only">配置 Talents Token，启用泰为 hiagent CLI 能力。</DialogDescription>
+
+        <div className="mt-2 flex items-start gap-4">
+          <div className="flex size-16 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/12 text-emerald-600">
+            <Package size={28} />
+          </div>
+          <div className="min-w-0 space-y-2">
+            <div className="text-[15px] font-medium text-foreground">泰为 hiagent</div>
+            <p className="text-[13px] leading-relaxed text-muted-foreground">
+              连接后 WorkMate 可以通过 talents CLI 查询工作区、检索知识库，并与 hiagent 智能体对话。
+            </p>
+          </div>
+        </div>
+
+        {isEnabled && !editing && (
+          <div className="mt-6 space-y-3 rounded-xl bg-muted/45 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-medium text-foreground">当前 hiagent 能力</div>
+                <div className="mt-1 text-xs text-muted-foreground">已为当前工作区启用，Token 保存在本机并加密存储。</div>
+              </div>
+              <Button type="button" variant="outline" size="sm" onClick={() => setEditing(true)}>
+                重新绑定
+              </Button>
+            </div>
+            <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+              <ConnectorDetailRow label="状态" value="已启用" />
+              <ConnectorDetailRow label="类型" value="CLI" />
+              <ConnectorDetailRow label="认证" value="已配置" />
+            </div>
+          </div>
+        )}
+
+        {(!isEnabled || editing) && (
+          <div className="mx-auto mt-6 w-full max-w-[420px] space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">运行环境 *</label>
+              <select
+                value={env}
+                onChange={(event) => setEnv(event.target.value)}
+                className="h-11 w-full rounded-lg border border-border/80 bg-content-area px-3 text-sm shadow-sm outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/15"
+              >
+                <option value="uat">UAT</option>
+                <option value="sit">SIT</option>
+                <option value="dev">DEV</option>
+                <option value="prd">PRD</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Talents Token *</label>
+              <input
+                value={token}
+                onChange={(event) => setToken(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && canSave && !saving) {
+                    event.preventDefault()
+                    void handleSave()
+                  }
+                }}
+                placeholder="请输入 Talents Token"
+                type="password"
+                className="h-11 w-full rounded-lg border border-border/80 bg-content-area px-3 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary/60 focus:ring-2 focus:ring-primary/15"
+              />
+              <p className="text-xs text-muted-foreground">Token 只保存在本机，用于运行 talents CLI，不会写入对话内容。</p>
+            </div>
+            <Button
+              type="button"
+              size="lg"
+              className="h-11 w-full rounded-full"
+              disabled={!canSave || saving}
+              onClick={() => void handleSave()}
+            >
+              {saving ? '连接中...' : isEnabled ? '保存并覆盖配置' : '开始连接'}
+            </Button>
+          </div>
+        )}
+
+        {initSteps.length > 0 && (
+          <div className="mt-5 min-w-0 space-y-2 overflow-hidden rounded-xl bg-muted/45 p-3">
+            {initSteps.map((step) => (
+              <div key={step.id} className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+                {step.status === 'running' ? (
+                  <Loader2 size={14} className="shrink-0 animate-spin text-primary" />
+                ) : step.status === 'success' || step.status === 'skipped' ? (
+                  <Check size={14} className="shrink-0 text-emerald-500" />
+                ) : step.status === 'error' ? (
+                  <XCircle size={14} className="shrink-0 text-destructive" />
+                ) : (
+                  <span className="size-3.5 shrink-0 rounded-full border border-border" />
+                )}
+                <span className="shrink-0 font-medium text-foreground/80">{step.label}</span>
+                {step.message && <span className="min-w-0 flex-1 truncate">{step.message}</span>}
+              </div>
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function ConnectorDetailRow({
+  label,
+  value,
+  mono = false,
+  wide = false,
+}: {
+  label: string
+  value: string | undefined
+  mono?: boolean
+  wide?: boolean
+}): React.ReactElement {
+  return (
+    <div className={cn('flex flex-col gap-1.5 rounded-lg bg-background/70 px-3.5 py-3 text-left', wide && 'sm:col-span-2')}>
+      <span className="text-[11px] font-medium text-muted-foreground">{label}</span>
+      <span className={cn('min-w-0 break-words text-[13px] leading-relaxed text-foreground/85', mono && 'font-mono')}>
+        {value || '未配置'}
+      </span>
     </div>
   )
 }

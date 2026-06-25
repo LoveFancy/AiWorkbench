@@ -5,6 +5,7 @@
  */
 
 import { ipcMain, nativeTheme, shell, dialog, BrowserWindow, app } from 'electron'
+import { randomUUID } from 'node:crypto'
 import { join, resolve, sep, dirname, extname, relative } from 'node:path'
 import { existsSync, realpathSync, rmSync, readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
@@ -60,6 +61,7 @@ import type {
   GetTaskOutputResult,
   StopTaskInput,
   WorkspaceMcpConfig,
+  ConnectorInitProgressEvent,
   InitializeDefaultConnectorInput,
   InitializeDefaultConnectorResult,
   AgentSlashCommand,
@@ -2143,9 +2145,15 @@ export function registerIpcHandlers(): void {
   // 初始化内置连接器
   ipcMain.handle(
     AGENT_IPC_CHANNELS.INITIALIZE_DEFAULT_CONNECTOR,
-    async (_, workspaceSlug: string, input: InitializeDefaultConnectorInput): Promise<InitializeDefaultConnectorResult> => {
+    async (event, workspaceSlug: string, input: InitializeDefaultConnectorInput): Promise<InitializeDefaultConnectorResult> => {
       const { initializeDefaultConnector } = await import('./lib/default-connector-initializer')
-      return initializeDefaultConnector(workspaceSlug, input)
+      const runId = input.runId ?? randomUUID()
+      return initializeDefaultConnector(workspaceSlug, { ...input, runId }, {
+        reportProgress: (payload: ConnectorInitProgressEvent) => {
+          if (event.sender.isDestroyed()) return
+          event.sender.send(AGENT_IPC_CHANNELS.CONNECTOR_INIT_PROGRESS, payload)
+        },
+      })
     }
   )
 

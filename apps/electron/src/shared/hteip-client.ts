@@ -47,6 +47,8 @@ export function resetApiBaseForTest(): void {
 
 export interface HttpRequestOptions {
   method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
+  /** 查询参数：始终拼接到 URL，适用于 POST + query 的 EIP 门户接口 */
+  query?: Record<string, string | number | boolean>
   /** 查询参数（GET/DELETE → 拼 URL；POST/PUT/PATCH → 兜底 body） */
   params?: Record<string, string | number | boolean>
   /** 请求体（POST/PUT/PATCH 时序列化为 JSON） */
@@ -87,13 +89,16 @@ const DEFAULT_UPLOAD_TIMEOUT_MS = 30_000
 function buildUrl(
   url: string,
   method: string,
+  query?: Record<string, string | number | boolean>,
   params?: Record<string, string | number | boolean>,
 ): string {
-  if (!params) return url
-  if (method !== 'GET' && method !== 'DELETE') return url
+  const values = method === 'GET' || method === 'DELETE'
+    ? { ...params, ...query }
+    : query
+  if (!values) return url
 
   const qs = new URLSearchParams()
-  for (const [k, v] of Object.entries(params)) qs.set(k, String(v))
+  for (const [k, v] of Object.entries(values)) qs.set(k, String(v))
 
   const qsStr = qs.toString()
   if (!qsStr) return url
@@ -160,9 +165,9 @@ export async function httpRequest<T = unknown>(
   urlOrPath: string,
   opts: HttpRequestOptions,
 ): Promise<HttpResponse<T>> {
-  const { method, params, body, headers: extra, timeoutMs, signal: extSignal } = opts
+  const { method, query, params, body, headers: extra, timeoutMs, signal: extSignal } = opts
 
-  const fullUrl = buildUrl(resolveUrl(urlOrPath), method, params)
+  const fullUrl = buildUrl(resolveUrl(urlOrPath), method, query, params)
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...buildAuthCookie(),

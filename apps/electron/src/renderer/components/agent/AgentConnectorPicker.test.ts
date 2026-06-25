@@ -54,14 +54,14 @@ const connectorsConfig: ConnectorsConfig = {
       status: 'available',
       sortOrder: 2,
     },
-    'hiagent-taiwei': {
-      type: 'mcp',
-      enabled: false,
+    'hi-agent': {
+      type: 'cli',
+      enabled: true,
       source: 'preset',
-      displayName: 'HiAgent 泰为',
+      displayName: '泰为 hiagent',
       description: '泰为连接器',
       category: '智能体',
-      status: 'coming-soon',
+      status: 'available',
       sortOrder: 3,
     },
   },
@@ -69,9 +69,9 @@ const connectorsConfig: ConnectorsConfig = {
 
 describe('AgentConnectorPicker helpers', () => {
   test('只展示已配置或可用的连接器', () => {
-    expect(getAvailableConnectorsForPicker(config, connectorsConfig, false).map((item) => item.displayName)).toEqual(['华泰邮箱', '飞书 CLI', 'HiAgent 泰为', 'docs', 'disabled'])
+    expect(getAvailableConnectorsForPicker(config, connectorsConfig, false).map((item) => item.displayName)).toEqual(['华泰邮箱', '飞书 CLI', '泰为 hiagent', 'docs'])
     // 华泰邮箱因为有 email entry 所以 isConfigured=true；docs 也是自定义连接器，isConfigured=true
-    expect(getAvailableConnectorsForPicker(config, connectorsConfig, false).filter((item) => item.isConfigured).map((item) => item.name)).toEqual(['email', 'docs', 'disabled'])
+    expect(getAvailableConnectorsForPicker(config, connectorsConfig, false).filter((item) => item.isConfigured).map((item) => item.name)).toEqual(['email', 'hi-agent', 'docs'])
   })
 
   test('按名称和目标地址搜索连接器', () => {

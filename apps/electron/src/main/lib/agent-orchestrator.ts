@@ -67,6 +67,7 @@ import {
   logStderr,
 } from './orchestrator/error-presenter'
 import { buildSdkEnv } from './orchestrator/sdk-env'
+import { collectCliConnectorEnv } from './cli-connector-runtime'
 import { buildAgentUserContent } from './orchestrator/agent-user-content'
 import {
   buildMcpServers,
@@ -595,6 +596,11 @@ export class AgentOrchestrator {
 // 10. 构建 MCP 服务器配置
       // 预读连接器配置一次，避免 buildMcpServers + collectConnectorDisabledTools 重复 I/O
       const connectorsConfig = workspaceSlug ? getWorkspaceConnectorsConfig(workspaceSlug) : { version: '1.0', connectors: {} }
+      const applyCliConnectorEnv = (): void => {
+        if (!workspaceSlug) return
+        Object.assign(sdkEnv, collectCliConnectorEnv(workspaceSlug, connectorsConfig))
+      }
+      applyCliConnectorEnv()
       const mcpServers = buildMcpServers(workspaceSlug, connectorsConfig, selectedMcpServers)
       await injectMemoryTools(sdk, mcpServers)
       _diag('injectMemoryTools 完成, 开始 injectNanoBananaTools (await)')
@@ -610,6 +616,11 @@ export class AgentOrchestrator {
         triggeredBy: input.triggeredBy,
       })
       _diag('injectAutomationMcpServer 完成')
+
+      _diag('开始 injectEipRequestMcpServer (await)')
+      const { injectEipRequestMcpServer } = await import('./eip-request-mcp')
+      await injectEipRequestMcpServer(sdk, mcpServers)
+      _diag('injectEipRequestMcpServer 完成')
 
       // 注入自定义 HTTP 工具（Tool Builder 创建的 customTools）
       const { injectHttpCustomMcpServer } = await import('./chat-tools/http-custom-mcp')
@@ -1105,6 +1116,7 @@ export class AgentOrchestrator {
         sdkEnv = await buildSdkEnv(apiKey, chInfo.baseUrl, chInfo.provider)
         const newRouting = resolveAgentModelRouting({ modelId: newModelId, provider: chInfo.provider })
         applyAgentModelRoutingToEnv(sdkEnv, newRouting)
+        applyCliConnectorEnv()
         queryOptions.env = sdkEnv
       }
 
