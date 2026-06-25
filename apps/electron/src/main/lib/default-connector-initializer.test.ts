@@ -92,6 +92,7 @@ describe('initializeDefaultConnector', () => {
 
   test('华泰邮箱初始化会安装缺失包并写入 IMAP-only MCP 配置', async () => {
     const calls: string[] = []
+    let installed = false
     const result = await initializeDefaultConnector('default', {
       connectorId: 'huatai-email',
       emailAddress: ' qinxiao@htsc.com ',
@@ -103,7 +104,10 @@ describe('initializeDefaultConnector', () => {
         // where/which mcp-email-server 返回全路径
         const probe = process.platform === 'win32' ? 'where' : 'which'
         if (command === probe && args[0] === 'mcp-email-server') {
-          return { ok: true, stdout: mockMcpEmailServerPath, stderr: '' }
+          return installed ? { ok: true, stdout: mockMcpEmailServerPath, stderr: '' } : { ok: false, stdout: '', stderr: '' }
+        }
+        if (command === 'python3' && args.includes('install')) {
+          installed = true
         }
         return { ok: true, stdout: '', stderr: '' }
       },
@@ -150,6 +154,36 @@ describe('initializeDefaultConnector', () => {
     // connectors.json 中 huatai-email 已启用
     const connectorsCfg = readConnectorsConfig('default')
     expect(connectorsCfg.connectors['huatai-email']?.enabled).toBe(true)
+  })
+
+  test('mcp-email-server 已在 Python 用户 Scripts 目录时跳过 pip 安装', async () => {
+    const calls: string[] = []
+    const probe = process.platform === 'win32' ? 'where' : 'which'
+    const result = await initializeDefaultConnector('default', {
+      connectorId: 'huatai-email',
+      emailAddress: 'qinxiao@htsc.com',
+      password: 'secret',
+    }, {
+      commandExists: async (command) => command === 'python3' || command === 'pip3',
+      runCommand: async (command, args) => {
+        calls.push([command, ...args].join(' '))
+        if (command === probe && args[0] === 'mcp-email-server') {
+          return { ok: false, stdout: '', stderr: '' }
+        }
+        if (command === 'python3' && args[0] === '-c') {
+          return { ok: true, stdout: `${mockMcpEmailServerPath}\n`, stderr: '' }
+        }
+        return { ok: true, stdout: '', stderr: '' }
+      },
+      validateMcpServer: async () => ({ success: true, message: '连接成功' }),
+    })
+
+    expect(result.success).toBe(true)
+    expect(calls).toContain(`${probe} mcp-email-server`)
+    expect(calls.some((call) => call.includes('pip install'))).toBe(false)
+    expect(result.steps.find((step) => step.id === 'check-package')?.message).toBe('已安装')
+    expect(result.steps.find((step) => step.id === 'install-package')?.status).toBe('skipped')
+    expect(readMcp('default').servers.email?.command).toBe(mockMcpEmailServerPath)
   })
 
   test('hi-agent 初始化会写入 CLI runtime、secrets 并启用连接器', async () => {
@@ -329,6 +363,8 @@ describe('initializeDefaultConnector', () => {
 
   test('安装 mcp-email-server 超时时使用镜像源重试', async () => {
     const calls: string[] = []
+    let installAttempts = 0
+    let installed = false
     const result = await initializeDefaultConnector('default', {
       connectorId: 'huatai-email',
       emailAddress: 'qinxiao@htsc.com',
@@ -337,16 +373,22 @@ describe('initializeDefaultConnector', () => {
       commandExists: async (command) => command === 'python3' || command === 'pip3',
       runCommand: async (command, args) => {
         calls.push([command, ...args].join(' '))
-        if (calls.length === 1) {
+        const probe = process.platform === 'win32' ? 'where' : 'which'
+        if (command === probe && args[0] === 'mcp-email-server') {
+          return installed ? { ok: true, stdout: mockMcpEmailServerPath, stderr: '' } : { ok: false, stdout: '', stderr: '' }
+        }
+        if (command === 'python3' && args.includes('install')) {
+          installAttempts += 1
+        }
+        if (installAttempts === 1 && command === 'python3' && args.includes('install')) {
           return {
             ok: false,
             stdout: '',
             stderr: "WARNING: Retrying after connection broken by 'ReadTimeoutError'",
           }
         }
-        const probe = process.platform === 'win32' ? 'where' : 'which'
-        if (command === probe && args[0] === 'mcp-email-server') {
-          return { ok: true, stdout: mockMcpEmailServerPath, stderr: '' }
+        if (installAttempts === 2 && command === 'python3' && args.includes('install')) {
+          installed = true
         }
         return { ok: true, stdout: '', stderr: '' }
       },
@@ -354,11 +396,10 @@ describe('initializeDefaultConnector', () => {
     })
 
     expect(result.success).toBe(true)
-    const probe = process.platform === 'win32' ? 'where' : 'which'
-    expect(calls).toEqual([
+    const installCalls = calls.filter((call) => call.includes('pip install'))
+    expect(installCalls).toEqual([
       'python3 -m pip install --disable-pip-version-check --timeout 120 --retries 5 mcp-email-server',
       'python3 -m pip install --disable-pip-version-check --timeout 120 --retries 5 -i https://pypi.tuna.tsinghua.edu.cn/simple mcp-email-server',
-      `${probe} mcp-email-server`,
     ])
     expect(result.steps.find((step) => step.id === 'install-package')?.message).toBe('安装完成（已切换镜像源）')
   })
@@ -396,9 +437,34 @@ describe('initializeDefaultConnector', () => {
     }
   })
 
+  test('包源找不到 mcp-email-server 时返回明确排查信息', async () => {
+    const result = await initializeDefaultConnector('default', {
+      connectorId: 'huatai-email',
+      emailAddress: 'qinxiao@htsc.com',
+      password: 'secret-password',
+    }, {
+      commandExists: async (command) => command === 'python3' || command === 'pip3',
+      runCommand: async () => ({
+        ok: false,
+        stdout: '',
+        stderr: 'ERROR: Could not find a version that satisfies the requirement mcp-email-server (from versions: none)\nERROR: No matching distribution found for mcp-email-server',
+      }),
+      validateMcpServer: async () => ({ success: true, message: '连接成功' }),
+    })
+
+    const stepMessage = result.steps.find((step) => step.id === 'install-package')?.message ?? ''
+    expect(result.success).toBe(false)
+    expect(stepMessage).toContain('当前 pip 包源找不到 mcp-email-server')
+    expect(stepMessage).toContain('可能是公司镜像源未同步或代理限制')
+    expect(stepMessage).toContain('原始错误:')
+    expect(stepMessage).toContain('No matching distribution found for mcp-email-server')
+    expect(stepMessage).not.toContain('secret-password')
+  })
+
   test('安装命令成功但无输出时日志不误报失败', async () => {
     const originalInfo = console.info
     const logs: string[] = []
+    let installed = false
     console.info = (...args: unknown[]) => {
       logs.push(args.map((arg) => typeof arg === 'string' ? arg : JSON.stringify(arg)).join(' '))
     }
@@ -412,7 +478,13 @@ describe('initializeDefaultConnector', () => {
         runCommand: async (command, args) => {
           const probe = process.platform === 'win32' ? 'where' : 'which'
           if (command === probe && args[0] === 'mcp-email-server') {
-            return { ok: true, stdout: mockMcpEmailServerPath, stderr: '' }
+            return installed ? { ok: true, stdout: mockMcpEmailServerPath, stderr: '' } : { ok: false, stdout: '', stderr: '' }
+          }
+          if (command === 'python3' && args[0] === '-c') {
+            return { ok: false, stdout: '', stderr: '' }
+          }
+          if (command === 'python3' && args.includes('install')) {
+            installed = true
           }
           return { ok: true, stdout: '', stderr: '' }
         },

@@ -44,9 +44,32 @@ interface InitializerDeps {
   reportProgress?: ConnectorInitProgressReporter
 }
 
+const EMAIL_SERVER_COMMAND = 'mcp-email-server'
 const PIP_INSTALL_BASE_ARGS = ['-m', 'pip', 'install', '--disable-pip-version-check', '--timeout', '120', '--retries', '5']
 const PYPI_MIRROR_URL = 'https://pypi.tuna.tsinghua.edu.cn/simple'
 const LOG_PREFIX = '[连接器:华泰邮箱]'
+const EMAIL_SERVER_SCRIPT_PROBE = [
+  'import os, shutil, sysconfig',
+  "names = ['mcp-email-server']",
+  "if os.name == 'nt':",
+  "    names = ['mcp-email-server.exe', 'mcp-email-server.cmd', 'mcp-email-server']",
+  "for name in names:",
+  '    found = shutil.which(name)',
+  '    if found:',
+  '        print(found)',
+  '        raise SystemExit(0)',
+  "scheme = 'nt_user' if os.name == 'nt' else 'posix_user'",
+  'try:',
+  "    scripts_dir = sysconfig.get_path('scripts', scheme=scheme)",
+  'except Exception:',
+  '    scripts_dir = None',
+  'if scripts_dir:',
+  '    for name in names:',
+  '        candidate = os.path.join(scripts_dir, name)',
+  '        if os.path.exists(candidate):',
+  '            print(candidate)',
+  '            raise SystemExit(0)',
+].join('\n')
 
 const EMAIL_STEP_LABELS = {
   'check-python': '检查 Python 环境',
@@ -132,6 +155,20 @@ async function resolveCommandPath(command: string, runCommand: (command: string,
   return path || null
 }
 
+async function resolveEmailServerCommandPath(
+  pythonCommand: string,
+  runCommand: (command: string, args: string[], options?: CommandOptions) => Promise<CommandResult>,
+): Promise<string | null> {
+  const pathFromShell = await resolveCommandPath(EMAIL_SERVER_COMMAND, runCommand)
+  if (pathFromShell) return pathFromShell
+
+  const pathFromPython = await runCommand(pythonCommand, ['-c', EMAIL_SERVER_SCRIPT_PROBE], { timeoutMs: 10_000 })
+  if (!pathFromPython.ok) return null
+  const [firstPath] = pathFromPython.stdout.trim().split('\n')
+  const path = firstPath?.trim() ?? ''
+  return path || null
+}
+
 function getCommandMessage(result: CommandResult): string {
   return (result.stderr || result.stdout || '安装失败').trim()
 }
@@ -164,8 +201,24 @@ function isLikelyNetworkInstallError(result: CommandResult): boolean {
   return /ReadTimeout|timeout|timed out|Connection.*broken|Temporary failure|Network is unreachable|Connection reset|SSL/i.test(message)
 }
 
+function isPipPackageNotFoundError(message: string): boolean {
+  return /Could not find a version that satisfies the requirement|No matching distribution found/i.test(message)
+}
+
+function formatEmailServerInstallError(result: CommandResult): string {
+  const message = getCommandMessage(result)
+  if (!isPipPackageNotFoundError(message)) return message
+  return [
+    '当前 pip 包源找不到 mcp-email-server，可能是公司镜像源未同步或代理限制。',
+    '请检查 pip 包源配置，或切换到可访问 PyPI 的网络后重试。',
+    '',
+    '原始错误:',
+    message,
+  ].join('\n')
+}
+
 async function installEmailServer(pythonCommand: string, runCommand: (command: string, args: string[], options?: CommandOptions) => Promise<CommandResult>): Promise<{ ok: boolean; message: string }> {
-  const firstArgs = [...PIP_INSTALL_BASE_ARGS, 'mcp-email-server']
+  const firstArgs = [...PIP_INSTALL_BASE_ARGS, EMAIL_SERVER_COMMAND]
   logConnectorInfo('开始安装 mcp-email-server', { command: [pythonCommand, ...firstArgs].join(' ') })
   const firstResult = await runCommand(pythonCommand, firstArgs)
   logConnectorInfo('安装命令结束', {
@@ -175,10 +228,10 @@ async function installEmailServer(pythonCommand: string, runCommand: (command: s
   })
   if (firstResult.ok) return { ok: true, message: '安装完成' }
   if (!isLikelyNetworkInstallError(firstResult)) {
-    return { ok: false, message: getCommandMessage(firstResult) }
+    return { ok: false, message: formatEmailServerInstallError(firstResult) }
   }
 
-  const mirrorArgs = [...PIP_INSTALL_BASE_ARGS, '-i', PYPI_MIRROR_URL, 'mcp-email-server']
+  const mirrorArgs = [...PIP_INSTALL_BASE_ARGS, '-i', PYPI_MIRROR_URL, EMAIL_SERVER_COMMAND]
   logConnectorInfo('默认源疑似网络失败，切换镜像源重试', { command: [pythonCommand, ...mirrorArgs].join(' ') })
   const mirrorResult = await runCommand(pythonCommand, mirrorArgs)
   logConnectorInfo('镜像源安装命令结束', {
@@ -187,7 +240,7 @@ async function installEmailServer(pythonCommand: string, runCommand: (command: s
     message: getLogMessage(mirrorResult),
   })
   if (mirrorResult.ok) return { ok: true, message: '安装完成（已切换镜像源）' }
-  return { ok: false, message: getCommandMessage(mirrorResult) }
+  return { ok: false, message: formatEmailServerInstallError(mirrorResult) }
 }
 
 async function findFirstAvailable(commands: string[], commandExists: (command: string) => Promise<boolean>): Promise<string | null> {
@@ -265,9 +318,10 @@ async function initializeHuataiEmailConnector(
   logConnectorInfo('Python 环境检查完成', { pythonCommand, pipCommand })
 
   updateStep('check-package', 'running')
-  const alreadyInstalled = await commandExists('mcp-email-server')
+  let resolvedPath = await resolveEmailServerCommandPath(pythonCommand, runCommand)
+  const alreadyInstalled = Boolean(resolvedPath)
   updateStep('check-package', 'success', alreadyInstalled ? '已安装' : '未安装')
-  logConnectorInfo('mcp-email-server 安装状态', { alreadyInstalled })
+  logConnectorInfo('mcp-email-server 安装状态', { alreadyInstalled, resolvedPath })
 
   if (alreadyInstalled) {
     updateStep('install-package', 'skipped', '已安装，跳过')
@@ -287,10 +341,9 @@ async function initializeHuataiEmailConnector(
     }
     updateStep('install-package', 'success', installResult.message)
     logConnectorInfo('mcp-email-server 安装完成', { message: installResult.message })
+    resolvedPath = await resolveEmailServerCommandPath(pythonCommand, runCommand)
   }
 
-  // 解析 mcp-email-server 的全路径，避免 PATH 不一致导致后续校验失败
-  const resolvedPath = await resolveCommandPath('mcp-email-server', runCommand)
   if (!resolvedPath) {
     updateStep('check-package', 'error', '邮箱连接能力准备完成后无法定位可执行文件')
     return {
