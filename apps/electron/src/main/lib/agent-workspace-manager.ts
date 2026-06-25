@@ -828,6 +828,7 @@ export function migrateMcpJsonToConnectors(workspaceSlug: string): void {
  * 2. 更新 connectors.json（添加新预置连接器，默认 disabled）
  */
 export function syncDefaultConnectorsToWorkspace(workspaceSlug: string): void {
+  console.log(`[Agent 工作区] 🔄 开始同步预置连接器到工作区: ${workspaceSlug}`)
   const defaultDir = getDefaultConnectorsDir()
   const workspaceConnectorsDir = getConnectorsDir(workspaceSlug)
 
