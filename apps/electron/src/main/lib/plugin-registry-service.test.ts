@@ -619,4 +619,64 @@ describe('异步插件安装（installUserPluginZipAsync）', () => {
       temp.cleanup()
     }
   })
+
+  test('installUserPluginZipAsync 通过 onProgress 上报解压进度并以 finalizing 收尾', async () => {
+    const temp = tempRoot()
+    try {
+      const sourceDir = createPlugin(temp.root, 'progress-plugin', '1.0.0')
+      const zipPath = join(temp.root, 'progress-plugin.zip')
+      const zip = new AdmZip()
+      zip.addLocalFolder(sourceDir, 'progress-plugin')
+      zip.writeZip(zipPath)
+
+      const events: Array<{ stage: string; processed?: number; total?: number }> = []
+      await installUserPluginZipAsync(zipPath, {
+        builtinDir: join(temp.root, 'default-plugins'),
+        userDir: join(temp.root, 'user-plugins'),
+        configPath: join(temp.root, 'plugins.json'),
+        onProgress: (p) => {
+          events.push(p.stage === 'extracting' ? { stage: p.stage, processed: p.processed, total: p.total } : { stage: p.stage })
+        },
+      })
+
+      const extracting = events.filter((e) => e.stage === 'extracting')
+      expect(extracting.length).toBeGreaterThan(0)
+      const last = extracting[extracting.length - 1]!
+      expect(last.processed).toBe(last.total)
+      expect(events[events.length - 1]!.stage).toBe('finalizing')
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('installUserPluginZipAsync 中止后清理 staging，不残留 .installing 目录', async () => {
+    const { readdirSync, existsSync } = await import('node:fs')
+    const temp = tempRoot()
+    try {
+      const sourceDir = createPlugin(temp.root, 'abort-clean-plugin', '1.0.0')
+      const zipPath = join(temp.root, 'abort-clean-plugin.zip')
+      const zip = new AdmZip()
+      zip.addLocalFolder(sourceDir, 'abort-clean-plugin')
+      zip.writeZip(zipPath)
+
+      const userDir = join(temp.root, 'user-plugins')
+      const controller = new AbortController()
+      controller.abort()
+
+      await expect(installUserPluginZipAsync(zipPath, {
+        builtinDir: join(temp.root, 'default-plugins'),
+        userDir,
+        configPath: join(temp.root, 'plugins.json'),
+        signal: controller.signal,
+      })).rejects.toThrow('下载已取消')
+
+      const groupDir = join(userDir, 'local')
+      const leftovers = existsSync(groupDir)
+        ? readdirSync(groupDir).filter((name) => name.startsWith('.installing-'))
+        : []
+      expect(leftovers).toEqual([])
+    } finally {
+      temp.cleanup()
+    }
+  })
 })
