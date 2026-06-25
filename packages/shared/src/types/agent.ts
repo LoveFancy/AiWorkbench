@@ -826,10 +826,20 @@ export interface DefaultConnectorInitStep {
 
 export interface InitializeDefaultConnectorInput {
   connectorId: string
+  runId?: string
   emailAddress?: string
   password?: string
   userProvidedData?: Record<string, string>
 }
+
+export interface ConnectorInitProgressEvent {
+  workspaceSlug: string
+  connectorId: string
+  runId: string
+  steps: DefaultConnectorInitStep[]
+}
+
+export type ConnectorInitProgressReporter = (event: ConnectorInitProgressEvent) => void
 
 export interface InitializeDefaultConnectorResult {
   connectorId: string
@@ -1893,6 +1903,8 @@ export const AGENT_IPC_CHANNELS = {
   SYNC_DEFAULT_CONNECTORS: 'agent:sync-default-connectors',
   /** 初始化内置连接器 */
   INITIALIZE_DEFAULT_CONNECTOR: 'agent:initialize-default-connector',
+  /** 内置连接器初始化进度（主→渲染 push） */
+  CONNECTOR_INIT_PROGRESS: 'agent:connector-init-progress',
   /** 获取飞书 CLI 授权状态 */
   GET_FEISHU_CLI_AUTH_STATUS: 'agent:get-feishu-cli-auth-status',
   /** 注册飞书 CLI 应用（SDK registerApp） */

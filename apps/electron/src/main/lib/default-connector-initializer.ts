@@ -1,7 +1,10 @@
 import { execFile } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { dirname, isAbsolute, join } from 'node:path'
 import type {
+  ConnectorInitProgressEvent,
+  ConnectorInitProgressReporter,
   DefaultConnectorInitStep,
   DefaultConnectorInitStepId,
   InitializeDefaultConnectorInput,
@@ -37,6 +40,8 @@ interface InitializerDeps {
   commandExists?: (command: string) => Promise<boolean>
   runCommand?: (command: string, args: string[], options?: CommandOptions) => Promise<CommandResult>
   validateMcpServer?: (name: string, entry: McpServerEntry) => Promise<{ success: boolean; message: string }>
+  runId?: string
+  reportProgress?: ConnectorInitProgressReporter
 }
 
 const PIP_INSTALL_BASE_ARGS = ['-m', 'pip', 'install', '--disable-pip-version-check', '--timeout', '120', '--retries', '5']
@@ -69,6 +74,28 @@ function setStep(
   if (!step) return
   step.status = status
   if (message) step.message = message
+}
+
+function cloneSteps(steps: DefaultConnectorInitStep[]): DefaultConnectorInitStep[] {
+  return steps.map((step) => ({ ...step }))
+}
+
+function createConnectorStepUpdater(
+  workspaceSlug: string,
+  input: InitializeDefaultConnectorInput,
+  deps: InitializerDeps,
+  steps: DefaultConnectorInitStep[],
+): (id: DefaultConnectorInitStepId, status: DefaultConnectorInitStep['status'], message?: string) => void {
+  const runId = input.runId ?? deps.runId ?? randomUUID()
+  return (id, status, message) => {
+    setStep(steps, id, status, message)
+    deps.reportProgress?.({
+      workspaceSlug,
+      connectorId: input.connectorId,
+      runId,
+      steps: cloneSteps(steps),
+    } satisfies ConnectorInitProgressEvent)
+  }
 }
 
 async function defaultCommandExists(command: string): Promise<boolean> {
@@ -207,6 +234,9 @@ async function initializeHuataiEmailConnector(
     return { success: result.valid, message: result.valid ? '连接成功' : (result.reason ?? '连接失败') }
   })
   const steps = makeSteps()
+  const updateStep = createConnectorStepUpdater(workspaceSlug, input, deps, steps)
+
+  updateStep('check-python', 'running')
 
   // 从连接器配置读取 serverName
   const connectorsConfig = getWorkspaceConnectorsConfig(workspaceSlug)
@@ -217,7 +247,7 @@ async function initializeHuataiEmailConnector(
   const pipCommand = await findFirstAvailable(['pip3', 'pip'], commandExists)
   if (!pythonCommand || !pipCommand) {
     logConnectorInfo('Python 环境检查失败', { pythonCommand, pipCommand })
-    setStep(steps, 'check-python', 'error', '未检测到可用的 Python 或 pip')
+    updateStep('check-python', 'error', '未检测到可用的 Python 或 pip')
     return {
       connectorId: input.connectorId,
       serverName,
@@ -226,20 +256,22 @@ async function initializeHuataiEmailConnector(
       message: '未检测到可用的 Python 或 pip，请先安装 Python。',
     }
   }
-  setStep(steps, 'check-python', 'success', `${pythonCommand} / ${pipCommand}`)
+  updateStep('check-python', 'success', `${pythonCommand} / ${pipCommand}`)
   logConnectorInfo('Python 环境检查完成', { pythonCommand, pipCommand })
 
+  updateStep('check-package', 'running')
   const alreadyInstalled = await commandExists('mcp-email-server')
-  setStep(steps, 'check-package', 'success', alreadyInstalled ? '已安装' : '未安装')
+  updateStep('check-package', 'success', alreadyInstalled ? '已安装' : '未安装')
   logConnectorInfo('mcp-email-server 安装状态', { alreadyInstalled })
 
   if (alreadyInstalled) {
-    setStep(steps, 'install-package', 'skipped', '已安装，跳过')
+    updateStep('install-package', 'skipped', '已安装，跳过')
   } else {
+    updateStep('install-package', 'running')
     const installResult = await installEmailServer(pythonCommand, runCommand)
     if (!installResult.ok) {
       logConnectorInfo('mcp-email-server 安装失败', { message: installResult.message })
-      setStep(steps, 'install-package', 'error', installResult.message)
+      updateStep('install-package', 'error', installResult.message)
       return {
         connectorId: input.connectorId,
         serverName,
@@ -248,14 +280,14 @@ async function initializeHuataiEmailConnector(
         message: '准备华泰邮箱连接能力失败。',
       }
     }
-    setStep(steps, 'install-package', 'success', installResult.message)
+    updateStep('install-package', 'success', installResult.message)
     logConnectorInfo('mcp-email-server 安装完成', { message: installResult.message })
   }
 
   // 解析 mcp-email-server 的全路径，避免 PATH 不一致导致后续校验失败
   const resolvedPath = await resolveCommandPath('mcp-email-server', runCommand)
   if (!resolvedPath) {
-    setStep(steps, 'check-package', 'error', '邮箱连接能力准备完成后无法定位可执行文件')
+    updateStep('check-package', 'error', '邮箱连接能力准备完成后无法定位可执行文件')
     return {
       connectorId: input.connectorId,
       serverName,
@@ -267,7 +299,7 @@ async function initializeHuataiEmailConnector(
 
   // 校验可执行文件路径
   if (!isAbsolute(resolvedPath) || !existsSync(resolvedPath)) {
-    setStep(steps, 'check-package', 'error', `邮箱连接可执行文件路径无效: ${resolvedPath}`)
+    updateStep('check-package', 'error', `邮箱连接可执行文件路径无效: ${resolvedPath}`)
     return {
       connectorId: input.connectorId,
       serverName,
@@ -284,10 +316,11 @@ async function initializeHuataiEmailConnector(
   // 用全路径替换命令名
   entry.command = resolvedPath
 
+  updateStep('self-check', 'running')
   const validation = await validate(serverName, entry)
   if (!validation.success) {
     logConnectorInfo('连接器自检失败', { message: validation.message })
-    setStep(steps, 'self-check', 'error', validation.message)
+    updateStep('self-check', 'error', validation.message)
     return {
       connectorId: input.connectorId,
       serverName,
@@ -297,6 +330,7 @@ async function initializeHuataiEmailConnector(
     }
   }
 
+  updateStep('write-config', 'running')
   const config = getWorkspaceMcpConfig(workspaceSlug)
   saveWorkspaceMcpConfig(workspaceSlug, {
     servers: {
@@ -313,8 +347,8 @@ async function initializeHuataiEmailConnector(
     saveWorkspaceConnectorsConfig(workspaceSlug, connectorsConfig)
   }
 
-  setStep(steps, 'write-config', 'success', '已启用华泰邮箱读取能力')
-  setStep(steps, 'self-check', 'success', validation.message)
+  updateStep('write-config', 'success', '已启用华泰邮箱读取能力')
+  updateStep('self-check', 'success', validation.message)
   logConnectorInfo('连接器初始化完成', { workspaceSlug, serverName: 'email' })
 
   return {
@@ -345,6 +379,8 @@ async function initializeCliConnector(
   const commandExists = deps.commandExists ?? defaultCommandExists
   const runCommand = deps.runCommand ?? defaultRunCommand
   const steps = makeCliSteps()
+  const updateStep = createConnectorStepUpdater(workspaceSlug, input, deps, steps)
+  updateStep('check-runtime', 'running')
 
   const connectorsConfig = getWorkspaceConnectorsConfig(workspaceSlug)
   const connectorDef = connectorsConfig.connectors[input.connectorId]
@@ -359,7 +395,7 @@ async function initializeCliConnector(
   const nodeExists = await commandExists('node')
   const npmExists = await commandExists('npm')
   if (!nodeExists || !npmExists) {
-    setStep(steps, 'check-runtime', 'error', '未检测到 Node.js 或 npm')
+    updateStep('check-runtime', 'error', '未检测到 Node.js 或 npm')
     return {
       connectorId: input.connectorId,
       success: false,
@@ -371,7 +407,7 @@ async function initializeCliConnector(
   const nodeVersionResult = await runCommand('node', ['-v'])
   const nodeVersion = nodeVersionResult.stdout.trim()
   if (!isNodeVersionSupported(nodeVersion, definition.runtime?.version ?? '>=20')) {
-    setStep(steps, 'check-runtime', 'error', `当前 Node 版本 ${nodeVersion || '未知'}，需要 Node.js 20+`)
+    updateStep('check-runtime', 'error', `当前 Node 版本 ${nodeVersion || '未知'}，需要 Node.js 20+`)
     return {
       connectorId: input.connectorId,
       success: false,
@@ -379,17 +415,19 @@ async function initializeCliConnector(
       message: '当前 Node.js 版本不满足要求，请安装 Node.js 20 及以上版本。',
     }
   }
-  setStep(steps, 'check-runtime', 'success', nodeVersion)
+  updateStep('check-runtime', 'success', nodeVersion)
 
+  updateStep('check-package', 'running')
   const commandName = process.platform === 'win32' ? 'talents.cmd' : 'talents'
   let resolvedPath = await resolveCommandPath(commandName, runCommand)
   const alreadyInstalled = Boolean(resolvedPath)
-  setStep(steps, 'check-package', alreadyInstalled ? 'success' : 'skipped', alreadyInstalled ? '已安装' : '未安装')
+  updateStep('check-package', alreadyInstalled ? 'success' : 'skipped', alreadyInstalled ? '已安装' : '未安装')
 
   if (!alreadyInstalled) {
+    updateStep('install-package', 'running')
     const installCommand = getPlatformCommand(definition.init)
     if (!installCommand) {
-      setStep(steps, 'install-package', 'error', '当前平台缺少安装命令')
+      updateStep('install-package', 'error', '当前平台缺少安装命令')
       return {
         connectorId: input.connectorId,
         success: false,
@@ -403,7 +441,7 @@ async function initializeCliConnector(
     if (!command) throw new Error('CLI 安装命令为空')
     const installResult = await runCommand(command, args, { timeoutMs: 180_000 })
     if (!installResult.ok) {
-      setStep(steps, 'install-package', 'error', sanitizeMessage(getCommandMessage(installResult), userValues))
+      updateStep('install-package', 'error', sanitizeMessage(getCommandMessage(installResult), userValues))
       return {
         connectorId: input.connectorId,
         success: false,
@@ -411,17 +449,17 @@ async function initializeCliConnector(
         message: '安装 talents CLI 失败。',
       }
     }
-    setStep(steps, 'install-package', 'success', '安装完成')
+    updateStep('install-package', 'success', '安装完成')
     resolvedPath = await resolveTalentsCommandPath(commandName, runCommand)
   } else {
-    setStep(steps, 'install-package', 'skipped', '已安装，跳过')
+    updateStep('install-package', 'skipped', '已安装，跳过')
   }
 
   if (!resolvedPath) {
     resolvedPath = await resolveTalentsCommandPath(commandName, runCommand)
   }
   if (!resolvedPath || !isAbsolute(resolvedPath) || !existsSync(resolvedPath)) {
-    setStep(steps, 'check-package', 'error', '无法定位 talents 可执行文件')
+    updateStep('check-package', 'error', '无法定位 talents 可执行文件')
     return {
       connectorId: input.connectorId,
       success: false,
@@ -429,9 +467,11 @@ async function initializeCliConnector(
       message: 'talents CLI 已安装但无法定位可执行文件，请检查 npm 全局 bin 目录是否在 PATH 中。',
     }
   }
-  setStep(steps, 'check-package', 'success', resolvedPath)
+  updateStep('check-package', 'success', resolvedPath)
 
-  setStep(steps, 'install-skill', 'success', '已随连接器启用')
+  updateStep('install-skill', 'running')
+  updateStep('install-skill', 'success', '已随连接器启用')
+  updateStep('write-config', 'running')
   writeCliConnectorRuntime(connectorDir, {
     commandPath: resolvedPath,
     binDir: dirname(resolvedPath),
@@ -439,13 +479,14 @@ async function initializeCliConnector(
     packageVersion: await readTalentsVersion(resolvedPath, runCommand),
   })
   writeCliConnectorSecrets(connectorDir, definition, userValues)
-  setStep(steps, 'write-config', 'success', '已保存')
+  updateStep('write-config', 'success', '已保存')
 
+  updateStep('self-check', 'running')
   const resolvedEnv = resolveCliConnectorEnv(definition, userValues)
   const selfCheck = await runCliStatusCheck(definition, resolvedPath, resolvedEnv, runCommand)
   if (!selfCheck.ok) {
     const message = sanitizeMessage(getCommandMessage(selfCheck), userValues) || 'Talents Token 校验失败'
-    setStep(steps, 'self-check', 'error', message)
+    updateStep('self-check', 'error', message)
     return {
       connectorId: input.connectorId,
       success: false,
@@ -456,7 +497,7 @@ async function initializeCliConnector(
 
   connectorDef.enabled = true
   saveWorkspaceConnectorsConfig(workspaceSlug, connectorsConfig)
-  setStep(steps, 'self-check', 'success', '连接成功')
+  updateStep('self-check', 'success', '连接成功')
 
   return {
     connectorId: input.connectorId,

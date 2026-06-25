@@ -137,6 +137,18 @@ test('华泰个人邮箱初始化日志不会撑宽弹窗', () => {
   expect(agentSkillsViewSource).not.toContain('className="truncate">{step.message}</span>')
 })
 
+test('华泰个人邮箱已绑定信息使用左对齐信息块避免左右割裂', () => {
+  expect(agentSkillsViewSource).toContain("function ConnectorDetailRow")
+  expect(agentSkillsViewSource).toContain('className="flex flex-col gap-1.5')
+  expect(agentSkillsViewSource).toContain('sm:grid-cols-2')
+  expect(agentSkillsViewSource).toContain("wide && 'sm:col-span-2'")
+  expect(agentSkillsViewSource).toContain('label="命令" value={server.type === \'stdio\' ? server.command : server.url} mono wide')
+  expect(agentSkillsViewSource).toContain('text-left')
+  expect(agentSkillsViewSource).toContain('break-words')
+  expect(agentSkillsViewSource).not.toContain('items-start justify-between')
+  expect(agentSkillsViewSource).not.toContain('text-right text-foreground/80')
+})
+
 test('连接器卡片清晰展示 CLI 和 MCP transport 类型', () => {
   expect(agentSkillsViewSource).toContain("getConnectorKindLabel")
   expect(agentSkillsViewSource).toContain("return 'CLI'")
@@ -145,4 +157,23 @@ test('连接器卡片清晰展示 CLI 和 MCP transport 类型', () => {
   expect(mcpCardSource).toContain("MCP · {TRANSPORT_LABELS[entry.type] ?? entry.type ?? '未知'}")
   expect(mcpCardSource).toContain("stdio: 'STDIO'")
   expect(mcpCardSource).toContain("sse: 'SSE'")
+})
+
+test('待配置连接器保持可点击且不置灰', () => {
+  expect(agentSkillsViewSource).toContain("isConfigured && !enabled && 'opacity-55'")
+  expect(agentSkillsViewSource).not.toContain("isComingSoon ? 'cursor-not-allowed opacity-55' : !enabled && 'opacity-55'")
+})
+
+test('连接器启用状态使用产品蓝色而不是突兀绿色', () => {
+  expect(agentSkillsViewSource).toContain("isConfigured ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'")
+  expect(agentSkillsViewSource).not.toContain('data-[state=checked]:bg-green-500')
+  expect(agentSkillsViewSource).not.toContain("isConfigured ? 'bg-green-500/10 text-green-600 dark:text-green-400'")
+})
+
+test('内置连接器初始化弹窗复用通用进度订阅逻辑', () => {
+  expect(agentSkillsViewSource).toContain('function useConnectorInitProgress')
+  expect(agentSkillsViewSource).toContain("useConnectorInitProgress(workspaceSlug, 'huatai-email'")
+  expect(agentSkillsViewSource).toContain("useConnectorInitProgress(workspaceSlug, 'hi-agent'")
+  expect(agentSkillsViewSource).toContain('window.electronAPI.onConnectorInitProgress')
+  expect(agentSkillsViewSource).toContain('runId,')
 })
