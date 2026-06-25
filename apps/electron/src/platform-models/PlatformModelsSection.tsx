@@ -1,6 +1,6 @@
 import React from 'react'
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
-import { RefreshCw, LogIn, CheckCircle2 } from 'lucide-react'
+import { RefreshCw, LogIn, CheckCircle2, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SettingsSection, SettingsCard, SettingsRow } from '@/components/settings/primitives'
 import { cn } from '@/lib/utils'
@@ -74,12 +74,23 @@ export function PlatformModelsSection(): React.ReactElement {
       title="华泰泰为平台"
       description="登录后可使用华泰泰为平台为WorkMate提供的默认模型"
       action={
-        isLoggedIn ? (
-          <Button size="sm" variant="outline" onClick={handleFetch} disabled={loading}>
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            <span className="ml-1">刷新</span>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void window.electronAPI.openExternal('http://eip.htsc.com.cn/modelPlatform/#/apiManage/list')}
+            className="gap-1.5"
+          >
+            <ExternalLink size={13} />
+            <span>申请更多模型</span>
           </Button>
-        ) : undefined
+          {isLoggedIn ? (
+            <Button size="sm" variant="outline" onClick={handleFetch} disabled={loading}>
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+              <span className="ml-1">刷新</span>
+            </Button>
+          ) : null}
+        </div>
       }
     >
       {!isLoggedIn ? (
