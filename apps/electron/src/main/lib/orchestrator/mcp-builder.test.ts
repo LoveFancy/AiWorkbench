@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { clearConfigDirNameForTest, getWorkspaceMcpPath, getConnectorsDir, getConnectorsConfigPath } from '../config-paths'
 import { clearConfigRootOverride, setConfigRoot } from '../config-root-service'
-import { buildMcpServers } from './mcp-builder'
+import { buildMcpServers, collectConnectorDisabledTools } from './mcp-builder'
 
 let root: string
 
@@ -149,5 +149,39 @@ describe('buildMcpServers', () => {
     const servers = buildMcpServers('default')
     expect(Object.keys(servers).sort()).toEqual(['docs', 'email'])
     expect(servers.email).toBeDefined()
+  })
+
+  test('华泰邮箱从 connector.json 收集写操作禁用工具', () => {
+    writeConnectorsConfig('default', {
+      'huatai-email': {
+        type: 'mcp', enabled: true, source: 'preset',
+        displayName: '华泰邮箱', serverName: 'email',
+      },
+    })
+    const connectorDir = join(getConnectorsDir('default'), 'huatai-email')
+    mkdirSync(connectorDir, { recursive: true })
+    writeFileSync(join(connectorDir, 'connector.json'), JSON.stringify({
+      disabledTools: [
+        'add_email_account',
+        'send_email',
+        'save_to_mailbox',
+        'delete_emails',
+        'mark_emails_as_read',
+        'move_emails',
+        'archive_emails',
+        'download_attachment',
+      ],
+    }, null, 2), 'utf-8')
+
+    expect(collectConnectorDisabledTools('default')).toEqual([
+      'mcp__huatai-email__add_email_account',
+      'mcp__huatai-email__send_email',
+      'mcp__huatai-email__save_to_mailbox',
+      'mcp__huatai-email__delete_emails',
+      'mcp__huatai-email__mark_emails_as_read',
+      'mcp__huatai-email__move_emails',
+      'mcp__huatai-email__archive_emails',
+      'mcp__huatai-email__download_attachment',
+    ])
   })
 })

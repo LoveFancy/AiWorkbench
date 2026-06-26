@@ -23,6 +23,40 @@ const ALLOWED_EIP_ORIGINS = new Set([
   'https://eip.htsc.com.cn',
 ])
 
+const EIP_REQUEST_MIN_INTERVAL_MS = 1000
+
+let lastRequestStartedAt = 0
+let requestQueue: Promise<void> = Promise.resolve()
+
+async function sleep(ms: number): Promise<void> {
+  if (ms <= 0) return
+  await new Promise<void>((resolve) => setTimeout(resolve, ms))
+}
+
+async function runWithRateLimit<T>(operation: () => Promise<T>): Promise<T> {
+  const previous = requestQueue
+  let releaseQueue: () => void = () => {}
+  requestQueue = new Promise<void>((resolve) => {
+    releaseQueue = resolve
+  })
+
+  await previous
+
+  try {
+    const now = Date.now()
+    const waitMs = EIP_REQUEST_MIN_INTERVAL_MS - (now - lastRequestStartedAt)
+    if (waitMs > 0) {
+      console.log('[EIP 请求] 触发限流，等待 %dms 后继续', waitMs)
+      await sleep(waitMs)
+    }
+
+    lastRequestStartedAt = Date.now()
+    return await operation()
+  } finally {
+    releaseQueue()
+  }
+}
+
 function assertSafePath(path: string): void {
   if (!path.trim()) throw new Error('path 不能为空')
 
@@ -66,13 +100,15 @@ export async function executeEipRequest(input: EipRequestInput): Promise<HttpRes
   assertSafeHeaders(input.headers)
 
   console.log('[EIP 请求] %s %s', input.method, input.path)
-  const response = await httpRequest(input.path, {
-    method: input.method,
-    query: input.query,
-    body: input.body,
-    headers: input.headers,
-    timeoutMs: input.timeoutMs,
-  })
+  const response = await runWithRateLimit(() =>
+    httpRequest(input.path, {
+      method: input.method,
+      query: input.query,
+      body: input.body,
+      headers: input.headers,
+      timeoutMs: input.timeoutMs,
+    }),
+  )
 
   if (!response.ok || !input.resultPath) return response
 
@@ -86,4 +122,8 @@ export const __eipRequestServiceTest = {
   assertSafePath,
   assertSafeHeaders,
   extractByPath,
+  resetRateLimitForTest: () => {
+    lastRequestStartedAt = 0
+    requestQueue = Promise.resolve()
+  },
 }

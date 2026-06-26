@@ -1350,7 +1350,6 @@ function HuataiEmailConnectorDialog({
             <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
               <ConnectorDetailRow label="状态" value={server.enabled ? '已启用' : '未启用'} />
               <ConnectorDetailRow label="类型" value={server.type} />
-              <ConnectorDetailRow label="命令" value={server.type === 'stdio' ? server.command : server.url} mono wide />
               <ConnectorDetailRow label="账号" value={currentEmail || '未配置'} mono />
               <ConnectorDetailRow label="IMAP" value={`${server.env?.MCP_EMAIL_SERVER_IMAP_HOST ?? '未配置'}:${server.env?.MCP_EMAIL_SERVER_IMAP_PORT ?? ''}`} mono />
               {server.lastTestResult && (
