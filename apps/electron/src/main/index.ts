@@ -588,11 +588,8 @@ async function bootstrap(): Promise<void> {
   // 同步默认连接器到 ~/.workmate/default-connectors/
   safeRun('seedDefaultConnectors', seedDefaultConnectors)
 
-  // 为已有工作区补全缺失的连接器，并刷新预设连接器元数据
-  safeRun('syncDefaultConnectorsToAllWorkspaces', syncDefaultConnectorsToAllWorkspaces)
-
-  // 升级所有工作区中版本过旧的默认 Skills
-  safeRun('upgradeDefaultSkillsInWorkspaces', upgradeDefaultSkillsInWorkspaces)
+  // 工作区连接器同步和 Skills 升级已移至后台初始化（runBackgroundInit），
+  // 避免其同步文件 I/O（cpSync/readFileSync/writeFileSync）阻塞首屏关键路径。
   elapsed('bootstrap: Skills/Plugins 初始化完成')
 
   // Create application menu
@@ -724,8 +721,16 @@ async function bootstrap(): Promise<void> {
     }
   })
 
-  // 后台初始化由 createWindow 的 ready-to-show 回调触发，不做提前兜底。
-  // 提前启动会与渲染进程 asar 加载并发，在受管机上触发 AV 串行化，导致首屏延迟数十秒。
+  // 后台初始化由 createWindow 的 ready-to-show 回调触发。
+  // 兜底：极端情况下渲染进程被 AV/EDR 拦截，ready-to-show 永远不触发，
+  // 120s 后强制启动后台初始化。正常情况 ~10s 内就会触发，不会走到这里。
+  const BACKGROUND_INIT_FALLBACK_MS = 120_000
+  setTimeout(() => {
+    if (!backgroundInitStarted) {
+      console.warn('[启动耗时] ⚠️ ready-to-show 超时未触发，走兜底强制启动后台初始化')
+      scheduleBackgroundInit()
+    }
+  }, BACKGROUND_INIT_FALLBACK_MS)
 }
 
 /**

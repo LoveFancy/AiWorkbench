@@ -117,6 +117,7 @@ export function getVendorBunPath(): string | null {
  * @returns Bun 二进制路径，如果未找到返回 null
  */
 export async function getSystemBunPath(): Promise<string | null> {
+  const t0 = Date.now()
   try {
     // 使用 which/where 命令查找 bun
     const command = process.platform === 'win32' ? 'where' : 'which'
@@ -126,6 +127,8 @@ export async function getSystemBunPath(): Promise<string | null> {
       timeout: 5000,
       windowsHide: true,
     })
+    const elapsed = Date.now() - t0
+    console.log(`[perf] execFile ${command} bun → ${elapsed}ms`)
 
     const bunPath = stdout.trim().split('\n')[0]
 
@@ -133,7 +136,8 @@ export async function getSystemBunPath(): Promise<string | null> {
       return bunPath
     }
   } catch {
-    // 命令执行失败，Bun 未安装
+    const elapsed = Date.now() - t0
+    console.log(`[perf] execFile ${process.platform === 'win32' ? 'where' : 'which'} bun → FAIL after ${elapsed}ms`)
   }
 
   return null
@@ -150,18 +154,22 @@ export async function validateBunExecutable(bunPath: string): Promise<string | n
     return null
   }
 
+  const t0 = Date.now()
   try {
     const { stdout } = await execFileAsync(bunPath, ['--version'], {
       encoding: 'utf-8',
       timeout: 5000,
       windowsHide: true,
     })
+    const elapsed = Date.now() - t0
+    console.log(`[perf] execFile bun --version (${bunPath}) → ${elapsed}ms`)
 
     if (stdout) {
       return stdout.trim()
     }
   } catch {
-    // 执行失败
+    const elapsed = Date.now() - t0
+    console.log(`[perf] execFile bun --version → FAIL after ${elapsed}ms`)
   }
 
   return null

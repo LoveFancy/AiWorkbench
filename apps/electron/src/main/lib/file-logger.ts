@@ -1,6 +1,9 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { appendFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { inspect } from 'node:util'
+
+const FLUSH_BATCH_DELAY_MS = 200
 
 type ConsoleMethod = 'debug' | 'error' | 'info' | 'log' | 'warn'
 type RendererLogLevel = 'debug' | 'error' | 'info' | 'warning'
@@ -92,25 +95,6 @@ function trimTextToMaxBytesFromEnd(text: string, maxBytes: number): string {
   return result
 }
 
-function appendRollingFile(filePath: string, line: string, maxBytes: number): void {
-  const lineBuffer = Buffer.from(line)
-  if (lineBuffer.byteLength >= maxBytes) {
-    writeFileSync(filePath, trimTextToMaxBytesFromEnd(line, maxBytes), 'utf-8')
-    return
-  }
-
-  const currentSize = existsSync(filePath) ? statSync(filePath).size : 0
-  if (currentSize + lineBuffer.byteLength <= maxBytes) {
-    appendFileSync(filePath, lineBuffer)
-    return
-  }
-
-  const bytesToKeep = maxBytes - lineBuffer.byteLength
-  const currentText = existsSync(filePath) ? readFileSync(filePath, 'utf-8') : ''
-  const tail = trimTextToMaxBytesFromEnd(currentText, bytesToKeep)
-  writeFileSync(filePath, tail + line, 'utf-8')
-}
-
 function trimExistingLogFile(filePath: string, maxBytes: number): void {
   if (!existsSync(filePath)) return
   const currentSize = statSync(filePath).size
@@ -120,32 +104,76 @@ function trimExistingLogFile(filePath: string, maxBytes: number): void {
   writeFileSync(filePath, trimTextToMaxBytesFromEnd(currentText, maxBytes), 'utf-8')
 }
 
-function appendLogLine(logsDir: string, fileName: string, line: string, maxBytes = DEFAULT_MAX_LOG_BYTES): void {
-  try {
-    mkdirSync(logsDir, { recursive: true })
-    appendRollingFile(join(logsDir, fileName), line, maxBytes)
-  } catch (error) {
-    originalConsole?.warn?.('[日志] 写入日志文件失败:', error)
-  }
-}
-
 function flushPendingLogs(): void {
+  const t0 = Date.now()
   flushScheduled = false
   const entries = pendingEntries
   pendingEntries = []
+
+  // 按文件分组，同时记录该文件的最小 maxBytes（同一文件可能有不同限制）
+  const byFile = new Map<string, { lines: string[]; maxBytes: number }>()
   for (const entry of entries) {
-    appendLogLine(entry.logsDir, entry.fileName, entry.line, entry.maxBytes)
+    const filePath = join(entry.logsDir, entry.fileName)
+    const existing = byFile.get(filePath)
+    if (existing) {
+      existing.lines.push(entry.line)
+      if (entry.maxBytes < existing.maxBytes) existing.maxBytes = entry.maxBytes
+    } else {
+      try { mkdirSync(entry.logsDir, { recursive: true }) } catch { /* ignore */ }
+      byFile.set(filePath, { lines: [entry.line], maxBytes: entry.maxBytes })
+    }
   }
+
+  const writes: Promise<void>[] = []
+  for (const [filePath, { lines, maxBytes }] of byFile) {
+    const content = lines.join('')
+    const contentBytes = Buffer.byteLength(content)
+    const currentSize = existsSync(filePath) ? statSync(filePath).size : 0
+
+    if (contentBytes >= maxBytes) {
+      // 单次写入超过上限，截断
+      writes.push(
+        writeFile(filePath, trimTextToMaxBytesFromEnd(content, maxBytes), 'utf-8')
+      )
+    } else if (currentSize + contentBytes <= maxBytes) {
+      // 文件还有空间，直接追加
+      writes.push(
+        appendFile(filePath, content, 'utf-8').catch((error) => {
+          originalConsole?.warn?.('[日志] 异步写入日志文件失败:', error)
+        })
+      )
+    } else {
+      // 文件即将超限，保留尾部 + 新内容
+      writes.push((async () => {
+        try {
+          const currentText = existsSync(filePath) ? readFileSync(filePath, 'utf-8') : ''
+          const bytesToKeep = maxBytes - contentBytes
+          const tail = trimTextToMaxBytesFromEnd(currentText, bytesToKeep)
+          await writeFile(filePath, tail + content, 'utf-8')
+        } catch (error) {
+          originalConsole?.warn?.('[日志] 异步写入日志文件失败:', error)
+        }
+      })())
+    }
+  }
+
   const resolve = resolveFlushPromise
   flushPromise = null
   resolveFlushPromise = null
-  resolve?.()
+  // 等所有异步写入完成后再 resolve，保证 flushFileLogger() 等待语义不变
+  if (resolve) {
+    Promise.all(writes).then(() => {
+      resolve()
+      const elapsed = Date.now() - t0
+      if (elapsed > 50) console.log(`[perf] file-logger flush: ${entries.length} entries → ${writes.length} files, ${elapsed}ms`)
+    }).catch(() => resolve())
+  }
 }
 
 function scheduleFlush(): void {
   if (flushScheduled) return
   flushScheduled = true
-  setImmediate(flushPendingLogs)
+  setTimeout(flushPendingLogs, FLUSH_BATCH_DELAY_MS)
 }
 
 function enqueueLog(logsDir: string, fileName: string, level: string, values: unknown[], maxBytes = DEFAULT_MAX_LOG_BYTES): void {

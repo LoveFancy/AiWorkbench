@@ -30,6 +30,7 @@ const PATH_SEP = ';'
  * @returns 值内容，失败返回 null
  */
 export function readRegistryValue(key: string, valueName: string): string | null {
+  const t0 = Date.now()
   try {
     const output = execSync(
       `reg query "${key}" /v "${valueName}"`,
@@ -38,12 +39,16 @@ export function readRegistryValue(key: string, valueName: string): string | null
         stdio: ['pipe', 'pipe', 'pipe'],
       },
     )
+    const elapsed = Date.now() - t0
+    console.log(`[perf] reg query "${key}" /v "${valueName}" → ${elapsed}ms`)
 
     const text = decodeCommandOutput(output)
     const escaped = valueName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const match = text.match(new RegExp(`${escaped}\\s+REG_\\w+\\s+(.+)`, 'i'))
     return match?.[1]?.trim() || null
   } catch {
+    const elapsed = Date.now() - t0
+    console.log(`[perf] reg query "${key}" /v "${valueName}" → FAIL after ${elapsed}ms`)
     return null
   }
 }

@@ -19,6 +19,7 @@ const execFileAsync = promisify(execFile)
  * @returns Node.js 可执行路径，如果未找到返回 null
  */
 async function findNodePath(): Promise<string | null> {
+  const t0 = Date.now()
   try {
     const command = process.platform === 'win32' ? 'where' : 'which'
 
@@ -27,6 +28,8 @@ async function findNodePath(): Promise<string | null> {
       timeout: 5000,
       windowsHide: true,
     })
+    const elapsed = Date.now() - t0
+    console.log(`[perf] execFile ${command} node → ${elapsed}ms`)
 
     const nodePath = stdout.trim().split('\n')[0]
 
@@ -34,7 +37,8 @@ async function findNodePath(): Promise<string | null> {
       return nodePath
     }
   } catch {
-    // Node.js 未安装
+    const elapsed = Date.now() - t0
+    console.log(`[perf] execFile ${process.platform === 'win32' ? 'where' : 'which'} node → FAIL after ${elapsed}ms`)
   }
 
   // Windows 上额外检查其他安装位置
@@ -94,19 +98,23 @@ async function findNodePath(): Promise<string | null> {
  * @returns 版本号，如果无法获取返回 null
  */
 async function getNodeVersion(nodePath: string): Promise<string | null> {
+  const t0 = Date.now()
   try {
     const { stdout } = await execFileAsync(nodePath, ['--version'], {
       encoding: 'utf-8',
       timeout: 5000,
       windowsHide: true,
     })
+    const elapsed = Date.now() - t0
+    console.log(`[perf] execFile node --version → ${elapsed}ms`)
 
     if (stdout) {
       // v22.13.1 -> 22.13.1
       return stdout.trim().replace(/^v/, '')
     }
   } catch {
-    // 执行失败
+    const elapsed = Date.now() - t0
+    console.log(`[perf] execFile node --version → FAIL after ${elapsed}ms`)
   }
 
   return null

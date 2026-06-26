@@ -44,6 +44,8 @@ export function persistSDKMessages(
 
   if (toPersist.length === 0) return
 
+  const t0 = Date.now()
+
   // 为没有 _createdAt 的消息补上时间戳（assistant 消息来自 SDK 原始输出，不含时间）
   const now = Date.now()
   const withTimestamps = toPersist.map((m) => {
@@ -57,4 +59,6 @@ export function persistSDKMessages(
   })
 
   appendSDKMessages(sessionId, withTimestamps)
+  const elapsed = Date.now() - t0
+  if (elapsed > 50) console.log(`[perf] persistSDKMessages (enqueue): ${toPersist.length} msgs → ${elapsed}ms`)
 }
