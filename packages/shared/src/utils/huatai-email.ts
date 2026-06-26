@@ -3,6 +3,9 @@ import type { McpServerEntry } from '../types/agent'
 export interface HuataiEmailInput {
   emailAddress: string
   password: string
+  command?: string
+  args?: string[]
+  extraEnv?: Record<string, string>
 }
 
 /**
@@ -14,9 +17,10 @@ export function buildHuataiEmailMcpEntry(input: HuataiEmailInput): McpServerEntr
   const emailAddress = input.emailAddress.trim()
   return {
     type: 'stdio',
-    command: 'mcp-email-server',
-    args: ['stdio'],
+    command: input.command ?? 'mcp-email-server',
+    args: input.args ?? ['stdio'],
     env: {
+      ...input.extraEnv,
       MCP_EMAIL_SERVER_ACCOUNT_NAME: 'htsc',
       MCP_EMAIL_SERVER_EMAIL_ADDRESS: emailAddress,
       MCP_EMAIL_SERVER_PASSWORD: input.password.trim(),

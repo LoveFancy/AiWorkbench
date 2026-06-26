@@ -2,9 +2,11 @@ import { expect, mock, test } from 'bun:test'
 
 let capturedPath = ''
 let capturedOpts: Record<string, unknown> | null = null
+const requestTimes: number[] = []
 
 mock.module('../../shared/hteip-client', () => ({
   httpRequest: async (path: string, opts: Record<string, unknown>) => {
+    requestTimes.push(Date.now())
     capturedPath = path
     capturedOpts = opts
     return {
@@ -22,7 +24,41 @@ mock.module('../../shared/hteip-client', () => ({
 
 const { executeEipRequest, __eipRequestServiceTest } = await import('./eip-request-service')
 
+test('eip_request 连续真实请求之间至少间隔 1 秒', async () => {
+  const originalCapturedPath = capturedPath
+  const originalCapturedOpts = capturedOpts
+
+  capturedPath = ''
+  capturedOpts = null
+  requestTimes.length = 0
+  __eipRequestServiceTest.resetRateLimitForTest()
+
+  await Promise.all([
+    executeEipRequest({
+      method: 'GET',
+      path: '/paas/app/api/app/listByUserNew',
+    }),
+    executeEipRequest({
+      method: 'GET',
+      path: '/paas/app/api/app/listByUserNew',
+    }),
+  ])
+
+  expect(requestTimes.length).toBeGreaterThanOrEqual(2)
+  const firstRequestTime = requestTimes[0]
+  const secondRequestTime = requestTimes[1]
+  expect(firstRequestTime).toBeDefined()
+  expect(secondRequestTime).toBeDefined()
+  expect((secondRequestTime ?? 0) - (firstRequestTime ?? 0)).toBeGreaterThanOrEqual(1000)
+
+  capturedPath = originalCapturedPath
+  capturedOpts = originalCapturedOpts
+  __eipRequestServiceTest.resetRateLimitForTest()
+})
+
 test('eip_request 保留 POST + query 语义并支持 resultPath 提取', async () => {
+  __eipRequestServiceTest.resetRateLimitForTest()
+
   const result = await executeEipRequest({
     method: 'POST',
     path: '/paas/app/api/app/listByUserNew',
