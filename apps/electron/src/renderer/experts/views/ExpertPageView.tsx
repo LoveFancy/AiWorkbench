@@ -162,7 +162,7 @@ export function ExpertPageView({ embedded = false, query: externalQuery, filterT
           {/* 卡片网格 */}
           <ExpertCardGrid
             groups={displayGroups}
-            onSummon={(group) => void summon(group)}
+            onSummon={(group, samplePrompt) => void summon(group, samplePrompt)}
             emptyState={
               <ExpertEmptyState
                 type={emptyType}

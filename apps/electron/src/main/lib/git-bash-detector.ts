@@ -65,6 +65,7 @@ function getCommonGitBashPaths(): string[] {
  * @returns Bash 版本号，如果验证失败返回 null
  */
 async function verifyBashPath(bashPath: string): Promise<string | null> {
+  const t0 = Date.now()
   try {
     if (!existsSync(bashPath)) {
       return null
@@ -76,6 +77,8 @@ async function verifyBashPath(bashPath: string): Promise<string | null> {
       timeout: 5000,
       windowsHide: true,
     })
+    const elapsed = Date.now() - t0
+    console.log(`[perf] execFile bash --version (${bashPath}) → ${elapsed}ms`)
     const text = decodeCommandOutput(stdout)
 
     // 解析版本号（示例输出："GNU bash, version 5.2.15(1)-release (x86_64-pc-msys)"）
@@ -87,7 +90,8 @@ async function verifyBashPath(bashPath: string): Promise<string | null> {
 
     return null
   } catch {
-    // 执行 --version 抛错（权限/损坏/超时等）视为不可用
+    const elapsed = Date.now() - t0
+    console.log(`[perf] execFile bash --version → FAIL after ${elapsed}ms`)
     return null
   }
 }

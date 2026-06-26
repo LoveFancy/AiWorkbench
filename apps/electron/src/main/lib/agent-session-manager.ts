@@ -8,7 +8,8 @@
  * 照搬 conversation-manager.ts 的模式。
  */
 
-import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync, unlinkSync, rmSync, renameSync, readdirSync, cpSync, copyFileSync, createReadStream } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, rmSync, renameSync, readdirSync, cpSync, copyFileSync, createReadStream } from 'node:fs'
+import { appendFile } from 'node:fs/promises'
 import { createInterface } from 'node:readline'
 import { writeJsonFileAtomic, readJsonFileSafe } from './safe-file'
 import { randomUUID } from 'node:crypto'
@@ -197,6 +198,83 @@ export function getAgentSessionMessages(id: string): AgentMessage[] {
   }
 }
 
+// ── JSONL 异步写入缓冲 ──
+// 受管机上每次 appendFileSync 触发 AV 扫描，改为异步入队 + 批量刷盘。
+// 参考 file-logger.ts 的模式，减少 Agent 执行期间的同步 I/O 阻塞。
+
+interface JsonlWriteEntry {
+  filePath: string
+  line: string
+}
+
+let jsonlPending: JsonlWriteEntry[] = []
+let jsonlFlushScheduled = false
+let jsonlFlushPromise: Promise<void> | null = null
+let resolveJsonlFlushPromise: (() => void) | null = null
+
+function enqueueJsonlWrite(filePath: string, line: string): void {
+  jsonlPending.push({ filePath, line })
+  if (!jsonlFlushScheduled) {
+    jsonlFlushScheduled = true
+    if (!jsonlFlushPromise) {
+      jsonlFlushPromise = new Promise((resolve) => {
+        resolveJsonlFlushPromise = resolve
+      })
+    }
+    setImmediate(flushJsonlWrites)
+  }
+}
+
+async function flushJsonlWrites(): Promise<void> {
+  jsonlFlushScheduled = false
+  const batch = jsonlPending
+  jsonlPending = []
+
+  if (batch.length === 0) {
+    const resolve = resolveJsonlFlushPromise
+    jsonlFlushPromise = null
+    resolveJsonlFlushPromise = null
+    resolve?.()
+    return
+  }
+
+  const t0 = Date.now()
+
+  // 按文件分组，合并同一文件的多次写入为一次 appendFile
+  const byFile = new Map<string, string[]>()
+  for (const entry of batch) {
+    const lines = byFile.get(entry.filePath)
+    if (lines) {
+      lines.push(entry.line)
+    } else {
+      byFile.set(entry.filePath, [entry.line])
+    }
+  }
+
+  for (const [filePath, lines] of byFile) {
+    try {
+      await appendFile(filePath, lines.join(''), 'utf-8')
+    } catch (error) {
+      console.error(`[Agent 会话] 异步写入 JSONL 失败 (${filePath}):`, error)
+    }
+  }
+
+  const resolve = resolveJsonlFlushPromise
+  jsonlFlushPromise = null
+  resolveJsonlFlushPromise = null
+  resolve?.()
+  const elapsed = Date.now() - t0
+  if (elapsed > 50) console.log(`[perf] JSONL flush: ${batch.length} entries → ${byFile.size} files, ${elapsed}ms`)
+}
+
+/**
+ * 刷新所有待处理的 JSONL 写入，返回 Promise 用于测试等待。
+ * 内部使用，不对外暴露为公共 API。
+ */
+export async function flushJsonlForTests(): Promise<void> {
+  await jsonlFlushPromise
+}
+
 /**
  * 追加一条消息到会话的 JSONL 文件
  */
@@ -205,7 +283,7 @@ export function appendAgentMessage(id: string, message: AgentMessage): void {
 
   try {
     const line = JSON.stringify(message) + '\n'
-    appendFileSync(filePath, line, 'utf-8')
+    enqueueJsonlWrite(filePath, line)
 
     // 追加消息时更新 updatedAt，若已归档则自动恢复活跃
     const index = readIndex()
@@ -248,7 +326,7 @@ export function appendSDKMessages(id: string, messages: SDKMessage[]): void {
       }
       return sanitized
     }).join('\n') + '\n'
-    appendFileSync(filePath, lines, 'utf-8')
+    enqueueJsonlWrite(filePath, lines)
   } catch (error) {
     console.error(`[Agent 会话] 追加 SDKMessage 失败 (${id}):`, error)
     throw new Error('追加 SDKMessage 失败')

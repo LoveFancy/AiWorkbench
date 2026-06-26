@@ -125,8 +125,8 @@ import { startWorkspaceWatcher, stopWorkspaceWatcher } from './lib/workspace-wat
 import { registerAuthIpcHandlers } from '../auth'
 import { registerLogUploadIpc } from './lib/log-upload-ipc'
 import './lib/issue-report'
-import { loadCacheFromDisk, initModelRefresh } from '../platform-models/model-service'
-import { registerPlatformModelsIpcHandlers } from '../platform-models'
+import { loadCacheFromDisk, initModelRefresh } from './lib/platform-models-service'
+import { registerPlatformModelsIpcHandlers } from './lib/platform-models-ipc'
 import { startChatToolsWatcher, stopChatToolsWatcher } from './lib/chat-tools-watcher'
 import { getIsQuitting, setQuitting } from './lib/app-lifecycle'
 import {
@@ -557,14 +557,14 @@ elapsed('模块加载完成，等待 app.whenReady()')
 app.whenReady().then(() => {
   elapsed('app.whenReady() 回调触发，开始 bootstrap')
   return bootstrap()
+}).then(() => {
+  elapsed('bootstrap 完成，等待渲染进程加载（主进程空闲，无后台任务）')
 }).catch(handleBootstrapFailure)
 
 /**
  * 启动主流程。所有非关键步骤用 safeRun / safeAwait 隔离，
  * 单点失败不应阻止窗口和托盘的创建（用户至少要能看到界面）。
  */
-// 兜底定时器：ready-to-show 未触发时，最迟在此时间后强制启动后台重活
-const BACKGROUND_INIT_FALLBACK_MS = 3000
 // 看门狗：后台重活超过此时间未完成则打印告警（不阻断）
 const BACKGROUND_INIT_WATCHDOG_MS = 20000
 async function bootstrap(): Promise<void> {
@@ -583,16 +583,13 @@ async function bootstrap(): Promise<void> {
   safeRun('seedDefaultSkills', seedDefaultSkills)
 
   // 同步默认插件到 ~/.workmate/default-plugins/
-  seedDefaultPlugins()
+  safeRun('seedDefaultPlugins', seedDefaultPlugins)
 
   // 同步默认连接器到 ~/.workmate/default-connectors/
   safeRun('seedDefaultConnectors', seedDefaultConnectors)
 
-  // 为已有工作区补全缺失的连接器，并刷新预设连接器元数据
-  safeRun('syncDefaultConnectorsToAllWorkspaces', syncDefaultConnectorsToAllWorkspaces)
-
-  // 升级所有工作区中版本过旧的默认 Skills
-  safeRun('upgradeDefaultSkillsInWorkspaces', upgradeDefaultSkillsInWorkspaces)
+  // 工作区连接器同步和 Skills 升级已移至后台初始化（runBackgroundInit），
+  // 避免其同步文件 I/O（cpSync/readFileSync/writeFileSync）阻塞首屏关键路径。
   elapsed('bootstrap: Skills/Plugins 初始化完成')
 
   // Create application menu
@@ -667,8 +664,8 @@ async function bootstrap(): Promise<void> {
     safeRun('initAutoUpdater', () => initAutoUpdater(mainWindow!))
   }
 
-  // 预创建快速任务窗口（隐藏状态，首次唤起秒开）
-  safeRun('createQuickTaskWindow', createQuickTaskWindow)
+  // 预创建快速任务窗口已移至后台初始化（ready-to-show 之后），
+  // 避免其 loadFile 与主窗口渲染进程并发从 asar 加载，在受管机上触发 AV 串行化。
   if (getSettings().voiceDictation?.enabled === true) {
     safeRun('createVoiceDictationWindow', createVoiceDictationWindow)
   }
@@ -724,13 +721,21 @@ async function bootstrap(): Promise<void> {
     }
   })
 
-  // 兜底：万一 ready-to-show 不触发（例如页面加载失败），也要保证后台重活被启动
-  setTimeout(scheduleBackgroundInit, BACKGROUND_INIT_FALLBACK_MS)
+  // 后台初始化由 createWindow 的 ready-to-show 回调触发。
+  // 兜底：极端情况下渲染进程被 AV/EDR 拦截，ready-to-show 永远不触发，
+  // 120s 后强制启动后台初始化。正常情况 ~10s 内就会触发，不会走到这里。
+  const BACKGROUND_INIT_FALLBACK_MS = 120_000
+  setTimeout(() => {
+    if (!backgroundInitStarted) {
+      console.warn('[启动耗时] ⚠️ ready-to-show 超时未触发，走兜底强制启动后台初始化')
+      scheduleBackgroundInit()
+    }
+  }, BACKGROUND_INIT_FALLBACK_MS)
 }
 
 /**
- * 调度后台重活：仅执行一次（createWindow 的 ready-to-show 与 bootstrap 兜底定时器
- * 都可能触发它），并再让出一帧给合成器，确保渲染层的 loading 画面已呈现，
+ * 调度后台重活：仅执行一次，由 createWindow 的 ready-to-show 回调触发。
+ * 让出一帧给合成器，确保渲染层的 loading 画面已呈现，
  * 之后才开始 initializeRuntime——后者内部用 execSync 会阻塞主进程事件循环。
  */
 let backgroundInitStarted = false

@@ -33,7 +33,7 @@ import {
   resolveOpenAIModelsUrl,
 } from '@proma/core'
 import { ensurePresetChannels } from './channel-presets.ts'
-import { getPlatformChannel } from '../../platform-models/model-service'
+import { getPlatformChannel } from './platform-models-service'
 import { testChannelModelWithFetch } from './channel-model-tester.ts'
 import pkg from '../../../package.json' with { type: 'json' }
 

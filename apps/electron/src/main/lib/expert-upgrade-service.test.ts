@@ -11,6 +11,7 @@ function makeSummary(version: string): ServerExpertGroupSummary {
     mainRoleName: '产品负责人',
     expertType: 'team',
     subagentCount: 1,
+    subagents: [],
     subagentLabels: {},
     tags: [],
     samplePrompts: [],

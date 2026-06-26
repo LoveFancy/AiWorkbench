@@ -84,11 +84,17 @@ export async function initializeRuntime(options: RuntimeInitOptions = {}): Promi
   const detectShell = process.platform === 'win32' && !options.skipShellDetection
 
   const [nodeStatus, bunStatus, gitStatus, gitBashStatus] = await Promise.all([
-    options.skipNodeDetection ? Promise.resolve(skippedNode) : detectNodeRuntime(),
-    options.skipBunDetection ? Promise.resolve(skippedBun) : detectBunRuntime(),
-    options.skipGitDetection ? Promise.resolve(skippedGit) : detectGitRuntime(),
+    options.skipNodeDetection
+      ? Promise.resolve(skippedNode)
+      : detectNodeRuntime().then((r) => { console.log(`[perf] detectNodeRuntime → ${Date.now() - startTime}ms (累计)`); return r }),
+    options.skipBunDetection
+      ? Promise.resolve(skippedBun)
+      : detectBunRuntime().then((r) => { console.log(`[perf] detectBunRuntime → ${Date.now() - startTime}ms (累计)`); return r }),
+    options.skipGitDetection
+      ? Promise.resolve(skippedGit)
+      : detectGitRuntime().then((r) => { console.log(`[perf] detectGitRuntime → ${Date.now() - startTime}ms (累计)`); return r }),
     detectShell
-      ? detectGitBash().catch((error) => {
+      ? detectGitBash().then((r) => { console.log(`[perf] detectGitBash → ${Date.now() - startTime}ms (累计)`); return r }).catch((error) => {
           console.error('[运行时初始化] Shell 环境检测失败:', error)
           return null
         })

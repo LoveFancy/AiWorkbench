@@ -1223,6 +1223,8 @@ export interface ServerExpertGroupSummary {
   mainRoleName: string
   expertType: 'agent' | 'team'
   subagentCount: number
+  /** SubAgent 调用名列表 */
+  subagents: string[]
   subagentLabels: Record<string, string>
   tags: string[]
   samplePrompts: string[]

@@ -20,8 +20,8 @@ import {
   platformApiKeyAtom,
   platformModelsLoadingAtom,
   platformModelsLastFetchAtom,
-} from './atoms'
-import type { PlatformModelInfo } from './types'
+  type PlatformModelInfo,
+} from '@/atoms/platform-models'
 
 export function PlatformModelsSection(): React.ReactElement {
   const authState = useAtomValue(authStateAtom)
@@ -81,7 +81,7 @@ export function PlatformModelsSection(): React.ReactElement {
   /** 打开使用手册并定位到防火墙申请章节 */
   const handleOpenManualToFirewall = React.useCallback(() => {
     // 传入章节标题文本，由 ManualView 按文本匹配定位
-    setManualSection('内部网络与 API Key 前置条件')
+    setManualSection('内部网络防火墙开通')
     const result = openTab(tabs, { type: 'manual', sessionId: MANUAL_TAB_ID, title: MANUAL_TAB_TITLE })
     setTabs(result.tabs)
     setActiveTabId(result.activeTabId)

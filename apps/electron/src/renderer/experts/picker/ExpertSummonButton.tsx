@@ -84,9 +84,9 @@ export function ExpertSummonButton({ variant = 'header', sessionId }: ExpertSumm
     }
   }, [currentSession?.expertGroupId, groups.length, refresh])
 
-  const handleSummon = React.useCallback((group: AgentExpertGroupInfo): void => {
+  const handleSummon = React.useCallback((group: AgentExpertGroupInfo, samplePrompt?: string): void => {
     setOpen(false)
-    void summon(group)
+    void summon(group, samplePrompt)
   }, [summon])
 
   const handleOpenExpertsPage = React.useCallback((): void => {

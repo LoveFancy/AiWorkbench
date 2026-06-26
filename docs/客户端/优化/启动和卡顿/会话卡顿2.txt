@@ -1,0 +1,183 @@
+2026-06-25T08:36:00.063Z [INFO] [性能诊断][IPC][agent:send-message] 飞书镜像初始化完成 { sessionId: '7441c242-8ee9-42d7-8f17-3cc01cc4c80b', durationMs: 0 }
+2026-06-25T08:36:00.064Z [INFO] [DIAG][Agent 服务] runAgent 入口: sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, channelId=a05063de-3c39-4ee9-b893-e3a3686172dc, modelId=saas-deepseek-v4-pro, workspaceId=670786ba-f994-4096-9fce-ace9c3f56417, ts=1782376560064
+2026-06-25T08:36:00.070Z [INFO] [Agent 会话] 已更新会话: 文档处理专家 · 新任务 (7441c242-8ee9-42d7-8f17-3cc01cc4c80b)
+2026-06-25T08:36:00.071Z [INFO] [DIAG][Agent 服务] 即将调用 orchestrator.sendMessage, ts=1782376560071
+2026-06-25T08:36:00.073Z [INFO] [DIAG][Agent 编排] [sendMessage 入口] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=0ms, ts=1782376560073
+2026-06-25T08:36:00.078Z [INFO] [Agent 会话] 已更新会话: 文档处理专家 · 新任务 (7441c242-8ee9-42d7-8f17-3cc01cc4c80b)
+2026-06-25T08:36:00.080Z [INFO] [Agent 编排] 渠道信息: channelId=a05063de-3c39-4ee9-b893-e3a3686172dc, modelId=saas-deepseek-v4-pro, provider=huatai-anthropic, baseUrl="http://168.63.65.40:8090/llm-service/v1/messages", apiKey=claudeco...f0b0
+2026-06-25T08:36:00.080Z [INFO] [DIAG][Agent 编排] [渠道/apiKey 解密完成] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=7ms, ts=1782376560080
+2026-06-25T08:36:00.080Z [INFO] [DIAG][Agent 编排] [开始构建 sdkEnv (await buildSdkEnv)] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=7ms, ts=1782376560080
+2026-06-25T08:36:00.082Z [INFO] [代理配置] 配置文件不存在，使用默认配置
+2026-06-25T08:36:00.082Z [INFO] [Agent 编排] 配置 Shell 环境: Git Bash (d:\Program Files\Git\usr\bin\bash.exe)
+2026-06-25T08:36:00.082Z [INFO] [DIAG][Agent 编排] [sdkEnv 构建完成] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=9ms, ts=1782376560082
+2026-06-25T08:36:00.082Z [INFO] [DIAG][Agent 编排] [读取 sessionMeta] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=9ms, ts=1782376560082
+2026-06-25T08:36:00.083Z [INFO] [Agent 编排] Resume 状态: sdkSessionId=无, proma sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b
+2026-06-25T08:36:00.085Z [INFO] [DIAG][Agent 编排] [用户消息已持久化, onRunStarted 已触发] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=12ms, ts=1782376560085
+2026-06-25T08:36:00.085Z [INFO] [DIAG][Agent 编排] [开始 resolveAutoModeConfig (await)] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=12ms, ts=1782376560085
+2026-06-25T08:36:00.088Z [INFO] [DIAG][Agent 编排] [resolveAutoModeConfig 完成] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=15ms, ts=1782376560088
+2026-06-25T08:36:00.088Z [INFO] [DIAG][Agent 编排] [开始动态导入 SDK (await import)] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=15ms, ts=1782376560088
+2026-06-25T08:36:00.207Z [INFO] [DIAG][Agent 编排] [SDK 动态导入完成] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=134ms, ts=1782376560207
+2026-06-25T08:36:00.207Z [INFO] [DIAG][Agent 编排] [开始 resolveSDKCliPath] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=134ms, ts=1782376560207
+2026-06-25T08:36:00.209Z [INFO] [Agent 编排] SDK binary 路径 (createRequire): D:\workmate\resources\app.asar\node_modules\@anthropic-ai\claude-agent-sdk-win32-x64\claude.exe
+2026-06-25T08:36:00.209Z [INFO] [DIAG][Agent 编排] [resolveSDKCliPath 完成: D:\workmate\resources\app.asar.unpacked\node_modules\@anthropic-ai\claude-agent-sdk-win32-x64\claude.exe] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=136ms, ts=1782376560209
+2026-06-25T08:36:00.209Z [INFO] [Agent 编排] 启动 SDK — binary: D:\workmate\resources\app.asar.unpacked\node_modules\@anthropic-ai\claude-agent-sdk-win32-x64\claude.exe, 模型: saas-deepseek-v4-pro, resume: 无
+2026-06-25T08:36:00.209Z [INFO] [DIAG][Agent 编排] [开始确定 Agent 工作目录] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=136ms, ts=1782376560209
+2026-06-25T08:36:00.210Z [INFO] [Agent 编排] 使用 session 级别 cwd: C:\Users\010396\.proma\agent-workspaces\default\7441c242-8ee9-42d7-8f17-3cc01cc4c80b (默认工作区/7441c242-8ee9-42d7-8f17-3cc01cc4c80b)
+2026-06-25T08:36:00.215Z [INFO] [Agent 编排] 无 sdkSessionId，将作为新会话启动（回填历史上下文）
+2026-06-25T08:36:00.215Z [INFO] [DIAG][Agent 编排] [开始写入 SDK 项目设置 (.claude/settings.json)] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=142ms, ts=1782376560215
+2026-06-25T08:36:00.217Z [INFO] [Agent 编排] 已加载 3 个 MCP 服务器
+2026-06-25T08:36:00.218Z [INFO] [DIAG][Agent 编排] [injectMemoryTools 完成, 开始 injectNanoBananaTools (await)] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=145ms, ts=1782376560218
+2026-06-25T08:36:00.219Z [INFO] [DIAG][Agent 编排] [injectNanoBananaTools 完成, 开始 injectWebSearchTools (await)] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=146ms, ts=1782376560219
+2026-06-25T08:36:00.243Z [INFO] [WorkMate WebSearch MCP] 已注入内置联网搜索工具 (workmate-web-search)
+2026-06-25T08:36:00.243Z [INFO] [DIAG][Agent 编排] [injectWebSearchTools 完成, 开始 injectAutomationMcpServer (await)] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=170ms, ts=1782376560243
+2026-06-25T08:36:00.247Z [INFO] [Agent 编排] 已注入内置定时任务工具 (automation)
+2026-06-25T08:36:00.247Z [INFO] [DIAG][Agent 编排] [injectAutomationMcpServer 完成] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=174ms, ts=1782376560247
+2026-06-25T08:36:00.277Z [INFO] [Agent 编排] 已加载专家团: 文档处理专家
+2026-06-25T08:36:00.277Z [INFO] [DIAG][Agent 编排] [开始 buildDynamicContext] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=204ms, ts=1782376560277
+2026-06-25T08:36:00.282Z [INFO] [DIAG][Agent 编排] [开始 buildContextPrompt] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=209ms, ts=1782376560282
+2026-06-25T08:36:00.283Z [INFO] [Agent 编排] 无 resume，已回填历史上下文（最近 20 条消息）
+2026-06-25T08:36:00.284Z [INFO] [Agent 编排] 权限模式: bypassPermissions（外部覆盖）
+2026-06-25T08:36:00.284Z [INFO] [DIAG][Agent 编排] [权限模式已确定, 开始构建 canUseTool 回调] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=211ms, ts=1782376560284
+2026-06-25T08:36:00.314Z [INFO] [Agent 编排] 开始通过 Adapter 遍历事件流...
+2026-06-25T08:36:00.314Z [INFO] [DIAG][Agent 编排] [queryOptions 构建完成, 即将进入重试循环] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=241ms, ts=1782376560314
+2026-06-25T08:36:00.314Z [INFO] [DIAG][Agent 编排] [即将调用 sdkRunSingleAttempt, attempt=1, model=saas-deepseek-v4-pro, resume=无] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=241ms, ts=1782376560314
+2026-06-25T08:36:00.314Z [INFO] [DIAG][SDK Runner] [sdkRunSingleAttempt 入口] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, attempt=1, elapsed=0ms, ts=1782376560314
+2026-06-25T08:36:00.314Z [INFO] [DIAG][SDK Runner] [调用 deps.query() 获取 queryIterable] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, attempt=1, elapsed=0ms, ts=1782376560314
+2026-06-25T08:36:00.315Z [INFO] [DIAG][SDK Runner] [deps.query() 返回, 获取 asyncIterator] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, attempt=1, elapsed=1ms, ts=1782376560315
+2026-06-25T08:36:00.315Z [INFO] [DIAG][SDK Runner] [asyncIterator 已获取] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, attempt=1, elapsed=1ms, ts=1782376560315
+2026-06-25T08:36:00.315Z [INFO] [DIAG][SDK Runner] [while 循环首次迭代, 调用 queryIterator.next()] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, attempt=1, elapsed=1ms, ts=1782376560315
+2026-06-25T08:36:00.315Z [INFO] [DIAG][Claude 适配器] [query() 入口] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=0ms, ts=1782376560315
+2026-06-25T08:36:00.315Z [INFO] [DIAG][Claude 适配器] [开始动态导入 SDK (await import)] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=0ms, ts=1782376560315
+2026-06-25T08:36:00.315Z [INFO] [DIAG][SDK Runner] [首次 Promise.race 开始等待...] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, attempt=1, elapsed=1ms, ts=1782376560315
+2026-06-25T08:36:00.315Z [INFO] [DIAG][Claude 适配器] [SDK 动态导入完成] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=0ms, ts=1782376560315
+2026-06-25T08:36:00.315Z [INFO] [DIAG][Claude 适配器] [sdkOptions 构建完成, 即将创建 messageChannel] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=0ms, ts=1782376560315
+2026-06-25T08:36:00.315Z [INFO] [DIAG][Claude 适配器] [messageChannel 已创建] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=0ms, ts=1782376560315
+2026-06-25T08:36:00.315Z [INFO] [DIAG][Claude 适配器] [初始 prompt 已入队, 即将调用 sdk.query()] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=0ms, ts=1782376560315
+2026-06-25T08:36:00.317Z [INFO] [DIAG][Claude 适配器] [spawnClaudeCodeProcess 被调用: command=D:\workmate\resources\app.asar.unpacked\node_modules\@anthropic-ai\claude-agent-sdk-win32-x64\claude.exe, args=[--output-format, stream-json, --verbose, --input-format, stream-json...], cwd=C:\Users\010396\.proma\agent-workspaces\default\7441c242-8ee9-42d7-8f17-3cc01cc4c80b] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=2ms, ts=1782376560317
+2026-06-25T08:36:03.007Z [INFO] [DIAG][Claude 适配器] [子进程已启动: pid=139876] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=2692ms, ts=1782376563007
+2026-06-25T08:36:03.010Z [INFO] [DIAG][Claude 适配器] [sdk.query() 已返回 iterator] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=2695ms, ts=1782376563010
+2026-06-25T08:36:03.010Z [INFO] [DIAG][Claude 适配器] [activeQueries/activeChannels 已设置] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=2695ms, ts=1782376563010
+2026-06-25T08:36:03.010Z [INFO] [DIAG][Claude 适配器] [queryReady 已 resolve, 即将进入 for-await 循环] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=2695ms, ts=1782376563010
+2026-06-25T08:37:31.437Z [WARN] [DIAG][Agent 编排] ⚠️ Event Loop 延迟: 91364ms (>50ms 表示主线程拥堵)
+2026-06-25T08:37:31.437Z [WARN] [Agent 编排] ⚠️ SDK 已静默 91s (attempt 1/25, model=saas-deepseek-v4-pro, resume=无, stderrLen=0)
+2026-06-25T08:37:31.482Z [INFO] [DIAG][Claude 适配器] [收到第一条 SDK 消息: type=system, subtype=hook_started] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=91167ms, ts=1782376651482
+2026-06-25T08:37:31.489Z [INFO] [Agent 会话] 已更新会话: 文档处理专家 · 新任务 (7441c242-8ee9-42d7-8f17-3cc01cc4c80b)
+2026-06-25T08:37:31.489Z [INFO] [Agent 编排] 已保存 SDK session_id: fdb3a957-e437-4af6-8eba-004936a62dba
+2026-06-25T08:37:31.490Z [INFO] [DIAG][SDK Runner] [首次 Promise.race 返回: kind=event, done=false] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, attempt=1, elapsed=91176ms, ts=1782376651490
+2026-06-25T08:37:31.490Z [INFO] [DIAG][SDK Runner] [收到消息 #1: type=system, subtype=hook_started] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, attempt=1, elapsed=91176ms, ts=1782376651490
+2026-06-25T08:37:31.499Z [INFO] [DIAG][SDK Runner] [收到消息 #2: type=system, subtype=hook_response] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, attempt=1, elapsed=91185ms, ts=1782376651499
+2026-06-25T08:37:31.503Z [INFO] [Agent 编排] SDK 确认模型: saas-deepseek-v4-pro
+2026-06-25T08:37:31.503Z [INFO] [DIAG][SDK Runner] [收到消息 #3: type=system, subtype=init] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, attempt=1, elapsed=91189ms, ts=1782376651503
+2026-06-25T08:37:31.503Z [INFO] [DIAG][SDK Runner] [收到消息 #4: type=assistant] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, attempt=1, elapsed=91189ms, ts=1782376651503
+2026-06-25T08:37:31.503Z [INFO] [DIAG][SDK Runner] [收到消息 #5: type=assistant] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, attempt=1, elapsed=91189ms, ts=1782376651503
+2026-06-25T08:37:47.910Z [WARN] [Agent 编排] ⚠️ SDK 已静默 16s (attempt 1/25, model=saas-deepseek-v4-pro, resume=无, stderrLen=0)
+2026-06-25T08:37:49.186Z [INFO] [DIAG][SDK Runner] [收到消息 #6: type=result, subtype=success] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, attempt=1, elapsed=108872ms, ts=1782376669186
+2026-06-25T08:37:51.187Z [WARN] [Agent 编排] drain timeout: SDK iterator 在 result 后 2000ms 内未关闭，强制退出
+2026-06-25T08:37:51.187Z [INFO] [DIAG][SDK Runner] [finally 块执行] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, attempt=1, elapsed=110873ms, ts=1782376671187
+2026-06-25T08:37:51.187Z [INFO] [DIAG][Agent 编排] [sdkRunSingleAttempt 返回, kind=success, shouldRetry=undefined, recoveryType=undefined] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=111114ms, ts=1782376671187
+2026-06-25T08:37:51.191Z [INFO] [DIAG][Agent 编排] [sendMessage finally 块执行, 清理资源] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=111118ms, ts=1782376671191
+2026-06-25T08:37:51.191Z [INFO] [DIAG][Agent 服务] orchestrator.sendMessage 正常返回, sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, ts=1782376671191
+2026-06-25T08:37:51.191Z [INFO] [性能诊断][IPC][agent:send-message] 完成 { sessionId: '7441c242-8ee9-42d7-8f17-3cc01cc4c80b', durationMs: 111130 }
+2026-06-25T08:37:59.320Z [INFO] [观测上报] 开始上报, url=%s, events=%d http://eip.htsc.com.cn/workmate/observability/events 1
+2026-06-25T08:37:59.338Z [INFO] [DIAG][Claude 适配器] [query() finally 块执行, 清理资源] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=119023ms, ts=1782376679338
+2026-06-25T08:45:38.163Z [INFO] [更新] setStatus: %s (win=%s) checking 有
+2026-06-25T08:45:38.163Z [INFO] [升级检测] 请求 %s (current=%s platform=%s arch=%s) /workmate/upgrade/check 0.12.51 win32 x64
+2026-06-25T08:45:41.400Z [INFO] [升级检测] 无可用更新
+2026-06-25T08:45:41.400Z [INFO] [更新] 无可用更新, hint=%s 无
+2026-06-25T08:45:41.400Z [INFO] [更新] setStatus: %s (win=%s) idle 有
+2026-06-25T08:45:41.401Z [INFO] [更新] 下次周期检测 %d 小时后 8
+2026-06-25T16:44:02.207Z [INFO] [更新] setStatus: %s (win=%s) checking 有
+2026-06-25T16:44:02.208Z [INFO] [升级检测] 请求 %s (current=%s platform=%s arch=%s) /workmate/upgrade/check 0.12.51 win32 x64
+2026-06-25T16:44:05.205Z [INFO] [升级检测] 无可用更新
+2026-06-25T16:44:05.205Z [INFO] [更新] 无可用更新, hint=%s 无
+2026-06-25T16:44:05.205Z [INFO] [更新] setStatus: %s (win=%s) idle 有
+2026-06-25T16:44:05.205Z [INFO] [更新] 下次周期检测 %d 小时后 7
+2026-06-25T23:44:35.340Z [INFO] [更新] setStatus: %s (win=%s) checking 有
+2026-06-25T23:44:35.340Z [INFO] [升级检测] 请求 %s (current=%s platform=%s arch=%s) /workmate/upgrade/check 0.12.51 win32 x64
+2026-06-25T23:44:38.270Z [INFO] [升级检测] 无可用更新
+2026-06-25T23:44:38.270Z [INFO] [更新] 无可用更新, hint=%s 无
+2026-06-25T23:44:38.270Z [INFO] [更新] setStatus: %s (win=%s) idle 有
+2026-06-25T23:44:38.270Z [INFO] [更新] 下次周期检测 %d 小时后 7
+2026-06-26T01:00:18.691Z [INFO] [性能诊断][IPC][agent:send-message] 入口 {
+  sessionId: '7441c242-8ee9-42d7-8f17-3cc01cc4c80b',
+  channelId: 'a05063de-3c39-4ee9-b893-e3a3686172dc',
+  modelId: 'saas-deepseek-v4-pro',
+  workspaceId: '670786ba-f994-4096-9fce-ace9c3f56417',
+  userMessageLength: 1,
+  attachmentCount: 0,
+  additionalDirectoryCount: 0,
+  selectedMcpServerCount: 0
+}
+2026-06-26T01:00:18.693Z [INFO] [性能诊断][IPC][agent:send-message] 飞书镜像初始化完成 { sessionId: '7441c242-8ee9-42d7-8f17-3cc01cc4c80b', durationMs: 0 }
+2026-06-26T01:00:18.693Z [INFO] [DIAG][Agent 服务] runAgent 入口: sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, channelId=a05063de-3c39-4ee9-b893-e3a3686172dc, modelId=saas-deepseek-v4-pro, workspaceId=670786ba-f994-4096-9fce-ace9c3f56417, ts=1782435618693
+2026-06-26T01:00:18.699Z [INFO] [Agent 会话] 已更新会话: 文档处理专家 · 新任务 (7441c242-8ee9-42d7-8f17-3cc01cc4c80b)
+2026-06-26T01:00:18.699Z [INFO] [DIAG][Agent 服务] 即将调用 orchestrator.sendMessage, ts=1782435618699
+2026-06-26T01:00:18.699Z [INFO] [DIAG][Agent 编排] [sendMessage 入口] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=0ms, ts=1782435618699
+2026-06-26T01:00:18.703Z [INFO] [Agent 会话] 已更新会话: 文档处理专家 · 新任务 (7441c242-8ee9-42d7-8f17-3cc01cc4c80b)
+2026-06-26T01:00:18.709Z [INFO] [Agent 编排] 渠道信息: channelId=a05063de-3c39-4ee9-b893-e3a3686172dc, modelId=saas-deepseek-v4-pro, provider=huatai-anthropic, baseUrl="http://168.63.65.40:8090/llm-service/v1/messages", apiKey=claudeco...f0b0
+2026-06-26T01:00:18.709Z [INFO] [DIAG][Agent 编排] [渠道/apiKey 解密完成] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=10ms, ts=1782435618709
+2026-06-26T01:00:18.709Z [INFO] [DIAG][Agent 编排] [开始构建 sdkEnv (await buildSdkEnv)] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=10ms, ts=1782435618709
+2026-06-26T01:00:18.710Z [INFO] [代理配置] 配置文件不存在，使用默认配置
+2026-06-26T01:00:18.710Z [INFO] [Agent 编排] 配置 Shell 环境: Git Bash (d:\Program Files\Git\usr\bin\bash.exe)
+2026-06-26T01:00:18.710Z [INFO] [DIAG][Agent 编排] [sdkEnv 构建完成] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=11ms, ts=1782435618710
+2026-06-26T01:00:18.710Z [INFO] [DIAG][Agent 编排] [读取 sessionMeta] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=11ms, ts=1782435618710
+2026-06-26T01:00:18.711Z [INFO] [Agent 编排] Resume 状态: sdkSessionId=fdb3a957-e437-4af6-8eba-004936a62dba, proma sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b
+2026-06-26T01:00:18.714Z [INFO] [DIAG][Agent 编排] [用户消息已持久化, onRunStarted 已触发] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=15ms, ts=1782435618714
+2026-06-26T01:00:18.714Z [INFO] [DIAG][Agent 编排] [开始 resolveAutoModeConfig (await)] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=15ms, ts=1782435618714
+2026-06-26T01:00:18.715Z [INFO] [DIAG][Agent 编排] [resolveAutoModeConfig 完成] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=16ms, ts=1782435618715
+2026-06-26T01:00:18.715Z [INFO] [DIAG][Agent 编排] [开始动态导入 SDK (await import)] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=16ms, ts=1782435618715
+2026-06-26T01:00:18.715Z [INFO] [DIAG][Agent 编排] [SDK 动态导入完成] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=16ms, ts=1782435618715
+2026-06-26T01:00:18.716Z [INFO] [DIAG][Agent 编排] [开始 resolveSDKCliPath] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=17ms, ts=1782435618716
+2026-06-26T01:00:18.718Z [INFO] [Agent 编排] SDK binary 路径 (createRequire): D:\workmate\resources\app.asar\node_modules\@anthropic-ai\claude-agent-sdk-win32-x64\claude.exe
+2026-06-26T01:00:18.718Z [INFO] [DIAG][Agent 编排] [resolveSDKCliPath 完成: D:\workmate\resources\app.asar.unpacked\node_modules\@anthropic-ai\claude-agent-sdk-win32-x64\claude.exe] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=19ms, ts=1782435618718
+2026-06-26T01:00:18.718Z [INFO] [Agent 编排] 启动 SDK — binary: D:\workmate\resources\app.asar.unpacked\node_modules\@anthropic-ai\claude-agent-sdk-win32-x64\claude.exe, 模型: saas-deepseek-v4-pro, resume: fdb3a957-e437-4af6-8eba-004936a62dba
+2026-06-26T01:00:18.718Z [INFO] [DIAG][Agent 编排] [开始确定 Agent 工作目录] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=19ms, ts=1782435618718
+2026-06-26T01:00:18.721Z [INFO] [Agent 编排] 使用 session 级别 cwd: C:\Users\010396\.proma\agent-workspaces\default\7441c242-8ee9-42d7-8f17-3cc01cc4c80b (默认工作区/7441c242-8ee9-42d7-8f17-3cc01cc4c80b)
+2026-06-26T01:00:18.730Z [INFO] [Agent 编排] 将尝试 resume: fdb3a957-e437-4af6-8eba-004936a62dba
+2026-06-26T01:00:18.730Z [INFO] [DIAG][Agent 编排] [开始写入 SDK 项目设置 (.claude/settings.json)] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=31ms, ts=1782435618730
+2026-06-26T01:00:18.732Z [INFO] [Agent 编排] 将直接使用已保存的 sdkSessionId 进行 resume: fdb3a957-e437-4af6-8eba-004936a62dba
+2026-06-26T01:00:18.736Z [INFO] [Agent 编排] 已加载 3 个 MCP 服务器
+2026-06-26T01:00:18.736Z [INFO] [DIAG][Agent 编排] [injectMemoryTools 完成, 开始 injectNanoBananaTools (await)] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=37ms, ts=1782435618736
+2026-06-26T01:00:18.737Z [INFO] [DIAG][Agent 编排] [injectNanoBananaTools 完成, 开始 injectWebSearchTools (await)] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=38ms, ts=1782435618737
+2026-06-26T01:00:18.741Z [INFO] [WorkMate WebSearch MCP] 已注入内置联网搜索工具 (workmate-web-search)
+2026-06-26T01:00:18.741Z [INFO] [DIAG][Agent 编排] [injectWebSearchTools 完成, 开始 injectAutomationMcpServer (await)] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=42ms, ts=1782435618741
+2026-06-26T01:00:18.746Z [INFO] [Agent 编排] 已注入内置定时任务工具 (automation)
+2026-06-26T01:00:18.746Z [INFO] [DIAG][Agent 编排] [injectAutomationMcpServer 完成] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=47ms, ts=1782435618746
+2026-06-26T01:00:18.905Z [INFO] [Agent 编排] 已加载专家团: 文档处理专家
+2026-06-26T01:00:18.905Z [INFO] [DIAG][Agent 编排] [开始 buildDynamicContext] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=206ms, ts=1782435618905
+2026-06-26T01:00:18.906Z [INFO] [DIAG][Agent 编排] [开始 buildContextPrompt] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=207ms, ts=1782435618906
+2026-06-26T01:00:18.906Z [INFO] [Agent 编排] 使用 resume 模式，SDK session ID: fdb3a957-e437-4af6-8eba-004936a62dba
+2026-06-26T01:00:18.906Z [INFO] [Agent 编排] 权限模式: bypassPermissions（外部覆盖）
+2026-06-26T01:00:18.906Z [INFO] [DIAG][Agent 编排] [权限模式已确定, 开始构建 canUseTool 回调] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=207ms, ts=1782435618906
+2026-06-26T01:00:18.930Z [INFO] [Agent 编排] 开始通过 Adapter 遍历事件流...
+2026-06-26T01:00:18.930Z [INFO] [DIAG][Agent 编排] [queryOptions 构建完成, 即将进入重试循环] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=231ms, ts=1782435618930
+2026-06-26T01:00:18.930Z [INFO] [DIAG][Agent 编排] [即将调用 sdkRunSingleAttempt, attempt=1, model=saas-deepseek-v4-pro, resume=fdb3a957-e437-4af6-8eba-004936a62dba] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=231ms, ts=1782435618930
+2026-06-26T01:00:18.930Z [INFO] [DIAG][SDK Runner] [sdkRunSingleAttempt 入口] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, attempt=1, elapsed=0ms, ts=1782435618930
+2026-06-26T01:00:18.930Z [INFO] [DIAG][SDK Runner] [调用 deps.query() 获取 queryIterable] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, attempt=1, elapsed=0ms, ts=1782435618930
+2026-06-26T01:00:18.930Z [INFO] [DIAG][SDK Runner] [deps.query() 返回, 获取 asyncIterator] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, attempt=1, elapsed=0ms, ts=1782435618930
+2026-06-26T01:00:18.930Z [INFO] [DIAG][SDK Runner] [asyncIterator 已获取] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, attempt=1, elapsed=0ms, ts=1782435618930
+2026-06-26T01:00:18.930Z [INFO] [DIAG][SDK Runner] [while 循环首次迭代, 调用 queryIterator.next()] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, attempt=1, elapsed=0ms, ts=1782435618930
+2026-06-26T01:00:18.930Z [INFO] [DIAG][Claude 适配器] [query() 入口] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=0ms, ts=1782435618930
+2026-06-26T01:00:18.930Z [INFO] [DIAG][Claude 适配器] [开始动态导入 SDK (await import)] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=0ms, ts=1782435618930
+2026-06-26T01:00:18.930Z [INFO] [DIAG][SDK Runner] [首次 Promise.race 开始等待...] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, attempt=1, elapsed=0ms, ts=1782435618930
+2026-06-26T01:00:18.930Z [INFO] [DIAG][Claude 适配器] [SDK 动态导入完成] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=0ms, ts=1782435618930
+2026-06-26T01:00:18.930Z [INFO] [DIAG][Claude 适配器] [sdkOptions 构建完成, 即将创建 messageChannel] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=0ms, ts=1782435618930
+2026-06-26T01:00:18.931Z [INFO] [DIAG][Claude 适配器] [messageChannel 已创建] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=1ms, ts=1782435618931
+2026-06-26T01:00:18.931Z [INFO] [DIAG][Claude 适配器] [初始 prompt 已入队, 即将调用 sdk.query()] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=1ms, ts=1782435618931
+2026-06-26T01:00:18.932Z [INFO] [DIAG][Claude 适配器] [spawnClaudeCodeProcess 被调用: command=D:\workmate\resources\app.asar.unpacked\node_modules\@anthropic-ai\claude-agent-sdk-win32-x64\claude.exe, args=[--output-format, stream-json, --verbose, --input-format, stream-json...], cwd=C:\Users\010396\.proma\agent-workspaces\default\7441c242-8ee9-42d7-8f17-3cc01cc4c80b] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=2ms, ts=1782435618932
+2026-06-26T01:00:22.277Z [INFO] [DIAG][Claude 适配器] [子进程已启动: pid=149388] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=3347ms, ts=1782435622277
+2026-06-26T01:00:22.279Z [INFO] [DIAG][Claude 适配器] [sdk.query() 已返回 iterator] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=3349ms, ts=1782435622279
+2026-06-26T01:00:22.279Z [INFO] [DIAG][Claude 适配器] [activeQueries/activeChannels 已设置] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=3349ms, ts=1782435622279
+2026-06-26T01:00:22.279Z [INFO] [DIAG][Claude 适配器] [queryReady 已 resolve, 即将进入 for-await 循环] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=3349ms, ts=1782435622279
+2026-06-26T01:01:53.152Z [WARN] [DIAG][Agent 编排] ⚠️ Event Loop 延迟: 94453ms (>50ms 表示主线程拥堵)
+2026-06-26T01:01:53.153Z [WARN] [Agent 编排] ⚠️ SDK 已静默 94s (attempt 1/25, model=saas-deepseek-v4-pro, resume=fdb3a957-e437-4af6-8eba-004936a62dba, stderrLen=0)
+2026-06-26T01:01:53.344Z [INFO] [DIAG][Claude 适配器] [收到第一条 SDK 消息: type=system, subtype=init] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, elapsed=94414ms, ts=1782435713344
+2026-06-26T01:01:53.351Z [INFO] [Agent 编排] SDK 确认模型: saas-deepseek-v4-pro
+2026-06-26T01:01:53.352Z [INFO] [DIAG][SDK Runner] [首次 Promise.race 返回: kind=event, done=false] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, attempt=1, elapsed=94422ms, ts=1782435713352
+2026-06-26T01:01:53.352Z [INFO] [DIAG][SDK Runner] [收到消息 #1: type=system, subtype=init] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, attempt=1, elapsed=94422ms, ts=1782435713352
+2026-06-26T01:01:53.352Z [INFO] [DIAG][SDK Runner] [收到消息 #2: type=assistant] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, attempt=1, elapsed=94422ms, ts=1782435713352
+2026-06-26T01:01:53.354Z [INFO] [DIAG][SDK Runner] [收到消息 #3: type=assistant] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, attempt=1, elapsed=94424ms, ts=1782435713354
+2026-06-26T01:01:53.359Z [INFO] [DIAG][SDK Runner] [收到消息 #4: type=assistant] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, attempt=1, elapsed=94429ms, ts=1782435713359
+2026-06-26T01:01:53.359Z [INFO] [DIAG][SDK Runner] [收到消息 #5: type=assistant] sessionId=7441c242-8ee9-42d7-8f17-3cc01cc4c80b, attempt=1, elapsed=94429ms, ts=1782435713359
+2026-06-26T01:02:07.167Z [WARN] [Agent 编排] ⚠️ SDK 已静默 14s (attempt 1/25, model=saas-deepseek-v4-pro, resume=fdb3a957-e437-4af6-8eba-004936a62dba, stderrLen=0)
+2026-06-26T01:02:10.496Z [INFO] [代理配置] 配置文件不存在，使用默认配置

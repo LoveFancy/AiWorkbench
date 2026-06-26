@@ -10,9 +10,7 @@
       "@/auth": ["./src/auth"],
       "@/auth/*": ["./src/auth/*"],
       "@/models": ["./src/models"],
-      "@/models/*": ["./src/models/*"],
-      "@/platform-models": ["./src/platform-models"],
-      "@/platform-models/*": ["./src/platform-models/*"]
+      "@/models/*": ["./src/models/*"]
     }
   },
   "include": ["src/**/*"]

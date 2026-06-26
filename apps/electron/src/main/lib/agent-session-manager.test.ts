@@ -51,7 +51,7 @@ describe('Agent 会话管理器专家团绑定', () => {
   })
 
   test('创建专家团会话时写入自我介绍消息', async () => {
-    const { createAgentSession, getAgentSessionSDKMessages } = await import('./agent-session-manager.ts')
+    const { createAgentSession, getAgentSessionSDKMessages, flushJsonlForTests } = await import('./agent-session-manager.ts')
 
     const session = createAgentSession(
       '产品专家团 · 新任务',
@@ -62,6 +62,7 @@ describe('Agent 会话管理器专家团绑定', () => {
       '我是产品专家团，会先帮你梳理目标、约束和可行动方案。',
     )
 
+    await flushJsonlForTests()
     const messages = getAgentSessionSDKMessages(session.id)
     expect(messages).toHaveLength(1)
     expect(messages[0]).toMatchObject({

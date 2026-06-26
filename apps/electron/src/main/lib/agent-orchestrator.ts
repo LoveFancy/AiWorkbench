@@ -175,7 +175,7 @@ export class AgentOrchestrator {
    */
   async sendMessage(input: AgentSendInput, callbacks: SessionCallbacks): Promise<void> {
     const _diagStart = Date.now()
-    const _diag = (tag: string) => console.log(`[DIAG][Agent 编排] [${tag}] sessionId=${input.sessionId}, elapsed=${Date.now() - _diagStart}ms, ts=${Date.now()}`)
+    const _diag = (tag: string) => console.debug(`[DIAG][Agent 编排] [${tag}] sessionId=${input.sessionId}, elapsed=${Date.now() - _diagStart}ms, ts=${Date.now()}`)
     _diag('sendMessage 入口')
     // Event Loop 健康检查：setImmediate 回调延迟反映主线程拥堵程度
     const _elCheckStart = Date.now()
@@ -184,7 +184,7 @@ export class AgentOrchestrator {
       if (elDelay > 50) {
         console.warn(`[DIAG][Agent 编排] ⚠️ Event Loop 延迟: ${elDelay}ms (>50ms 表示主线程拥堵)`)
       } else {
-        console.log(`[DIAG][Agent 编排] Event Loop 延迟: ${elDelay}ms (正常)`)
+        console.debug(`[DIAG][Agent 编排] Event Loop 延迟: ${elDelay}ms (正常)`)
       }
     })
     const { sessionId, userMessage, channelId, modelId, workspaceId, additionalDirectories, attachments, customMcpServers, permissionModeOverride, mentionedSkills, mentionedSessionIds, automationContext, selectedMcpServers } = input
@@ -547,6 +547,7 @@ export class AgentOrchestrator {
       // 9.5 确保 SDK 项目设置（plansDirectory → .context）
       _diag('开始写入 SDK 项目设置 (.claude/settings.json)')
       {
+        const t0 = Date.now()
         const claudeSettingsDir = join(agentCwd, '.claude')
         if (!existsSync(claudeSettingsDir)) mkdirSync(claudeSettingsDir, { recursive: true })
         const settingsPath = join(claudeSettingsDir, 'settings.json')
@@ -566,6 +567,12 @@ export class AgentOrchestrator {
         if (needsWrite) {
           writeFileSync(settingsPath, JSON.stringify(sdkProjectSettings, null, 2))
           console.log(`[Agent 编排] 已设置 SDK settings (plansDirectory, skipWebFetchPreflight)`)
+        }
+        const elapsed = Date.now() - t0
+        if (needsWrite) {
+          console.log(`[perf] writeFileSync SDK settings.json → ${elapsed}ms`)
+        } else {
+          console.log(`[perf] readFileSync SDK settings.json (no write needed) → ${elapsed}ms`)
         }
       }
 
@@ -1370,10 +1377,13 @@ export class AgentOrchestrator {
           // malformed 响应：写入文件方便排查
           const stderrText = stderrChunks.join('').trim()
           if (fatalIsMalformed && stderrText.length > 0 && agentCwd) {
+            const t0 = Date.now()
             try {
               const stderrLogPath = join(agentCwd, 'stderr-output.txt')
               writeFileSync(stderrLogPath, `// 网关返回的原始响应 (${new Date().toISOString()})\n${stderrText}\n`, 'utf-8')
+              const elapsed = Date.now() - t0
               console.log(`[Agent 编排] 已将网关原始响应写入: ${stderrLogPath} (${stderrText.length} 字符)`)
+              console.log(`[perf] writeFileSync stderr-output.txt (${stderrText.length} chars) → ${elapsed}ms`)
             } catch { /* 忽略 */ }
           }
 
