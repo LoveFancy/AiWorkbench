@@ -74,8 +74,9 @@ export function ExpertCard({ group, onOpen, onSummon, compact = false }: ExpertC
               {isTeam ? <Users size={compact ? 16 : 18} /> : <Bot size={compact ? 16 : 18} />}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                <h3 className="truncate text-sm font-medium text-foreground">{group.name}</h3>
+              <h3 className="truncate text-sm font-medium text-foreground">{group.mainRole.name || '未配置'}</h3>
+              <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="truncate text-xs text-muted-foreground">{group.name}</span>
                 {displayVersion && displayVersion !== '0.0.0' && (
                   <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
                     v{displayVersion}
@@ -88,7 +89,6 @@ export function ExpertCard({ group, onOpen, onSummon, compact = false }: ExpertC
                   </span>
                 )}
               </div>
-              <p className="mt-0.5 truncate text-xs text-muted-foreground">主角色：{group.mainRole.name || '未配置'}</p>
             </div>
           </div>
           {group.description && (

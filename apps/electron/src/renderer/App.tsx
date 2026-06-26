@@ -12,7 +12,7 @@ import { loginDialogOpenAtom, authStateAtom, resolveLoginPresentation } from '@/
 import { conversationsAtom, channelsAtom } from './atoms/chat-atoms'
 import { environmentCheckDialogOpenAtom } from './atoms/environment'
 import { tabsAtom, activeTabIdAtom, openTab } from './atoms/tab-atoms'
-import { platformModelsAtom, platformApiKeyAtom } from '@/platform-models/renderer'
+import { platformModelsAtom, platformApiKeyAtom } from '@/atoms/platform-models'
 import { useExpertDownloadProgressBridge } from '@/experts/hooks/useExpertDownloadProgressBridge'
 import { agentChannelIdAtom, agentModelIdAtom, agentChannelIdsAtom } from '@/atoms/agent-atoms'
 import { getAgentAvailableChannelIds, resolveAgentSelectedModel } from '@/lib/model-selection'

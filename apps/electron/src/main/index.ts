@@ -125,8 +125,8 @@ import { startWorkspaceWatcher, stopWorkspaceWatcher } from './lib/workspace-wat
 import { registerAuthIpcHandlers } from '../auth'
 import { registerLogUploadIpc } from './lib/log-upload-ipc'
 import './lib/issue-report'
-import { loadCacheFromDisk, initModelRefresh } from '../platform-models/model-service'
-import { registerPlatformModelsIpcHandlers } from '../platform-models'
+import { loadCacheFromDisk, initModelRefresh } from './lib/platform-models-service'
+import { registerPlatformModelsIpcHandlers } from './lib/platform-models-ipc'
 import { startChatToolsWatcher, stopChatToolsWatcher } from './lib/chat-tools-watcher'
 import { getIsQuitting, setQuitting } from './lib/app-lifecycle'
 import {

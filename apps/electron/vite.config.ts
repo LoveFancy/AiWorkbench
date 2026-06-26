@@ -34,10 +34,6 @@ export default defineConfig({
       { find: '@/models', replacement: resolve(__dirname, 'src/models') },
       // @/models 子路径映射
       { find: /^@\/models\/(.*)/, replacement: resolve(__dirname, 'src/models/$1') },
-      // @/platform-models 裸导入
-      { find: '@/platform-models', replacement: resolve(__dirname, 'src/platform-models') },
-      // @/platform-models 子路径映射
-      { find: /^@\/platform-models\/(.*)/, replacement: resolve(__dirname, 'src/platform-models/$1') },
       { find: '@', replacement: resolve(__dirname, 'src/renderer') },
     ],
   },
