@@ -95,6 +95,7 @@ import {
   finalizeStreamingActivities,
   agentProcessGroupsKeepExpandedAtom,
   agentSelectedMcpServersAtom,
+  agentSessionSamplePromptsAtom,
 } from '@/atoms/agent-atoms'
 import type { AgentContextStatus } from '@/atoms/agent-atoms'
 import { settingsOpenAtom } from '@/atoms/settings-tab'
@@ -583,6 +584,11 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       return map
     })
   }, [sessionId, setSelectedMcpServersMap])
+
+  // 专家团 sample prompts（“试试这样问”）
+  const sessionSamplePromptsMap = useAtomValue(agentSessionSamplePromptsAtom)
+  const setSessionSamplePromptsMap = useSetAtom(agentSessionSamplePromptsAtom)
+  const sessionSamplePrompts = sessionSamplePromptsMap.get(sessionId) ?? []
 
   React.useEffect(() => {
     if (!workspaceSlug) {
@@ -2328,6 +2334,29 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
                     }}
                   />
                 </button>
+              </div>
+            )}
+
+            {/* 专家团 Sample Prompts — “试试这样问” */}
+            {!streaming && sessionSamplePrompts.length > 0 && (
+              <div className="px-3 pt-2.5 pb-1.5">
+                <p className="mb-2 text-xs font-medium text-muted-foreground">试试这样问：</p>
+                <div className="flex flex-col gap-1.5">
+                  {sessionSamplePrompts.map((prompt) => (
+                    <button
+                      key={prompt}
+                      type="button"
+                      className="text-left rounded-md bg-muted/50 px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
+                      onClick={() => {
+                        setInputContent(prompt)
+                        // 同时清除 HTML 草稿，确保 TipTap 编辑器用新的纯文本来渲染
+                        setInputHtmlContent('')
+                      }}
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 

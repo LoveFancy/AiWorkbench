@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { inspect } from 'node:util'
 
 const FLUSH_BATCH_DELAY_MS = 200
+const MIN_FLUSH_INTERVAL_MS = 2000
 
 type ConsoleMethod = 'debug' | 'error' | 'info' | 'log' | 'warn'
 type RendererLogLevel = 'debug' | 'error' | 'info' | 'warning'
@@ -37,6 +38,7 @@ let activeMaxBytes = DEFAULT_MAX_LOG_BYTES
 let shouldMirrorToConsole = true
 let pendingEntries: LogEntry[] = []
 let flushScheduled = false
+let lastFlushTime = 0
 let flushPromise: Promise<void> | null = null
 let resolveFlushPromise: (() => void) | null = null
 
@@ -106,6 +108,7 @@ function trimExistingLogFile(filePath: string, maxBytes: number): void {
 
 function flushPendingLogs(): void {
   const t0 = Date.now()
+  lastFlushTime = t0
   flushScheduled = false
   const entries = pendingEntries
   pendingEntries = []
@@ -173,7 +176,9 @@ function flushPendingLogs(): void {
 function scheduleFlush(): void {
   if (flushScheduled) return
   flushScheduled = true
-  setTimeout(flushPendingLogs, FLUSH_BATCH_DELAY_MS)
+  const since = lastFlushTime === 0 ? MIN_FLUSH_INTERVAL_MS : Date.now() - lastFlushTime
+  const delay = since >= MIN_FLUSH_INTERVAL_MS ? FLUSH_BATCH_DELAY_MS : MIN_FLUSH_INTERVAL_MS - since
+  setTimeout(flushPendingLogs, delay)
 }
 
 function enqueueLog(logsDir: string, fileName: string, level: string, values: unknown[], maxBytes = DEFAULT_MAX_LOG_BYTES): void {

@@ -17,7 +17,7 @@ import { ExpertDownloadStatus } from '@/experts/card/ExpertDownloadStatus'
 interface ExpertCardProps {
   group: AgentExpertGroupInfo
   onOpen: (group: AgentExpertGroupInfo) => void
-  onSummon?: (group: AgentExpertGroupInfo) => void
+  onSummon?: (group: AgentExpertGroupInfo, samplePrompt?: string) => void
   compact?: boolean
 }
 

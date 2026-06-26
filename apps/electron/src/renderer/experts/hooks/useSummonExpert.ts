@@ -1,15 +1,16 @@
 import * as React from 'react'
-import { useSetAtom } from 'jotai'
+import { useSetAtom, useStore } from 'jotai'
 import { toast } from 'sonner'
 import type { AgentExpertGroupInfo } from '@proma/shared'
-import { createExpertSessionAtom, loadAgentExpertGroupsAtom } from '@/atoms/agent-atoms'
+import { createExpertSessionAtom, loadAgentExpertGroupsAtom, agentSessionDraftsAtom, agentSessionSamplePromptsAtom } from '@/atoms/agent-atoms'
 import { recordRecentExpertGroupAtom } from '@/experts/atoms/expert-follow'
 import { useOpenSession } from '@/hooks/useOpenSession'
 import { isRemoteSourced, isSummonableLocal } from '@/experts/utils/summon'
 
 interface UseSummonExpertResult {
-  /** 召唤专家团：远程未下载先下载；本地已安装则按需升级后召唤 */
-  summon: (group: AgentExpertGroupInfo) => Promise<void>
+  /** 召唤专家团：远程未下载先下载；本地已安装则按需升级后召唤
+   *  @param samplePrompt 可选，预填到新会话输入框的提示词（不自动发送） */
+  summon: (group: AgentExpertGroupInfo, samplePrompt?: string) => Promise<void>
   /** 召唤中的专家团（用于渲染 ExpertSummoningOverlay）；null 表示空闲 */
   summoningGroup: AgentExpertGroupInfo | null
 }
@@ -25,9 +26,28 @@ export function useSummonExpert(): UseSummonExpertResult {
   const loadGroups = useSetAtom(loadAgentExpertGroupsAtom)
   const recordRecent = useSetAtom(recordRecentExpertGroupAtom)
   const openSession = useOpenSession()
+  const store = useStore()
   const [summoningGroup, setSummoningGroup] = React.useState<AgentExpertGroupInfo | null>(null)
 
-  const summon = React.useCallback(async (group: AgentExpertGroupInfo): Promise<void> => {
+  const summon = React.useCallback(async (group: AgentExpertGroupInfo, samplePrompt?: string): Promise<void> => {
+    /** 写草稿到新会话；仅在未指定具体 prompt 时展示 sample prompts 列表 */
+    const applyAfterOpen = (sessionId: string) => {
+      if (samplePrompt) {
+        store.set(agentSessionDraftsAtom, (prev) => {
+          const map = new Map(prev)
+          map.set(sessionId, samplePrompt)
+          return map
+        })
+      } else if (group.samplePrompts?.length) {
+        // 仅普通召唤（未点具体提问）时展示问题列表供选择
+        store.set(agentSessionSamplePromptsAtom, (prev) => {
+          const map = new Map(prev)
+          map.set(sessionId, group.samplePrompts!)
+          return map
+        })
+      }
+    }
+
     // ── 分支一：远程未下载 → 下载后召唤
     if (group.sourcePluginKind === 'remote' && group.status !== 'available') {
       if (group.status === 'remote_downloading') {
@@ -50,6 +70,7 @@ export function useSummonExpert(): UseSummonExpertResult {
         })
         recordRecent(group.id)
         openSession('agent', session.id, session.title)
+        applyAfterOpen(session.id)
       } catch (err) {
         // 主进程取消时抛 DownloadCancelledError（message=「下载已取消」）。
         // 经 Electron IPC 跨进程后 message 会被加前缀（如 "Error invoking remote
@@ -89,6 +110,7 @@ export function useSummonExpert(): UseSummonExpertResult {
       const session = await createExpertSession(group)
       recordRecent(group.id)
       openSession('agent', session.id, session.title)
+      applyAfterOpen(session.id)
       toast.success(`已召唤${group.name}`)
     } catch (error) {
       console.error('[专家团] 召唤失败:', error)
