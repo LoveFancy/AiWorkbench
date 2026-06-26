@@ -398,21 +398,19 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background">
-      {/* 可拖拽区域：绝对定位 drag strip 置于交互层后方，避免与 Popover/DropdownMenu 的 pointerdown 冲突 */}
-      <div className="absolute top-0 left-0 right-0 h-[50px] titlebar-drag-region z-0" />
-
       {/* 标题栏 + 工作区切换 */}
-      <div className="titlebar-no-drag relative z-10 mx-auto flex w-full max-w-6xl shrink-0 items-center justify-between px-8 pt-14 pb-4">
+      <div className="titlebar-drag-region mx-auto flex w-full max-w-6xl shrink-0 items-center justify-between px-8 pt-8 pb-4">
         <div className="flex items-center gap-2.5">
           <Blocks className="size-6 text-foreground/70" />
           <h1 className="text-2xl font-semibold text-foreground">Agent 技能</h1>
         </div>
 
+        <div className="titlebar-no-drag">
         <Popover open={wsPopoverOpen} onOpenChange={setWsPopoverOpen}>
           <PopoverTrigger asChild>
             <button
               type="button"
-              className="titlebar-no-drag flex items-center gap-2 rounded-lg border border-border/60 bg-content-area px-3 py-1.5 text-[13px] font-medium text-foreground/80 transition-colors hover:bg-foreground/[0.04]"
+              className="flex items-center gap-2 rounded-lg border border-border/60 bg-content-area px-3 py-1.5 text-[13px] font-medium text-foreground/80 transition-colors hover:bg-foreground/[0.04]"
             >
               <FolderOpen size={14} className="text-foreground/45" />
               <span className="max-w-[180px] truncate">{data.workspaceName}</span>
@@ -444,6 +442,7 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
             ))}
           </PopoverContent>
         </Popover>
+        </div>
       </div>
 
       {/* 工具条 */}

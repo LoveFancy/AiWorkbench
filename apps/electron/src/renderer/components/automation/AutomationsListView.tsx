@@ -19,6 +19,16 @@ import { Clock, Pause, Play, Power, Plus, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
   automationsAtom,
   automationFormAtom,
   automationToDraft,
@@ -43,11 +53,30 @@ export function AutomationsListView(): React.ReactElement {
   const automations = useAtomValue(automationsAtom)
   const setAutomations = useSetAtom(automationsAtom)
   const setForm = useSetAtom(automationFormAtom)
+  const [pendingDeleteId, setPendingDeleteId] = React.useState<string | null>(null)
 
   const refreshList = React.useCallback(async () => {
     const list = await window.electronAPI.listAutomations()
     setAutomations(list)
   }, [setAutomations])
+
+  const pendingDelete = pendingDeleteId
+    ? automations.find((a) => a.id === pendingDeleteId) ?? null
+    : null
+
+  const handleConfirmDelete = async (): Promise<void> => {
+    if (!pendingDeleteId) return
+    try {
+      await window.electronAPI.deleteAutomation(pendingDeleteId)
+      await refreshList()
+      toast.success('已删除')
+    } catch (err) {
+      toast.error('删除失败')
+      console.error('[定时任务] 删除失败:', err)
+    } finally {
+      setPendingDeleteId(null)
+    }
+  }
 
   const current = automations.filter((a) => a.active)
   const paused = automations.filter((a) => !a.active)
@@ -93,14 +122,45 @@ export function AutomationsListView(): React.ReactElement {
         ) : (
           <div className="flex flex-col gap-8 max-w-5xl w-full mx-auto px-8 pb-8">
             {current.length > 0 && (
-              <Section title="启用中" automations={current} onEdit={handleEdit} onRefresh={refreshList} variant="active" />
+              <Section title="启用中" automations={current} onEdit={handleEdit} onRefresh={refreshList} variant="active" onDelete={(id) => setPendingDeleteId(id)} />
             )}
             {paused.length > 0 && (
-              <Section title="已暂停" automations={paused} onEdit={handleEdit} onRefresh={refreshList} variant="paused" />
+              <Section title="已暂停" automations={paused} onEdit={handleEdit} onRefresh={refreshList} variant="paused" onDelete={(id) => setPendingDeleteId(id)} />
             )}
           </div>
         )}
       </div>
+
+      {/* 删除确认弹窗 */}
+      <AlertDialog
+        open={pendingDeleteId !== null}
+        onOpenChange={(open) => { if (!open) setPendingDeleteId(null) }}
+      >
+        <AlertDialogContent
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              void handleConfirmDelete()
+            }
+          }}
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除任务</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要删除定时任务「{pendingDelete?.name ?? ''}」吗？删除后无法恢复。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
@@ -111,9 +171,10 @@ interface SectionProps {
   onEdit: (a: Automation) => void
   onRefresh: () => Promise<void>
   variant: 'active' | 'paused'
+  onDelete: (id: string) => void
 }
 
-function Section({ title, automations, onEdit, onRefresh, variant }: SectionProps): React.ReactElement {
+function Section({ title, automations, onEdit, onRefresh, variant, onDelete }: SectionProps): React.ReactElement {
   const handleRunNow = async (e: React.MouseEvent, a: Automation): Promise<void> => {
     e.stopPropagation()
     toast.success(`已开始运行「${a.name}」`, {
@@ -139,17 +200,9 @@ function Section({ title, automations, onEdit, onRefresh, variant }: SectionProp
     }
   }
 
-  const handleDelete = async (e: React.MouseEvent, a: Automation): Promise<void> => {
+  const handleDelete = (e: React.MouseEvent, a: Automation): void => {
     e.stopPropagation()
-    if (!window.confirm(`确定要删除定时任务「${a.name}」吗？`)) return
-    try {
-      await window.electronAPI.deleteAutomation(a.id)
-      await onRefresh()
-      toast.success('已删除')
-    } catch (err) {
-      toast.error('删除失败')
-      console.error('[定时任务] 删除失败:', err)
-    }
+    onDelete(a.id)
   }
 
   return (
