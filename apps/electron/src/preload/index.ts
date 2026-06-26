@@ -173,8 +173,8 @@ import type {
 import type { LocalApiPublicSettings, LocalApiSettings, LocalApiTokenResetResult } from '../main/lib/local-api-types'
 import { QUICK_TASK_IPC_CHANNELS, TRAY_IPC_CHANNELS, VOICE_DICTATION_IPC_CHANNELS } from '../types'
 import { createAuthPreloadApi } from '../auth'
-import { createPlatformModelsPreloadApi } from '../platform-models/preload-bridge'
-import type { PlatformModelsElectronAPI } from '../platform-models/preload-bridge'
+import { createPlatformModelsPreloadApi } from './platform-models'
+import type { PlatformModelsElectronAPI } from './platform-models'
 
 /**
  * 暴露给渲染进程的 API 接口定义

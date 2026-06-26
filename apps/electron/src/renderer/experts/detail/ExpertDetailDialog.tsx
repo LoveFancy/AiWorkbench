@@ -13,7 +13,7 @@ interface ExpertDetailDialogProps {
   group: AgentExpertGroupInfo | null
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSummon?: (group: AgentExpertGroupInfo) => void
+  onSummon?: (group: AgentExpertGroupInfo, samplePrompt?: string) => void
 }
 
 export function ExpertDetailDialog({ group, open, onOpenChange, onSummon }: ExpertDetailDialogProps): React.ReactElement {
@@ -95,12 +95,17 @@ export function ExpertDetailDialog({ group, open, onOpenChange, onSummon }: Expe
 
               {(group.samplePrompts ?? []).length > 0 && (
                 <section>
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">试试这样问</h4>
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">试试这样问 · {group.samplePrompts!.length}个问题</h4>
                   <div className="mt-2 space-y-2">
-                    {group.samplePrompts?.map((prompt) => (
-                      <div key={prompt} className="rounded-md bg-muted/60 px-3 py-2 text-sm text-muted-foreground">
+                    {group.samplePrompts!.map((prompt) => (
+                      <button
+                        key={prompt}
+                        type="button"
+                        className="w-full rounded-md bg-muted/60 px-3 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
+                        onClick={() => onSummon?.(group, prompt)}
+                      >
                         {prompt}
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </section>

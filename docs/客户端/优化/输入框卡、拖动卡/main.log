@@ -1,0 +1,533 @@
+2026-06-26T05:30:14.035Z [INFO] [启动耗时] +0.00s | 单实例锁检查开始
+2026-06-26T05:30:14.038Z [INFO] [启动耗时] +0.01s | 单实例锁已获取，注册协议和事件监听
+2026-06-26T05:30:14.038Z [INFO] [启动耗时] +0.01s | 协议和事件监听注册完成
+2026-06-26T05:30:14.038Z [INFO] [启动耗时] +0.01s | 模块加载完成，等待 app.whenReady()
+2026-06-26T05:30:21.824Z [INFO] [启动耗时] +7.79s | app.whenReady() 回调触发，开始 bootstrap
+2026-06-26T05:30:21.824Z [INFO] [启动] Proma v0.12.51 
+2026-06-26T05:30:21.832Z [INFO] [启动耗时] +7.80s | bootstrap: 版本号 & 协议注册完成
+2026-06-26T05:30:21.877Z [INFO] [配置] 已升级默认连接器: hi-agent (1.0.1 → 1.0.2)
+2026-06-26T05:30:21.898Z [INFO] [Agent 工作区] 已同步预置连接器: feishu-cli
+2026-06-26T05:30:21.905Z [INFO] [Agent 工作区] 已同步预置连接器: hi-agent
+2026-06-26T05:30:21.920Z [INFO] [Agent 工作区] 已同步预置连接器: huatai-email
+2026-06-26T05:30:21.922Z [INFO] [Agent 工作区] 添加预置连接器: feishu-cli
+2026-06-26T05:30:21.922Z [INFO] [Agent 工作区] 添加预置连接器: hi-agent
+2026-06-26T05:30:21.922Z [INFO] [Agent 工作区] 添加预置连接器: huatai-email
+2026-06-26T05:30:21.925Z [INFO] [Agent 工作区] 已保存连接器配置: workspace-1780387654316
+2026-06-26T05:30:21.925Z [INFO] [Agent 工作区] 已同步预置连接器到工作区: workspace-1780387654316
+2026-06-26T05:30:21.936Z [INFO] [Agent 工作区] 已保存连接器配置: default
+2026-06-26T05:30:21.936Z [INFO] [Agent 工作区] 已同步预置连接器到工作区: default
+2026-06-26T05:30:21.976Z [INFO] [启动耗时] +7.94s | bootstrap: Skills/Plugins 初始化完成
+2026-06-26T05:30:21.978Z [INFO] [启动耗时] +7.95s | bootstrap: 菜单创建完成
+2026-06-26T05:30:22.008Z [INFO] [IPC] 处理器注册完成
+2026-06-26T05:30:22.014Z [INFO] [启动耗时] +7.98s | bootstrap: IPC handlers 注册完成
+2026-06-26T05:30:22.016Z [INFO] [启动耗时] +7.98s | bootstrap: 模型缓存加载完成
+2026-06-26T05:30:22.016Z [INFO] [启动耗时] +7.98s | bootstrap: 准备创建主窗口
+2026-06-26T05:30:22.016Z [WARN] App icon not found at: C:\Program Files\WorkMate\resources\app.asar\dist\resources\icon.ico
+2026-06-26T05:30:22.093Z [INFO] [启动耗时] +8.06s | createWindow: BrowserWindow 实例创建完成
+2026-06-26T05:30:22.113Z [INFO] [启动耗时] +8.08s | createWindow: 页面加载指令已发出（loadURL/loadFile）
+2026-06-26T05:30:22.114Z [INFO] [启动耗时] +8.08s | bootstrap: 主窗口创建完成（页面加载中...）
+2026-06-26T05:30:22.161Z [INFO] System tray created
+2026-06-26T05:30:22.161Z [INFO] [启动耗时] +8.13s | bootstrap: 系统托盘创建完成
+2026-06-26T05:30:22.165Z [INFO] [工作区监听] 已启动文件监听: C:\Users\024445\.proma\agent-workspaces
+2026-06-26T05:30:22.166Z [INFO] [更新] WorkMate 升级检测初始化
+2026-06-26T05:30:22.168Z [INFO] [更新] manifest 版本方向失效，删除
+2026-06-26T05:30:24.654Z [INFO] [更新] 首检延迟 %d 秒 1838
+2026-06-26T05:30:24.740Z [INFO] [启动耗时] +10.71s | bootstrap: 快捷窗口 & 更新器初始化完成
+2026-06-26T05:30:24.742Z [INFO] [启动耗时] +10.71s | bootstrap: 安排 Bridges 在首屏加载后启动
+2026-06-26T05:30:24.744Z [INFO] [定时任务] 调度器已启动，tick 周期 30s
+2026-06-26T05:30:24.744Z [INFO] [启动耗时] +10.71s | bootstrap: 核心初始化完成（Bridges 已按首屏加载调度）
+2026-06-26T05:31:15.702Z [INFO] [启动耗时] +61.67s | bootstrap: 等待主窗口加载超时，准备启动 Bridges
+2026-06-26T05:31:15.705Z [INFO] [Bridge Registry] 自愈守护已启动
+2026-06-26T05:31:15.705Z [INFO] [启动耗时] +61.67s | bootstrap: Bridges 启动完成
+2026-06-26T05:31:19.998Z [INFO] [启动耗时] +65.97s | background: 开始后台初始化
+2026-06-26T05:31:19.998Z [INFO] [Windows 环境] 正在从注册表加载 PATH...
+2026-06-26T05:31:20.282Z [INFO] [Windows 环境] 系统 PATH: 新增 0 个路径
+2026-06-26T05:31:20.528Z [INFO] [Windows 环境] 用户 PATH: 新增 0 个路径
+2026-06-26T05:31:20.528Z [INFO] [Windows 环境] PATH 加载完成，共新增 0 个路径
+2026-06-26T05:31:28.277Z [WARN] [Bun 检测] 未找到（非必须）
+2026-06-26T05:31:32.497Z [INFO] [Git 检测] 找到 Git: C:\Program Files\Git\cmd\git.exe (2.54.0)
+2026-06-26T05:31:32.497Z [INFO] [Git Bash 检测] 找到 Git Bash: C:\Program Files\Git\usr\bin\bash.exe (v5.3.9)
+2026-06-26T05:32:58.997Z [INFO] [启动耗时] +0.00s | 单实例锁检查开始
+2026-06-26T05:32:59.000Z [INFO] [启动耗时] +0.01s | 单实例锁已获取，注册协议和事件监听
+2026-06-26T05:32:59.000Z [INFO] [启动耗时] +0.01s | 协议和事件监听注册完成
+2026-06-26T05:32:59.000Z [INFO] [启动耗时] +0.01s | 模块加载完成，等待 app.whenReady()
+2026-06-26T05:33:02.926Z [INFO] [perf] file-logger flush: 28 entries → 1 files, 59ms
+2026-06-26T05:33:02.935Z [INFO] [perf] file-logger flush: 4 entries → 1 files, 3511ms
+2026-06-26T05:33:04.673Z [INFO] [perf] file-logger flush: 2 entries → 1 files, 1547ms
+2026-06-26T05:33:06.515Z [INFO] [启动耗时] +7.52s | renderer: dom-ready 事件（DOM 解析完成）
+2026-06-26T05:33:06.536Z [INFO] [启动耗时] +7.54s | createWindow: ready-to-show 事件触发，窗口即将显示
+2026-06-26T05:33:06.549Z [INFO] [启动耗时] +7.55s | createWindow: 窗口已显示（首屏可见）
+2026-06-26T05:33:06.551Z [INFO] [启动耗时] +7.56s | renderer: did-finish-load 事件（页面资源加载完成）
+2026-06-26T05:33:06.551Z [INFO] [启动耗时] +7.56s | bootstrap: 主窗口 did-finish-load，准备启动 Bridges
+2026-06-26T05:33:06.554Z [INFO] [Bridge Registry] 自愈守护已启动
+2026-06-26T05:33:06.554Z [INFO] [启动耗时] +7.56s | bootstrap: Bridges 启动完成
+2026-06-26T05:33:06.620Z [INFO] [附加目录监听] 已启动: d:\024445\Desktop\双创比赛材料
+2026-06-26T05:33:06.622Z [INFO] [附加目录监听] 已启动: C:\Users\024445\.proma\agent-workspaces\default\产品设计工作区
+2026-06-26T05:33:06.633Z [INFO] [启动耗时] +7.64s | background: 开始后台初始化
+2026-06-26T05:33:06.634Z [INFO] [Windows 环境] 正在从注册表加载 PATH...
+2026-06-26T05:33:06.923Z [INFO] [perf] reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v "Path" → 289ms
+2026-06-26T05:33:06.924Z [INFO] [Windows 环境] 系统 PATH: 新增 0 个路径
+2026-06-26T05:33:07.210Z [INFO] [perf] reg query "HKCU\Environment" /v "Path" → 286ms
+2026-06-26T05:33:07.211Z [INFO] [Windows 环境] 用户 PATH: 新增 0 个路径
+2026-06-26T05:33:07.211Z [INFO] [Windows 环境] PATH 加载完成，共新增 0 个路径
+2026-06-26T05:33:07.443Z [INFO] [perf] file-logger flush: 4 entries → 2 files, 2568ms
+2026-06-26T05:33:07.443Z [INFO] [perf] file-logger flush: 21 entries → 2 files, 90ms
+2026-06-26T05:33:07.510Z [INFO] [perf] execFile where node → 298ms
+2026-06-26T05:33:10.308Z [INFO] [DPAPI] prebuild 加载成功
+2026-06-26T05:33:10.423Z [INFO] [perf] execFile node --version → 2913ms
+2026-06-26T05:33:10.423Z [INFO] [Node.js 检测] 找到 Node.js: C:\Program Files\nodejs\node.exe (24.16.0)
+2026-06-26T05:33:10.423Z [INFO] [perf] detectNodeRuntime → 3789ms (累计)
+2026-06-26T05:33:10.423Z [INFO] [perf] execFile bash --version (C:\Program Files\Git\bin\bash.exe) → 3124ms
+2026-06-26T05:33:10.424Z [INFO] [Git Bash 检测] 找到 Git Bash: C:\Program Files\Git\bin\bash.exe (v5.3.9)
+2026-06-26T05:33:10.424Z [INFO] [perf] detectGitBash → 3790ms (累计)
+2026-06-26T05:33:10.424Z [INFO] [perf] execFile where bun → FAIL after 3150ms
+2026-06-26T05:33:10.424Z [WARN] [Bun 检测] 未找到（非必须）
+2026-06-26T05:33:10.424Z [INFO] [perf] detectBunRuntime → 3790ms (累计)
+2026-06-26T05:33:10.488Z [INFO] [perf] file-logger flush: 3 entries → 1 files, 2068ms
+2026-06-26T05:33:14.641Z [INFO] [perf] file-logger flush: 12 entries → 2 files, 4133ms
+2026-06-26T05:33:16.380Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1539ms
+2026-06-26T05:33:18.377Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1796ms
+2026-06-26T05:33:20.186Z [INFO] [观测上报] 开始上报, url=%s, events=%d http://eip.htsc.com.cn/workmate/observability/events 1
+2026-06-26T05:33:20.227Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1649ms
+2026-06-26T05:33:21.971Z [INFO] [perf] file-logger flush: 2 entries → 1 files, 1585ms
+2026-06-26T05:33:23.809Z [INFO] [配置] 已创建 Agent 会话工作目录: C:\Users\024445\.proma\agent-workspaces\default\a18cdd41-48e5-456f-bd96-4b0d789a3ba5
+2026-06-26T05:33:23.813Z [INFO] [Agent 会话] 已创建会话: 新 Agent 会话 (a18cdd41-48e5-456f-bd96-4b0d789a3ba5)
+2026-06-26T05:33:23.859Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1685ms
+2026-06-26T05:33:25.933Z [INFO] [perf] file-logger flush: 4 entries → 2 files, 1923ms
+2026-06-26T05:33:27.719Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1584ms
+2026-06-26T05:33:30.413Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2494ms
+2026-06-26T05:33:32.487Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1871ms
+2026-06-26T05:33:34.351Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1664ms
+2026-06-26T05:33:39.866Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 5314ms
+2026-06-26T05:33:41.744Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1678ms
+2026-06-26T05:33:43.524Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1580ms
+2026-06-26T05:33:45.327Z [INFO] [DIAG][Claude 适配器] [收到第一条 SDK 消息: type=system, subtype=hook_started] sessionId=a18cdd41-48e5-456f-bd96-4b0d789a3ba5, elapsed=8650ms, ts=1782452025327
+2026-06-26T05:33:45.352Z [INFO] [Agent 会话] 已更新会话: 新 Agent 会话 (a18cdd41-48e5-456f-bd96-4b0d789a3ba5)
+2026-06-26T05:33:45.352Z [INFO] [Agent 编排] 已保存 SDK session_id: 8b919254-9710-450b-a281-5d0bafe4c062
+2026-06-26T05:33:45.355Z [INFO] [fetchTitle] 发送请求: {
+  url: 'http://168.63.65.40:8090/llm-service/v1/messages',
+  provider: 'anthropic',
+  bodyPreview: '{"model":"local-qwen36-27b","max_tokens":50,"messages":[{"role":"user","content":"根据用户的第一条消息，生成一个简短的对话标题（10字以内）。只输出标题，不要有任何其他内容、标点符号或引号。\\n\\n用户消息：你好"}],"thinking":{"type":"disabled"}}'
+}
+2026-06-26T05:33:45.405Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1681ms
+2026-06-26T05:33:47.160Z [INFO] [fetchTitle] 收到响应: { status: 200, statusText: 'OK', ok: true }
+2026-06-26T05:33:47.161Z [INFO] [fetchTitle] 解析响应体: {
+  provider: 'anthropic',
+  dataPreview: `{"id":"chatcmpl-7c3a75c5-3b62-9b20-a1d5-761a97947cf0","type":"message","role":"assistant","content":[{"type":"thinking","thinking":"Here's a thinking process:\\n\\n1.  **Analyze User Input:**\\n   - User message: \\"你好\\" (Hello)\\n   - Task: Generate a short dialogue title based on the first user message.\\n   - Constraints:","signature":"600610b391a5457196e0ac40a9638106"}],"model":"local-qwen36-27b","stop_reason":"max_tokens","usage":{"input_tokens":48,"output_tokens":50}}`
+}
+2026-06-26T05:33:47.162Z [INFO] [fetchTitle] 解析标题结果: { title: 'Constraints:' }
+2026-06-26T05:33:47.168Z [INFO] [Agent 会话] 已更新会话: Constraints: (a18cdd41-48e5-456f-bd96-4b0d789a3ba5)
+2026-06-26T05:33:47.191Z [INFO] [perf] file-logger flush: 5 entries → 1 files, 1664ms
+2026-06-26T05:33:48.954Z [INFO] [Agent 编排] SDK 确认模型: local-qwen36-27b
+2026-06-26T05:33:48.973Z [INFO] [perf] file-logger flush: 5 entries → 1 files, 1612ms
+2026-06-26T05:33:51.291Z [INFO] [perf] file-logger flush: 2 entries → 1 files, 2132ms
+2026-06-26T05:33:53.156Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1664ms
+2026-06-26T05:33:55.037Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1679ms
+2026-06-26T05:33:56.882Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1644ms
+2026-06-26T05:33:59.445Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2363ms
+2026-06-26T05:34:01.251Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1605ms
+2026-06-26T05:34:01.437Z [WARN] [Agent 编排] drain timeout: SDK iterator 在 result 后 2000ms 内未关闭，强制退出
+2026-06-26T05:34:01.440Z [INFO] [DIAG][Agent 服务] orchestrator.sendMessage 正常返回, sessionId=a18cdd41-48e5-456f-bd96-4b0d789a3ba5, ts=1782452041440
+2026-06-26T05:34:01.440Z [INFO] [性能诊断][IPC][agent:send-message] 完成 { sessionId: 'a18cdd41-48e5-456f-bd96-4b0d789a3ba5', durationMs: 25072 }
+2026-06-26T05:34:03.173Z [INFO] [DIAG][Claude 适配器] [query() finally 块执行, 清理资源] sessionId=a18cdd41-48e5-456f-bd96-4b0d789a3ba5, elapsed=26496ms, ts=1782452043173
+2026-06-26T05:34:03.175Z [INFO] [观测上报] 开始上报, url=%s, events=%d http://eip.htsc.com.cn/workmate/observability/events 1
+2026-06-26T05:34:03.195Z [INFO] [perf] file-logger flush: 6 entries → 2 files, 1742ms
+2026-06-26T05:34:05.118Z [INFO] [perf] file-logger flush: 4 entries → 2 files, 1749ms
+2026-06-26T05:34:07.799Z [INFO] [perf] file-logger flush: 2 entries → 2 files, 2452ms
+2026-06-26T05:34:09.612Z [INFO] [perf] file-logger flush: 3 entries → 2 files, 1652ms
+2026-06-26T05:34:11.459Z [INFO] [perf] file-logger flush: 2 entries → 2 files, 1646ms
+2026-06-26T05:34:13.303Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1644ms
+2026-06-26T05:34:15.874Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2369ms
+2026-06-26T05:34:17.790Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1714ms
+2026-06-26T05:34:19.742Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1751ms
+2026-06-26T05:34:21.779Z [INFO] [perf] file-logger flush: 2 entries → 2 files, 1845ms
+2026-06-26T05:34:23.918Z [INFO] [perf] file-logger flush: 3 entries → 2 files, 1986ms
+2026-06-26T05:34:25.840Z [INFO] [perf] file-logger flush: 3 entries → 2 files, 1754ms
+2026-06-26T05:34:27.824Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1784ms
+2026-06-26T05:34:29.736Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1709ms
+2026-06-26T05:34:32.097Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2160ms
+2026-06-26T05:34:33.969Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1671ms
+2026-06-26T05:34:35.938Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1764ms
+2026-06-26T05:34:38.035Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1893ms
+2026-06-26T05:34:40.525Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2285ms
+2026-06-26T05:34:42.346Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1620ms
+2026-06-26T05:34:44.178Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1632ms
+2026-06-26T05:34:45.948Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1570ms
+2026-06-26T05:34:48.100Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1952ms
+2026-06-26T05:34:49.959Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1658ms
+2026-06-26T05:34:51.923Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1764ms
+2026-06-26T05:34:53.760Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1636ms
+2026-06-26T05:34:55.990Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2030ms
+2026-06-26T05:34:57.847Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1656ms
+2026-06-26T05:34:59.631Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1583ms
+2026-06-26T05:35:01.407Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1576ms
+2026-06-26T05:35:03.634Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2026ms
+2026-06-26T05:35:05.512Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1678ms
+2026-06-26T05:35:07.364Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1652ms
+2026-06-26T05:35:09.353Z [INFO] [perf] file-logger flush: 2 entries → 2 files, 1797ms
+2026-06-26T05:35:11.544Z [INFO] [perf] file-logger flush: 5 entries → 2 files, 2076ms
+2026-06-26T05:35:13.411Z [INFO] [perf] file-logger flush: 2 entries → 2 files, 1736ms
+2026-06-26T05:35:15.291Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1679ms
+2026-06-26T05:35:17.159Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1667ms
+2026-06-26T05:35:19.661Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2300ms
+2026-06-26T05:35:21.500Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1638ms
+2026-06-26T05:35:23.291Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1591ms
+2026-06-26T05:35:25.147Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1656ms
+2026-06-26T05:35:27.649Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2300ms
+2026-06-26T05:35:29.520Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1669ms
+2026-06-26T05:35:31.364Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1643ms
+2026-06-26T05:35:33.227Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1663ms
+2026-06-26T05:35:35.680Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2252ms
+2026-06-26T05:35:37.536Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1655ms
+2026-06-26T05:35:39.324Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1588ms
+2026-06-26T05:35:41.116Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1592ms
+2026-06-26T05:35:43.564Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2248ms
+2026-06-26T05:35:45.425Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1660ms
+2026-06-26T05:35:47.274Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1649ms
+2026-06-26T05:35:49.129Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1656ms
+2026-06-26T05:35:51.383Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2048ms
+2026-06-26T05:35:53.184Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1599ms
+2026-06-26T05:35:55.127Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1743ms
+2026-06-26T05:35:56.955Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1627ms
+2026-06-26T05:35:59.130Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1975ms
+2026-06-26T05:36:01.018Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1687ms
+2026-06-26T05:36:02.920Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1701ms
+2026-06-26T05:36:04.759Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1638ms
+2026-06-26T05:36:07.088Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2130ms
+2026-06-26T05:36:08.996Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1707ms
+2026-06-26T05:36:10.882Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1686ms
+2026-06-26T05:36:12.661Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1578ms
+2026-06-26T05:36:15.413Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2550ms
+2026-06-26T05:36:17.302Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1687ms
+2026-06-26T05:36:19.135Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1633ms
+2026-06-26T05:36:21.025Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1689ms
+2026-06-26T05:36:23.506Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2280ms
+2026-06-26T05:36:25.324Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1618ms
+2026-06-26T05:36:27.244Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1719ms
+2026-06-26T05:36:29.139Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1695ms
+2026-06-26T05:36:31.725Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2385ms
+2026-06-26T05:36:33.633Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1707ms
+2026-06-26T05:36:35.411Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1579ms
+2026-06-26T05:36:37.425Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1815ms
+2026-06-26T05:36:40.099Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2470ms
+2026-06-26T05:36:42.049Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1750ms
+2026-06-26T05:36:44.022Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1772ms
+2026-06-26T05:36:46.014Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1792ms
+2026-06-26T05:36:48.559Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2345ms
+2026-06-26T05:36:50.457Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1690ms
+2026-06-26T05:36:52.468Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1810ms
+2026-06-26T05:36:54.491Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1818ms
+2026-06-26T05:36:56.896Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2206ms
+2026-06-26T05:36:58.950Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1855ms
+2026-06-26T05:37:00.868Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1716ms
+2026-06-26T05:37:02.807Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1737ms
+2026-06-26T05:37:05.379Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2372ms
+2026-06-26T05:37:07.221Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1638ms
+2026-06-26T05:37:09.122Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1699ms
+2026-06-26T05:37:10.916Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1594ms
+2026-06-26T05:37:13.273Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2156ms
+2026-06-26T05:37:15.022Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1548ms
+2026-06-26T05:37:16.899Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1677ms
+2026-06-26T05:37:18.773Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1671ms
+2026-06-26T05:37:20.937Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1965ms
+2026-06-26T05:37:22.795Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1657ms
+2026-06-26T05:37:24.632Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1636ms
+2026-06-26T05:37:26.612Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1779ms
+2026-06-26T05:37:28.834Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2021ms
+2026-06-26T05:37:30.664Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1630ms
+2026-06-26T05:37:32.524Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1660ms
+2026-06-26T05:37:34.514Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1789ms
+2026-06-26T05:37:36.949Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2235ms
+2026-06-26T05:37:38.769Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1619ms
+2026-06-26T05:37:40.554Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1584ms
+2026-06-26T05:37:42.399Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1645ms
+2026-06-26T05:37:44.540Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1941ms
+2026-06-26T05:37:46.371Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1630ms
+2026-06-26T05:37:48.224Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1652ms
+2026-06-26T05:37:50.013Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1589ms
+2026-06-26T05:37:52.181Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1968ms
+2026-06-26T05:37:53.995Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1613ms
+2026-06-26T05:37:55.990Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1794ms
+2026-06-26T05:37:58.051Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1861ms
+2026-06-26T05:38:00.470Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2217ms
+2026-06-26T05:38:02.358Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1687ms
+2026-06-26T05:38:04.264Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1706ms
+2026-06-26T05:38:06.077Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1613ms
+2026-06-26T05:38:08.288Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2011ms
+2026-06-26T05:38:10.231Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1743ms
+2026-06-26T05:38:12.056Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1624ms
+2026-06-26T05:38:13.855Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1598ms
+2026-06-26T05:38:16.347Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2292ms
+2026-06-26T05:38:18.073Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1525ms
+2026-06-26T05:38:19.930Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1655ms
+2026-06-26T05:38:21.901Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1771ms
+2026-06-26T05:38:24.104Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2001ms
+2026-06-26T05:38:26.011Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1707ms
+2026-06-26T05:38:27.929Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1718ms
+2026-06-26T05:38:29.722Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1592ms
+2026-06-26T05:38:31.835Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1912ms
+2026-06-26T05:38:33.641Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1606ms
+2026-06-26T05:38:35.517Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1676ms
+2026-06-26T05:38:37.257Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1539ms
+2026-06-26T05:38:39.278Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1821ms
+2026-06-26T05:38:41.143Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1664ms
+2026-06-26T05:38:43.088Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1744ms
+2026-06-26T05:38:45.023Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1733ms
+2026-06-26T05:38:47.301Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2078ms
+2026-06-26T05:38:49.318Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1815ms
+2026-06-26T05:38:51.362Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1845ms
+2026-06-26T05:38:53.271Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1709ms
+2026-06-26T05:38:55.968Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2497ms
+2026-06-26T05:38:58.010Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1842ms
+2026-06-26T05:38:59.917Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1706ms
+2026-06-26T05:39:01.944Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1826ms
+2026-06-26T05:39:04.630Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2484ms
+2026-06-26T05:39:06.607Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1775ms
+2026-06-26T05:39:08.487Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1680ms
+2026-06-26T05:39:10.338Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1651ms
+2026-06-26T05:39:12.557Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2019ms
+2026-06-26T05:39:14.481Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1723ms
+2026-06-26T05:39:16.290Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1608ms
+2026-06-26T05:39:18.193Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1703ms
+2026-06-26T05:39:20.371Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1977ms
+2026-06-26T05:39:22.308Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1737ms
+2026-06-26T05:39:24.236Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1727ms
+2026-06-26T05:39:26.104Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1667ms
+2026-06-26T05:39:28.666Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2361ms
+2026-06-26T05:39:30.403Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1537ms
+2026-06-26T05:39:32.128Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1524ms
+2026-06-26T05:39:33.989Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1661ms
+2026-06-26T05:39:36.542Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2353ms
+2026-06-26T05:39:38.418Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1675ms
+2026-06-26T05:39:40.210Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1592ms
+2026-06-26T05:39:41.906Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1496ms
+2026-06-26T05:39:44.295Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2189ms
+2026-06-26T05:39:45.985Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1490ms
+2026-06-26T05:39:47.803Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1619ms
+2026-06-26T05:39:49.655Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1651ms
+2026-06-26T05:39:51.804Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1950ms
+2026-06-26T05:39:53.708Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1703ms
+2026-06-26T05:39:55.620Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1709ms
+2026-06-26T05:39:57.476Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1656ms
+2026-06-26T05:39:59.644Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1967ms
+2026-06-26T05:40:01.562Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1717ms
+2026-06-26T05:40:03.488Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1720ms
+2026-06-26T05:40:05.307Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1618ms
+2026-06-26T05:40:07.405Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1897ms
+2026-06-26T05:40:09.197Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1590ms
+2026-06-26T05:40:11.111Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1714ms
+2026-06-26T05:40:13.033Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1721ms
+2026-06-26T05:40:15.569Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2335ms
+2026-06-26T05:40:17.353Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1583ms
+2026-06-26T05:40:19.118Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1565ms
+2026-06-26T05:40:20.997Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1679ms
+2026-06-26T05:40:23.519Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2322ms
+2026-06-26T05:40:25.336Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1617ms
+2026-06-26T05:40:27.151Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1614ms
+2026-06-26T05:40:28.869Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1517ms
+2026-06-26T05:40:31.036Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1966ms
+2026-06-26T05:40:32.856Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1619ms
+2026-06-26T05:40:34.897Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1841ms
+2026-06-26T05:40:36.739Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1641ms
+2026-06-26T05:40:39.114Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2175ms
+2026-06-26T05:40:40.922Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1607ms
+2026-06-26T05:40:42.799Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1676ms
+2026-06-26T05:40:44.601Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1602ms
+2026-06-26T05:40:47.091Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2290ms
+2026-06-26T05:40:48.856Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1564ms
+2026-06-26T05:40:50.688Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1631ms
+2026-06-26T05:40:52.488Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1598ms
+2026-06-26T05:40:54.646Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1957ms
+2026-06-26T05:40:56.382Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1534ms
+2026-06-26T05:40:58.167Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1585ms
+2026-06-26T05:40:59.967Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1599ms
+2026-06-26T05:41:02.037Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1869ms
+2026-06-26T05:41:03.818Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1580ms
+2026-06-26T05:41:05.558Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1539ms
+2026-06-26T05:41:07.262Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1503ms
+2026-06-26T05:41:09.642Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2180ms
+2026-06-26T05:41:11.341Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1498ms
+2026-06-26T05:41:13.059Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1517ms
+2026-06-26T05:41:14.833Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1574ms
+2026-06-26T05:41:16.924Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1892ms
+2026-06-26T05:41:18.655Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1530ms
+2026-06-26T05:41:20.475Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1616ms
+2026-06-26T05:41:22.307Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1631ms
+2026-06-26T05:41:24.488Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1977ms
+2026-06-26T05:41:26.348Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1661ms
+2026-06-26T05:41:28.193Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1645ms
+2026-06-26T05:41:29.943Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1548ms
+2026-06-26T05:41:32.059Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1915ms
+2026-06-26T05:41:33.891Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1631ms
+2026-06-26T05:41:35.755Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1664ms
+2026-06-26T05:41:37.603Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1648ms
+2026-06-26T05:41:39.708Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1905ms
+2026-06-26T05:41:41.472Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1561ms
+2026-06-26T05:41:43.205Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1532ms
+2026-06-26T05:41:45.061Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1656ms
+2026-06-26T05:41:47.239Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1977ms
+2026-06-26T05:41:49.073Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1634ms
+2026-06-26T05:41:50.867Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1594ms
+2026-06-26T05:41:52.748Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1680ms
+2026-06-26T05:41:54.870Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1920ms
+2026-06-26T05:41:56.642Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1572ms
+2026-06-26T05:41:58.528Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1685ms
+2026-06-26T05:42:00.277Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1548ms
+2026-06-26T05:42:02.429Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1951ms
+2026-06-26T05:42:04.435Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1805ms
+2026-06-26T05:42:06.458Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1823ms
+2026-06-26T05:42:08.288Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1628ms
+2026-06-26T05:42:10.259Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1771ms
+2026-06-26T05:42:12.056Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1597ms
+2026-06-26T05:42:14.134Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1877ms
+2026-06-26T05:42:15.844Z [INFO] [性能诊断][IPC][agent:send-message] 入口 {
+  sessionId: 'a18cdd41-48e5-456f-bd96-4b0d789a3ba5',
+  channelId: '__platform__',
+  modelId: 'local-qwen36-27b',
+  workspaceId: '82028cf4-55f4-41e3-8dea-93806658dfcf',
+  userMessageLength: 2,
+  attachmentCount: 0,
+  additionalDirectoryCount: 0,
+  selectedMcpServerCount: 0
+}
+2026-06-26T05:42:15.848Z [INFO] [性能诊断][IPC][agent:send-message] 飞书镜像初始化完成 { sessionId: 'a18cdd41-48e5-456f-bd96-4b0d789a3ba5', durationMs: 1 }
+2026-06-26T05:42:15.848Z [INFO] [DIAG][Agent 服务] runAgent 入口: sessionId=a18cdd41-48e5-456f-bd96-4b0d789a3ba5, channelId=__platform__, modelId=local-qwen36-27b, workspaceId=82028cf4-55f4-41e3-8dea-93806658dfcf, ts=1782452535848
+2026-06-26T05:42:15.862Z [INFO] [Agent 会话] 已更新会话: Constraints: (a18cdd41-48e5-456f-bd96-4b0d789a3ba5)
+2026-06-26T05:42:15.862Z [INFO] [DIAG][Agent 服务] 即将调用 orchestrator.sendMessage, ts=1782452535862
+2026-06-26T05:42:15.867Z [INFO] [Agent 会话] 已更新会话: Constraints: (a18cdd41-48e5-456f-bd96-4b0d789a3ba5)
+2026-06-26T05:42:15.868Z [INFO] [Agent 编排] 渠道信息: channelId=__platform__, modelId=local-qwen36-27b, provider=anthropic, baseUrl="http://168.63.65.40:8090/llm-service/v1/messages", apiKey=workmate...7972
+2026-06-26T05:42:15.869Z [INFO] [Agent 编排] 配置 Shell 环境: Git Bash (C:\Program Files\Git\bin\bash.exe)
+2026-06-26T05:42:15.870Z [INFO] [Agent 编排] Resume 状态: sdkSessionId=8b919254-9710-450b-a281-5d0bafe4c062, proma sessionId=a18cdd41-48e5-456f-bd96-4b0d789a3ba5
+2026-06-26T05:42:15.874Z [INFO] [Agent 编排] SDK binary 路径 (createRequire): C:\Program Files\WorkMate\resources\app.asar\node_modules\@anthropic-ai\claude-agent-sdk-win32-x64\claude.exe
+2026-06-26T05:42:15.875Z [INFO] [Agent 编排] 启动 SDK — binary: C:\Program Files\WorkMate\resources\app.asar.unpacked\node_modules\@anthropic-ai\claude-agent-sdk-win32-x64\claude.exe, 模型: local-qwen36-27b, resume: 8b919254-9710-450b-a281-5d0bafe4c062
+2026-06-26T05:42:15.876Z [INFO] [Agent 编排] 使用 session 级别 cwd: C:\Users\024445\.proma\agent-workspaces\default\a18cdd41-48e5-456f-bd96-4b0d789a3ba5 (产品设计工作区/a18cdd41-48e5-456f-bd96-4b0d789a3ba5)
+2026-06-26T05:42:15.877Z [INFO] [Agent 编排] 将尝试 resume: 8b919254-9710-450b-a281-5d0bafe4c062
+2026-06-26T05:42:15.877Z [INFO] [perf] readFileSync SDK settings.json (no write needed) → 0ms
+2026-06-26T05:42:15.877Z [INFO] [Agent 编排] 将直接使用已保存的 sdkSessionId 进行 resume: 8b919254-9710-450b-a281-5d0bafe4c062
+2026-06-26T05:42:15.884Z [INFO] [WorkMate WebSearch MCP] 已注入内置联网搜索工具 (workmate-web-search)
+2026-06-26T05:42:15.886Z [INFO] [Agent 编排] 已注入内置定时任务工具 (automation)
+2026-06-26T05:42:15.888Z [INFO] [Agent 编排] 已注入 EIP 请求工具 (workmate-eip/eip_request)
+2026-06-26T05:42:15.889Z [INFO] [Agent 编排] 使用 resume 模式，SDK session ID: 8b919254-9710-450b-a281-5d0bafe4c062
+2026-06-26T05:42:15.890Z [INFO] [Agent 编排] 权限模式: bypassPermissions（外部覆盖）
+2026-06-26T05:42:15.916Z [INFO] [Agent 编排] 开始通过 Adapter 遍历事件流...
+2026-06-26T05:42:15.917Z [INFO] [DIAG][Claude 适配器] [query() 入口] sessionId=a18cdd41-48e5-456f-bd96-4b0d789a3ba5, elapsed=0ms, ts=1782452535917
+2026-06-26T05:42:15.917Z [INFO] [DIAG][Claude 适配器] [开始动态导入 SDK (await import)] sessionId=a18cdd41-48e5-456f-bd96-4b0d789a3ba5, elapsed=0ms, ts=1782452535917
+2026-06-26T05:42:15.917Z [INFO] [DIAG][Claude 适配器] [SDK 动态导入完成] sessionId=a18cdd41-48e5-456f-bd96-4b0d789a3ba5, elapsed=0ms, ts=1782452535917
+2026-06-26T05:42:15.917Z [INFO] [DIAG][Claude 适配器] [sdkOptions 构建完成, 即将创建 messageChannel] sessionId=a18cdd41-48e5-456f-bd96-4b0d789a3ba5, elapsed=0ms, ts=1782452535917
+2026-06-26T05:42:15.917Z [INFO] [DIAG][Claude 适配器] [messageChannel 已创建] sessionId=a18cdd41-48e5-456f-bd96-4b0d789a3ba5, elapsed=0ms, ts=1782452535917
+2026-06-26T05:42:15.917Z [INFO] [DIAG][Claude 适配器] [初始 prompt 已入队, 即将调用 sdk.query()] sessionId=a18cdd41-48e5-456f-bd96-4b0d789a3ba5, elapsed=0ms, ts=1782452535917
+2026-06-26T05:42:15.919Z [INFO] [DIAG][Claude 适配器] [spawnClaudeCodeProcess 被调用: command=C:\Program Files\WorkMate\resources\app.asar.unpacked\node_modules\@anthropic-ai\claude-agent-sdk-win32-x64\claude.exe, args=[--output-format, stream-json, --verbose, --input-format, stream-json...], cwd=C:\Users\024445\.proma\agent-workspaces\default\a18cdd41-48e5-456f-bd96-4b0d789a3ba5] sessionId=a18cdd41-48e5-456f-bd96-4b0d789a3ba5, elapsed=2ms, ts=1782452535919
+2026-06-26T05:42:15.949Z [INFO] [DIAG][Claude 适配器] [子进程已启动: pid=14660] sessionId=a18cdd41-48e5-456f-bd96-4b0d789a3ba5, elapsed=32ms, ts=1782452535949
+2026-06-26T05:42:15.951Z [INFO] [DIAG][Claude 适配器] [sdk.query() 已返回 iterator] sessionId=a18cdd41-48e5-456f-bd96-4b0d789a3ba5, elapsed=34ms, ts=1782452535951
+2026-06-26T05:42:15.951Z [INFO] [DIAG][Claude 适配器] [activeQueries/activeChannels 已设置] sessionId=a18cdd41-48e5-456f-bd96-4b0d789a3ba5, elapsed=34ms, ts=1782452535951
+2026-06-26T05:42:15.951Z [INFO] [DIAG][Claude 适配器] [queryReady 已 resolve, 即将进入 for-await 循环] sessionId=a18cdd41-48e5-456f-bd96-4b0d789a3ba5, elapsed=34ms, ts=1782452535951
+2026-06-26T05:42:15.954Z [WARN] [DIAG][Agent 编排] ⚠️ Event Loop 延迟: 92ms (>50ms 表示主线程拥堵)
+2026-06-26T05:42:15.968Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1633ms
+2026-06-26T05:42:17.616Z [INFO] [perf] file-logger flush: 40 entries → 2 files, 1575ms
+2026-06-26T05:42:19.579Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1762ms
+2026-06-26T05:42:22.443Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2663ms
+2026-06-26T05:42:22.608Z [INFO] [DIAG][Claude 适配器] [收到第一条 SDK 消息: type=system, subtype=init] sessionId=a18cdd41-48e5-456f-bd96-4b0d789a3ba5, elapsed=6691ms, ts=1782452542608
+2026-06-26T05:42:22.609Z [INFO] [Agent 编排] SDK 确认模型: local-qwen36-27b
+2026-06-26T05:42:24.440Z [INFO] [perf] file-logger flush: 4 entries → 2 files, 1815ms
+2026-06-26T05:42:26.172Z [INFO] [perf] file-logger flush: 5 entries → 2 files, 1586ms
+2026-06-26T05:42:27.870Z [INFO] [perf] file-logger flush: 2 entries → 2 files, 1508ms
+2026-06-26T05:42:29.889Z [INFO] [perf] file-logger flush: 2 entries → 2 files, 1819ms
+2026-06-26T05:42:31.622Z [INFO] [perf] file-logger flush: 2 entries → 2 files, 1534ms
+2026-06-26T05:42:33.273Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1452ms
+2026-06-26T05:42:35.124Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1652ms
+2026-06-26T05:42:35.275Z [WARN] [Agent 编排] drain timeout: SDK iterator 在 result 后 2000ms 内未关闭，强制退出
+2026-06-26T05:42:35.279Z [INFO] [DIAG][Agent 服务] orchestrator.sendMessage 正常返回, sessionId=a18cdd41-48e5-456f-bd96-4b0d789a3ba5, ts=1782452555279
+2026-06-26T05:42:35.279Z [INFO] [性能诊断][IPC][agent:send-message] 完成 { sessionId: 'a18cdd41-48e5-456f-bd96-4b0d789a3ba5', durationMs: 19435 }
+2026-06-26T05:42:37.533Z [INFO] [DIAG][Claude 适配器] [query() finally 块执行, 清理资源] sessionId=a18cdd41-48e5-456f-bd96-4b0d789a3ba5, elapsed=21616ms, ts=1782452557533
+2026-06-26T05:42:37.543Z [INFO] [perf] file-logger flush: 7 entries → 2 files, 2220ms
+2026-06-26T05:42:39.335Z [INFO] [观测上报] 开始上报, url=%s, events=%d http://eip.htsc.com.cn/workmate/observability/events 1
+2026-06-26T05:42:39.371Z [INFO] [perf] file-logger flush: 2 entries → 1 files, 1638ms
+2026-06-26T05:42:41.142Z [INFO] [perf] file-logger flush: 2 entries → 1 files, 1606ms
+2026-06-26T05:42:42.989Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1647ms
+2026-06-26T05:42:45.577Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2386ms
+2026-06-26T05:42:47.582Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1805ms
+2026-06-26T05:42:47.713Z [INFO] [日志上报] 收集到 %d 个日志文件: %s 2 main.log (10240.0 KB), renderer.log (667.4 KB)
+2026-06-26T05:42:47.801Z [INFO] [日志上报] 已打包准备上传: 小盒老师_2026-06-26-13-42_log.zip (57.8 KB)
+2026-06-26T05:42:47.802Z [INFO] [日志上报]  POST %s http://eip.htsc.com.cn/workmate/logs/upload
+2026-06-26T05:42:49.612Z [INFO] [perf] file-logger flush: 5 entries → 2 files, 1803ms
+2026-06-26T05:42:51.556Z [INFO] [日志上报]  上传成功: %s (%d KB) 024445_20260626134251_e83b6bbc.zip 57.8
+2026-06-26T05:42:51.571Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1758ms
+2026-06-26T05:42:53.763Z [INFO] [perf] file-logger flush: 2 entries → 1 files, 2006ms
+2026-06-26T05:42:55.506Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1542ms
+2026-06-26T05:42:57.272Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1565ms
+2026-06-26T05:42:58.999Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1526ms
+2026-06-26T05:43:01.078Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1880ms
+2026-06-26T05:43:02.920Z [INFO] [perf] file-logger flush: 3 entries → 2 files, 1648ms
+2026-06-26T05:43:04.784Z [INFO] [perf] file-logger flush: 3 entries → 2 files, 1684ms
+2026-06-26T05:43:06.787Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1803ms
+2026-06-26T05:43:09.525Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2537ms
+2026-06-26T05:43:11.370Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1643ms
+2026-06-26T05:43:13.217Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1648ms
+2026-06-26T05:43:14.874Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1457ms
+2026-06-26T05:43:17.385Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2311ms
+2026-06-26T05:43:19.229Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1643ms
+2026-06-26T05:43:21.074Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1644ms
+2026-06-26T05:43:22.875Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1601ms
+2026-06-26T05:43:25.496Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2420ms
+2026-06-26T05:43:27.314Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1617ms
+2026-06-26T05:43:29.033Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1517ms
+2026-06-26T05:43:30.801Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1566ms
+2026-06-26T05:43:32.817Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1812ms
+2026-06-26T05:43:34.625Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1606ms
+2026-06-26T05:43:36.540Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1715ms
+2026-06-26T05:43:38.391Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1649ms
+2026-06-26T05:43:41.084Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 2493ms
+2026-06-26T05:44:00.669Z [INFO] [启动耗时] +0.00s | 单实例锁检查开始
+2026-06-26T05:44:00.672Z [INFO] [启动耗时] +0.01s | 单实例锁已获取，注册协议和事件监听
+2026-06-26T05:44:00.672Z [INFO] [启动耗时] +0.01s | 协议和事件监听注册完成
+2026-06-26T05:44:00.672Z [INFO] [启动耗时] +0.01s | 模块加载完成，等待 app.whenReady()
+2026-06-26T05:44:03.393Z [INFO] [perf] file-logger flush: 4 entries → 1 files, 2010ms
+2026-06-26T05:44:05.172Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1578ms
+2026-06-26T05:44:07.796Z [INFO] [perf] file-logger flush: 21 entries → 2 files, 73ms
+2026-06-26T05:44:07.803Z [INFO] [perf] file-logger flush: 4 entries → 2 files, 2431ms
+2026-06-26T05:44:07.854Z [INFO] [perf] execFile where node → 238ms
+2026-06-26T05:44:07.928Z [INFO] [DPAPI] prebuild 加载成功
+2026-06-26T05:44:08.013Z [INFO] [perf] execFile where bun → FAIL after 352ms
+2026-06-26T05:44:08.013Z [WARN] [Bun 检测] 未找到（非必须）
+2026-06-26T05:44:08.013Z [INFO] [perf] detectBunRuntime → 924ms (累计)
+2026-06-26T05:44:09.801Z [INFO] [perf] file-logger flush: 7 entries → 1 files, 1788ms
+2026-06-26T05:44:11.586Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1585ms
+2026-06-26T05:44:13.583Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1795ms
+2026-06-26T05:44:15.395Z [INFO] [观测上报] 开始上报, url=%s, events=%d http://eip.htsc.com.cn/workmate/observability/events 1
+2026-06-26T05:44:15.422Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1638ms
+2026-06-26T05:44:17.107Z [INFO] [perf] file-logger flush: 2 entries → 1 files, 1508ms
+2026-06-26T05:44:19.016Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1709ms
+2026-06-26T05:44:20.664Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1447ms
+2026-06-26T05:44:22.523Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1659ms
+2026-06-26T05:44:24.209Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1485ms
+2026-06-26T05:44:26.043Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1630ms
+2026-06-26T05:44:27.773Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1529ms
+2026-06-26T05:44:29.539Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1565ms
+2026-06-26T05:44:31.215Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1475ms
+2026-06-26T05:44:32.988Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1559ms
+2026-06-26T05:44:34.727Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1539ms
+2026-06-26T05:44:36.657Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1729ms
+2026-06-26T05:44:38.336Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1478ms
+2026-06-26T05:44:40.057Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1521ms
+2026-06-26T05:44:41.794Z [INFO] [perf] file-logger flush: 2 entries → 2 files, 1536ms
+2026-06-26T05:44:43.697Z [INFO] [perf] file-logger flush: 2 entries → 2 files, 1702ms
+2026-06-26T05:44:45.398Z [INFO] [更新] setStatus: %s (win=%s) checking 有
+2026-06-26T05:44:45.399Z [INFO] [升级检测] 请求 %s (current=%s platform=%s arch=%s) /workmate/upgrade/check 0.12.54 win32 x64
+2026-06-26T05:44:45.411Z [INFO] [更新] 跳过：已在检查中
+2026-06-26T05:44:45.415Z [INFO] [perf] file-logger flush: 3 entries → 2 files, 1570ms
+2026-06-26T05:44:45.451Z [INFO] [升级检测] 无可用更新
+2026-06-26T05:44:45.453Z [INFO] [更新] 无可用更新, hint=%s 无
+2026-06-26T05:44:45.453Z [INFO] [更新] setStatus: %s (win=%s) not-available 有
+2026-06-26T05:44:45.453Z [INFO] [更新] 下次周期检测 %d 小时后 6
+2026-06-26T05:44:47.383Z [INFO] [观测上报] 开始上报, url=%s, events=%d http://eip.htsc.com.cn/workmate/observability/events 1
+2026-06-26T05:44:47.399Z [INFO] [perf] file-logger flush: 10 entries → 2 files, 1798ms
+2026-06-26T05:44:49.171Z [INFO] [perf] file-logger flush: 2 entries → 1 files, 1588ms
+2026-06-26T05:44:50.937Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1566ms
+2026-06-26T05:44:52.539Z [INFO] [perf] file-logger flush: 2 entries → 2 files, 1412ms
+2026-06-26T05:44:54.412Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1672ms
+2026-06-26T05:44:56.043Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1431ms
+2026-06-26T05:44:57.847Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1603ms
+2026-06-26T05:44:59.498Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1449ms
+2026-06-26T05:45:01.257Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1559ms
+2026-06-26T05:45:02.960Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1502ms
+2026-06-26T05:45:04.668Z [INFO] [perf] file-logger flush: 1 entries → 1 files, 1508ms

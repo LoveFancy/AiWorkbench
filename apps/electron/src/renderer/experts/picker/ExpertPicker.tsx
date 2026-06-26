@@ -28,7 +28,7 @@ interface ExpertPickerProps {
   loading: boolean
   onOpenChange: (open: boolean) => void
   onRefresh: () => void
-  onSummon: (group: AgentExpertGroupInfo) => void
+  onSummon: (group: AgentExpertGroupInfo, samplePrompt?: string) => void
 }
 
 function matchesGroup(group: AgentExpertGroupInfo, query: string): boolean {
@@ -83,9 +83,9 @@ export function ExpertPicker({
   // 问题组：故障型不可用（与主列表「不可用」筛选口径一致）
   const issueGroups = visibleGroups.filter((group) => isExpertGroupFaulted(group.status))
 
-  const handleSummon = React.useCallback((group: AgentExpertGroupInfo): void => {
+  const handleSummon = React.useCallback((group: AgentExpertGroupInfo, samplePrompt?: string): void => {
     setSelected(null)
-    onSummon(group)
+    onSummon(group, samplePrompt)
   }, [onSummon])
 
   return (

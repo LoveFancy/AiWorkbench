@@ -166,6 +166,7 @@ export async function detectGitRuntime(): Promise<GitRuntimeStatus> {
  * @returns 命令输出，如果失败返回 null
  */
 function runGitCommand(args: string[], cwd: string): string | null {
+  const t0 = Date.now()
   try {
     const result = spawnSync('git', args, {
       cwd,
@@ -178,12 +179,15 @@ function runGitCommand(args: string[], cwd: string): string | null {
         GIT_TERMINAL_PROMPT: '0',
       },
     })
+    const elapsed = Date.now() - t0
+    console.log(`[perf] spawnSync git ${args.join(' ')} → ${elapsed}ms`)
 
     if (result.status === 0) {
       return result.stdout.trim()
     }
   } catch {
-    // 命令执行失败
+    const elapsed = Date.now() - t0
+    console.log(`[perf] spawnSync git ${args.join(' ')} → FAIL after ${elapsed}ms`)
   }
 
   return null
@@ -284,11 +288,14 @@ export function detectGitBashWindows(): string | null {
   }
 
   // 尝试使用 where 命令
+  const t0 = Date.now()
   try {
     const result = execSync('where bash', {
       stdio: ['pipe', 'pipe', 'pipe'],
       timeout: 5000,
     })
+    const elapsed = Date.now() - t0
+    console.log(`[perf] execSync where bash → ${elapsed}ms`)
 
     const bashPath = decodeCommandOutput(result).trim().split(/\r?\n/)[0]
 
@@ -296,7 +303,8 @@ export function detectGitBashWindows(): string | null {
       return bashPath
     }
   } catch {
-    // 未找到
+    const elapsed = Date.now() - t0
+    console.log(`[perf] execSync where bash → FAIL after ${elapsed}ms`)
   }
 
   return null

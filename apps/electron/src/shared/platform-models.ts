@@ -27,3 +27,10 @@ export interface ModelsCache {
   cachedAt: number
   jobId?: string
 }
+
+/** IPC 通道名称常量 */
+export const PLATFORM_MODELS_IPC_CHANNELS = {
+  FETCH: 'platform-models:fetch',
+  GET_CACHED: 'platform-models:get-cached',
+  GET_API_KEY: 'platform-models:get-api-key',
+} as const

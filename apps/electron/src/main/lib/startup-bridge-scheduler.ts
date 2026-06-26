@@ -14,7 +14,7 @@ interface ScheduleAfterFirstWindowLoadOptions {
 
 type StartBridgesCallback = (reason: string) => void
 
-const DEFAULT_FALLBACK_DELAY_MS = 15_000
+const DEFAULT_FALLBACK_DELAY_MS = 120_000
 
 /**
  * 将 Bridge 启动延后到主窗口首轮加载完成后，避免飞书/钉钉等长连接初始化抢占首屏启动资源。
