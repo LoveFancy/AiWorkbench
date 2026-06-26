@@ -24,6 +24,7 @@ import {
   writeCliConnectorRuntime,
   writeCliConnectorSecrets,
 } from './cli-connector-runtime'
+import { getValidUatToken, readUatAuth, isExpired } from './hiagent-auth-service'
 
 interface CommandResult {
   ok: boolean
@@ -429,6 +430,17 @@ function makeCliSteps(): DefaultConnectorInitStep[] {
   ]
 }
 
+function makeHiAgentCliSteps(): DefaultConnectorInitStep[] {
+  return [
+    { id: 'check-runtime', label: '检查 Node/npm 环境', status: 'pending' },
+    { id: 'check-package', label: '检查 talents CLI', status: 'pending' },
+    { id: 'install-package', label: '安装 talents CLI', status: 'pending' },
+    { id: 'install-skill', label: '启用 talents Skill', status: 'pending' },
+    { id: 'check-auth', label: 'SkillHub 认证换票', status: 'pending' },
+    { id: 'self-check', label: '自检连接', status: 'pending' },
+  ]
+}
+
 async function initializeCliConnector(
   workspaceSlug: string,
   input: InitializeDefaultConnectorInput,
@@ -436,7 +448,8 @@ async function initializeCliConnector(
 ): Promise<InitializeDefaultConnectorResult> {
   const commandExists = deps.commandExists ?? defaultCommandExists
   const runCommand = deps.runCommand ?? defaultRunCommand
-  const steps = makeCliSteps()
+  const isHiAgent = input.connectorId === 'hi-agent'
+  const steps = isHiAgent ? makeHiAgentCliSteps() : makeCliSteps()
   const updateStep = createConnectorStepUpdater(workspaceSlug, input, deps, steps)
   updateStep('check-runtime', 'running')
 
@@ -529,33 +542,74 @@ async function initializeCliConnector(
 
   updateStep('install-skill', 'running')
   updateStep('install-skill', 'success', '已随连接器启用')
-  updateStep('write-config', 'running')
+
+  // 写 runtime.json（hi-agent 和非 hi-agent 都需要）
   writeCliConnectorRuntime(connectorDir, {
     commandPath: resolvedPath,
     binDir: dirname(resolvedPath),
     packageName: '@ht/talents-cli',
     packageVersion: await readTalentsVersion(resolvedPath, runCommand),
   })
-  writeCliConnectorSecrets(connectorDir, definition, userValues)
-  updateStep('write-config', 'success', '已保存')
 
-  updateStep('self-check', 'running')
-  const resolvedEnv = resolveCliConnectorEnv(definition, userValues)
-  const selfCheck = await runCliStatusCheck(definition, resolvedPath, resolvedEnv, runCommand)
-  if (!selfCheck.ok) {
-    const message = sanitizeMessage(getCommandMessage(selfCheck), userValues) || 'Talents Token 校验失败'
-    updateStep('self-check', 'error', message)
-    return {
-      connectorId: input.connectorId,
-      success: false,
-      steps,
-      message,
+  if (isHiAgent) {
+    // hi-agent：SkillHub 换票 → 写入 ~/.htskill/auth.json
+    updateStep('check-auth', 'running')
+
+    let auth = readUatAuth()
+    if (!auth || isExpired(auth)) {
+      const newAuth = await getValidUatToken()
+      if (!newAuth) {
+        updateStep('check-auth', 'error', '换票失败，请先登录 OA 账号')
+        return {
+          connectorId: input.connectorId,
+          success: false,
+          steps,
+          message: 'SkillHub 换票失败，请先登录 OA 账号。',
+        }
+      }
+      auth = newAuth
     }
+    updateStep('check-auth', 'success', '已获取 Token')
+
+    // 自检用 auth.json 的 Token
+    updateStep('self-check', 'running')
+    const authEnv = resolveCliConnectorEnv(definition, { HTSKILL_TOKEN: auth.accessToken })
+    const selfCheck = await runCliStatusCheck(definition, resolvedPath, authEnv, runCommand)
+    if (!selfCheck.ok) {
+      const message = sanitizeMessage(getCommandMessage(selfCheck), { HTSKILL_TOKEN: auth.accessToken }) || 'Talents Token 校验失败'
+      updateStep('self-check', 'error', message)
+      return {
+        connectorId: input.connectorId,
+        success: false,
+        steps,
+        message,
+      }
+    }
+    updateStep('self-check', 'success', '连接成功')
+  } else {
+    // 非 hi-agent：走 secrets.json
+    updateStep('write-config', 'running')
+    writeCliConnectorSecrets(connectorDir, definition, userValues)
+    updateStep('write-config', 'success', '已保存')
+
+    updateStep('self-check', 'running')
+    const resolvedEnv = resolveCliConnectorEnv(definition, userValues)
+    const selfCheck = await runCliStatusCheck(definition, resolvedPath, resolvedEnv, runCommand)
+    if (!selfCheck.ok) {
+      const message = sanitizeMessage(getCommandMessage(selfCheck), userValues) || 'Talents Token 校验失败'
+      updateStep('self-check', 'error', message)
+      return {
+        connectorId: input.connectorId,
+        success: false,
+        steps,
+        message,
+      }
+    }
+    updateStep('self-check', 'success', '连接成功')
   }
 
   connectorDef.enabled = true
   saveWorkspaceConnectorsConfig(workspaceSlug, connectorsConfig)
-  updateStep('self-check', 'success', '连接成功')
 
   return {
     connectorId: input.connectorId,

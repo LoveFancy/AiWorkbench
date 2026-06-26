@@ -1,16 +1,17 @@
 /**
  * SkillHub 认证服务
  *
- * 负责：EIPGW-TOKEN → SkillHub accessToken 换票 → 加密存储 → 自动刷新
+ * 负责：EIPGW-TOKEN → SkillHub accessToken 换票 → 明文写 ~/.htskill/auth.json
  *
  * 依赖：fanxuande 分支的 auth/ 模块（EIP 登录），通过 getToken() 复用 EIPGW-TOKEN
  */
 
-import { app, safeStorage } from 'electron'
-import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { app } from 'electron'
+import { existsSync, readFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { getConfigDir, getSettingsPath } from './config-paths'
-import { readJsonFileSafe, writeJsonFileAtomic } from './safe-file'
+import { homedir } from 'node:os'
+import { getSettingsPath } from './config-paths'
+import { writeJsonFileAtomic } from './safe-file'
 import { getToken } from '../../auth/auth-service'
 import { resolveApiBase } from '../../shared/hteip-client'
 
@@ -84,54 +85,49 @@ export function shouldUseMockSkillHub(): boolean {
 
 // ===== 内部类型 =====
 
-interface SkillHubAuthFile {
-  version: number
-  accessToken: string   // safeStorage 加密后的 base64
-  expiresAt: number     // Unix 毫秒
-  updatedAt: string     // ISO 8601
+interface SkillHubAuthEntry {
+  tokenType: string
+  accessToken: string
+  expiresAt: string    // ISO 8601
+  env: string
+  gatewayBaseUrl: string
 }
 
 // ===== 内部工具 =====
 
+/** ~/.htskill/auth.json 路径 */
 function authPath(): string {
-  return join(getConfigDir(), 'skillhub-auth.json')
+  return join(homedir(), '.htskill', 'auth.json')
 }
 
-function readAuthFile(): SkillHubAuthFile | null {
-  return readJsonFileSafe<SkillHubAuthFile>(authPath())
-}
-
-function writeAuthFile(data: SkillHubAuthFile): void {
-  writeJsonFileAtomic(authPath(), data)
-}
-
-function encrypt(plain: string): string {
-  if (!safeStorage.isEncryptionAvailable()) {
-    console.warn('[SkillHub 认证] safeStorage 不可用，Token 将明文存储')
-    return plain
+function readAuthFileRaw(): Record<string, SkillHubAuthEntry> {
+  if (!existsSync(authPath())) return {}
+  try {
+    return JSON.parse(readFileSync(authPath(), 'utf-8'))
+  } catch {
+    return {}
   }
-  return safeStorage.encryptString(plain).toString('base64')
 }
 
-function decrypt(base64: string): string {
-  if (base64 === '') return ''
-  if (!safeStorage.isEncryptionAvailable()) {
-    return base64
+function writeUatEntry(entry: SkillHubAuthEntry): void {
+  const dir = join(homedir(), '.htskill')
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true })
   }
-  return safeStorage.decryptString(Buffer.from(base64, 'base64'))
+  const existing = readAuthFileRaw()
+  existing['uat'] = entry
+  writeJsonFileAtomic(authPath(), existing)
 }
 
 function getCachedValidToken(): string | null {
-  const file = readAuthFile()
-  if (!file) return null
+  const auth = readAuthFileRaw()
+  const entry = auth['uat']
+  if (!entry || typeof entry.accessToken !== 'string') return null
 
   const now = Date.now()
-  if (now < file.expiresAt - REFRESH_THRESHOLD_MS) {
-    try {
-      return decrypt(file.accessToken)
-    } catch (err) {
-      console.warn('[SkillHub 认证] 缓存的 Token 解密失败:', err)
-    }
+  const expiry = new Date(entry.expiresAt).getTime()
+  if (now < expiry - REFRESH_THRESHOLD_MS) {
+    return entry.accessToken
   }
   return null
 }
@@ -192,16 +188,17 @@ export async function exchangeToken(): Promise<string> {
 
   const token = tokenData.accessToken
   const expiresIn = typeof tokenData.expiresIn === 'number' ? tokenData.expiresIn : 7200
-  const expiresAt = Date.now() + expiresIn * 1000
+  const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString()
 
-  writeAuthFile({
-    version: 1,
-    accessToken: encrypt(token),
+  writeUatEntry({
+    tokenType: 'Bearer',
+    accessToken: token,
     expiresAt,
-    updatedAt: new Date().toISOString(),
+    env: 'uat',
+    gatewayBaseUrl: getSkillHubBase(),
   })
 
-  console.log(`[SkillHub 认证] 换票成功, expiresAt=${new Date(expiresAt).toISOString()}`)
+  console.log(`[SkillHub 认证] 换票成功, expiresAt=${expiresAt}`)
   return token
 }
 
@@ -250,25 +247,28 @@ export function getSkillHubAuthStatus(): {
     }
   }
 
-  const file = readAuthFile()
-  if (!file) return { authenticated: false }
+  const auth = readAuthFileRaw()
+  const entry = auth['uat']
+  if (!entry || typeof entry.accessToken !== 'string') return { authenticated: false }
 
   const now = Date.now()
-  const remainingMs = file.expiresAt - now
+  const expiry = new Date(entry.expiresAt).getTime()
   return {
-    authenticated: remainingMs > 0,
-    expiresAt: file.expiresAt,
-    remainingSeconds: Math.max(0, Math.floor(remainingMs / 1000)),
+    authenticated: now < expiry,
+    expiresAt: expiry,
+    remainingSeconds: Math.max(0, Math.floor((expiry - now) / 1000)),
   }
 }
 
 /**
- * 清除 SkillHub 认证状态
+ * 清除 SkillHub 认证状态（仅清 uat key，保留其他环境）
  */
 export function clearSkillHubAuth(): void {
   const p = authPath()
   if (existsSync(p)) {
-    rmSync(p)
-    console.log('[SkillHub 认证] 已清除')
+    const existing = readAuthFileRaw()
+    delete existing['uat']
+    writeJsonFileAtomic(p, existing)
+    console.log('[SkillHub 认证] 已清除 uat 认证')
   }
 }

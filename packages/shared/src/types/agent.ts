@@ -815,7 +815,7 @@ export interface ConnectorsConfig {
 
 // ===== 内置连接器初始化 =====
 
-export type DefaultConnectorInitStepId = 'check-python' | 'check-runtime' | 'check-package' | 'install-package' | 'install-skill' | 'write-config' | 'self-check'
+export type DefaultConnectorInitStepId = 'check-python' | 'check-runtime' | 'check-package' | 'install-package' | 'install-skill' | 'check-auth' | 'write-config' | 'self-check'
 
 export interface DefaultConnectorInitStep {
   id: DefaultConnectorInitStepId
