@@ -134,6 +134,9 @@ export function getAutomation(id: string): Automation | undefined {
 
 /** 创建定时任务 */
 export function createAutomation(input: CreateAutomationInput): Automation {
+  if (!input.channelId) throw new Error('channelId 必填')
+  if (!input.modelId) throw new Error('modelId 必填：自动任务必须指定模型')
+  if (!input.workspaceId) throw new Error('workspaceId 必填：自动任务必须指定工作区')
   const index = readIndex()
   const now = Date.now()
   const active = input.active ?? true
@@ -176,9 +179,10 @@ export function updateAutomation(input: UpdateAutomationInput): Automation | und
   if (input.prompt !== undefined) target.prompt = input.prompt
   if (input.channelId !== undefined) target.channelId = input.channelId
   if (input.modelId !== undefined) target.modelId = input.modelId
-  // workspaceId 允许设为空字符串表示「无工作区」；用 undefined 区分「不修改」
+  // workspaceId 不允许清空：自动任务必须有工作区
   if (input.workspaceId !== undefined) {
-    target.workspaceId = input.workspaceId || undefined
+    if (!input.workspaceId) throw new Error('workspaceId 不能为空：自动任务必须指定工作区')
+    target.workspaceId = input.workspaceId
   }
   if (input.permissionMode !== undefined) target.permissionMode = input.permissionMode
   if (input.notificationTargets !== undefined) target.notificationTargets = input.notificationTargets

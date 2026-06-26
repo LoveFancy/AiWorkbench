@@ -41,7 +41,6 @@ import type {
   UpdateAutomationInput,
 } from '@proma/shared'
 
-const NO_WORKSPACE = '__none__'
 
 function formatTime(ts?: number): string {
   if (!ts) return '—'
@@ -55,7 +54,7 @@ function formatRunStatus(status: AutomationRun['status']): string {
 }
 
 function canPersistDraft(draft: AutomationDraft): boolean {
-  return !!(draft.name.trim() && draft.prompt.trim() && draft.channelId)
+  return !!(draft.name.trim() && draft.prompt.trim() && draft.channelId && draft.modelId && draft.workspaceId)
 }
 
 function getDraftSignature(draft: AutomationDraft): string {
@@ -69,7 +68,7 @@ function getDraftSignature(draft: AutomationDraft): string {
     dayOfWeek: draft.dayOfWeek ?? '',
     channelId: draft.channelId,
     modelId: draft.modelId ?? '',
-    workspaceId: draft.workspaceId ?? '',
+    workspaceId: draft.workspaceId,
     permissionMode: draft.permissionMode,
     active: draft.active,
   })
@@ -291,7 +290,7 @@ export function AutomationFormView(): React.ReactElement | null {
   const handleRunNow = async (): Promise<void> => {
     const latest = latestFormRef.current
     if (!latest || !canPersistDraft(latest)) {
-      toast.error('请先填写任务名称、任务描述并选择模型')
+      toast.error('请先填写任务名称、任务描述并选择模型和工作区')
       return
     }
 
@@ -581,7 +580,7 @@ export function AutomationFormView(): React.ReactElement | null {
 
           {/* 选择模型 */}
           <div className="flex flex-col gap-2">
-            <Label>选择模型</Label>
+            <Label>选择模型 <span className="text-destructive">*</span></Label>
             <ModelSelector
               externalSelectedModel={selectedModel}
               showChannelInTrigger
@@ -591,14 +590,13 @@ export function AutomationFormView(): React.ReactElement | null {
 
           {/* 工作区 */}
           <div className="flex flex-col gap-2">
-            <Label>工作区</Label>
+            <Label>工作区 <span className="text-destructive">*</span></Label>
             <Select
-              value={form.workspaceId ?? NO_WORKSPACE}
-              onValueChange={(v) => update({ workspaceId: v === NO_WORKSPACE ? undefined : v })}
+              value={form.workspaceId ?? ''}
+              onValueChange={(v) => update({ workspaceId: v || undefined })}
             >
-              <SelectTrigger><SelectValue placeholder="选择工作区" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="请选择工作区" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value={NO_WORKSPACE}>无工作区</SelectItem>
                 {workspaces.map((ws) => (
                   <SelectItem key={ws.id} value={ws.id}>{ws.name}</SelectItem>
                 ))}
