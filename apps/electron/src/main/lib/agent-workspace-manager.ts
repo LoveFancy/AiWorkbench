@@ -989,13 +989,21 @@ function getDefaultConnectorEntries(): Record<string, ConnectorEntry> {
 
 function copyMissingConnectorFiles(source: string, target: string): void {
   const blocklist = new Set(['.git', 'node_modules', '__pycache__', '.DS_Store'])
+  // cli.json 是连接器模板定义而非用户配置，内容变更时应同步到工作区
+  const syncableFiles = new Set(['cli.json'])
   for (const entry of readdirSync(source, { withFileTypes: true })) {
     if (blocklist.has(entry.name)) continue
     if (entry.name === 'connector.json') continue
     const srcPath = join(source, entry.name)
     const dstPath = join(target, entry.name)
     if (existsSync(dstPath)) {
-      if (entry.isDirectory()) copyMissingConnectorFiles(srcPath, dstPath)
+      if (entry.isDirectory()) {
+        copyMissingConnectorFiles(srcPath, dstPath)
+      } else if (syncableFiles.has(entry.name)) {
+        if (readFileSync(srcPath, 'utf-8') !== readFileSync(dstPath, 'utf-8')) {
+          copyFileSync(srcPath, dstPath)
+        }
+      }
       continue
     }
     cpSync(srcPath, dstPath, {

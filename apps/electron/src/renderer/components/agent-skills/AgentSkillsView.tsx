@@ -1428,18 +1428,14 @@ function HiAgentConnectorDialog({
   onOpenChange: (open: boolean) => void
   onSaved: () => void
 }): React.ReactElement {
-  const [token, setToken] = React.useState('')
-  const [env, setEnv] = React.useState('uat')
   const [saving, setSaving] = React.useState(false)
   const [editing, setEditing] = React.useState(false)
   const [initSteps, setInitSteps] = React.useState<DefaultConnectorInitStep[]>([])
-  const canSave = token.trim().length > 0 && env.trim().length > 0
+  const canSave = !saving
   const beginConnectorInitProgress = useConnectorInitProgress(workspaceSlug, 'hi-agent', setInitSteps)
 
   React.useEffect(() => {
     if (!open) {
-      setToken('')
-      setEnv('uat')
       setSaving(false)
       setEditing(false)
       setInitSteps([])
@@ -1455,17 +1451,14 @@ function HiAgentConnectorDialog({
       { id: 'check-package', label: '检查 talents CLI', status: 'pending' },
       { id: 'install-package', label: '安装 talents CLI', status: 'pending' },
       { id: 'install-skill', label: '启用 talents Skill', status: 'pending' },
-      { id: 'write-config', label: '保存认证配置', status: 'pending' },
+      { id: 'check-auth', label: 'SkillHub 认证换票', status: 'pending' },
       { id: 'self-check', label: '自检连接', status: 'pending' },
     ])
     try {
       const result = await window.electronAPI.initializeDefaultConnector(workspaceSlug, {
         connectorId: 'hi-agent',
         runId,
-        userProvidedData: {
-          HTSKILL_TOKEN: token,
-          AGENTOS_ENV: env,
-        },
+        userProvidedData: {},
       })
       setInitSteps(result.steps)
       if (!result.success) {
@@ -1507,7 +1500,7 @@ function HiAgentConnectorDialog({
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-sm font-medium text-foreground">当前 hiagent 能力</div>
-                <div className="mt-1 text-xs text-muted-foreground">已为当前工作区启用，Token 保存在本机并加密存储。</div>
+                <div className="mt-1 text-xs text-muted-foreground">已为当前工作区启用，Token 通过 EIP 网关自动换票。</div>
               </div>
               <Button type="button" variant="outline" size="sm" onClick={() => setEditing(true)}>
                 重新绑定
@@ -1523,35 +1516,9 @@ function HiAgentConnectorDialog({
 
         {(!isEnabled || editing) && (
           <div className="mx-auto mt-6 w-full max-w-[420px] space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">运行环境 *</label>
-              <select
-                value={env}
-                onChange={(event) => setEnv(event.target.value)}
-                className="h-11 w-full rounded-lg border border-border/80 bg-content-area px-3 text-sm shadow-sm outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/15"
-              >
-                <option value="uat">UAT</option>
-                <option value="sit">SIT</option>
-                <option value="dev">DEV</option>
-                <option value="prd">PRD</option>
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Talents Token *</label>
-              <input
-                value={token}
-                onChange={(event) => setToken(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && canSave && !saving) {
-                    event.preventDefault()
-                    void handleSave()
-                  }
-                }}
-                placeholder="请输入 Talents Token"
-                type="password"
-                className="h-11 w-full rounded-lg border border-border/80 bg-content-area px-3 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary/60 focus:ring-2 focus:ring-primary/15"
-              />
-              <p className="text-xs text-muted-foreground">Token 只保存在本机，用于运行 talents CLI，不会写入对话内容。</p>
+            <div className="rounded-xl bg-muted/45 p-4 text-sm text-muted-foreground">
+              <p className="mb-1 font-medium text-foreground">认证方式</p>
+              <p>连接后 WorkMate 将自动通过 EIP 网关换取 SkillHub Token，无需手动填写凭证。</p>
             </div>
             <Button
               type="button"
@@ -1560,7 +1527,7 @@ function HiAgentConnectorDialog({
               disabled={!canSave || saving}
               onClick={() => void handleSave()}
             >
-              {saving ? '连接中...' : isEnabled ? '保存并覆盖配置' : '开始连接'}
+              {saving ? '连接中...' : isEnabled ? '重新连接' : '开始连接'}
             </Button>
           </div>
         )}

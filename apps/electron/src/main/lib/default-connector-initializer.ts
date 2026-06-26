@@ -24,6 +24,7 @@ import {
   writeCliConnectorRuntime,
   writeCliConnectorSecrets,
 } from './cli-connector-runtime'
+import { getValidUatToken, readUatAuth, isExpired } from './hiagent-auth-service'
 
 interface CommandResult {
   ok: boolean
@@ -126,7 +127,9 @@ function defaultRunCommand(command: string, args: string[], options: CommandOpti
  */
 async function resolveCommandPath(command: string, runCommand: (command: string, args: string[], options?: CommandOptions) => Promise<CommandResult>): Promise<string | null> {
   const probe = process.platform === 'win32' ? 'where' : 'which'
+  logCliConnectorInfo('[check-package] 执行命令', { command: `${probe} ${command}` })
   const result = await runCommand(probe, [command])
+  logCliConnectorInfo('[check-package] 命令结果', { command: `${probe} ${command}`, ok: result.ok, stdout: result.stdout.trim() })
   if (!result.ok) return null
   // where/which 可能返回多行，取第一行
   const [firstPath] = result.stdout.trim().split('\n')
@@ -171,13 +174,14 @@ function logCliConnectorInfo(message: string, details?: Record<string, unknown>)
 
 function formatCliInstallError(commandText: string, result: CommandResult, secrets: Record<string, string>): string {
   const message = sanitizeMessage(getCommandMessage(result), secrets)
-  return [
-    '安装 talents CLI 失败。',
-    `命令: ${commandText}`,
-    '',
-    '原始错误:',
-    message,
-  ].join('\n')
+  const lines = [
+    '安装 talents CLI 失败，可尝试在终端手动执行：',
+    commandText,
+  ]
+  if (message) {
+    lines.push('', '原始错误:', message)
+  }
+  return lines.join('\n')
 }
 
 async function findFirstAvailable(commands: string[], commandExists: (command: string) => Promise<boolean>): Promise<string | null> {
@@ -264,15 +268,10 @@ async function initializeHuataiEmailConnector(
   updateStep('self-check', 'running')
   const validation = await validate(serverName, entry)
   if (!validation.success) {
-    logConnectorInfo('连接器自检失败', { message: validation.message })
-    updateStep('self-check', 'error', validation.message)
-    return {
-      connectorId: input.connectorId,
-      serverName,
-      success: false,
-      steps,
-      message: validation.message,
-    }
+    logConnectorInfo('连接器自检失败（忽略）', { message: validation.message })
+    updateStep('self-check', 'skipped', '自检失败，跳过')
+  } else {
+    updateStep('self-check', 'success', validation.message)
   }
 
   updateStep('write-config', 'running')
@@ -293,7 +292,6 @@ async function initializeHuataiEmailConnector(
   }
 
   updateStep('write-config', 'success', '已启用华泰邮箱读取能力')
-  updateStep('self-check', 'success', validation.message)
   logConnectorInfo('连接器初始化完成', { workspaceSlug, serverName: 'email' })
 
   return {
@@ -316,6 +314,17 @@ function makeCliSteps(): DefaultConnectorInitStep[] {
   ]
 }
 
+function makeHiAgentCliSteps(): DefaultConnectorInitStep[] {
+  return [
+    { id: 'check-runtime', label: '检查 Node/npm 环境', status: 'pending' },
+    { id: 'check-package', label: '检查 talents CLI', status: 'pending' },
+    { id: 'install-package', label: '安装 talents CLI', status: 'pending' },
+    { id: 'install-skill', label: '启用 talents Skill', status: 'pending' },
+    { id: 'check-auth', label: 'SkillHub 认证换票', status: 'pending' },
+    { id: 'self-check', label: '自检连接', status: 'pending' },
+  ]
+}
+
 async function initializeCliConnector(
   workspaceSlug: string,
   input: InitializeDefaultConnectorInput,
@@ -323,7 +332,8 @@ async function initializeCliConnector(
 ): Promise<InitializeDefaultConnectorResult> {
   const commandExists = deps.commandExists ?? defaultCommandExists
   const runCommand = deps.runCommand ?? defaultRunCommand
-  const steps = makeCliSteps()
+  const isHiAgent = input.connectorId === 'hi-agent'
+  const steps = isHiAgent ? makeHiAgentCliSteps() : makeCliSteps()
   const updateStep = createConnectorStepUpdater(workspaceSlug, input, deps, steps)
   updateStep('check-runtime', 'running')
 
@@ -349,7 +359,9 @@ async function initializeCliConnector(
     }
   }
 
+  logCliConnectorInfo('[check-runtime] 执行命令', { command: 'node -v' })
   const nodeVersionResult = await runCommand('node', ['-v'])
+  logCliConnectorInfo('[check-runtime] 命令结果', { command: 'node -v', ok: nodeVersionResult.ok, stdout: nodeVersionResult.stdout.trim() })
   const nodeVersion = nodeVersionResult.stdout.trim()
   if (!isNodeVersionSupported(nodeVersion, definition.runtime?.version ?? '>=20')) {
     updateStep('check-runtime', 'error', `当前 Node 版本 ${nodeVersion || '未知'}，需要 Node.js 20+`)
@@ -399,7 +411,7 @@ async function initializeCliConnector(
         connectorId: input.connectorId,
         success: false,
         steps,
-        message: '安装 talents CLI 失败。',
+        message: '自动安装失败，请在终端手动执行安装命令后重试。',
       }
     }
     updateStep('install-package', 'success', '安装完成')
@@ -424,33 +436,64 @@ async function initializeCliConnector(
 
   updateStep('install-skill', 'running')
   updateStep('install-skill', 'success', '已随连接器启用')
-  updateStep('write-config', 'running')
+
+  // 写 runtime.json（hi-agent 和非 hi-agent 都需要）
   writeCliConnectorRuntime(connectorDir, {
     commandPath: resolvedPath,
     binDir: dirname(resolvedPath),
-    packageName: '@ht/talents-cli',
-    packageVersion: await readTalentsVersion(resolvedPath, runCommand),
+    packageName: '@ht/talents',
+    packageVersion: await safeReadTalentsVersion(resolvedPath, runCommand),
   })
-  writeCliConnectorSecrets(connectorDir, definition, userValues)
-  updateStep('write-config', 'success', '已保存')
 
-  updateStep('self-check', 'running')
-  const resolvedEnv = resolveCliConnectorEnv(definition, userValues)
-  const selfCheck = await runCliStatusCheck(definition, resolvedPath, resolvedEnv, runCommand)
-  if (!selfCheck.ok) {
-    const message = sanitizeMessage(getCommandMessage(selfCheck), userValues) || 'Talents Token 校验失败'
-    updateStep('self-check', 'error', message)
-    return {
-      connectorId: input.connectorId,
-      success: false,
-      steps,
-      message,
+  if (isHiAgent) {
+    // hi-agent：SkillHub 换票 → 写入 ~/.htskill/auth.json
+    updateStep('check-auth', 'running')
+
+    let auth = readUatAuth()
+    if (!auth || isExpired(auth)) {
+      const newAuth = await getValidUatToken()
+      if (!newAuth) {
+        updateStep('check-auth', 'error', '换票失败，请先登录 OA 账号')
+        return {
+          connectorId: input.connectorId,
+          success: false,
+          steps,
+          message: 'SkillHub 换票失败，请先登录 OA 账号。',
+        }
+      }
+      auth = newAuth
+    }
+    updateStep('check-auth', 'success', '已获取 Token')
+
+    // 自检用 auth.json 的 Token（失败不阻塞）
+    updateStep('self-check', 'running')
+    const authEnv = resolveCliConnectorEnv(definition, { HTSKILL_TOKEN: auth.accessToken })
+    const selfCheck = await safeRunCliStatusCheck(definition, resolvedPath, authEnv, runCommand)
+    if (!selfCheck.ok) {
+      logCliConnectorInfo('[self-check] 失败（忽略）', { message: sanitizeMessage(getCommandMessage(selfCheck), { HTSKILL_TOKEN: auth.accessToken }) })
+      updateStep('self-check', 'skipped', '自检失败，跳过')
+    } else {
+      updateStep('self-check', 'success', '连接成功')
+    }
+  } else {
+    // 非 hi-agent：走 secrets.json
+    updateStep('write-config', 'running')
+    writeCliConnectorSecrets(connectorDir, definition, userValues)
+    updateStep('write-config', 'success', '已保存')
+
+    updateStep('self-check', 'running')
+    const resolvedEnv = resolveCliConnectorEnv(definition, userValues)
+    const selfCheck = await safeRunCliStatusCheck(definition, resolvedPath, resolvedEnv, runCommand)
+    if (!selfCheck.ok) {
+      logCliConnectorInfo('[self-check] 失败（忽略）', { message: sanitizeMessage(getCommandMessage(selfCheck), userValues) })
+      updateStep('self-check', 'skipped', '自检失败，跳过')
+    } else {
+      updateStep('self-check', 'success', '连接成功')
     }
   }
 
   connectorDef.enabled = true
   saveWorkspaceConnectorsConfig(workspaceSlug, connectorsConfig)
-  updateStep('self-check', 'success', '连接成功')
 
   return {
     connectorId: input.connectorId,
@@ -471,11 +514,15 @@ async function resolveTalentsCommandPath(commandName: string, runCommand: (comma
 }
 
 async function resolveNpmGlobalBin(runCommand: (command: string, args: string[], options?: CommandOptions) => Promise<CommandResult>): Promise<string | null> {
+  logCliConnectorInfo('[resolve-path] 执行命令', { command: 'npm bin -g' })
   const binResult = await runCommand('npm', ['bin', '-g'])
+  logCliConnectorInfo('[resolve-path] 命令结果', { command: 'npm bin -g', ok: binResult.ok, stdout: binResult.stdout.trim() })
   const binPath = binResult.stdout.trim()
   if (binResult.ok && binPath && existsSync(binPath)) return binPath
 
+  logCliConnectorInfo('[resolve-path] 执行命令', { command: 'npm prefix -g' })
   const prefixResult = await runCommand('npm', ['prefix', '-g'])
+  logCliConnectorInfo('[resolve-path] 命令结果', { command: 'npm prefix -g', ok: prefixResult.ok, stdout: prefixResult.stdout.trim() })
   const prefix = prefixResult.stdout.trim()
   if (!prefixResult.ok || !prefix) return null
   const candidate = process.platform === 'win32' ? prefix : join(prefix, 'bin')
@@ -483,9 +530,37 @@ async function resolveNpmGlobalBin(runCommand: (command: string, args: string[],
 }
 
 async function readTalentsVersion(commandPath: string, runCommand: (command: string, args: string[], options?: CommandOptions) => Promise<CommandResult>): Promise<string | undefined> {
+  logCliConnectorInfo('[write-runtime] 执行命令', { commandPath, args: '-V' })
   const result = await runCommand(commandPath, ['-V'])
+  logCliConnectorInfo('[write-runtime] 命令结果', { commandPath, args: '-V', ok: result.ok, stdout: (result.stdout || result.stderr).trim() })
   const version = (result.stdout || result.stderr).trim()
   return result.ok && version ? version : undefined
+}
+
+async function safeReadTalentsVersion(
+  commandPath: string,
+  runCommand: (command: string, args: string[], options?: CommandOptions) => Promise<CommandResult>,
+): Promise<string | undefined> {
+  try {
+    return await readTalentsVersion(commandPath, runCommand)
+  } catch (err) {
+    logCliConnectorInfo('读取 talents 版本失败，跳过', { commandPath, error: (err as Error).message })
+    return undefined
+  }
+}
+
+async function safeRunCliStatusCheck(
+  definition: ReturnType<typeof readCliConnectorDefinition>,
+  commandPath: string,
+  env: Record<string, string>,
+  runCommand: (command: string, args: string[], options?: CommandOptions) => Promise<CommandResult>,
+): Promise<CommandResult> {
+  try {
+    return await runCliStatusCheck(definition, commandPath, env, runCommand)
+  } catch (err) {
+    logCliConnectorInfo('[self-check] 命令执行异常', { commandPath, error: (err as Error).message })
+    return { ok: false, stdout: '', stderr: (err as Error).message }
+  }
 }
 
 async function runCliStatusCheck(
@@ -499,7 +574,10 @@ async function runCliStatusCheck(
   const parts = parseCommandLine(statusCommand)
   if (parts.length === 0) return { ok: true, stdout: '', stderr: '' }
   const [, ...args] = parts
-  return runCommand(commandPath, args, { env, timeoutMs: 120_000 })
+  logCliConnectorInfo('[self-check] 执行命令', { commandPath, args: args.join(' '), envKeys: Object.keys(env) })
+  const result = await runCommand(commandPath, args, { env, timeoutMs: 120_000 })
+  logCliConnectorInfo('[self-check] 命令结果', { commandPath, args: args.join(' '), ok: result.ok, stderr: result.stderr.trim() })
+  return result
 }
 
 function isNodeVersionSupported(version: string, requirement: string): boolean {

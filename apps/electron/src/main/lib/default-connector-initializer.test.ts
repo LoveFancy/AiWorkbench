@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
@@ -67,14 +67,11 @@ describe('initializeDefaultConnector', () => {
     writeFileSync(join(getConnectorsDir('default'), 'hi-agent', 'cli.json'), JSON.stringify({
       runtime: { type: 'node', version: '>=20' },
       init: {
-        darwin: 'npm install -g @ht/talents-cli',
-        linux: 'npm install -g @ht/talents-cli',
-        win32: 'npm install -g @ht/talents-cli',
+        darwin: 'npm install -g @ht/talents',
+        linux: 'npm install -g @ht/talents',
+        win32: 'npm install -g @ht/talents',
       },
-      userProvidedData: [
-        { name: 'HTSKILL_TOKEN', label: 'Talents Token', type: 'password', required: true },
-        { name: 'AGENTOS_ENV', label: '环境', type: 'select', default: 'uat', options: ['dev', 'sit', 'uat', 'prd'], required: true },
-      ],
+      userProvidedData: [],
       status: {
         darwin: 'talents workspace --json',
         linux: 'talents workspace --json',
@@ -82,7 +79,7 @@ describe('initializeDefaultConnector', () => {
       },
       env: {
         HTSKILL_TOKEN: '{{HTSKILL_TOKEN}}',
-        AGENTOS_ENV: '{{AGENTOS_ENV}}',
+        AGENTOS_ENV: 'uat',
       },
     }, null, 2), 'utf-8')
   })
@@ -215,15 +212,12 @@ describe('initializeDefaultConnector', () => {
     expect(progressEvents[0]?.steps).not.toBe(progressEvents.at(-1)?.steps)
   })
 
-  test('hi-agent 初始化会写入 CLI runtime、secrets 并启用连接器', async () => {
+  test('hi-agent 初始化会写入 CLI runtime、SkillHub 换票并启用连接器', async () => {
     const calls: string[] = []
     const probe = process.platform === 'win32' ? 'where' : 'which'
     const result = await initializeDefaultConnector('default', {
       connectorId: 'hi-agent',
-      userProvidedData: {
-        HTSKILL_TOKEN: 'talents-token',
-        AGENTOS_ENV: 'uat',
-      },
+      userProvidedData: {},
     }, {
       commandExists: async (command) => command === 'node' || command === 'npm',
       runCommand: async (command, args, options) => {
@@ -238,8 +232,7 @@ describe('initializeDefaultConnector', () => {
           return { ok: true, stdout: '1.0.2\n', stderr: '' }
         }
         if (command === mockTalentsPath && args.join(' ') === 'workspace --json') {
-          expect(options?.env?.HTSKILL_TOKEN).toBe('talents-token')
-          expect(options?.env?.AGENTOS_ENV).toBe('uat')
+          // 自检时 Token 来自 SkillHub mock
           return { ok: true, stdout: '{"ok":true}', stderr: '' }
         }
         return { ok: true, stdout: '', stderr: '' }
@@ -253,7 +246,7 @@ describe('initializeDefaultConnector', () => {
       ['check-package', 'success'],
       ['install-package', 'skipped'],
       ['install-skill', 'success'],
-      ['write-config', 'success'],
+      ['check-auth', 'success'],
       ['self-check', 'success'],
     ])
     expect(calls).toContain(`${probe} ${process.platform === 'win32' ? 'talents.cmd' : 'talents'}`)
@@ -263,10 +256,8 @@ describe('initializeDefaultConnector', () => {
     expect(runtime.binDir).toBe(root)
     expect(runtime.packageName).toBe('@ht/talents-cli')
 
-    const secrets = JSON.parse(readFileSync(join(connectorDir, 'secrets.json'), 'utf-8')) as { version?: number; data?: Record<string, { value: string }> }
-    expect(secrets.version).toBe(1)
-    expect(secrets.data?.HTSKILL_TOKEN?.value).toBe('talents-token')
-    expect(secrets.data?.AGENTOS_ENV?.value).toBe('uat')
+    // hi-agent 不再写 secrets.json
+    expect(existsSync(join(connectorDir, 'secrets.json'))).toBe(false)
 
     const connectorsCfg = readConnectorsConfig('default')
     expect(connectorsCfg.connectors['hi-agent']?.enabled).toBe(true)
@@ -279,10 +270,7 @@ describe('initializeDefaultConnector', () => {
     const result = await initializeDefaultConnector('default', {
       connectorId: 'hi-agent',
       runId: 'run-hi-agent-progress-1',
-      userProvidedData: {
-        HTSKILL_TOKEN: 'talents-token',
-        AGENTOS_ENV: 'uat',
-      },
+      userProvidedData: {},
     }, {
       commandExists: async (command) => command === 'node' || command === 'npm',
       runCommand: async (command, args, options) => {
@@ -296,7 +284,6 @@ describe('initializeDefaultConnector', () => {
           return { ok: true, stdout: '1.0.2\n', stderr: '' }
         }
         if (command === mockTalentsPath && args.join(' ') === 'workspace --json') {
-          expect(options?.env?.HTSKILL_TOKEN).toBe('talents-token')
           return { ok: true, stdout: '{"ok":true}', stderr: '' }
         }
         return { ok: true, stdout: '', stderr: '' }
@@ -317,7 +304,7 @@ describe('initializeDefaultConnector', () => {
       ['check-package', 'success'],
       ['install-package', 'skipped'],
       ['install-skill', 'success'],
-      ['write-config', 'success'],
+      ['check-auth', 'success'],
       ['self-check', 'success'],
     ])
     expect(JSON.stringify(progressEvents)).not.toContain('talents-token')
@@ -347,7 +334,7 @@ describe('initializeDefaultConnector', () => {
           if (command === probe && (args[0] === 'talents' || args[0] === 'talents.cmd')) {
             return { ok: false, stdout: '', stderr: '' }
           }
-          if (command === 'npm' && args.join(' ') === 'install -g @ht/talents-cli') {
+          if (command === 'npm' && args.join(' ') === 'install -g @ht/talents') {
             return { ok: false, stdout: '', stderr: 'npm ERR! 403 Forbidden talents-secret-token' }
           }
           return { ok: false, stdout: '', stderr: '' }

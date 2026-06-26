@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, delimiter, isAbsolute, join } from 'node:path'
 import type { ConnectorsConfig } from '@proma/shared'
 import { getConnectorsDir } from './config-paths'
+import { readUatAuth } from './hiagent-auth-service'
 
 export interface CliUserProvidedField {
   name: string
@@ -233,8 +234,19 @@ export function collectCliConnectorEnv(workspaceSlug: string, connectorsConfig: 
     if (!existsSync(join(connectorDir, 'cli.json'))) continue
     try {
       const definition = readCliConnectorDefinition(connectorDir)
-      const secrets = readCliConnectorSecrets(connectorDir)
-      Object.assign(env, resolveCliConnectorEnv(definition, secrets))
+
+      if (connectorId === 'hi-agent') {
+        // hi-agent 直接从 SkillHub 换票文件读取 Token
+        const auth = readUatAuth()
+        if (auth) {
+          Object.assign(env, resolveCliConnectorEnv(definition, {
+            HTSKILL_TOKEN: auth.accessToken,
+          }))
+        }
+      } else {
+        const secrets = readCliConnectorSecrets(connectorDir)
+        Object.assign(env, resolveCliConnectorEnv(definition, secrets))
+      }
 
       const runtime = readCliConnectorRuntime(connectorDir)
       if (runtime.binDir) {

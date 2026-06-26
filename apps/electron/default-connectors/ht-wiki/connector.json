@@ -1,0 +1,10 @@
+{
+  "type": "cli",
+  "displayName": "HT Wiki",
+  "description": "HTSC Confluence Wiki CLI 工具，用于搜索、读取、下载 Wiki 页面",
+  "category": "知识管理",
+  "status": "coming-soon",
+  "version": "1.0.0",
+  "sortOrder": 3,
+  "skillDirs": ["skills"]
+}
