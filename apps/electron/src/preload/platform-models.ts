@@ -1,6 +1,6 @@
 import { ipcRenderer } from 'electron'
-import { PLATFORM_MODELS_IPC_CHANNELS } from './ipc-handlers'
-import type { PlatformModelsResponse, PlatformModelInfo } from './types'
+import { PLATFORM_MODELS_IPC_CHANNELS } from '../shared/platform-models'
+import type { PlatformModelsResponse, PlatformModelInfo } from '../shared/platform-models'
 
 export interface PlatformModelsElectronAPI {
   fetchModels: (forceRefresh?: boolean) => Promise<PlatformModelsResponse>

@@ -20,8 +20,8 @@ import {
   platformApiKeyAtom,
   platformModelsLoadingAtom,
   platformModelsLastFetchAtom,
-} from './atoms'
-import type { PlatformModelInfo } from './types'
+  type PlatformModelInfo,
+} from '@/atoms/platform-models'
 
 export function PlatformModelsSection(): React.ReactElement {
   const authState = useAtomValue(authStateAtom)

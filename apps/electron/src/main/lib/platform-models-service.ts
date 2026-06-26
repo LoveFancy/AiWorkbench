@@ -9,10 +9,10 @@
 import { safeStorage } from 'electron'
 import { writeFileSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { getConfigDir } from '../main/lib/config-paths'
-import { getJobId } from '../auth'
-import { httpGet } from '../shared/hteip-client'
-import type { PlatformModelInfo, PlatformModelsResponse, ModelsCache } from './types'
+import { getConfigDir } from './config-paths'
+import { getJobId } from '../../auth'
+import { httpGet } from '../../shared/hteip-client'
+import type { PlatformModelInfo, PlatformModelsResponse, ModelsCache } from '../../shared/platform-models'
 
 /** 后端原始模型结构 — 用于字段名映射（supportVision → supportsMultimodal） */
 interface RawModelInfo {

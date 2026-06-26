@@ -17,7 +17,7 @@ import { agentChannelIdAtom, agentModelIdAtom, agentChannelIdsAtom } from '@/ato
 import { channelsAtom, selectedModelAtom } from '@/atoms/chat-atoms'
 import { applySavedChannelSnapshot } from '@/lib/channel-sync'
 import { getAgentAvailableChannelIds, hasConfiguredApiKey, resolveAgentSelectedModel, resolveSelectedModel } from '@/lib/model-selection'
-import { PlatformModelsSection } from '@/platform-models/renderer'
+import { PlatformModelsSection } from './PlatformModelsSection'
 import { SettingsSection, SettingsCard, SettingsRow } from './primitives'
 import {
   AlertDialog,
