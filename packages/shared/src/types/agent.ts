@@ -1055,6 +1055,55 @@ export type AgentExpertGroupStatus =
   | 'remote_download_failed'
   | 'remote_update_available'
 
+/**
+ * 故障型不可用状态（真正异常、需要用户处理）。
+ * 不含 available 与 remote_not_downloaded / remote_downloading / remote_update_available
+ * 这些「正常但非 available」的过渡态——它们由下载/更新流程承载，不应被当作不可用。
+ */
+export const FAULT_EXPERT_GROUP_STATUSES: readonly AgentExpertGroupStatus[] = [
+  'plugin_disabled',
+  'plugin_uninstalled',
+  'invalid_manifest',
+  'missing_subagent',
+  'missing_skill',
+  'mcp_conflict',
+  'remote_download_failed',
+]
+
+/** 该状态是否为故障型不可用 */
+export function isExpertGroupFaulted(status: AgentExpertGroupStatus): boolean {
+  return FAULT_EXPERT_GROUP_STATUSES.includes(status)
+}
+
+/** 专家团状态的简短标签（用于 Badge 等） */
+export const EXPERT_GROUP_STATUS_LABELS: Record<AgentExpertGroupStatus, string> = {
+  available: '可用',
+  plugin_disabled: '插件已禁用',
+  plugin_uninstalled: '来源已卸载',
+  invalid_manifest: '配置错误',
+  missing_subagent: '缺少子专家',
+  missing_skill: '缺少技能',
+  mcp_conflict: '连接器冲突',
+  remote_not_downloaded: '未下载',
+  remote_downloading: '下载中...',
+  remote_download_failed: '下载失败',
+  remote_update_available: '可更新',
+}
+
+/**
+ * 故障型不可用状态的详细原因说明（用于日志与详情弹窗的「配置问题」）。
+ * 仅覆盖故障态；available 与 remote 正常过渡态无需原因。
+ */
+export const EXPERT_GROUP_STATUS_REASONS: Partial<Record<AgentExpertGroupStatus, string>> = {
+  plugin_disabled: '所属插件已被禁用，请在「设置 - 插件」中启用后再使用',
+  plugin_uninstalled: '来源插件已被卸载',
+  invalid_manifest: '专家团配置文件（expert-groups/*.json）解析失败或字段缺失',
+  missing_subagent: '缺少依赖的 SubAgent 定义文件（agents/*.md）',
+  missing_skill: '缺少依赖的 Skill（插件 skills/ 与全局 default-skills/ 均未找到）',
+  mcp_conflict: 'MCP 连接器与其他插件冲突',
+  remote_download_failed: '远程专家团下载失败',
+}
+
 export interface AgentExpertGroupMainRole {
   name: string
   prompt: string
@@ -1214,6 +1263,12 @@ export interface RemoteDownloadProgress {
   downloadedBytes: number
   totalBytes: number
   error?: string
+  /** 安装子阶段：解压中 / 收尾中（仅 status === 'installing' 时有意义） */
+  installStage?: 'extracting' | 'finalizing'
+  /** 已解压文件数（extracting 阶段展示用） */
+  processedFiles?: number
+  /** 总文件数（extracting 阶段展示用） */
+  totalFiles?: number
 }
 
 /** 召唤前确保专家团为最新版的结果 */
