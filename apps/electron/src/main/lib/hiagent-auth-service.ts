@@ -22,6 +22,8 @@ export interface HiAgentAuthEntry {
   tokenType: string
   accessToken: string
   expiresAt: string
+  refreshToken?: string
+  runtime: string
   env: string
   gatewayBaseUrl: string
 }
@@ -83,26 +85,31 @@ export async function getValidUatToken(): Promise<HiAgentAuthEntry | null> {
   if (cached && cached.expiresAt) {
     const expiry = new Date(cached.expiresAt).getTime()
     if (Date.now() < expiry - REFRESH_THRESHOLD_MS) {
+      setEnvFromEntry(cached)
       return cached
     }
   }
 
   try {
-    const token = await getValidSkillHubToken()
-    const entry: HiAgentAuthEntry = {
-      tokenType: 'Bearer',
-      accessToken: token,
-      expiresAt: new Date(Date.now() + 7200 * 1000).toISOString(),
-      env: 'uat',
-      gatewayBaseUrl: cached?.gatewayBaseUrl ?? 'http://talentshub-uat.sit.saas.htsc',
+    await getValidSkillHubToken()
+    const entry = readUatAuth()
+    if (entry) {
+      console.log('[HiAgent 认证] Token 已就绪, expiresAt=%s', entry.expiresAt)
+      setEnvFromEntry(entry)
+      return entry
     }
-    writeUatAuth(entry)
-    console.log('[HiAgent 认证] Token 已写入 %s', AUTH_FILE)
-    return entry
+    console.warn('[HiAgent 认证] 换票后未能读取 auth.json')
+    return null
   } catch (err) {
     console.warn('[HiAgent 认证] 换票失败:', (err as Error).message)
     return null
   }
+}
+
+/** 将认证信息注入 process.env */
+function setEnvFromEntry(entry: HiAgentAuthEntry): void {
+  process.env.HTSKILL_TOKEN = entry.accessToken
+  process.env.AGENTOS_ENV = entry.env || 'uat'
 }
 
 /** 返回 auth.json 文件路径 */

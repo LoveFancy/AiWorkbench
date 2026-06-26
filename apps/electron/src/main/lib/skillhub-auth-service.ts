@@ -34,6 +34,25 @@ export function getSkillHubBase(): string {
 }
 
 /**
+ * 获取 hiagent / Talents 网关地址
+ *
+ * 优先从 settings.json 读取 hiagentBase，未配置时按环境拼接默认域名。
+ * 业务 CLI 使用此地址作为 gatewayBaseUrl，例如 http://talentshub-uat.sit.saas.htsc
+ */
+export function getHiAgentBase(): string {
+  const settingsPath = getSettingsPath()
+  try {
+    if (existsSync(settingsPath)) {
+      const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'))
+      if (typeof settings.hiagentBase === 'string' && settings.hiagentBase.trim()) {
+        return settings.hiagentBase.trim()
+      }
+    }
+  } catch { /* settings.json 损坏时走默认 */ }
+  return resolveApiBase()
+}
+
+/**
  * 从 settings.json 读取 skillHubApiBase，未配置时回退到 skillHubBase（向后兼容），
  * 最终兜底到 DEFAULT_SKILLHUB_API_BASE。
  * 用于市场查询、详情、下载等 API 请求，与认证换票的 domain 不同。
@@ -89,6 +108,8 @@ interface SkillHubAuthEntry {
   tokenType: string
   accessToken: string
   expiresAt: string    // ISO 8601
+  refreshToken?: string
+  runtime: string
   env: string
   gatewayBaseUrl: string
 }
@@ -189,13 +210,16 @@ export async function exchangeToken(): Promise<string> {
   const token = tokenData.accessToken
   const expiresIn = typeof tokenData.expiresIn === 'number' ? tokenData.expiresIn : 7200
   const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString()
+  const refreshToken = typeof tokenData.refreshToken === 'string' ? tokenData.refreshToken : undefined
 
   writeUatEntry({
-    tokenType: 'Bearer',
+    tokenType: typeof tokenData.tokenType === 'string' ? tokenData.tokenType : 'Bearer',
     accessToken: token,
     expiresAt,
+    refreshToken,
+    runtime: 'local',
     env: 'uat',
-    gatewayBaseUrl: getSkillHubBase(),
+    gatewayBaseUrl: getHiAgentBase(),
   })
 
   console.log(`[SkillHub 认证] 换票成功, expiresAt=${expiresAt}`)

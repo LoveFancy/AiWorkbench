@@ -67,9 +67,9 @@ describe('initializeDefaultConnector', () => {
     writeFileSync(join(getConnectorsDir('default'), 'hi-agent', 'cli.json'), JSON.stringify({
       runtime: { type: 'node', version: '>=20' },
       init: {
-        darwin: 'npm install -g @ht/talents-cli',
-        linux: 'npm install -g @ht/talents-cli',
-        win32: 'npm install -g @ht/talents-cli',
+        darwin: 'npm install -g @ht/talents',
+        linux: 'npm install -g @ht/talents',
+        win32: 'npm install -g @ht/talents',
       },
       userProvidedData: [],
       status: {
@@ -334,7 +334,7 @@ describe('initializeDefaultConnector', () => {
           if (command === probe && (args[0] === 'talents' || args[0] === 'talents.cmd')) {
             return { ok: false, stdout: '', stderr: '' }
           }
-          if (command === 'npm' && args.join(' ') === 'install -g @ht/talents-cli') {
+          if (command === 'npm' && args.join(' ') === 'install -g @ht/talents') {
             return { ok: false, stdout: '', stderr: 'npm ERR! 403 Forbidden talents-secret-token' }
           }
           return { ok: false, stdout: '', stderr: '' }
