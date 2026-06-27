@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import { buildHuataiEmailMcpEntry } from '@proma/shared'
@@ -62,7 +62,7 @@ test('默认华泰 GitLab 连接器固定华泰 host 并通过 glab CLI 接入',
   expect(gitlabCli.packageName).toBe('glab')
   expect(gitlabCli.command?.win32).toBe('glab.exe')
   expect(gitlabCli.install?.version).toBe('1.105.0')
-  expect(gitlabCli.install?.win32?.url).toContain('gitlab.com/gitlab-org/cli/-/releases/v1.105.0/downloads/glab_1.105.0_windows_amd64.zip')
+  expect(gitlabCli.install?.win32?.url).toBe('https://htpan.htsc.com.cn:10081/v2%2Fdelivery%2Fdata%2Fed1e0bf5f0b749898f5408990d28b9cb%2F?&dup_t=1782547677818&X-LENOVO-SESS-ID=ee8ae0d6d19544ed98023715d60698db&session_id=ee8ae0d6d19544ed98023715d60698db')
   expect(gitlabCli.install?.win32?.sha256).toBe('0f2df88d582f697d748f85e382ad378e3c6bfe28e7e45151eb333776132919f1')
   expect(gitlabCli.install?.win32?.binaryPath).toBe('bin/glab.exe')
   expect(gitlabCli.env?.GITLAB_HOST).toBe('gitlab.htzq.htsc.com.cn')
@@ -70,16 +70,35 @@ test('默认华泰 GitLab 连接器固定华泰 host 并通过 glab CLI 接入',
   expect(gitlabCli.env?.GLAB_NO_PROMPT).toBe('true')
 })
 
-test('飞书和泰为连接器展示 UAT 环境标签', () => {
+test('只有泰为连接器展示 UAT 环境标签，飞书不展示环境概念', () => {
   const feishuConnector = JSON.parse(
     readFileSync(join(import.meta.dir, '../../../../default-connectors/feishu-cli/connector.json'), 'utf-8'),
   ) as { displayName?: string; version?: string }
 
   expect(feishuConnector.displayName).toBe('飞书')
-  expect(feishuConnector.version).toBe('1.0.2')
-  expect(agentSkillsViewSource).toContain("const UAT_CONNECTOR_IDS = new Set(['feishu-cli', 'hi-agent'])")
+  expect(feishuConnector.version).toBe('1.0.4')
+  expect(agentSkillsViewSource).toContain("const UAT_CONNECTOR_IDS = new Set(['hi-agent'])")
+  expect(agentSkillsViewSource).not.toContain("'feishu-cli', 'hi-agent'")
   expect(agentSkillsViewSource).toContain('isUatConnector')
   expect(agentSkillsViewSource).toContain('UAT')
+})
+
+test('飞书连接器打包 lark-shared 共享 Skill 供业务 Skill 相对引用', () => {
+  const feishuSkillsDir = join(import.meta.dir, '../../../../default-connectors/feishu-cli/skills')
+
+  expect(existsSync(join(feishuSkillsDir, 'lark-shared/SKILL.md'))).toBe(true)
+  expect(readFileSync(join(feishuSkillsDir, 'lark-task/SKILL.md'), 'utf-8')).toContain('../lark-shared/SKILL.md')
+})
+
+test('飞书 CLI 安装指引固定走华泰 npm 私有源', () => {
+  const larkSetupSkill = readFileSync(
+    join(import.meta.dir, '../../../../default-connectors/feishu-cli/skills/lark-setup/SKILL.md'),
+    'utf-8',
+  )
+
+  expect(larkSetupSkill).toContain('npm install -g @larksuite/cli --force --registry http://npm.htsc')
+  expect(larkSetupSkill).not.toContain('npm install -g larksuite/cli')
+  expect(larkSetupSkill).not.toContain('GitHub 安装')
 })
 
 test('连接器弹窗使用新的飞书和泰为展示名称', () => {

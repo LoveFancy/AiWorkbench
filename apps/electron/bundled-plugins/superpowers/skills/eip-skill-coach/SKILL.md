@@ -1,6 +1,6 @@
 ---
 name: eip-skill-coach
-description: Use when the user wants to create a reusable Skill from EIP curl requests, sanitized response samples, and business logic. The coach must clarify parameter flow, data extraction, and interface orchestration, then generate a business Skill that calls Workmate's eip_request tool instead of raw curl.
+description: 当用户希望基于 EIP curl 请求、脱敏响应样例和业务逻辑创建可复用 Skill 时使用。需要澄清参数流、数据提取和接口编排，并生成调用 Workmate eip_request 工具而不是原始 curl 的业务 Skill。
 ---
 
 # EIP Skill Coach

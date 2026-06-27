@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { app } from 'electron'
 import { platform, release } from 'node:os'
-import { getToken, getJobId, hasValidSession } from '../../auth'
+import { getToken, getJobId, hasValidSession } from '../../auth/auth-service'
 import { getConfigDir } from './config-paths'
 import { safeStringify } from './utils/safe-stringify'
 import {
@@ -34,6 +34,28 @@ let flushTimer: ReturnType<typeof setInterval> | null = null
 let isFlushing = false
 let currentFlushPromise: Promise<void> | null = null
 let isReportingError = false
+
+interface AuthDeps {
+  getToken: typeof getToken
+  getJobId: typeof getJobId
+  hasValidSession: typeof hasValidSession
+}
+
+const defaultAuthDeps: AuthDeps = {
+  getToken,
+  getJobId,
+  hasValidSession,
+}
+
+let authDeps: AuthDeps = defaultAuthDeps
+
+export function __setAuthDepsForTest(deps: AuthDeps): void {
+  authDeps = deps
+}
+
+export function __resetAuthDepsForTest(): void {
+  authDeps = defaultAuthDeps
+}
 
 // ===== 客户端信息 =====
 
@@ -118,7 +140,7 @@ export function addBreadcrumb(crumb: Omit<Breadcrumb, 'timestamp'>): void {
 export function reportEvent(item: Omit<ObservabilityEventItem, 'eventId'>): void {
   if (!config?.enabled) return
   // 未登录（含 Token 缺失/已过期）时不上报：EIP 未登录则无有效身份，事件一律丢弃
-  if (!hasValidSession()) return
+  if (!authDeps.hasValidSession()) return
 
   const event = normalizeObservabilityEvent({
     ...item,
@@ -209,7 +231,7 @@ export function reportLogoutEvent(jobId: string): void {
 export function reportUpgradeCheckEvent(result: 'success' | 'failure', error?: Error): void {
   reportEvent({
     type: 'upgrade_check',
-    userId: getJobId() ?? 'unknown',
+    userId: authDeps.getJobId() ?? 'unknown',
     timestamp: Date.now(),
     result,
     error: error ? extractErrorInfo(error) : undefined,
@@ -220,7 +242,7 @@ export function reportUpgradeCheckEvent(result: 'success' | 'failure', error?: E
 export function reportStartupEvent(startupDurationMs: number): void {
   reportEvent({
     type: 'app_startup',
-    userId: getJobId() ?? 'unknown',
+    userId: authDeps.getJobId() ?? 'unknown',
     timestamp: Date.now(),
     result: 'success',
     startupDurationMs,
@@ -238,7 +260,7 @@ export function reportErrorEvent(error: Error, context?: { tags?: Record<string,
     const fingerprint = generateFingerprint(error.name, error.message)
     reportEvent({
       type: 'error',
-      userId: getJobId() ?? 'unknown',
+      userId: authDeps.getJobId() ?? 'unknown',
       timestamp: Date.now(),
       result: 'failure',
       error: extractErrorInfo(error, { fingerprint }),
@@ -282,7 +304,7 @@ async function doFlushQueue(): Promise<void> {
 
   isFlushing = true
   const batch = eventQueue.splice(0, config.maxBatchSize ?? 50)
-  const token = getToken()
+  const token = authDeps.getToken()
 
   try {
     const headers: Record<string, string> = {

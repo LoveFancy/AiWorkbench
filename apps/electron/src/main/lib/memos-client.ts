@@ -2,7 +2,7 @@
  * MemOS 本地服务 HTTP 客户端
  *
  * 主进程内直接调用本地 MemOS 服务 API。
- * 提供 createCube（创建记忆立方）、searchMemory（搜索记忆）、queryCube（查询立方内容）和 addMemory（存储记忆）四个核心方法。
+ * 提供 createCube（创建个人记忆）、searchMemory（搜索记忆）、queryCube（查询个人记忆内容）和 addMemory（存储记忆）四个核心方法。
  */
 
 import { getMemoryConfig } from './memory-service'
@@ -17,9 +17,9 @@ const RETRIES = 1
 
 /** 记忆凭据 */
 export interface MemosCredentials {
-  /** 记忆立方 ID（由 createCube 创建后返回） */
+  /** 个人记忆 ID（由 createCube 创建后返回） */
   cubeId: string
-  /** 立方所属用户 ID */
+  /** 个人记忆所属用户 ID */
   ownerId: string
 }
 
@@ -82,15 +82,15 @@ async function callApi(
   throw lastError!
 }
 
-// ===== 创建立方 =====
+// ===== 创建个人记忆 =====
 
 /**
- * 创建记忆立方
+ * 创建个人记忆
  */
 export async function createCube(
   params: { cubeName: string; ownerId: string },
 ): Promise<{ cubeId: string; cubeName: string; ownerId: string }> {
-  console.log(`[记忆服务] ⏳ 正在创建记忆立方 name="${params.cubeName}" owner="${params.ownerId}"`)
+  console.log(`[记忆服务] ⏳ 正在创建个人记忆 name="${params.cubeName}" owner="${params.ownerId}"`)
 
   const result = await callApi({ cubeId: '', ownerId: '' }, '/create_cube', {
     cube_name: params.cubeName,
@@ -99,15 +99,15 @@ export async function createCube(
 
   const r = result as Record<string, unknown>
   if (r.code !== 200) {
-    throw new Error(`创建立方失败: ${String(r.message ?? '未知错误')}`)
+    throw new Error(`创建个人记忆失败: ${String(r.message ?? '未知错误')}`)
   }
 
   const data = r.data as Record<string, string> | undefined
   if (!data?.cube_id) {
-    throw new Error('创建立方失败: 响应中缺少 cube_id')
+    throw new Error('创建个人记忆失败: 响应中缺少 cube_id')
   }
 
-  console.log(`[记忆服务] ✅ 记忆立方创建成功 cubeId=${data.cube_id}`)
+  console.log(`[记忆服务] ✅ 个人记忆创建成功 cubeId=${data.cube_id}`)
   return {
     cubeId: data.cube_id,
     cubeName: data.cube_name ?? params.cubeName,
@@ -254,15 +254,15 @@ export async function addMemory(
   console.log(`[记忆服务] ✅ 添加记忆完成 conversationId=${conversationId}`)
 }
 
-// ===== 查询立方内容 =====
+// ===== 查询个人记忆内容 =====
 
 /**
- * 查询记忆立方的偏好和事实
+ * 查询个人记忆的偏好和事实
  */
 export async function queryCube(
   credentials: MemosCredentials,
 ): Promise<import('@proma/shared').QueryCubeResult> {
-  console.log(`[记忆服务] 🔍 查询记忆立方 cubeId=${credentials.cubeId}`)
+  console.log(`[记忆服务] 🔍 查询个人记忆 cubeId=${credentials.cubeId}`)
 
   // 用一个通用查询来获取偏好和事实
   const result = await callApi(credentials, '/search', {

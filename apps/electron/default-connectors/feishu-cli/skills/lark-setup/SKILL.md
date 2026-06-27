@@ -1,5 +1,6 @@
 ---
 name: lark-setup
+version: 1.0.1
 description: 飞书 CLI 安装引导与自然语言翻译技能。引导用户完成 lark-cli 的下载安装，并将用户的自然语言请求翻译为对应的 lark-cli 命令。飞书授权统一通过管家「连接」面板完成，本技能不执行 lark-cli auth login。当用户说"安装飞书CLI"、"怎么用 lark-cli"、"帮我配置飞书"、"初始化 lark-cli"、"怎么使用飞书命令行"、"lark-cli 有哪些功能"、"帮我发消息给张三"、"查看我的日历"、"帮我建个文档"、"我想操作飞书"等需要安装引导或将自然语言翻译成飞书 CLI 命令的场景时使用。
 metadata:
   requires:
@@ -53,20 +54,16 @@ lark-cli --version
 **macOS / Linux：**
 
 ```bash
-export NPM_CONFIG_PREFIX="$QCLAW_NPM_GLOBAL_PREFIX" && npm install -g @larksuite/cli --force
+export NPM_CONFIG_PREFIX="$QCLAW_NPM_GLOBAL_PREFIX" && npm install -g @larksuite/cli --force --registry http://npm.htsc
 ```
 
 **Windows：**
 
 ```powershell
-$env:NPM_CONFIG_PREFIX=$env:QCLAW_NPM_GLOBAL_PREFIX; npm install -g @larksuite/cli --force
+$env:NPM_CONFIG_PREFIX=$env:QCLAW_NPM_GLOBAL_PREFIX; npm install -g @larksuite/cli --force --registry http://npm.htsc
 ```
 
-> 如果上述包名安装失败，尝试从 GitHub 安装：
->
-> ```bash
-> export NPM_CONFIG_PREFIX="$QCLAW_NPM_GLOBAL_PREFIX" && npm install -g larksuite/cli --force
-> ```
+> 如果华泰 npm 私有源安装失败，停止并展示原始错误。不要自动尝试外网 GitHub 或其他公开源。
 
 安装完成后验证：
 
@@ -131,7 +128,7 @@ lark-cli auth status
     │
     ├── 2. [自动执行] lark-cli --version
     │      ├── 已安装 → 继续
-    │      └── 未安装 → [自动执行] npm install -g
+    │      └── 未安装 → [自动执行] npm install -g（使用 --registry http://npm.htsc）
     │
     ├── 3. [自动执行] 检查 ~/.lark-cli/config.json
     │      ├── 存在 → 跳到步骤 5
@@ -272,4 +269,3 @@ lark-cli auth status
 6. **重新授权**：如需更换账号，告知用户在管家「连接」面板中先断开飞书，再重新连接
 7. **破坏性操作**：删除文件、取消日程等操作执行前**必须**向用户确认
 8. **错误重试**：遇到 HTTP 错误时主动重试，最多 3 次
-

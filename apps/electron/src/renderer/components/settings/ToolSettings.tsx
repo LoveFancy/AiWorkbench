@@ -8,7 +8,7 @@
 import * as React from 'react'
 import { useAtom, useAtomValue } from 'jotai'
 import { toast } from 'sonner'
-import { Loader2, CheckCircle2, XCircle, Search, Box, Lightbulb } from 'lucide-react'
+import { Loader2, CheckCircle2, XCircle, Search, Brain, Lightbulb, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
@@ -210,12 +210,12 @@ export function WebSearchSettings(): React.ReactElement {
 }
 
 /**
- * MemoryCubeSettings - 记忆立方设置
+ * PersonalMemorySettings - 个人记忆设置
  *
- * 管理本地 MemOS 服务配置和记忆立方创建。
+ * 管理本地 MemOS 服务配置和个人记忆创建。
  * Chat 和 Agent 模式共享同一份记忆配置。
  */
-function MemoryCubeSettings(): React.ReactElement {
+function PersonalMemorySettings(): React.ReactElement {
   const [loading, setLoading] = React.useState(true)
   const [creatingCube, setCreatingCube] = React.useState(false)
   const [testing, setTesting] = React.useState(false)
@@ -252,19 +252,15 @@ function MemoryCubeSettings(): React.ReactElement {
     }
   }, [setChatTools])
 
-  const handleToggle = async (checked: boolean): Promise<void> => {
-    try {
-      const config = await window.electronAPI.getMemoryConfig()
-      await window.electronAPI.setMemoryConfig({ ...config, enabled: checked })
-      await window.electronAPI.updateChatToolState('memory', { enabled: checked })
-      await refreshTools()
-      toast.success(checked ? '记忆已开启' : '记忆已关闭')
-    } catch (error) {
-      console.error('[MemoryCube] 切换失败:', error)
+  const ensurePersonalMemoryCreated = async (): Promise<void> => {
+    const config = await window.electronAPI.getMemoryConfig()
+    if (config.cubeId) {
+      setHasCube(true)
+      setCubeId(config.cubeId)
+      setCubeName(config.cubeName)
+      return
     }
-  }
 
-  const handleCreateCube = async (): Promise<void> => {
     setCreatingCube(true)
     setTestResult(null)
     try {
@@ -272,17 +268,26 @@ function MemoryCubeSettings(): React.ReactElement {
       setHasCube(true)
       setCubeId(result.cubeId)
       setCubeName(result.cubeName)
-      // 同步更新 memory.json 和聊天工具状态
-      const memoryConfig = await window.electronAPI.getMemoryConfig()
-      await window.electronAPI.setMemoryConfig({ ...memoryConfig, enabled: true })
-      await window.electronAPI.updateChatToolState('memory', { enabled: true })
-      await refreshTools()
-      toast.success('记忆立方创建成功')
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error)
-      setTestResult({ success: false, message: `创建立方失败: ${msg}` })
     } finally {
       setCreatingCube(false)
+    }
+  }
+
+  const handleToggle = async (checked: boolean): Promise<void> => {
+    setTestResult(null)
+    try {
+      if (checked) {
+        await ensurePersonalMemoryCreated()
+      }
+      const config = await window.electronAPI.getMemoryConfig()
+      await window.electronAPI.setMemoryConfig({ ...config, enabled: checked })
+      await window.electronAPI.updateChatToolState('memory', { enabled: checked })
+      await refreshTools()
+      toast.success(checked ? '记忆已开启' : '记忆已关闭')
+    } catch (error) {
+      console.error('[MemoryCube] 切换失败:', error)
+      const msg = error instanceof Error ? error.message : String(error)
+      setTestResult({ success: false, message: `开启个人记忆失败: ${msg}` })
     }
   }
 
@@ -305,31 +310,49 @@ function MemoryCubeSettings(): React.ReactElement {
 
   return (
     <SettingsSection
-      title="记忆立方"
-      description="创建专属记忆空间实现跨会话记忆"
+      title="个人记忆"
+      description="跨会话保存你的偏好、事实和长期上下文"
       action={
         <Switch
           checked={enabled}
-          disabled={!hasCube || !isLoggedIn}
+          disabled={creatingCube || !isLoggedIn}
           onCheckedChange={handleToggle}
         />
       }
     >
       <SettingsCard divided={false}>
         <div className="space-y-4 p-4">
+          <div className="rounded-lg bg-gradient-to-br from-emerald-500/10 via-sky-500/10 to-background p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-background/80 text-emerald-600 shadow-sm dark:text-emerald-400">
+                <Brain size={18} />
+              </div>
+              <div className="min-w-0 space-y-1">
+                <div className="text-sm font-medium text-foreground">让 AI 记住真正有用的信息</div>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  个人记忆会保存你明确让 AI 记住的偏好、事实和长期上下文。开启后，Chat 和 Agent 会在后续对话中按需回忆这些内容。
+                </p>
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Sparkles size={12} />
+                  <span>使用方式：在对话中说“请记住……”，或让 AI 回忆之前记录过的信息。</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* 未登录提示 */}
           {!isLoggedIn && (
-            <div className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground">
+            <div className="rounded-lg bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300">
               登录后可使用本功能
             </div>
           )}
 
-          {/* 立方状态 */}
-          <div className="rounded-lg bg-muted/30 p-3 space-y-3">
+          {/* 记忆空间状态 */}
+          <div className="rounded-lg bg-muted/30 p-4 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-sm font-medium">
-                <Box size={15} className="text-muted-foreground" />
-                记忆立方
+                <Brain size={15} className="text-emerald-600 dark:text-emerald-400" />
+                记忆空间
               </div>
               {hasCube ? (
                 <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
@@ -342,20 +365,20 @@ function MemoryCubeSettings(): React.ReactElement {
             </div>
 
             {hasCube && (
-              <div className="text-xs text-muted-foreground">
-                用户：{displayName}
+              <div className="text-xs leading-5 text-muted-foreground">
+                当前用户：{displayName || '未设置'}
+              </div>
+            )}
+            {!hasCube && (
+              <div className="text-xs leading-5 text-muted-foreground">
+                开启后会自动创建记忆空间，无需手动配置。
               </div>
             )}
 
             <div className="flex items-center gap-2">
-              {!hasCube && (
-                <Button size="sm" onClick={handleCreateCube} disabled={creatingCube || !isLoggedIn}>
-                  {creatingCube ? <><Loader2 size={14} className="animate-spin mr-1.5" />创建中...</> : '创建记忆立方'}
-                </Button>
-              )}
               {hasCube && (
                 <Button size="sm" variant="outline" disabled={testing || !isLoggedIn} onClick={handleQueryCube}>
-                  {testing ? <><Loader2 size={14} className="animate-spin mr-1.5" />查询中...</> : '测试连接'}
+                  {testing ? <><Loader2 size={14} className="animate-spin mr-1.5" />检查中...</> : '检查记忆'}
                 </Button>
               )}
             </div>
@@ -378,7 +401,7 @@ function MemoryCubeSettings(): React.ReactElement {
               {testResult.success && testResult.data && testResult.data.facts.length === 0 && testResult.data.preferences.length === 0 && (
                 <div className="mt-2 pl-6 flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Lightbulb size={12} />
-                  <span>立方已就绪，暂无记忆内容。使用 Chat 或 Agent 进行对话后将自动记录。</span>
+                  <span>个人记忆已就绪，暂无记忆内容。在 Chat 或 Agent 中说“请记住……”后会写入。</span>
                 </div>
               )}
             </div>
@@ -392,7 +415,7 @@ function MemoryCubeSettings(): React.ReactElement {
 export function ToolSettings(): React.ReactElement {
   return (
     <div className="space-y-8">
-      <MemoryCubeSettings />
+      <PersonalMemorySettings />
       <WebSearchSettings />
     </div>
   )

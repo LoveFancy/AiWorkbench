@@ -4,9 +4,9 @@
     "version": ">=20"
   },
   "init": {
-    "darwin": "npm install -g @ht/talents-cli",
-    "linux": "npm install -g @ht/talents-cli",
-    "win32": "npm install -g @ht/talents-cli"
+    "darwin": "npm install -g @ht/talents-cli --registry http://npm.htsc",
+    "linux": "npm install -g @ht/talents-cli --registry http://npm.htsc",
+    "win32": "npm install -g @ht/talents-cli --registry http://npm.htsc"
   },
   "versionCheck": {
     "command": {

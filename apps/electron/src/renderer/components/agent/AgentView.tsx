@@ -593,6 +593,14 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
   const sessionSamplePromptsMap = useAtomValue(agentSessionSamplePromptsAtom)
   const setSessionSamplePromptsMap = useSetAtom(agentSessionSamplePromptsAtom)
   const sessionSamplePrompts = sessionSamplePromptsMap.get(sessionId) ?? []
+  const closeSessionSamplePrompts = React.useCallback(() => {
+    setSessionSamplePromptsMap((prev) => {
+      if (!prev.has(sessionId)) return prev
+      const map = new Map(prev)
+      map.delete(sessionId)
+      return map
+    })
+  }, [sessionId, setSessionSamplePromptsMap])
 
   React.useEffect(() => {
     if (!workspaceSlug) {
@@ -2350,7 +2358,18 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
             {/* 专家团 Sample Prompts — “试试这样问” */}
             {!streaming && sessionSamplePrompts.length > 0 && (
               <div className="px-3 pt-2.5 pb-1.5">
-                <p className="mb-2 text-xs font-medium text-muted-foreground">试试这样问：</p>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-xs font-medium text-muted-foreground">试试这样问：</p>
+                  <button
+                    type="button"
+                    title="关闭示例问题"
+                    aria-label="关闭示例问题"
+                    className="rounded-md p-1 text-muted-foreground/45 transition-colors hover:bg-muted hover:text-foreground"
+                    onClick={closeSessionSamplePrompts}
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                </div>
                 <div className="flex flex-col gap-1.5">
                   {sessionSamplePrompts.map((prompt) => (
                     <button

@@ -341,6 +341,8 @@ describe('initializeDefaultConnector', () => {
     const originalInfo = console.info
     const logs: string[] = []
     const probe = process.platform === 'win32' ? 'where' : 'which'
+    const npmPath = join(root, process.platform === 'win32' ? 'npm.cmd' : 'npm')
+    writeFileSync(npmPath, '', 'utf-8')
     console.info = (...args: unknown[]) => {
       logs.push(args.map((arg) => typeof arg === 'string' ? arg : JSON.stringify(arg)).join(' '))
     }
@@ -357,7 +359,10 @@ describe('initializeDefaultConnector', () => {
           if (command === probe && (args[0] === 'talents' || args[0] === 'talents.cmd')) {
             return { ok: false, stdout: '', stderr: '' }
           }
-          if (command === 'npm' && args.join(' ') === 'install -g @ht/talents-cli') {
+          if (command === probe && args[0] === 'npm') {
+            return { ok: true, stdout: `${npmPath}\n`, stderr: '' }
+          }
+          if (command === npmPath && args.join(' ') === 'install -g @ht/talents-cli --registry http://npm.htsc') {
             return { ok: false, stdout: '', stderr: 'npm ERR! 403 Forbidden talents-secret-token' }
           }
           return { ok: false, stdout: '', stderr: '' }
@@ -368,7 +373,8 @@ describe('initializeDefaultConnector', () => {
       const joinedLogs = logs.join('\n')
       expect(result.success).toBe(false)
       expect(message).toContain('安装 talents CLI 失败')
-      expect(message).toContain('命令: npm install -g @ht/talents-cli')
+      expect(message).toContain('命令: npm install -g @ht/talents-cli --registry http://npm.htsc')
+      expect(message).toContain('--registry http://npm.htsc')
       expect(message).toContain('原始错误:')
       expect(message).toContain('npm ERR! 403 Forbidden')
       expect(message).not.toContain('talents-secret-token')
@@ -379,6 +385,52 @@ describe('initializeDefaultConnector', () => {
     } finally {
       console.info = originalInfo
     }
+  })
+
+  test('hi-agent 安装 talents 前解析 npm 绝对路径，避免直接 spawn npm', async () => {
+    const probe = process.platform === 'win32' ? 'where' : 'which'
+    const npmPath = join(root, process.platform === 'win32' ? 'npm.cmd' : 'npm')
+    writeFileSync(npmPath, '', 'utf-8')
+    let talentsInstalled = false
+    const calls: string[] = []
+
+    const result = await initializeDefaultConnector('default', {
+      connectorId: 'hi-agent',
+    }, {
+      getSkillHubToken: async () => 'skillhub-token',
+      commandExists: async (command) => command === 'node' || command === 'npm',
+      runCommand: async (command, args, options) => {
+        calls.push([command, ...args].join(' '))
+        if (command === 'node' && args[0] === '-v') {
+          return { ok: true, stdout: 'v22.14.0\n', stderr: '' }
+        }
+        if (command === probe && args[0] === 'npm') {
+          return { ok: true, stdout: `${npmPath}\n`, stderr: '' }
+        }
+        if (command === probe && (args[0] === 'talents' || args[0] === 'talents.cmd')) {
+          return talentsInstalled
+            ? { ok: true, stdout: `${mockTalentsPath}\n`, stderr: '' }
+            : { ok: false, stdout: '', stderr: '' }
+        }
+        if (command === npmPath && args.join(' ') === 'install -g @ht/talents-cli --registry http://npm.htsc') {
+          talentsInstalled = true
+          return { ok: true, stdout: 'installed\n', stderr: '' }
+        }
+        if (command === mockTalentsPath && args[0] === '-V') {
+          return { ok: true, stdout: '1.0.2\n', stderr: '' }
+        }
+        if (command === mockTalentsPath && args.join(' ') === 'workspace --json') {
+          expect(options?.env?.HTSKILL_TOKEN).toBe('skillhub-token')
+          return { ok: true, stdout: '{"ok":true}', stderr: '' }
+        }
+        return { ok: false, stdout: '', stderr: `unexpected: ${command} ${args.join(' ')}` }
+      },
+    })
+
+    expect(result.success).toBe(true)
+    expect(calls).toContain(`${probe} npm`)
+    expect(calls).toContain(`${npmPath} install -g @ht/talents-cli --registry http://npm.htsc`)
+    expect(calls).not.toContain('npm install -g @ht/talents-cli --registry http://npm.htsc')
   })
 
   test('通用 CLI 初始化支持从 archive 安装华泰 GitLab 连接器', async () => {

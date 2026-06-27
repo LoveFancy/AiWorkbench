@@ -52,6 +52,8 @@ interface InitializerDeps {
 const LOG_PREFIX = '[连接器:华泰邮箱]'
 const CLI_LOG_PREFIX = '[CLI连接器]'
 const HI_AGENT_LOG_PREFIX = '[连接器:泰为 hiagent]'
+const HI_AGENT_UAT_NPM_REGISTRY = 'http://npm.htsc'
+const HI_AGENT_PRD_NPM_REGISTRY = 'http://repo-prd.htsc/artifactory/api/npm/mcp-npm-prd-local/'
 
 const EMAIL_STEP_LABELS = {
   'check-runtime': '检查内置运行时',
@@ -222,6 +224,27 @@ function formatGenericCliInstallError(displayName: string, commandText: string, 
     '原始错误:',
     message,
   ].join('\n')
+}
+
+function resolveHiAgentNpmRegistry(secrets: Record<string, string>): string {
+  return secrets.AGENTOS_ENV === 'prd' ? HI_AGENT_PRD_NPM_REGISTRY : HI_AGENT_UAT_NPM_REGISTRY
+}
+
+function ensureHiAgentPrivateNpmRegistry(connectorId: string, installArgs: string[], secrets: Record<string, string>): string[] {
+  if (connectorId !== 'hi-agent') return installArgs
+  const [command, ...args] = installArgs
+  if (command !== 'npm') return installArgs
+  if (args.some((arg) => arg === '--registry' || arg.startsWith('--registry='))) return installArgs
+  return [command, ...args, '--registry', resolveHiAgentNpmRegistry(secrets)]
+}
+
+async function resolveInstallCommandPath(
+  command: string,
+  runCommand: (command: string, args: string[], options?: CommandOptions) => Promise<CommandResult>,
+): Promise<string | null> {
+  if (isAbsolute(command)) return existsSync(command) ? command : null
+  if (command !== 'npm') return command
+  return resolveCommandPath(command, runCommand)
 }
 
 async function defaultDownloadFile(url: string): Promise<Buffer> {
@@ -616,14 +639,28 @@ async function installCliConnector(options: CliInstallOptions): Promise<CliInsta
     }
   }
 
-  const installArgs = parseCommandLine(installCommand)
+  const installArgs = ensureHiAgentPrivateNpmRegistry(options.connectorId, parseCommandLine(installCommand), options.secrets)
   const [command, ...args] = installArgs
   if (!command) throw new Error('CLI 安装命令为空')
   const commandText = installArgs.join(' ')
+  const executableCommand = await resolveInstallCommandPath(command, options.runCommand)
+  if (!executableCommand) {
+    return {
+      success: false,
+      stepMessage: [
+        `安装 ${options.connectorId === 'hi-agent' ? 'talents' : options.displayName} CLI 失败。`,
+        `命令: ${commandText}`,
+        '',
+        '原始错误:',
+        '未找到 npm 可执行文件，请确认 Node.js/npm 已安装，并重启 WorkMate 让应用重新加载 PATH。',
+      ].join('\n'),
+      resultMessage: `安装 ${options.connectorId === 'hi-agent' ? 'talents' : options.displayName} CLI 失败。`,
+    }
+  }
   const logPrefix = options.connectorId === 'hi-agent' ? HI_AGENT_LOG_PREFIX : CLI_LOG_PREFIX
   const installLogName = options.connectorId === 'hi-agent' ? 'talents' : options.displayName
   logCliConnectorInfo(`开始安装 ${installLogName} CLI`, { command: commandText }, logPrefix)
-  const installResult = await options.runCommand(command, args, { timeoutMs: 180_000 })
+  const installResult = await options.runCommand(executableCommand, args, { timeoutMs: 180_000 })
   logCliConnectorInfo('安装命令结束', {
     ok: installResult.ok,
     command: commandText,

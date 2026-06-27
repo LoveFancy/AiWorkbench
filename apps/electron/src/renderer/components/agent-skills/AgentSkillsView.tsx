@@ -57,7 +57,7 @@ import {
 
 const HUATAI_EMAIL_DOMAIN = 'htsc.com'
 const MCP_TRANSPORT_LABELS: Record<string, string> = { stdio: 'STDIO', http: 'HTTP', sse: 'SSE' }
-const UAT_CONNECTOR_IDS = new Set(['feishu-cli', 'hi-agent'])
+const UAT_CONNECTOR_IDS = new Set(['hi-agent'])
 
 function getHuataiEmailLocalPart(emailAddress: string): string {
   const trimmed = emailAddress.trim()

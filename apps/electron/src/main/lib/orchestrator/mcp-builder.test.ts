@@ -7,6 +7,7 @@ import { clearConfigRootOverride, setConfigRoot } from '../config-root-service'
 import { buildMcpServers, collectConnectorDisabledTools } from './mcp-builder'
 
 let root: string
+const emptyConnectorsConfig = { version: '1.0' as const, connectors: {} }
 
 function writeWorkspaceMcp(workspaceSlug: string): void {
   writeFileSync(
@@ -62,32 +63,32 @@ describe('buildMcpServers', () => {
 
   test('无 connectors.json 时加载 mcp.json 中全部 enabled server（向后兼容）', () => {
     writeWorkspaceMcp('default')
-    const servers = buildMcpServers('default')
+    const servers = buildMcpServers('default', emptyConnectorsConfig)
     expect(Object.keys(servers).sort()).toEqual(['docs', 'email'])
   })
 
   test('未指定 select 参数时加载全部 enabled server', () => {
     writeWorkspaceMcp('default')
-    const servers = buildMcpServers('default')
+    const servers = buildMcpServers('default', emptyConnectorsConfig)
     expect(Object.keys(servers).sort()).toEqual(['docs', 'email'])
   })
 
   test('空 select 参数按未指定处理，加载全部 enabled server', () => {
     writeWorkspaceMcp('default')
-    const servers = buildMcpServers('default', undefined, [])
+    const servers = buildMcpServers('default', emptyConnectorsConfig, [])
     expect(Object.keys(servers).sort()).toEqual(['docs', 'email'])
   })
 
   test('只加载指定名称的旧 MCP', () => {
     writeWorkspaceMcp('default')
-    const servers = buildMcpServers('default', undefined, ['email'])
+    const servers = buildMcpServers('default', emptyConnectorsConfig, ['email'])
     expect(Object.keys(servers)).toEqual(['email'])
     expect(servers.email).toMatchObject({ type: 'stdio', command: 'mcp-email-server' })
   })
 
   test('不加载 mcp.json 中 enabled=false 的 server', () => {
     writeWorkspaceMcp('default')
-    const servers = buildMcpServers('default', undefined, ['disabled'])
+    const servers = buildMcpServers('default', emptyConnectorsConfig, ['disabled'])
     expect(servers).toEqual({})
   })
 

@@ -7,7 +7,7 @@
 
 import { dirname } from 'node:path'
 import { createWriteStream, existsSync, mkdirSync, unlinkSync } from 'node:fs'
-import { app, BrowserWindow } from 'electron'
+import * as electron from 'electron'
 import type { AgentPluginInfo, RemoteDownloadProgress } from '@proma/shared'
 import { EXPERT_IPC_CHANNELS } from '@proma/shared'
 import { installUserPluginZipAsync, DownloadCancelledError } from './plugin-registry-service'
@@ -15,7 +15,7 @@ import { getToken } from '../../auth'
 import { resolveApiBase } from '../../shared/hteip-client'
 
 function broadcastProgress(progress: RemoteDownloadProgress): void {
-  BrowserWindow.getAllWindows().forEach((win) => {
+  electron.BrowserWindow.getAllWindows().forEach((win) => {
     win.webContents.send(EXPERT_IPC_CHANNELS.DOWNLOAD_PROGRESS, progress)
   })
 }
@@ -115,7 +115,7 @@ export function downloadAndInstallRemoteExpert(
 
   const downloadPath = `/workmate/expert-groups/${groupId}/download`
   const downloadUrl = `${resolveApiBase()}${downloadPath}`
-  const tempPath = `${app.getPath('temp')}\\proma-expert-${groupId}-${Date.now()}.zip`
+  const tempPath = `${electron.app.getPath('temp')}\\proma-expert-${groupId}-${Date.now()}.zip`
 
   const controller = new AbortController()
 

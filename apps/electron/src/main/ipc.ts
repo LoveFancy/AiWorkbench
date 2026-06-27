@@ -2947,7 +2947,7 @@ export function registerIpcHandlers(): void {
     async (): Promise<{ success: boolean; message: string; data?: import('@proma/shared').QueryCubeResult }> => {
       const config = getMemoryConfig()
       if (!config.cubeId) {
-        return { success: false, message: '请先创建记忆立方' }
+        return { success: false, message: '请先创建个人记忆' }
       }
       try {
         const { queryCube } = await import('./lib/memos-client')
@@ -2957,12 +2957,12 @@ export function registerIpcHandlers(): void {
         })
         const factsCount = result.facts.length
         const prefsCount = result.preferences.length
-        console.log(`[记忆服务] 🔌 查询记忆立方 → 成功: ${factsCount}条事实, ${prefsCount}条偏好`)
+        console.log(`[记忆服务] 🔌 查询个人记忆 → 成功: ${factsCount}条事实, ${prefsCount}条偏好`)
         const summary = `查询成功 — ${factsCount} 条事实, ${prefsCount} 条偏好`
         return { success: true, message: summary, data: result }
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error)
-        console.error('[记忆服务] 🔌 查询记忆立方失败:', error)
+        console.error('[记忆服务] 🔌 查询个人记忆失败:', error)
         return { success: false, message: `查询失败: ${msg}` }
       }
     }
@@ -2974,17 +2974,17 @@ export function registerIpcHandlers(): void {
       const config = getMemoryConfig()
       const { createCube } = await import('./lib/memos-client')
 
-      // 使用登录名作为立方名称，owner_id 固定为 root
+      // 使用登录名作为个人记忆名称，owner_id 固定为 root
       const { getAuthInfo } = await import('../auth/auth-service')
       const authInfo = getAuthInfo()
-      let cubeName = '记忆立方'
+      let cubeName = '个人记忆'
       if (authInfo?.displayName) {
         cubeName = authInfo.displayName
       } else if (authInfo?.jobId) {
         cubeName = authInfo.jobId
       } else {
         const userProfile = getUserProfile()
-        cubeName = userProfile.userName || '记忆立方'
+        cubeName = userProfile.userName || '个人记忆'
       }
       const ownerId = 'root'
 
@@ -2996,7 +2996,7 @@ export function registerIpcHandlers(): void {
         ownerId: 'root',
         cubeName: result.cubeName,
       })
-      console.log(`[记忆服务] IPC: 记忆立方创建并保存成功 cubeId=${result.cubeId}, cubeName=${result.cubeName}`)
+      console.log(`[记忆服务] IPC: 个人记忆创建并保存成功 cubeId=${result.cubeId}, cubeName=${result.cubeName}`)
       return result
     }
   )
@@ -3006,7 +3006,7 @@ export function registerIpcHandlers(): void {
     async (): Promise<import('@proma/shared').QueryCubeResult> => {
       const config = getMemoryConfig()
       if (!config.cubeId) {
-        throw new Error('请先创建记忆立方')
+        throw new Error('请先创建个人记忆')
       }
       const { queryCube } = await import('./lib/memos-client')
       return queryCube({
@@ -3074,7 +3074,7 @@ export function registerIpcHandlers(): void {
       if (toolId === 'memory') {
         const config = getMemoryConfig()
         if (!config.cubeId) {
-          return { success: false, message: '请先创建记忆立方' }
+          return { success: false, message: '请先创建个人记忆' }
         }
         try {
           const { searchMemory } = await import('./lib/memos-client')

@@ -14,6 +14,7 @@ import {
 
 let mockLoggedIn = true
 let mockTempDir = ''
+const originalFetch = globalThis.fetch
 
 mock.module('electron', () => ({
   app: { getVersion: () => '1.0.0' },
@@ -22,12 +23,6 @@ mock.module('electron', () => ({
     encryptString: (s: string) => Buffer.from(s, 'utf-8'),
     decryptString: (b: Buffer) => b.toString('utf-8'),
   },
-}))
-
-mock.module('../../auth', () => ({
-  hasValidSession: () => mockLoggedIn,
-  getToken: () => 'mock-token',
-  getJobId: () => '022480',
 }))
 
 mock.module('./config-paths', () => ({
@@ -105,12 +100,19 @@ describe('reportEvent 登录拦截', () => {
       return new Response(JSON.stringify({ code: 0 }), { status: 200 })
     }) as unknown as typeof fetch
     svc = await import('./observability-service')
+    svc.__setAuthDepsForTest({
+      hasValidSession: () => mockLoggedIn,
+      getToken: () => 'mock-token',
+      getJobId: () => '022480',
+    })
     // 大 flushInterval 防止定时器在测试期间自行触发
     svc.init({ enabled: true, url: 'http://localhost/events', flushIntervalMs: 999_999 })
   })
 
   afterEach(async () => {
     await svc.shutdown()
+    svc.__resetAuthDepsForTest()
+    globalThis.fetch = originalFetch
     rmSync(mockTempDir, { recursive: true, force: true })
   })
 

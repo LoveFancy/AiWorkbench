@@ -40,6 +40,13 @@ const INDEX_VERSION = 3
 
 const DEFAULT_SKILLS_TO_ENABLE_ON_MIGRATION = ['huatai-email-setup', 'install-python'] as const
 const REMOVED_DEFAULT_SKILL_SLUGS = ['proma-coach'] as const
+const HUATAI_EMAIL_SMTP_ENV: Record<string, string> = {
+  MCP_EMAIL_SERVER_SMTP_HOST: 'htemail.htsc.com.cn',
+  MCP_EMAIL_SERVER_SMTP_PORT: '25',
+  MCP_EMAIL_SERVER_SMTP_SSL: 'false',
+  MCP_EMAIL_SERVER_SMTP_START_SSL: 'true',
+  MCP_EMAIL_SERVER_SAVE_TO_SENT: 'true',
+}
 
 interface InstallSkillZipOptions {
   activeDir?: string
@@ -52,8 +59,8 @@ interface WorkspaceSkillDirs {
   inactiveDir?: string
 }
 
-export function getDefaultSkillInitialEnabled(_skillSlug: string): boolean {
-  return true
+export function getDefaultSkillInitialEnabled(skillSlug: string): boolean {
+  return skillSlug !== 'feishu-lark-setup'
 }
 
 /** 读取工作区索引文件，自动执行版本迁移 */
@@ -989,7 +996,7 @@ function getDefaultConnectorEntries(): Record<string, ConnectorEntry> {
 
 function copyMissingConnectorFiles(source: string, target: string): void {
   const blocklist = new Set(['.git', 'node_modules', '__pycache__', '.DS_Store'])
-  const syncableFiles = new Set(['cli.json'])
+  const syncableFiles = new Set(['cli.json', 'SKILL.md'])
   for (const entry of readdirSync(source, { withFileTypes: true })) {
     if (blocklist.has(entry.name)) continue
     if (entry.name === 'connector.json') continue
@@ -1094,6 +1101,34 @@ function saveConnectorMetadata(workspaceSlug: string, connectorId: string, metad
   }
 }
 
+function ensureHuataiEmailSmtpEnv(workspaceSlug: string, metadata: Record<string, unknown>): void {
+  const mcpConfig = getWorkspaceMcpConfig(workspaceSlug)
+  const preferredServerName = typeof metadata.serverName === 'string' ? metadata.serverName : 'huatai-email'
+  const serverName = [preferredServerName, 'huatai-email', 'email']
+    .find((name) => Boolean(mcpConfig.servers[name]))
+
+  if (!serverName) return
+
+  const entry = mcpConfig.servers[serverName]
+  if (!entry || entry.type !== 'stdio') return
+
+  const previousEnv = entry.env ?? {}
+  const nextEnv = {
+    ...previousEnv,
+    ...Object.fromEntries(
+      Object.entries(HUATAI_EMAIL_SMTP_ENV).filter(([key]) => previousEnv[key] === undefined || previousEnv[key] === ''),
+    ),
+  }
+
+  if (JSON.stringify(nextEnv) === JSON.stringify(previousEnv)) return
+
+  mcpConfig.servers[serverName] = {
+    ...entry,
+    env: nextEnv,
+  }
+  saveWorkspaceMcpConfig(workspaceSlug, mcpConfig)
+}
+
 export function getHuataiEmailSendEnabled(workspaceSlug: string): boolean {
   const metadata = readConnectorMetadata(workspaceSlug, 'huatai-email')
   const disabledTools = Array.isArray(metadata.disabledTools)
@@ -1112,6 +1147,9 @@ export function setHuataiEmailSendEnabled(workspaceSlug: string, enabled: boolea
     metadata.disabledTools = nextTools
     saveConnectorMetadata(workspaceSlug, 'huatai-email', metadata)
     return { enabled: false }
+  }
+  if (enabled) {
+    ensureHuataiEmailSmtpEnv(workspaceSlug, metadata)
   }
   const nextTools = enabled
     ? disabledTools.filter((tool) => tool !== 'send_email')
@@ -1136,6 +1174,9 @@ export function setHuataiEmailDraftEnabled(workspaceSlug: string, enabled: boole
     ? metadata.disabledTools.filter((tool): tool is string => typeof tool === 'string')
     : []
   const withoutEmailWriteTools = disabledTools.filter((tool) => tool !== 'save_to_mailbox' && tool !== 'send_email')
+  if (enabled) {
+    ensureHuataiEmailSmtpEnv(workspaceSlug, metadata)
+  }
   const nextTools = enabled
     ? [...withoutEmailWriteTools, 'send_email']
     : [...withoutEmailWriteTools, 'send_email', 'save_to_mailbox']
@@ -1290,7 +1331,12 @@ interface DeleteWorkspaceSkillOptions {
 }
 
 export function deleteWorkspaceSkill(workspaceSlug: string, skillSlug: string, options: DeleteWorkspaceSkillOptions = {}): void {
-  const normalizedSkillSlug = assertValidSlug(skillSlug)
+  let normalizedSkillSlug: string
+  try {
+    normalizedSkillSlug = assertValidSlug(skillSlug)
+  } catch {
+    throw new Error('Skill 名称包含不安全路径')
+  }
   const activeDir = options.activeDir ?? getWorkspaceSkillsDir(workspaceSlug)
   const inactiveDir = options.inactiveDir ?? getInactiveSkillsDir(workspaceSlug)
   const activePath = join(activeDir, normalizedSkillSlug)

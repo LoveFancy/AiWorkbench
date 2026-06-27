@@ -13,7 +13,7 @@
   "install": {
     "version": "1.105.0",
     "win32": {
-      "url": "https://gitlab.com/gitlab-org/cli/-/releases/v1.105.0/downloads/glab_1.105.0_windows_amd64.zip",
+      "url": "https://htpan.htsc.com.cn:10081/v2%2Fdelivery%2Fdata%2Fed1e0bf5f0b749898f5408990d28b9cb%2F?&dup_t=1782547677818&X-LENOVO-SESS-ID=ee8ae0d6d19544ed98023715d60698db&session_id=ee8ae0d6d19544ed98023715d60698db",
       "sha256": "0f2df88d582f697d748f85e382ad378e3c6bfe28e7e45151eb333776132919f1",
       "binaryPath": "bin/glab.exe"
     }

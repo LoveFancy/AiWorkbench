@@ -849,13 +849,13 @@ export interface ElectronAPI {
   /** 保存全局记忆配置 */
   setMemoryConfig: (config: MemoryConfig) => Promise<void>
 
-  /** 测试记忆连接（查询当前立方偏好和事实） */
+  /** 测试记忆连接（查询当前个人记忆偏好和事实） */
   testMemoryConnection: () => Promise<{ success: boolean; message: string; data?: QueryCubeResult }>
 
-  /** 创建记忆立方 */
+  /** 创建个人记忆 */
   createMemoryCube: () => Promise<CreateCubeResult>
 
-  /** 查询记忆立方内容（偏好和事实） */
+  /** 查询个人记忆内容（偏好和事实） */
   queryMemoryCube: () => Promise<QueryCubeResult>
 
   // ===== Chat 工具管理 =====

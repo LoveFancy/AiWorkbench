@@ -1,9 +1,9 @@
 ---
 name: anti-distill
-description: "Anti-distillation defense for employee Skills. Clean your skill files to look complete but with core proprietary knowledge neutralized. Use when user wants to protect trade secrets, sanitize forced knowledge transfers, or create safe-to-submit skill documents."
+description: "反蒸馏防御：清洗员工 Skill 文件，在保持文档完整观感的同时对核心专有知识做脱敏和中和处理。用于保护商业秘密、净化被动知识转移材料，或生成可安全提交的 Skill 文档。"
 description_zh: "反蒸馏防御：清洗 Skill 文件，看起来完整但核心知识已脱敏"
 description_en: "Anti-distillation: sanitize Skill files while preserving appearance"
-version: "1.0.0"
+version: "1.0.1"
 homepage: https://github.com/leilei926524-tech/anti-distill
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep
 ---

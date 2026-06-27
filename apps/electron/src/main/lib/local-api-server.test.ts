@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import type { AddressInfo } from 'node:net'
+import { request as httpRequest } from 'node:http'
 
 import { AgentEventBus } from './agent-event-bus'
 import { LocalApiServer } from './local-api-server'
@@ -102,12 +103,89 @@ async function createHarness(
 }
 
 async function requestJson(url: string, init?: RequestInit): Promise<{ status: number; body: unknown; headers: Headers }> {
-  const response = await fetch(url, init)
+  const response = await requestLocal(url, init)
   return {
     status: response.status,
     body: await response.json(),
     headers: response.headers,
   }
+}
+
+async function requestLocal(url: string, init: RequestInit = {}): Promise<Response> {
+  const target = new URL(url)
+  const body = typeof init.body === 'string' ? init.body : undefined
+  const headers = new Headers(init.headers)
+  if (body && !headers.has('content-length')) {
+    headers.set('content-length', Buffer.byteLength(body).toString())
+  }
+
+  return new Promise<Response>((resolve, reject) => {
+    const req = httpRequest({
+      hostname: target.hostname,
+      port: target.port,
+      path: `${target.pathname}${target.search}`,
+      method: init.method ?? 'GET',
+      headers: Object.fromEntries(headers.entries()),
+    }, (res) => {
+      const chunks: Buffer[] = []
+      res.on('data', (chunk: Buffer) => chunks.push(chunk))
+      res.on('end', () => {
+        resolve(new Response(Buffer.concat(chunks), {
+          status: res.statusCode ?? 0,
+          headers: res.headers as HeadersInit,
+        }))
+      })
+    })
+    req.on('error', reject)
+    if (body) req.write(body)
+    req.end()
+  })
+}
+
+async function streamLocal(url: string, init: RequestInit = {}): Promise<Response> {
+  const target = new URL(url)
+  const headers = new Headers(init.headers)
+
+  return new Promise<Response>((resolve, reject) => {
+    const req = httpRequest({
+      hostname: target.hostname,
+      port: target.port,
+      path: `${target.pathname}${target.search}`,
+      method: init.method ?? 'GET',
+      headers: Object.fromEntries(headers.entries()),
+    }, (res) => {
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          let closed = false
+          res.on('data', (chunk: Buffer) => {
+            if (!closed) controller.enqueue(new Uint8Array(chunk))
+          })
+          res.on('end', () => {
+            if (closed) return
+            closed = true
+            controller.close()
+          })
+          res.on('error', (error) => {
+            if (closed) return
+            closed = true
+            controller.error(error)
+          })
+          req.on('close', () => {
+            closed = true
+          })
+        },
+        cancel() {
+          req.destroy()
+        },
+      })
+      resolve(new Response(stream, {
+        status: res.statusCode ?? 0,
+        headers: res.headers as HeadersInit,
+      }))
+    })
+    req.on('error', reject)
+    req.end()
+  })
 }
 
 async function readUntil(stream: Response, marker: string): Promise<string> {
@@ -206,7 +284,7 @@ describe('local-api-server', () => {
     }
     harness.eventBus.emit('session-1', { kind: 'sdk_message', message: assistantMessage })
 
-    const stream = await fetch(`${harness.baseUrl}${body.eventsUrl}`, {
+    const stream = await streamLocal(`${harness.baseUrl}${body.eventsUrl}`, {
       headers: { Authorization: `Bearer ${TOKEN}` },
     })
     const text = await readUntil(stream, '增量文本')

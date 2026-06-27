@@ -11,3 +11,8 @@ test('Agent 用户消息外层容器占满宽度以贴近右侧', () => {
   expect(source).toContain('<MessageContent className="group-[.is-user]:pr-0">')
   expect(source).toContain('<MessageActions className="pr-0 mt-0.5">')
 })
+
+test('定时任务来源标记不暴露 Proma 品牌话术', () => {
+  expect(source).toContain('自动任务触发')
+  expect(source).not.toContain('来自 Proma 定时任务')
+})

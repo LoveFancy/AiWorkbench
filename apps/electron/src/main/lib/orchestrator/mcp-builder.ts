@@ -28,7 +28,7 @@ import { join } from 'node:path'
  * 3. 向后兼容：未被 connectors.json 管理的 server 仍加载（如迁移前的旧配置）
  *
  * @param preReadConfig 可选，调用方已读好的配置，避免重复 I/O
- * @param selectedMcpServers 可选，只加载指定的 MCP server（undefined=全部, []=新建会话自动扫描, ['name']=指定）
+ * @param selectedMcpServers 可选，只加载指定的 MCP server（undefined/[]=全部, ['name']=指定）
  */
 export function buildMcpServers(
   workspaceSlug: string | undefined,
@@ -41,24 +41,11 @@ export function buildMcpServers(
   const connectorsConfig = preReadConfig ?? getWorkspaceConnectorsConfig(workspaceSlug)
 
   // selectedMcpServers:
-  //   undefined → 加载全部 server
-  //   []        → 新建会话，自动扫描 connectorsConfig 获取全部已启用的 MCP 连接器
-  //   ['name']  → 只加载指定 server
+  //   undefined/[] → 加载全部 server
+  //   ['name']     → 只加载指定 server
   let selectedNames: Set<string> | null = null
-  if (Array.isArray(selectedMcpServers)) {
-    if (selectedMcpServers.length === 0) {
-      // 新建会话：收集 connectorsConfig 中所有已启用的 MCP 连接器
-      const autoNames: string[] = []
-      for (const [connectorId, connector] of Object.entries(connectorsConfig.connectors)) {
-        if (connector.enabled && connector.type === 'mcp') {
-          autoNames.push(connector.serverName ?? connectorId)
-        }
-      }
-      if (autoNames.length === 0) return mcpServers
-      selectedNames = new Set(autoNames)
-    } else {
-      selectedNames = new Set(selectedMcpServers)
-    }
+  if (Array.isArray(selectedMcpServers) && selectedMcpServers.length > 0) {
+    selectedNames = new Set(selectedMcpServers)
   }
 
   const mcpConfig = getWorkspaceMcpConfig(workspaceSlug)
@@ -270,7 +257,7 @@ export async function injectNanoBananaTools(
 }
 
 /**
- * 注入 WorkMate 内置联网搜索工具（专家团按需启用）
+ * 注入 WorkMate 内置联网搜索工具
  */
 export async function injectWebSearchTools(
   sdk: typeof import('@anthropic-ai/claude-agent-sdk'),
