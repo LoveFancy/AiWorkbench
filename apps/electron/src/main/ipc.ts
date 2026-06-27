@@ -237,6 +237,10 @@ import {
   saveWorkspaceMcpConfig,
   getWorkspaceConnectorsConfig,
   saveWorkspaceConnectorsConfig,
+  getHuataiEmailDraftEnabled,
+  setHuataiEmailDraftEnabled,
+  getHuataiEmailSendEnabled,
+  setHuataiEmailSendEnabled,
   registerUserConnector,
   unregisterUserConnector,
   migrateMcpJsonToConnectors,
@@ -2268,6 +2272,38 @@ export function registerIpcHandlers(): void {
     }
   )
 
+  // 获取华泰邮箱发送能力状态
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.GET_HUATAI_EMAIL_SEND_ENABLED,
+    async (_, workspaceSlug: string): Promise<boolean> => {
+      return getHuataiEmailSendEnabled(workspaceSlug)
+    }
+  )
+
+  // 切换华泰邮箱发送能力
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.SET_HUATAI_EMAIL_SEND_ENABLED,
+    async (_, workspaceSlug: string, enabled: boolean): Promise<{ enabled: boolean }> => {
+      return setHuataiEmailSendEnabled(workspaceSlug, enabled)
+    }
+  )
+
+  // 获取华泰邮箱草稿能力状态
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.GET_HUATAI_EMAIL_DRAFT_ENABLED,
+    async (_, workspaceSlug: string): Promise<boolean> => {
+      return getHuataiEmailDraftEnabled(workspaceSlug)
+    }
+  )
+
+  // 切换华泰邮箱草稿能力
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.SET_HUATAI_EMAIL_DRAFT_ENABLED,
+    async (_, workspaceSlug: string, enabled: boolean): Promise<{ enabled: boolean }> => {
+      return setHuataiEmailDraftEnabled(workspaceSlug, enabled)
+    }
+  )
+
   // 注册用户创建的连接器
   ipcMain.handle(
     AGENT_IPC_CHANNELS.REGISTER_USER_CONNECTOR,
@@ -2580,8 +2616,8 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     AGENT_IPC_CHANNELS.ADD_PLUGIN_MARKETPLACE,
     async (_, input: { id: string; name: string; source: string; type: AgentPluginMarketplaceType; branch?: string; auth?: { type: 'none' | 'token'; token?: string } }): Promise<AgentPluginMarketplace> => {
-      const { addPluginMarketplace } = await import('./lib/plugin-marketplace-service')
-      return addPluginMarketplace(input)
+      const { addAndRefreshPluginMarketplace } = await import('./lib/plugin-marketplace-service')
+      return addAndRefreshPluginMarketplace(input)
     }
   )
 
@@ -2908,23 +2944,75 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(
     MEMORY_IPC_CHANNELS.TEST_CONNECTION,
-    async (): Promise<{ success: boolean; message: string }> => {
+    async (): Promise<{ success: boolean; message: string; data?: import('@proma/shared').QueryCubeResult }> => {
       const config = getMemoryConfig()
-      if (!config.apiKey) {
-        return { success: false, message: '请先填写 API Key' }
+      if (!config.cubeId) {
+        return { success: false, message: '请先创建个人记忆' }
       }
       try {
-        const { searchMemory } = await import('./lib/memos-client')
-        const result = await searchMemory(
-          { apiKey: config.apiKey, userId: config.userId?.trim() || 'proma-user', baseUrl: config.baseUrl },
-          'test connection',
-          1,
-        )
-        return { success: true, message: `连接成功，已检索到 ${result.facts.length} 条事实、${result.preferences.length} 条偏好` }
+        const { queryCube } = await import('./lib/memos-client')
+        const result = await queryCube({
+          cubeId: config.cubeId,
+          ownerId: config.ownerId,
+        })
+        const factsCount = result.facts.length
+        const prefsCount = result.preferences.length
+        console.log(`[记忆服务] 🔌 查询个人记忆 → 成功: ${factsCount}条事实, ${prefsCount}条偏好`)
+        const summary = `查询成功 — ${factsCount} 条事实, ${prefsCount} 条偏好`
+        return { success: true, message: summary, data: result }
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error)
-        return { success: false, message: `连接失败: ${msg}` }
+        console.error('[记忆服务] 🔌 查询个人记忆失败:', error)
+        return { success: false, message: `查询失败: ${msg}` }
       }
+    }
+  )
+
+  ipcMain.handle(
+    MEMORY_IPC_CHANNELS.CREATE_CUBE,
+    async (): Promise<import('@proma/shared').CreateCubeResult> => {
+      const config = getMemoryConfig()
+      const { createCube } = await import('./lib/memos-client')
+
+      // 使用登录名作为个人记忆名称，owner_id 固定为 root
+      const { getAuthInfo } = await import('../auth/auth-service')
+      const authInfo = getAuthInfo()
+      let cubeName = '个人记忆'
+      if (authInfo?.displayName) {
+        cubeName = authInfo.displayName
+      } else if (authInfo?.jobId) {
+        cubeName = authInfo.jobId
+      } else {
+        const userProfile = getUserProfile()
+        cubeName = userProfile.userName || '个人记忆'
+      }
+      const ownerId = 'root'
+
+      const result = await createCube({ cubeName, ownerId })
+      // 自动保存 cubeId
+      setMemoryConfig({
+        ...config,
+        cubeId: result.cubeId,
+        ownerId: 'root',
+        cubeName: result.cubeName,
+      })
+      console.log(`[记忆服务] IPC: 个人记忆创建并保存成功 cubeId=${result.cubeId}, cubeName=${result.cubeName}`)
+      return result
+    }
+  )
+
+  ipcMain.handle(
+    MEMORY_IPC_CHANNELS.QUERY_CUBE,
+    async (): Promise<import('@proma/shared').QueryCubeResult> => {
+      const config = getMemoryConfig()
+      if (!config.cubeId) {
+        throw new Error('请先创建个人记忆')
+      }
+      const { queryCube } = await import('./lib/memos-client')
+      return queryCube({
+        cubeId: config.cubeId,
+        ownerId: config.ownerId,
+      })
     }
   )
 
@@ -2985,20 +3073,20 @@ export function registerIpcHandlers(): void {
       // 记忆工具复用现有测试逻辑
       if (toolId === 'memory') {
         const config = getMemoryConfig()
-        if (!config.apiKey) {
-          return { success: false, message: '请先填写 API Key' }
+        if (!config.cubeId) {
+          return { success: false, message: '请先创建个人记忆' }
         }
         try {
           const { searchMemory } = await import('./lib/memos-client')
           const result = await searchMemory(
-            { apiKey: config.apiKey, userId: config.userId?.trim() || 'proma-user', baseUrl: config.baseUrl },
-            'test connection',
+            { cubeId: config.cubeId, ownerId: config.ownerId || 'root' },
+            'test',
             1,
           )
-          return { success: true, message: `连接成功，已检索到 ${result.facts.length} 条事实、${result.preferences.length} 条偏好` }
+          return { success: true, message: `查询成功 — ${result.facts.length} 条事实, ${result.preferences.length} 条偏好` }
         } catch (error) {
           const msg = error instanceof Error ? error.message : String(error)
-          return { success: false, message: `连接失败: ${msg}` }
+          return { success: false, message: `查询失败: ${msg}` }
         }
       }
       // 联网搜索工具测试

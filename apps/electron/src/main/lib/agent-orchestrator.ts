@@ -585,14 +585,14 @@ export class AgentOrchestrator {
         console.log(`[Agent 编排] 将直接使用已保存的 sdkSessionId 进行 resume: ${existingSdkSessionId}`)
       }
 
-// 10. 构建 MCP 服务器配置
+      // 10. 构建 MCP 服务器配置
       // 预读连接器配置一次，避免 buildMcpServers + collectConnectorDisabledTools 重复 I/O
       const connectorsConfig = workspaceSlug ? getWorkspaceConnectorsConfig(workspaceSlug) : { version: '1.0', connectors: {} }
-      const applyCliConnectorEnv = (): void => {
+      const applyCliConnectorEnv = async (): Promise<void> => {
         if (!workspaceSlug) return
-        Object.assign(sdkEnv, collectCliConnectorEnv(workspaceSlug, connectorsConfig))
+        Object.assign(sdkEnv, await collectCliConnectorEnv(workspaceSlug, connectorsConfig))
       }
-      applyCliConnectorEnv()
+      await applyCliConnectorEnv()
       const mcpServers = buildMcpServers(workspaceSlug, connectorsConfig, selectedMcpServers)
       await injectMemoryTools(sdk, mcpServers)
       _diag('injectMemoryTools 完成, 开始 injectNanoBananaTools (await)')
@@ -981,7 +981,7 @@ export class AgentOrchestrator {
             workspaceSlug,
             sessionId,
             permissionMode: initialPermissionMode,
-            memoryEnabled: (() => { const mc = getMemoryConfig(); return mc.enabled && !!mc.apiKey })(),
+            memoryEnabled: (() => { const mc = getMemoryConfig(); return mc.enabled && !!mc.cubeId })(),
             claudeAvailable,
             deepSeekSubagentModel: modelRouting.subagentModel,
             expertRuntime,

@@ -18,8 +18,7 @@ const FILTERS: Array<{ tag: FilterTag; label: string; icon: typeof Bot; group: '
   { tag: 'expert', label: '专家', icon: Bot, group: 'type' },
   { tag: 'team', label: '专家团', icon: Users, group: 'type' },
   { tag: 'not_downloaded', label: '未下载', icon: Download, group: 'status' },
-  // 「不可用」筛选按钮暂时屏蔽（底层逻辑/类型/计数均保留，将来恢复时加回下行并 import AlertTriangle）：
-  // { tag: 'unavailable', label: '不可用', icon: AlertTriangle, group: 'status' },
+  // 故障状态筛选按钮暂时屏蔽，底层逻辑、类型和计数保留。
 ]
 
 const FILTER_GROUPS: Array<{ key: 'common' | 'type' | 'status'; label: string }> = [

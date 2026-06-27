@@ -10,8 +10,9 @@ test('内置教程使用开源 Agent 技术深度定制口径', () => {
 })
 
 test('内置教程包含非信息技术部首次使用前置申请说明', () => {
-  expect(tutorial).toContain('168.63.65.40:8090')
-  expect(tutorial).toContain('firewallapply')
+  expect(tutorial).toContain('168.63.65.40')
+  expect(tutorial).toContain('8090')
+  expect(tutorial).toContain('终端防火墙')
   expect(tutorial).toContain('http://eip.htsc.com.cn/modelPlatform/#/apiManage/list')
   expect(tutorial).toContain('数智中台')
   expect(tutorial).toContain('黄宇海019543')

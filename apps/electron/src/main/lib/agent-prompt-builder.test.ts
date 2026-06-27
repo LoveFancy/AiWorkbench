@@ -59,6 +59,21 @@ describe('系统根提示词', () => {
     expect(prompt).toContain('不要直接写未加引号的 C:\\Users\\...')
   })
 
+  test('Agent 根提示词说明读取 MCP 工具结果文件时先解析 content blocks', () => {
+    const prompt = buildSystemPrompt({
+      sessionId: 'test-session',
+      permissionMode: 'bypassPermissions',
+      memoryEnabled: false,
+      claudeAvailable: true,
+    })
+
+    expect(prompt).toContain('## MCP 工具结果文件读取规则')
+    expect(prompt).toContain('tool-results')
+    expect(prompt).toContain('content block 数组')
+    expect(prompt).toContain('先取 text 字段')
+    expect(prompt).toContain('再对 text 做 JSON.parse')
+  })
+
   test('Agent 根提示词要求需要外部实时信息时主动使用 WorkMate 联网检索能力', () => {
     const prompt = buildSystemPrompt({
       sessionId: 'test-session',
@@ -75,6 +90,24 @@ describe('系统根提示词', () => {
     expect(prompt).toContain('直连 Compass 搜索服务')
     expect(prompt).not.toContain('web-search` Skill')
     expect(prompt).toContain('不要编造外部信息')
+  })
+
+  test('Agent 根提示词要求记忆开启时新会话先召回偏好并在语义相关时主动召回', () => {
+    const prompt = buildSystemPrompt({
+      sessionId: 'test-session',
+      permissionMode: 'bypassPermissions',
+      memoryEnabled: true,
+      claudeAvailable: true,
+    })
+
+    expect(prompt).toContain('新会话开始后的首次回复前')
+    expect(prompt).toContain('先调用 mcp__mem__recall_memory')
+    expect(prompt).toContain('称呼偏好、沟通风格、技术偏好、项目习惯')
+    expect(prompt).toContain('不是死板关键词匹配')
+    expect(prompt).toContain('称呼、身份、偏好、习惯、历史要求')
+    expect(prompt).toContain('当前任务可能受历史选择、项目背景、个人偏好影响')
+    expect(prompt).toContain('低打扰原则')
+    expect(prompt).toContain('不要每轮都查')
   })
 
   test('Agent 根提示词限制非多模态模型读取图片并要求文档通过 Skill 读取', () => {

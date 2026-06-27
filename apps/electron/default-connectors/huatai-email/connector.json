@@ -1,16 +1,15 @@
 {
   "type":"mcp",
   "displayName": "华泰邮箱",
-  "description": "华泰证券企业邮箱 IMAP 只读连接器，使用 WorkMate 内置邮箱 MCP",
+  "description": "华泰证券企业邮箱连接器，默认支持读取邮件和保存草稿，直接发送默认禁用",
   "category": "邮件服务",
   "status": "available",
   "serverName": "huatai-email",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "sortOrder": 1,
   "disabledTools": [
     "add_email_account",
     "send_email",
-    "save_to_mailbox",
     "delete_emails",
     "delete_email",
     "mark_emails_as_read",
@@ -31,7 +30,12 @@
       "MCP_EMAIL_SERVER_USER_NAME": "",
       "MCP_EMAIL_SERVER_IMAP_HOST": "htemail.htsc.com.cn",
       "MCP_EMAIL_SERVER_IMAP_PORT": "993",
-      "MCP_EMAIL_SERVER_IMAP_SSL": "true"
+      "MCP_EMAIL_SERVER_IMAP_SSL": "true",
+      "MCP_EMAIL_SERVER_SMTP_HOST": "htemail.htsc.com.cn",
+      "MCP_EMAIL_SERVER_SMTP_PORT": "25",
+      "MCP_EMAIL_SERVER_SMTP_SSL": "false",
+      "MCP_EMAIL_SERVER_SMTP_START_SSL": "true",
+      "MCP_EMAIL_SERVER_SAVE_TO_SENT": "true"
     }
   }
 }

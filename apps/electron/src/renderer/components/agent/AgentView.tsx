@@ -319,6 +319,7 @@ function DisplayOptionsPopover({
 
 export function AgentView({ sessionId }: { sessionId: string }): React.ReactElement {
   const [persistedSDKMessages, setPersistedSDKMessages] = React.useState<SDKMessage[]>([])
+  const [focusedUserMessageId, setFocusedUserMessageId] = React.useState<string | null>(null)
   const persistedSDKMessagesRef = React.useRef<SDKMessage[]>([])
   persistedSDKMessagesRef.current = persistedSDKMessages
   const setStreamingStates = useSetAtom(agentStreamingStatesAtom)
@@ -337,6 +338,9 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
   const setLiveMessagesMap = useSetAtom(liveMessagesMapAtom)
   // 稳定化空数组引用，避免 ?? [] 每次创建新引用导致下游 useMemo 链不必要重算
   const liveMessages = liveMessagesMap.get(sessionId) ?? EMPTY_SDK_MESSAGES
+  React.useEffect(() => {
+    setFocusedUserMessageId(null)
+  }, [sessionId])
   // 历史用户提问（按时间正序，最旧 → 最新），供输入框 ↑/↓ 调出
   // 来源为「持久化历史 + 本次实时」合并消息，避免重新打开历史会话时 liveMessages 已被清空导致历史为空
   const historyMessages = React.useMemo(
@@ -589,6 +593,14 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
   const sessionSamplePromptsMap = useAtomValue(agentSessionSamplePromptsAtom)
   const setSessionSamplePromptsMap = useSetAtom(agentSessionSamplePromptsAtom)
   const sessionSamplePrompts = sessionSamplePromptsMap.get(sessionId) ?? []
+  const closeSessionSamplePrompts = React.useCallback(() => {
+    setSessionSamplePromptsMap((prev) => {
+      if (!prev.has(sessionId)) return prev
+      const map = new Map(prev)
+      map.delete(sessionId)
+      return map
+    })
+  }, [sessionId, setSessionSamplePromptsMap])
 
   React.useEffect(() => {
     if (!workspaceSlug) {
@@ -1373,6 +1385,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       }
 
       const localUuid = crypto.randomUUID()
+      setFocusedUserMessageId(localUuid)
 
       // 1. 立即注入 liveMessages（作为普通用户消息显示）
       const syntheticMsg: import('@proma/shared').SDKMessage = {
@@ -1632,6 +1645,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
 
     // 初始化流式状态（startedAt 由渲染进程生成，传递给主进程原样回传，确保竞态保护使用同一个值）
     const streamStartedAt = Date.now()
+    const localUuid = crypto.randomUUID()
     setStreamingStates((prev) => {
       const map = new Map(prev)
       const existing = prev.get(sessionId)
@@ -1651,12 +1665,14 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
     // 乐观更新：SDKMessage 格式的用户消息（Phase 4）
     const tempUserSDKMsg: SDKMessage = {
       type: 'user',
+      uuid: localUuid,
       message: {
         content: [{ type: 'text', text: finalMessage }],
       },
       parent_tool_use_id: null,
       _createdAt: Date.now(),
     } as unknown as SDKMessage
+    setFocusedUserMessageId(localUuid)
     appendOptimisticPersistedMessage(tempUserSDKMsg)
     trace('乐观消息写入完成')
 
@@ -2234,6 +2250,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
         <AgentMessages
           sessionId={sessionId}
           sessionModelId={agentModelId || undefined}
+          focusedUserMessageId={focusedUserMessageId}
           messagesLoaded={messagesLoaded}
           persistedSDKMessages={persistedSDKMessages}
           streaming={streaming}
@@ -2247,6 +2264,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
           onFork={handleFork}
           onRewind={handleRewindRequest}
           onCompact={handleCompact}
+          onFocusedUserMessageConsumed={() => setFocusedUserMessageId(null)}
         />
 
         {/* 权限请求横幅 */}
@@ -2340,7 +2358,18 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
             {/* 专家团 Sample Prompts — “试试这样问” */}
             {!streaming && sessionSamplePrompts.length > 0 && (
               <div className="px-3 pt-2.5 pb-1.5">
-                <p className="mb-2 text-xs font-medium text-muted-foreground">试试这样问：</p>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-xs font-medium text-muted-foreground">试试这样问：</p>
+                  <button
+                    type="button"
+                    title="关闭示例问题"
+                    aria-label="关闭示例问题"
+                    className="rounded-md p-1 text-muted-foreground/45 transition-colors hover:bg-muted hover:text-foreground"
+                    onClick={closeSessionSamplePrompts}
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                </div>
                 <div className="flex flex-col gap-1.5">
                   {sessionSamplePrompts.map((prompt) => (
                     <button

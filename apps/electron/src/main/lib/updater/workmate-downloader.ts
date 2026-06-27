@@ -36,6 +36,9 @@ export function validateInstallerDownloadSecurity(
   if (parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') {
     throw new Error('不支持的下载协议')
   }
+  if (parsedUrl.protocol === 'http:' && !isLocalHttpHost(parsedUrl.hostname)) {
+    throw new Error('生产环境下载安装包必须使用 HTTPS')
+  }
   if (!expectedSha256) {
     throw new Error('安装包缺少 SHA-256 校验值')
   }

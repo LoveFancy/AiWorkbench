@@ -440,6 +440,24 @@ export function addPluginMarketplace(marketplace: AddMarketplaceInput, input?: P
   return publicMarketplace(entry)
 }
 
+export async function addAndRefreshPluginMarketplace(marketplace: AddMarketplaceInput, input?: PluginMarketplacePaths): Promise<AgentPluginMarketplace> {
+  const resolved = paths(input)
+  const previousConfig = readPluginMarketplacesConfig({ marketplacesPath: resolved.marketplacesPath })
+  const id = slugSafe(marketplace.id, '插件市场 ID')
+  const existed = previousConfig.marketplaces.some((item) => item.id === id)
+
+  addPluginMarketplace(marketplace, resolved)
+  try {
+    return await refreshPluginMarketplace(id, resolved)
+  } catch (error) {
+    writeMarketplacesConfig(previousConfig, { marketplacesPath: resolved.marketplacesPath })
+    if (!existed) {
+      rmSync(join(resolved.cacheDir, id), { recursive: true, force: true })
+    }
+    throw error
+  }
+}
+
 async function readRemoteJson(response: Response, url: string): Promise<unknown> {
   const contentType = response.headers.get('content-type') ?? ''
   const text = await response.text()

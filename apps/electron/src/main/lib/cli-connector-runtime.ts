@@ -13,11 +13,23 @@ export interface CliUserProvidedField {
 }
 
 export interface CliConnectorDefinition {
+  displayName?: string
+  packageName?: string
   runtime?: {
     type?: string
     version?: string
   }
+  command?: Partial<Record<NodeJS.Platform, string>>
   init?: Partial<Record<NodeJS.Platform, string>>
+  install?: {
+    mode?: 'command' | 'download-archive' | 'manual'
+    version?: string
+  } & Partial<Record<NodeJS.Platform, {
+    url: string
+    fallbackUrl?: string
+    sha256?: string
+    binaryPath: string
+  }>>
   versionCheck?: {
     command?: Partial<Record<NodeJS.Platform, string>>
     minVersion?: string
@@ -32,6 +44,10 @@ export interface CliConnectorRuntime {
   binDir?: string
   packageName?: string
   packageVersion?: string
+}
+
+export interface CollectCliConnectorEnvOptions {
+  getSkillHubToken?: () => Promise<string>
 }
 
 interface StoredSecretValue {
@@ -217,7 +233,11 @@ export function resolveCliConnectorEnv(definition: CliConnectorDefinition, secre
   return env
 }
 
-export function collectCliConnectorEnv(workspaceSlug: string, connectorsConfig: ConnectorsConfig): Record<string, string> {
+export async function collectCliConnectorEnv(
+  workspaceSlug: string,
+  connectorsConfig: ConnectorsConfig,
+  options: CollectCliConnectorEnvOptions = {},
+): Promise<Record<string, string>> {
   const env: Record<string, string> = {}
   const pathParts: string[] = []
   const connectorsDir = getConnectorsDir(workspaceSlug)
@@ -233,7 +253,9 @@ export function collectCliConnectorEnv(workspaceSlug: string, connectorsConfig: 
     if (!existsSync(join(connectorDir, 'cli.json'))) continue
     try {
       const definition = readCliConnectorDefinition(connectorDir)
-      const secrets = readCliConnectorSecrets(connectorDir)
+      const secrets = connectorId === 'hi-agent'
+        ? await getHiAgentRuntimeSecrets(options)
+        : readCliConnectorSecrets(connectorDir)
       Object.assign(env, resolveCliConnectorEnv(definition, secrets))
 
       const runtime = readCliConnectorRuntime(connectorDir)
@@ -252,6 +274,19 @@ export function collectCliConnectorEnv(workspaceSlug: string, connectorsConfig: 
   }
 
   return env
+}
+
+async function getHiAgentRuntimeSecrets(options: CollectCliConnectorEnvOptions): Promise<Record<string, string>> {
+  const getToken = options.getSkillHubToken ?? defaultGetSkillHubToken
+  return {
+    HTSKILL_TOKEN: await getToken(),
+    AGENTOS_ENV: 'uat',
+  }
+}
+
+async function defaultGetSkillHubToken(): Promise<string> {
+  const { getValidSkillHubToken } = await import('./skillhub-auth-service')
+  return getValidSkillHubToken()
 }
 
 function assertAllowedEnvKey(key: string): void {

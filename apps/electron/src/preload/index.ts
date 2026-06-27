@@ -148,6 +148,8 @@ import type {
   UpdateAutomationInput,
   SystemLogReadInput,
   SystemLogReadResult,
+  CreateCubeResult,
+  QueryCubeResult,
 } from '@proma/shared'
 import type {
   UserProfile,
@@ -727,6 +729,14 @@ export interface ElectronAPI {
   getConnectorsConfig: (workspaceSlug: string) => Promise<ConnectorsConfig>
   /** 保存工作区连接器配置 */
   saveConnectorsConfig: (workspaceSlug: string, config: ConnectorsConfig) => Promise<void>
+  /** 获取华泰邮箱发送能力状态 */
+  getHuataiEmailSendEnabled: (workspaceSlug: string) => Promise<boolean>
+  /** 切换华泰邮箱发送能力 */
+  setHuataiEmailSendEnabled: (workspaceSlug: string, enabled: boolean) => Promise<{ enabled: boolean }>
+  /** 获取华泰邮箱草稿能力状态 */
+  getHuataiEmailDraftEnabled: (workspaceSlug: string) => Promise<boolean>
+  /** 切换华泰邮箱草稿能力 */
+  setHuataiEmailDraftEnabled: (workspaceSlug: string, enabled: boolean) => Promise<{ enabled: boolean }>
   /** 注册用户创建的连接器（创建目录 + connector.json + mcp.json + connectors.json） */
   registerUserConnector: (workspaceSlug: string, name: string, entry: import('@proma/shared').McpServerEntry, displayName?: string) => Promise<void>
   /** 注销用户创建的连接器（删除目录 + connectors.json 条目 + mcp.json 条目） */
@@ -839,8 +849,14 @@ export interface ElectronAPI {
   /** 保存全局记忆配置 */
   setMemoryConfig: (config: MemoryConfig) => Promise<void>
 
-  /** 测试记忆连接 */
-  testMemoryConnection: () => Promise<{ success: boolean; message: string }>
+  /** 测试记忆连接（查询当前个人记忆偏好和事实） */
+  testMemoryConnection: () => Promise<{ success: boolean; message: string; data?: QueryCubeResult }>
+
+  /** 创建个人记忆 */
+  createMemoryCube: () => Promise<CreateCubeResult>
+
+  /** 查询个人记忆内容（偏好和事实） */
+  queryMemoryCube: () => Promise<QueryCubeResult>
 
   // ===== Chat 工具管理 =====
 
@@ -2073,6 +2089,22 @@ const electronAPI: ElectronAPI = {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.SAVE_CONNECTORS_CONFIG, workspaceSlug, config)
   },
 
+  getHuataiEmailSendEnabled: (workspaceSlug: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_HUATAI_EMAIL_SEND_ENABLED, workspaceSlug)
+  },
+
+  setHuataiEmailSendEnabled: (workspaceSlug: string, enabled: boolean) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.SET_HUATAI_EMAIL_SEND_ENABLED, workspaceSlug, enabled)
+  },
+
+  getHuataiEmailDraftEnabled: (workspaceSlug: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_HUATAI_EMAIL_DRAFT_ENABLED, workspaceSlug)
+  },
+
+  setHuataiEmailDraftEnabled: (workspaceSlug: string, enabled: boolean) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.SET_HUATAI_EMAIL_DRAFT_ENABLED, workspaceSlug, enabled)
+  },
+
   registerUserConnector: (workspaceSlug: string, name: string, entry: import('@proma/shared').McpServerEntry, displayName?: string) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.REGISTER_USER_CONNECTOR, workspaceSlug, name, entry, displayName)
   },
@@ -2251,6 +2283,14 @@ const electronAPI: ElectronAPI = {
 
   testMemoryConnection: () => {
     return ipcRenderer.invoke(MEMORY_IPC_CHANNELS.TEST_CONNECTION)
+  },
+
+  createMemoryCube: () => {
+    return ipcRenderer.invoke(MEMORY_IPC_CHANNELS.CREATE_CUBE)
+  },
+
+  queryMemoryCube: () => {
+    return ipcRenderer.invoke(MEMORY_IPC_CHANNELS.QUERY_CUBE)
   },
 
   // Chat 工具管理

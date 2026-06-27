@@ -4,9 +4,9 @@
     "version": ">=20"
   },
   "init": {
-    "darwin": "npm install -g @ht/talents-cli",
-    "linux": "npm install -g @ht/talents-cli",
-    "win32": "npm install -g @ht/talents-cli"
+    "darwin": "npm install -g @ht/talents-cli --registry http://npm.htsc",
+    "linux": "npm install -g @ht/talents-cli --registry http://npm.htsc",
+    "win32": "npm install -g @ht/talents-cli --registry http://npm.htsc"
   },
   "versionCheck": {
     "command": {
@@ -16,22 +16,7 @@
     },
     "minVersion": "1.0.0"
   },
-  "userProvidedData": [
-    {
-      "name": "HTSKILL_TOKEN",
-      "label": "Talents Token",
-      "type": "password",
-      "required": true
-    },
-    {
-      "name": "AGENTOS_ENV",
-      "label": "环境",
-      "type": "select",
-      "default": "uat",
-      "options": ["dev", "sit", "uat", "prd"],
-      "required": true
-    }
-  ],
+  "userProvidedData": [],
   "status": {
     "darwin": "talents workspace --json",
     "linux": "talents workspace --json",
@@ -39,6 +24,6 @@
   },
   "env": {
     "HTSKILL_TOKEN": "{{HTSKILL_TOKEN}}",
-    "AGENTOS_ENV": "{{AGENTOS_ENV}}"
+    "AGENTOS_ENV": "uat"
   }
 }

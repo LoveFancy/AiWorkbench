@@ -39,6 +39,7 @@ import { groupIntoTurns, MessageGroupRenderer, getGroupId, getGroupPreview, extr
 import { buildLiveGroupSet } from './live-group-set'
 import { ContentBlock } from './ContentBlock'
 import { parseThinkTagsFromText } from './thinking-tag-parser'
+import { useStickToBottomContext } from 'use-stick-to-bottom'
 import type { AgentEventUsage, RetryAttempt, SDKMessage } from '@proma/shared'
 import type { AgentStreamState } from '@/atoms/agent-atoms'
 
@@ -93,6 +94,8 @@ interface AgentMessagesProps {
   sessionId: string
   /** 用户在前端选择的模型 ID（用于显示渠道配置的 Model Name） */
   sessionModelId?: string
+  /** 当前新发送用户消息的 ID，用于流式期间聚焦当前轮次 */
+  focusedUserMessageId?: string | null
   /** 消息是否已完成首次加载 */
   messagesLoaded?: boolean
   /** Phase 4: 持久化的 SDKMessage（新格式） */
@@ -112,6 +115,8 @@ interface AgentMessagesProps {
   onFork?: (upToMessageUuid: string) => void
   onRewind?: (assistantMessageUuid: string) => void
   onCompact?: () => void
+  /** 当前轮次聚焦完成或被用户打断后的清理回调 */
+  onFocusedUserMessageConsumed?: () => void
 }
 
 /** 空状态引导 — 使用 WelcomeEmptyState */
@@ -327,7 +332,115 @@ function AgentRunningIndicator({ startedAt }: { startedAt?: number }): React.Rea
   )
 }
 
-export function AgentMessages({ sessionId, sessionModelId, messagesLoaded, persistedSDKMessages, streaming, streamState, liveMessages, sessionPath, attachedDirs, stoppedByUser, onRetry, onRetryInNewSession, onFork, onRewind, onCompact }: AgentMessagesProps): React.ReactElement {
+function getOffsetTopRelativeTo(target: HTMLElement, container: HTMLElement): number {
+  const targetRect = target.getBoundingClientRect()
+  const containerRect = container.getBoundingClientRect()
+  return targetRect.top - containerRect.top + container.scrollTop
+}
+
+function CurrentTurnFocusSpacer(): React.ReactElement {
+  return (
+    <div
+      aria-hidden="true"
+      data-current-turn-focus-spacer
+      className="h-[78vh] min-h-[560px] max-h-[960px] shrink-0"
+    />
+  )
+}
+
+interface CurrentTurnFocusControllerProps {
+  messageId?: string | null
+  active: boolean
+  focusVersion: string
+  onFocusedUserMessageConsumed?: () => void
+}
+
+function CurrentTurnFocusController({
+  messageId,
+  active,
+  focusVersion,
+  onFocusedUserMessageConsumed,
+}: CurrentTurnFocusControllerProps): null {
+  const { scrollRef, stopScroll, scrollToBottom, state: stickyState } = useStickToBottomContext()
+  const cancelledRef = React.useRef(false)
+  const previousMessageIdRef = React.useRef<string | null>(null)
+
+  React.useEffect(() => {
+    if (messageId !== previousMessageIdRef.current) {
+      previousMessageIdRef.current = messageId ?? null
+      cancelledRef.current = false
+    }
+  }, [messageId])
+
+  React.useEffect(() => {
+    const el = scrollRef.current
+    if (!el || !active || !messageId) return
+
+    const cancelFocus = (): void => {
+      cancelledRef.current = true
+      onFocusedUserMessageConsumed?.()
+    }
+    const cancelFocusByKey = (event: KeyboardEvent): void => {
+      const scrollKeys = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '])
+      if (!scrollKeys.has(event.key)) return
+      cancelFocus()
+    }
+
+    el.addEventListener('wheel', cancelFocus, { passive: true })
+    el.addEventListener('touchmove', cancelFocus, { passive: true })
+    window.addEventListener('keydown', cancelFocusByKey)
+    return () => {
+      el.removeEventListener('wheel', cancelFocus)
+      el.removeEventListener('touchmove', cancelFocus)
+      window.removeEventListener('keydown', cancelFocusByKey)
+    }
+  }, [active, messageId, onFocusedUserMessageConsumed, scrollRef])
+
+  React.useEffect(() => {
+    const el = scrollRef.current
+    if (!el || !active || !messageId || cancelledRef.current) return
+
+    let frameId = 0
+    let nestedFrameId = 0
+    frameId = requestAnimationFrame(() => {
+      nestedFrameId = requestAnimationFrame(() => {
+        if (cancelledRef.current) return
+        const target = Array.from(el.querySelectorAll<HTMLElement>('[data-current-turn-focus-anchor]')).find(
+          (node) => node.getAttribute('data-current-turn-focus-anchor') === messageId
+        ) ?? Array.from(el.querySelectorAll<HTMLElement>('[data-message-id]')).find(
+          (node) => node.getAttribute('data-message-id') === messageId
+        )
+        if (!target) return
+
+        stopScroll()
+        stickyState.animation = undefined
+        stickyState.velocity = 0
+        stickyState.accumulated = 0
+
+        const scrollTarget = getOffsetTopRelativeTo(target, el)
+        el.scrollTo({ top: Math.max(0, scrollTarget), behavior: 'auto' })
+      })
+    })
+    return () => {
+      cancelAnimationFrame(frameId)
+      cancelAnimationFrame(nestedFrameId)
+    }
+  }, [active, messageId, focusVersion, scrollRef, stickyState, stopScroll])
+
+  React.useEffect(() => {
+    if (active || !messageId || cancelledRef.current) return
+
+    onFocusedUserMessageConsumed?.()
+    const frameId = requestAnimationFrame(() => {
+      scrollToBottom()
+    })
+    return () => cancelAnimationFrame(frameId)
+  }, [active, messageId, onFocusedUserMessageConsumed, scrollToBottom])
+
+  return null
+}
+
+export function AgentMessages({ sessionId, sessionModelId, focusedUserMessageId, messagesLoaded, persistedSDKMessages, streaming, streamState, liveMessages, sessionPath, attachedDirs, stoppedByUser, onRetry, onRetryInNewSession, onFork, onRewind, onCompact, onFocusedUserMessageConsumed }: AgentMessagesProps): React.ReactElement {
   const userProfile = useAtomValue(userProfileAtom)
   const setMinimapCache = useSetAtom(tabMinimapCacheAtom)
   const channels = useAtomValue(channelsAtom)
@@ -539,6 +652,9 @@ export function AgentMessages({ sessionId, sessionModelId, messagesLoaded, persi
   const hasLiveAssistantContent = streaming
     ? allGroups.some((g) => g.type === 'assistant-turn' && liveGroupSet.has(g))
     : (liveMessages != null && liveMessages.some((m) => (m as { type: string }).type === 'assistant'))
+  const currentTurnFocusVersion = focusedUserMessageId
+    ? `${allGroups.length}:${liveMessages?.length ?? 0}:${hasLiveAssistantContent ? 1 : 0}:${smoothContent.length}`
+    : ''
 
   return (
     <BasePathsProvider basePaths={attachedDirs}>
@@ -629,10 +745,17 @@ export function AgentMessages({ sessionId, sessionModelId, messagesLoaded, persi
             {/* 压缩中指示器：由 isCompacting flag 驱动的尾部元素，compact_boundary 到达时 flag 翻 false 自然消失，
                 视觉上被流中新出现的"上下文已压缩"分隔符无缝替换 */}
             {streamState?.isCompacting && <CompactingIndicator />}
+            {focusedUserMessageId && streaming && <CurrentTurnFocusSpacer />}
 
           </>
         )}
       </ConversationContent>
+      <CurrentTurnFocusController
+        messageId={focusedUserMessageId}
+        active={!!focusedUserMessageId && streaming}
+        focusVersion={currentTurnFocusVersion}
+        onFocusedUserMessageConsumed={onFocusedUserMessageConsumed}
+      />
       <ScrollMinimap items={minimapItems} />
       <ConversationScrollButton />
       {allUserMessagesData.length > 0 && (

@@ -34,3 +34,10 @@ test('连接器入口位于左侧主工具区的技能后面，并保持可见',
   expect(connectorIndex).toBeLessThan(actionToolbarIndex)
   expect(source).toContain('pinnedEndCount={1}')
 })
+
+test('试试这样问示例支持关闭并清除当前会话示例', () => {
+  expect(source).toContain('title="关闭示例问题"')
+  expect(source).toContain('aria-label="关闭示例问题"')
+  expect(source).toContain('map.delete(sessionId)')
+  expect(source).toContain('setSessionSamplePromptsMap')
+})

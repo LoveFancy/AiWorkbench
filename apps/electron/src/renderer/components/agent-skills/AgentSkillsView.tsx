@@ -12,7 +12,7 @@
 import * as React from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { toast } from 'sonner'
-import { Blocks, ChevronDown, Search, Plus, FolderOpen, Check, Mail, Upload, RefreshCw, Package, Loader2, XCircle, Unplug, ShieldCheck, Trash2, CheckCircle2 } from 'lucide-react'
+import { Blocks, ChevronDown, Search, Plus, FolderOpen, Check, Mail, Upload, RefreshCw, Package, Loader2, XCircle, Unplug, ShieldCheck, Trash2, CheckCircle2, GitBranch, Inbox, FilePenLine, Send } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Button } from '@/components/ui/button'
@@ -57,6 +57,7 @@ import {
 
 const HUATAI_EMAIL_DOMAIN = 'htsc.com'
 const MCP_TRANSPORT_LABELS: Record<string, string> = { stdio: 'STDIO', http: 'HTTP', sse: 'SSE' }
+const UAT_CONNECTOR_IDS = new Set(['hi-agent'])
 
 function getHuataiEmailLocalPart(emailAddress: string): string {
   const trimmed = emailAddress.trim()
@@ -199,9 +200,9 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
       // 禁用连接器
       setConnectorEnabledMap((prev) => ({ ...prev, 'feishu-cli': false }))
       bumpCapabilities((v) => v + 1)
-      toast.success('已解绑飞书 CLI')
+      toast.success('已解绑飞书')
     } catch (e) {
-      toast.error('解绑飞书 CLI 失败', { description: (e as Error).message })
+      toast.error('解绑飞书失败', { description: (e as Error).message })
     } finally {
       setUnbindingFeishu(false)
     }
@@ -767,6 +768,10 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
         workspaceSlug={data.workspaceSlug}
         server={presetConnectorServers['huatai-email'] ?? null}
         onOpenChange={(open) => setActiveDefaultConnector(open ? 'huatai-email' : null)}
+        onCapabilityChanged={() => {
+          void loadConnectorEnabledMap()
+          bumpCapabilities((v) => v + 1)
+        }}
         onSaved={() => {
           setActiveDefaultConnector(null)
           void loadConnectorEnabledMap()
@@ -791,6 +796,18 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
         workspaceSlug={data.workspaceSlug}
         isEnabled={connectorEnabledMap['hi-agent'] ?? false}
         onOpenChange={(open) => setActiveDefaultConnector(open ? 'hi-agent' : null)}
+        onSaved={() => {
+          setActiveDefaultConnector(null)
+          void loadConnectorEnabledMap()
+          bumpCapabilities((v) => v + 1)
+        }}
+      />
+
+      <HuataiGitLabConnectorDialog
+        open={activeDefaultConnector === 'huatai-gitlab'}
+        workspaceSlug={data.workspaceSlug}
+        isEnabled={connectorEnabledMap['huatai-gitlab'] ?? false}
+        onOpenChange={(open) => setActiveDefaultConnector(open ? 'huatai-gitlab' : null)}
         onSaved={() => {
           setActiveDefaultConnector(null)
           void loadConnectorEnabledMap()
@@ -1088,6 +1105,7 @@ function ConnectorCard({
   const isConfigured = isCli ? (connector.id === 'feishu-cli' ? isFeishuConnected : enabled) : isMcp ? isInitialized : false
   const isUserConnector = connector.source === 'user'
   const isPresetConnector = connector.source === 'preset'
+  const isUatConnector = UAT_CONNECTOR_IDS.has(connector.id)
 
   // 参考 SkillCard 显示 source 标签
   const connectorSourceLabel = () => {
@@ -1158,6 +1176,11 @@ function ConnectorCard({
           {getConnectorKindLabel(connector, server)}
         </span>
         {connectorSourceLabel()}
+        {isUatConnector && (
+          <span className="shrink-0 rounded-md bg-orange-500/10 px-1.5 py-0.5 text-[11px] font-semibold text-orange-600 dark:text-orange-400">
+            UAT
+          </span>
+        )}
 
         {isConfigured && lastTestResult && (
           <span
@@ -1197,7 +1220,7 @@ function ConnectorCard({
                   <Unplug size={16} />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="top">解绑飞书 CLI</TooltipContent>
+              <TooltipContent side="top">解绑飞书</TooltipContent>
             </Tooltip>
           )}
           {isUserConnector && !isBuiltin && (
@@ -1250,12 +1273,14 @@ function HuataiEmailConnectorDialog({
   workspaceSlug,
   server,
   onOpenChange,
+  onCapabilityChanged,
   onSaved,
 }: {
   open: boolean
   workspaceSlug: string
   server: McpServerEntry | null
   onOpenChange: (open: boolean) => void
+  onCapabilityChanged: () => void
   onSaved: () => void
 }): React.ReactElement {
   const [emailLocalPart, setEmailLocalPart] = React.useState('')
@@ -1263,9 +1288,15 @@ function HuataiEmailConnectorDialog({
   const [saving, setSaving] = React.useState(false)
   const [editing, setEditing] = React.useState(false)
   const [initSteps, setInitSteps] = React.useState<DefaultConnectorInitStep[]>([])
+  const [huataiEmailDraftEnabled, setHuataiEmailDraftEnabledState] = React.useState(false)
+  const [huataiEmailSendEnabled, setHuataiEmailSendEnabledState] = React.useState(false)
+  const [updatingDraftCapability, setUpdatingDraftCapability] = React.useState(false)
+  const [updatingSendCapability, setUpdatingSendCapability] = React.useState(false)
+  const [pendingHuataiEmailSendEnabled, setPendingHuataiEmailSendEnabled] = React.useState<boolean | null>(null)
   const isInitialized = Boolean(server)
   const currentEmail = server?.env?.MCP_EMAIL_SERVER_EMAIL_ADDRESS ?? ''
   const beginConnectorInitProgress = useConnectorInitProgress(workspaceSlug, 'huatai-email', setInitSteps)
+  const hasDraftSaveCapability = huataiEmailDraftEnabled
 
   React.useEffect(() => {
     if (!open) {
@@ -1274,10 +1305,37 @@ function HuataiEmailConnectorDialog({
       setSaving(false)
       setEditing(false)
       setInitSteps([])
+      setHuataiEmailDraftEnabledState(false)
+      setHuataiEmailSendEnabledState(false)
+      setUpdatingDraftCapability(false)
+      setUpdatingSendCapability(false)
+      setPendingHuataiEmailSendEnabled(null)
       return
     }
     setEmailLocalPart(getHuataiEmailLocalPart(currentEmail))
   }, [currentEmail, open])
+
+  React.useEffect(() => {
+    if (!open || !isInitialized) return
+    let cancelled = false
+    Promise.all([
+      window.electronAPI.getHuataiEmailDraftEnabled(workspaceSlug),
+      window.electronAPI.getHuataiEmailSendEnabled(workspaceSlug),
+    ])
+      .then(([draftEnabled, sendEnabled]) => {
+        if (cancelled) return
+        setHuataiEmailDraftEnabledState(draftEnabled)
+        setHuataiEmailSendEnabledState(draftEnabled && sendEnabled)
+      })
+      .catch((error) => {
+        console.error('[连接器] 读取华泰邮箱能力状态失败:', error)
+        if (!cancelled) {
+          setHuataiEmailDraftEnabledState(false)
+          setHuataiEmailSendEnabledState(false)
+        }
+      })
+    return () => { cancelled = true }
+  }, [isInitialized, open, workspaceSlug])
 
   const fullEmailAddress = `${emailLocalPart.trim()}@${HUATAI_EMAIL_DOMAIN}`
   const canSave = emailLocalPart.trim().length > 0 && password.trim().length > 0
@@ -1317,11 +1375,76 @@ function HuataiEmailConnectorDialog({
     }
   }
 
+  const applyHuataiEmailSendCapability = async (enabled: boolean): Promise<void> => {
+    if (updatingSendCapability) return
+    if (enabled && !hasDraftSaveCapability) {
+      toast.info('请先开启写草稿能力')
+      return
+    }
+    setUpdatingSendCapability(true)
+    try {
+      const result = await window.electronAPI.setHuataiEmailSendEnabled(workspaceSlug, enabled)
+      setHuataiEmailSendEnabledState(result.enabled)
+      onCapabilityChanged()
+      toast.success(result.enabled ? '邮件发送已开启' : '邮件发送已关闭')
+    } catch (error) {
+      console.error('[连接器] 更新华泰邮箱发送能力失败:', error)
+      toast.error('更新邮件发送能力失败', { description: error instanceof Error ? error.message : '未知错误' })
+    } finally {
+      setUpdatingSendCapability(false)
+      setPendingHuataiEmailSendEnabled(null)
+    }
+  }
+
+  const applyHuataiEmailDraftCapability = async (enabled: boolean): Promise<void> => {
+    if (updatingDraftCapability) return
+    setUpdatingDraftCapability(true)
+    try {
+      const result = await window.electronAPI.setHuataiEmailDraftEnabled(workspaceSlug, enabled)
+      setHuataiEmailDraftEnabledState(result.enabled)
+      if (!result.enabled) setHuataiEmailSendEnabledState(false)
+      onCapabilityChanged()
+      toast.success(result.enabled ? '写草稿已开启' : '写草稿已关闭')
+    } catch (error) {
+      console.error('[连接器] 更新华泰邮箱草稿能力失败:', error)
+      toast.error('更新写草稿能力失败', { description: error instanceof Error ? error.message : '未知错误' })
+    } finally {
+      setUpdatingDraftCapability(false)
+    }
+  }
+
+  const handleHuataiEmailDraftToggle = (enabled: boolean): void => {
+    if (!isInitialized) {
+      setEditing(true)
+      toast.info('请先完成邮箱绑定')
+      return
+    }
+    void applyHuataiEmailDraftCapability(enabled)
+  }
+
+  const handleHuataiEmailSendToggle = (enabled: boolean): void => {
+    if (!isInitialized) {
+      setEditing(true)
+      toast.info('请先完成邮箱绑定')
+      return
+    }
+    if (enabled && !hasDraftSaveCapability) {
+      toast.info('请先开启写草稿能力')
+      return
+    }
+    if (enabled) {
+      setPendingHuataiEmailSendEnabled(true)
+      return
+    }
+    void applyHuataiEmailSendCapability(false)
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[min(calc(100vw-48px),560px)] max-w-none overflow-hidden rounded-2xl border-0 p-8 shadow-2xl">
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="w-[min(calc(100vw-48px),560px)] max-w-none overflow-hidden rounded-2xl border-0 p-8 shadow-2xl">
         <DialogTitle className="text-2xl font-semibold tracking-normal">邮箱绑定</DialogTitle>
-        <DialogDescription className="sr-only">绑定华泰邮箱，启用华泰邮箱邮件读取能力。</DialogDescription>
+        <DialogDescription className="sr-only">绑定华泰邮箱，启用华泰邮箱邮件读取和草稿保存能力。</DialogDescription>
 
         <div className="mt-2 flex items-start gap-4">
           <div className="flex size-16 shrink-0 items-center justify-center rounded-2xl bg-amber-500/12 text-amber-500">
@@ -1330,7 +1453,7 @@ function HuataiEmailConnectorDialog({
           <div className="min-w-0 space-y-2">
             <div className="text-[15px] font-medium text-foreground">绑定华泰邮箱</div>
             <p className="text-[13px] leading-relaxed text-muted-foreground">
-              绑定后 WorkMate 可以读取你的华泰邮箱邮件，帮助你检索邮件内容、整理信息和处理办公协同任务。
+              绑定后 WorkMate 可以读取你的华泰邮箱邮件，并保存待你确认的邮件草稿，帮助你检索邮件内容、整理信息和处理办公协同任务。
             </p>
           </div>
         </div>
@@ -1340,17 +1463,26 @@ function HuataiEmailConnectorDialog({
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-sm font-medium text-foreground">当前邮箱能力</div>
-                <div className="mt-1 text-xs text-muted-foreground">已为当前工作区启用华泰邮箱读取能力，不会在连接器列表中重复展示。</div>
+                <div className="mt-1 text-xs text-muted-foreground">已为当前工作区启用华泰邮箱读取和草稿保存能力，不会在连接器列表中重复展示。</div>
               </div>
               <Button type="button" variant="outline" size="sm" onClick={() => setEditing(true)}>
                 重新绑定
               </Button>
             </div>
             <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
-              <ConnectorDetailRow label="状态" value={server.enabled ? '已启用' : '未启用'} />
-              <ConnectorDetailRow label="类型" value={server.type} />
+              <ConnectorDetailRow label="状态" value={server.enabled ? '已启用' : '未启用'} tone={server.enabled ? 'enabled' : 'disabled'} />
               <ConnectorDetailRow label="账号" value={currentEmail || '未配置'} mono />
-              <ConnectorDetailRow label="IMAP" value={`${server.env?.MCP_EMAIL_SERVER_IMAP_HOST ?? '未配置'}:${server.env?.MCP_EMAIL_SERVER_IMAP_PORT ?? ''}`} mono />
+              <HuataiEmailCapabilityFlow
+                readEnabled={server.enabled}
+                draftEnabled={hasDraftSaveCapability}
+                draftStatusLabel={huataiEmailDraftEnabled ? '已启用' : '已关闭'}
+                sendEnabled={hasDraftSaveCapability && huataiEmailSendEnabled}
+                sendStatusLabel={hasDraftSaveCapability && huataiEmailSendEnabled ? '已启用' : '已关闭'}
+                updatingDraft={updatingDraftCapability}
+                updatingSend={updatingSendCapability}
+                onDraftToggle={handleHuataiEmailDraftToggle}
+                onSendToggle={handleHuataiEmailSendToggle}
+              />
               {server.lastTestResult && (
                 <ConnectorDetailRow
                   label="最近自检"
@@ -1409,8 +1541,24 @@ function HuataiEmailConnectorDialog({
 
         {initSteps.length > 0 && <ConnectorInitStepList steps={initSteps} />}
 
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={pendingHuataiEmailSendEnabled === true}
+        onOpenChange={(dialogOpen) => {
+          if (!dialogOpen) setPendingHuataiEmailSendEnabled(null)
+        }}
+        title="开启邮件发送"
+        description="开启后 Agent 可以调用邮件发送能力。仅允许发送到 @htsc.com 邮箱，发送前必须确认收件人、主题和正文。"
+        confirmLabel="确认开启"
+        cancelLabel="取消"
+        loading={updatingSendCapability}
+        loadingLabel="开启中..."
+        variant="destructive"
+        onConfirm={() => void applyHuataiEmailSendCapability(true)}
+      />
+    </>
   )
 }
 
@@ -1427,18 +1575,137 @@ function HiAgentConnectorDialog({
   onOpenChange: (open: boolean) => void
   onSaved: () => void
 }): React.ReactElement {
-  const [token, setToken] = React.useState('')
-  const [env, setEnv] = React.useState('uat')
   const [saving, setSaving] = React.useState(false)
   const [editing, setEditing] = React.useState(false)
   const [initSteps, setInitSteps] = React.useState<DefaultConnectorInitStep[]>([])
-  const canSave = token.trim().length > 0 && env.trim().length > 0
   const beginConnectorInitProgress = useConnectorInitProgress(workspaceSlug, 'hi-agent', setInitSteps)
 
   React.useEffect(() => {
     if (!open) {
+      setSaving(false)
+      setEditing(false)
+      setInitSteps([])
+    }
+  }, [open])
+
+  const handleSave = async (): Promise<void> => {
+    if (saving) return
+    const { runId, unsubscribe } = beginConnectorInitProgress()
+    setSaving(true)
+    setInitSteps([
+      { id: 'check-runtime', label: '检查 Node/npm 环境', status: 'running' },
+      { id: 'check-package', label: '检查 talents CLI', status: 'pending' },
+      { id: 'install-package', label: '安装 talents CLI', status: 'pending' },
+      { id: 'install-skill', label: '启用 talents Skill', status: 'pending' },
+      { id: 'check-auth', label: '检查 SkillHub 认证', status: 'pending' },
+      { id: 'write-config', label: '保存运行配置', status: 'pending' },
+      { id: 'self-check', label: '自检连接', status: 'pending' },
+    ])
+    try {
+      const result = await window.electronAPI.initializeDefaultConnector(workspaceSlug, {
+        connectorId: 'hi-agent',
+        runId,
+      })
+      setInitSteps(result.steps)
+      if (!result.success) {
+        toast.error('泰为 HiAgent 连接器初始化失败', { description: result.message })
+        return
+      }
+      toast.success('泰为 HiAgent 连接器已初始化')
+      setEditing(false)
+      onSaved()
+    } catch (error) {
+      console.error('[连接器] 初始化泰为 HiAgent 失败:', error)
+      toast.error('初始化泰为 HiAgent 失败')
+    } finally {
+      unsubscribe()
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="w-[min(calc(100vw-48px),560px)] max-w-none overflow-hidden rounded-2xl border-0 p-8 shadow-2xl">
+        <DialogTitle className="text-2xl font-semibold tracking-normal">连接泰为 HiAgent</DialogTitle>
+        <DialogDescription className="sr-only">通过 SkillHub 登录态启用泰为 HiAgent CLI 能力。</DialogDescription>
+
+        <div className="mt-2 flex items-start gap-4">
+          <div className="flex size-16 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/12 text-emerald-600">
+            <Package size={28} />
+          </div>
+          <div className="min-w-0 space-y-2">
+            <div className="text-[15px] font-medium text-foreground">泰为 HiAgent</div>
+            <p className="text-[13px] leading-relaxed text-muted-foreground">
+              连接后 WorkMate 会通过 SkillHub 登录态自动换取 Token，调用 talents CLI 查询工作区、检索知识库，并与 HiAgent 智能体对话。
+            </p>
+          </div>
+        </div>
+
+        {isEnabled && !editing && (
+          <div className="mt-6 space-y-3 rounded-xl bg-muted/45 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-medium text-foreground">当前 HiAgent 能力</div>
+                <div className="mt-1 text-xs text-muted-foreground">已为当前工作区启用，后续调用会自动使用 SkillHub Token。</div>
+              </div>
+              <Button type="button" variant="outline" size="sm" onClick={() => setEditing(true)}>
+                重新绑定
+              </Button>
+            </div>
+            <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+              <ConnectorDetailRow label="状态" value="已启用" />
+              <ConnectorDetailRow label="类型" value="CLI" />
+              <ConnectorDetailRow label="认证" value="SkillHub 自动换票" />
+            </div>
+          </div>
+        )}
+
+        {(!isEnabled || editing) && (
+          <div className="mx-auto mt-6 w-full max-w-[420px] space-y-4">
+            <div className="rounded-xl bg-muted/45 p-4 text-sm leading-relaxed text-muted-foreground">
+              请先完成 SkillHub/EIP 登录。初始化时会自动换取 Token 并完成 talents CLI 自检，Token 由主进程加密缓存，不会写入连接器配置。
+            </div>
+            <Button
+              type="button"
+              size="lg"
+              className="h-11 w-full rounded-full"
+              disabled={saving}
+              onClick={() => void handleSave()}
+            >
+              {saving ? '连接中...' : isEnabled ? '保存并覆盖配置' : '开始连接'}
+            </Button>
+          </div>
+        )}
+
+        {initSteps.length > 0 && <ConnectorInitStepList steps={initSteps} />}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function HuataiGitLabConnectorDialog({
+  open,
+  workspaceSlug,
+  isEnabled,
+  onOpenChange,
+  onSaved,
+}: {
+  open: boolean
+  workspaceSlug: string
+  isEnabled: boolean
+  onOpenChange: (open: boolean) => void
+  onSaved: () => void
+}): React.ReactElement {
+  const [token, setToken] = React.useState('')
+  const [saving, setSaving] = React.useState(false)
+  const [editing, setEditing] = React.useState(false)
+  const [initSteps, setInitSteps] = React.useState<DefaultConnectorInitStep[]>([])
+  const canSave = token.trim().length > 0
+  const beginConnectorInitProgress = useConnectorInitProgress(workspaceSlug, 'huatai-gitlab', setInitSteps)
+
+  React.useEffect(() => {
+    if (!open) {
       setToken('')
-      setEnv('uat')
       setSaving(false)
       setEditing(false)
       setInitSteps([])
@@ -1450,33 +1717,32 @@ function HiAgentConnectorDialog({
     const { runId, unsubscribe } = beginConnectorInitProgress()
     setSaving(true)
     setInitSteps([
-      { id: 'check-runtime', label: '检查 Node/npm 环境', status: 'running' },
-      { id: 'check-package', label: '检查 talents CLI', status: 'pending' },
-      { id: 'install-package', label: '安装 talents CLI', status: 'pending' },
-      { id: 'install-skill', label: '启用 talents Skill', status: 'pending' },
+      { id: 'check-runtime', label: '检查 CLI 运行环境', status: 'running' },
+      { id: 'check-package', label: '检查 glab CLI', status: 'pending' },
+      { id: 'install-package', label: '安装 glab CLI', status: 'pending' },
+      { id: 'install-skill', label: '启用 glab Skill', status: 'pending' },
       { id: 'write-config', label: '保存认证配置', status: 'pending' },
       { id: 'self-check', label: '自检连接', status: 'pending' },
     ])
     try {
       const result = await window.electronAPI.initializeDefaultConnector(workspaceSlug, {
-        connectorId: 'hi-agent',
+        connectorId: 'huatai-gitlab',
         runId,
         userProvidedData: {
-          HTSKILL_TOKEN: token,
-          AGENTOS_ENV: env,
+          GITLAB_TOKEN: token,
         },
       })
       setInitSteps(result.steps)
       if (!result.success) {
-        toast.error('泰为 hiagent 连接器初始化失败', { description: result.message })
+        toast.error('华泰 GitLab 连接器初始化失败', { description: result.message })
         return
       }
-      toast.success('泰为 hiagent 连接器已初始化')
+      toast.success('华泰 GitLab 连接器已初始化')
       setEditing(false)
       onSaved()
     } catch (error) {
-      console.error('[连接器] 初始化泰为 hiagent 失败:', error)
-      toast.error('初始化泰为 hiagent 失败')
+      console.error('[连接器] 初始化华泰 GitLab 失败:', error)
+      toast.error('初始化华泰 GitLab 失败')
     } finally {
       unsubscribe()
       setSaving(false)
@@ -1486,17 +1752,17 @@ function HiAgentConnectorDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[min(calc(100vw-48px),560px)] max-w-none overflow-hidden rounded-2xl border-0 p-8 shadow-2xl">
-        <DialogTitle className="text-2xl font-semibold tracking-normal">连接泰为 hiagent</DialogTitle>
-        <DialogDescription className="sr-only">配置 Talents Token，启用泰为 hiagent CLI 能力。</DialogDescription>
+        <DialogTitle className="text-2xl font-semibold tracking-normal">连接华泰 GitLab</DialogTitle>
+        <DialogDescription className="sr-only">配置 GitLab Token，启用华泰内部 GitLab CLI 能力。</DialogDescription>
 
         <div className="mt-2 flex items-start gap-4">
-          <div className="flex size-16 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/12 text-emerald-600">
-            <Package size={28} />
+          <div className="flex size-16 shrink-0 items-center justify-center rounded-2xl bg-sky-500/12 text-sky-600">
+            <GitBranch size={28} />
           </div>
           <div className="min-w-0 space-y-2">
-            <div className="text-[15px] font-medium text-foreground">泰为 hiagent</div>
+            <div className="text-[15px] font-medium text-foreground">华泰 GitLab</div>
             <p className="text-[13px] leading-relaxed text-muted-foreground">
-              连接后 WorkMate 可以通过 talents CLI 查询工作区、检索知识库，并与 hiagent 智能体对话。
+              连接后 WorkMate 可以通过 glab CLI 访问华泰内部 GitLab，查询项目、仓库、Issue、MR 和 Pipeline。
             </p>
           </div>
         </div>
@@ -1505,8 +1771,8 @@ function HiAgentConnectorDialog({
           <div className="mt-6 space-y-3 rounded-xl bg-muted/45 p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-sm font-medium text-foreground">当前 hiagent 能力</div>
-                <div className="mt-1 text-xs text-muted-foreground">已为当前工作区启用，Token 保存在本机并加密存储。</div>
+                <div className="text-sm font-medium text-foreground">当前 GitLab 能力</div>
+                <div className="mt-1 text-xs text-muted-foreground">已为当前工作区启用，仅面向 gitlab.htzq.htsc.com.cn，Token 保存在本机。</div>
               </div>
               <Button type="button" variant="outline" size="sm" onClick={() => setEditing(true)}>
                 重新绑定
@@ -1515,6 +1781,7 @@ function HiAgentConnectorDialog({
             <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
               <ConnectorDetailRow label="状态" value="已启用" />
               <ConnectorDetailRow label="类型" value="CLI" />
+              <ConnectorDetailRow label="Host" value="gitlab.htzq.htsc.com.cn" mono />
               <ConnectorDetailRow label="认证" value="已配置" />
             </div>
           </div>
@@ -1523,20 +1790,7 @@ function HiAgentConnectorDialog({
         {(!isEnabled || editing) && (
           <div className="mx-auto mt-6 w-full max-w-[420px] space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">运行环境 *</label>
-              <select
-                value={env}
-                onChange={(event) => setEnv(event.target.value)}
-                className="h-11 w-full rounded-lg border border-border/80 bg-content-area px-3 text-sm shadow-sm outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/15"
-              >
-                <option value="uat">UAT</option>
-                <option value="sit">SIT</option>
-                <option value="dev">DEV</option>
-                <option value="prd">PRD</option>
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Talents Token *</label>
+              <label className="text-sm font-medium text-foreground">GitLab Token *</label>
               <input
                 value={token}
                 onChange={(event) => setToken(event.target.value)}
@@ -1546,11 +1800,11 @@ function HiAgentConnectorDialog({
                     void handleSave()
                   }
                 }}
-                placeholder="请输入 Talents Token"
+                placeholder="请输入华泰 GitLab Token"
                 type="password"
                 className="h-11 w-full rounded-lg border border-border/80 bg-content-area px-3 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary/60 focus:ring-2 focus:ring-primary/15"
               />
-              <p className="text-xs text-muted-foreground">Token 只保存在本机，用于运行 talents CLI，不会写入对话内容。</p>
+              <p className="text-xs text-muted-foreground">Token 只保存在本机，用于访问华泰 GitLab，不会写入对话内容。</p>
             </div>
             <Button
               type="button"
@@ -1629,22 +1883,147 @@ function ConnectorInitStepList({ steps }: { steps: DefaultConnectorInitStep[] })
   )
 }
 
+function HuataiEmailCapabilityFlow({
+  readEnabled,
+  draftEnabled,
+  draftStatusLabel,
+  sendEnabled,
+  sendStatusLabel,
+  updatingDraft,
+  updatingSend,
+  onDraftToggle,
+  onSendToggle,
+}: {
+  readEnabled: boolean
+  draftEnabled: boolean
+  draftStatusLabel: string
+  sendEnabled: boolean
+  sendStatusLabel: string
+  updatingDraft: boolean
+  updatingSend: boolean
+  onDraftToggle: (enabled: boolean) => void
+  onSendToggle: (enabled: boolean) => void
+}): React.ReactElement {
+  return (
+    <div className="space-y-3 rounded-lg bg-background/70 p-3.5 sm:col-span-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-[12px] font-medium text-foreground/80">邮箱能力选择</span>
+        <span className="text-[11px] text-muted-foreground">发送邮件默认关闭</span>
+      </div>
+      <div className="grid gap-2">
+        <HuataiEmailCapabilityStep
+          index="1"
+          icon={<Inbox size={15} />}
+          title="读取邮件"
+          status={readEnabled ? '已启用' : '未启用'}
+          enabled={readEnabled}
+        />
+        <HuataiEmailCapabilityStep
+          index="2"
+          icon={<FilePenLine size={15} />}
+          title="写入草稿箱"
+          status={draftStatusLabel}
+          enabled={draftEnabled}
+          action={(
+            <Switch
+              checked={draftEnabled}
+              disabled={updatingDraft}
+              onCheckedChange={onDraftToggle}
+              aria-label="切换华泰邮箱写草稿能力"
+            />
+          )}
+        />
+        <HuataiEmailCapabilityStep
+          index="3"
+          icon={<Send size={15} />}
+          title="邮件发送"
+          status={sendStatusLabel}
+          enabled={sendEnabled}
+          action={(
+            <Switch
+              checked={sendEnabled}
+              disabled={updatingSend || !draftEnabled}
+              onCheckedChange={onSendToggle}
+              aria-label="切换华泰邮箱发送能力"
+            />
+          )}
+        />
+      </div>
+    </div>
+  )
+}
+
+function HuataiEmailCapabilityStep({
+  index,
+  icon,
+  title,
+  status,
+  enabled,
+  action,
+}: {
+  index: string
+  icon: React.ReactNode
+  title: string
+  status: string
+  enabled: boolean
+  action?: React.ReactNode
+}): React.ReactElement {
+  return (
+    <div
+      className={cn(
+        'flex min-h-[64px] items-center justify-between gap-3 rounded-lg px-3.5 py-3 shadow-sm ring-1 ring-inset',
+        enabled
+          ? 'bg-blue-50/70 text-blue-600 ring-blue-200/70 dark:bg-blue-950/30 dark:text-blue-400 dark:ring-blue-900/60'
+          : 'bg-amber-50/70 text-amber-700 ring-amber-200/70 dark:bg-amber-950/25 dark:text-amber-300 dark:ring-amber-900/60',
+      )}
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-background/80 text-[12px] font-semibold shadow-sm">
+          {index}
+        </span>
+        <span className="shrink-0">{icon}</span>
+        <div className="min-w-0">
+          <div className="truncate text-[13px] font-medium text-foreground">{title}</div>
+          <div className={cn('mt-1 text-[12px] font-medium', enabled ? 'text-blue-600 dark:text-blue-400' : 'text-amber-700 dark:text-amber-300')}>
+            {status}
+          </div>
+        </div>
+      </div>
+      {action && <span className="shrink-0">{action}</span>}
+    </div>
+  )
+}
+
 function ConnectorDetailRow({
   label,
   value,
   mono = false,
   wide = false,
+  tone,
+  action,
 }: {
   label: string
   value: string | undefined
   mono?: boolean
   wide?: boolean
+  tone?: 'enabled' | 'disabled'
+  action?: React.ReactNode
 }): React.ReactElement {
   return (
     <div className={cn('flex flex-col gap-1.5 rounded-lg bg-background/70 px-3.5 py-3 text-left', wide && 'sm:col-span-2')}>
       <span className="text-[11px] font-medium text-muted-foreground">{label}</span>
-      <span className={cn('min-w-0 break-words text-[13px] leading-relaxed text-foreground/85', mono && 'font-mono')}>
-        {value || '未配置'}
+      <span className="flex min-w-0 items-center justify-between gap-3">
+        <span
+          className={cn(
+            'min-w-0 break-words text-[13px] leading-relaxed text-foreground/85',
+            mono && 'font-mono',
+            tone === 'enabled' && 'font-medium text-blue-600 dark:text-blue-400',
+            tone === 'disabled' && 'font-medium text-amber-700 dark:text-amber-300',
+          )}
+        >
+          {value || '未配置'}
+        </span>
+        {action && <span className="shrink-0">{action}</span>}
       </span>
     </div>
   )

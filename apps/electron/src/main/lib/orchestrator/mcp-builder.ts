@@ -28,7 +28,7 @@ import { join } from 'node:path'
  * 3. 向后兼容：未被 connectors.json 管理的 server 仍加载（如迁移前的旧配置）
  *
  * @param preReadConfig 可选，调用方已读好的配置，避免重复 I/O
- * @param selectedMcpServers 可选，只加载指定的 MCP server（undefined=全部, []=新建会话自动扫描, ['name']=指定）
+ * @param selectedMcpServers 可选，只加载指定的 MCP server（undefined/[]=全部, ['name']=指定）
  */
 export function buildMcpServers(
   workspaceSlug: string | undefined,
@@ -41,24 +41,11 @@ export function buildMcpServers(
   const connectorsConfig = preReadConfig ?? getWorkspaceConnectorsConfig(workspaceSlug)
 
   // selectedMcpServers:
-  //   undefined → 加载全部 server
-  //   []        → 新建会话，自动扫描 connectorsConfig 获取全部已启用的 MCP 连接器
-  //   ['name']  → 只加载指定 server
+  //   undefined/[] → 加载全部 server
+  //   ['name']     → 只加载指定 server
   let selectedNames: Set<string> | null = null
-  if (Array.isArray(selectedMcpServers)) {
-    if (selectedMcpServers.length === 0) {
-      // 新建会话：收集 connectorsConfig 中所有已启用的 MCP 连接器
-      const autoNames: string[] = []
-      for (const [connectorId, connector] of Object.entries(connectorsConfig.connectors)) {
-        if (connector.enabled && connector.type === 'mcp') {
-          autoNames.push(connector.serverName ?? connectorId)
-        }
-      }
-      if (autoNames.length === 0) return mcpServers
-      selectedNames = new Set(autoNames)
-    } else {
-      selectedNames = new Set(selectedMcpServers)
-    }
+  if (Array.isArray(selectedMcpServers) && selectedMcpServers.length > 0) {
+    selectedNames = new Set(selectedMcpServers)
   }
 
   const mcpConfig = getWorkspaceMcpConfig(workspaceSlug)
@@ -203,8 +190,8 @@ export async function injectMemoryTools(
   mcpServers: Record<string, Record<string, unknown>>,
 ): Promise<void> {
   const memoryConfig = getMemoryConfig()
-  const memUserId = memoryConfig.userId?.trim() || 'proma-user'
-  if (!memoryConfig.enabled || !memoryConfig.apiKey) return
+  const memOwnerId = memoryConfig.ownerId?.trim() || 'root'
+  if (!memoryConfig.enabled || !memoryConfig.cubeId) return
 
   try {
     const { z } = await import('zod')
@@ -214,11 +201,11 @@ export async function injectMemoryTools(
       tools: [
         sdk.tool(
           'recall_memory',
-          'Search user memories (facts and preferences) from MemOS Cloud. Use this to recall relevant context about the user.',
+          'Search user memories (facts and preferences). Use this to recall relevant context about the user.',
           { query: z.string().describe('Search query for memory retrieval'), limit: z.number().optional().describe('Max results (default 6)') },
           async (args) => {
             const result = await searchMemory(
-              { apiKey: memoryConfig.apiKey, userId: memUserId, baseUrl: memoryConfig.baseUrl },
+              { cubeId: memoryConfig.cubeId, ownerId: memOwnerId },
               args.query,
               args.limit,
             )
@@ -228,7 +215,7 @@ export async function injectMemoryTools(
         ),
         sdk.tool(
           'add_memory',
-          'Store a conversation message pair into MemOS Cloud for long-term memory. Call this after meaningful exchanges worth remembering.',
+          'Store a conversation message pair for long-term memory. Call this after meaningful exchanges worth remembering.',
           {
             userMessage: z.string().describe('The user message to store'),
             assistantMessage: z.string().optional().describe('The assistant response to store'),
@@ -237,7 +224,7 @@ export async function injectMemoryTools(
           },
           async (args) => {
             await addMemory(
-              { apiKey: memoryConfig.apiKey, userId: memUserId, baseUrl: memoryConfig.baseUrl },
+              { cubeId: memoryConfig.cubeId, ownerId: memOwnerId },
               args,
             )
             return { content: [{ type: 'text' as const, text: 'Memory stored successfully.' }] }
@@ -270,7 +257,7 @@ export async function injectNanoBananaTools(
 }
 
 /**
- * 注入 WorkMate 内置联网搜索工具（专家团按需启用）
+ * 注入 WorkMate 内置联网搜索工具
  */
 export async function injectWebSearchTools(
   sdk: typeof import('@anthropic-ai/claude-agent-sdk'),

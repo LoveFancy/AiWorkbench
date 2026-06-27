@@ -1069,19 +1069,15 @@ function ScheduledRunBadge(): React.ReactElement {
     })
   }
 
-  const labelText = automation
-    ? `来自定时任务 · ${automation.name}`
-    : '来自定时任务'
-
   return (
     <button
       type="button"
       onClick={handleClick}
       className="inline-flex items-center gap-1 text-[10px] text-primary/70 hover:text-primary transition-colors"
-      title="来自定时任务，点击查看设置"
+      title="自动任务触发，点击查看设置"
     >
       <Clock className="size-3" />
-      <span>{labelText}</span>
+      <span>自动任务触发</span>
     </button>
   )
 }
@@ -1097,7 +1093,7 @@ function UserInputMessage({ message }: { message: SDKUserMessage }): React.React
   const meta = extractMeta(message as unknown as SDKMessage)
 
   return (
-    <Message from="user">
+    <Message from="user" className="max-w-full">
       <div className="flex items-start gap-2.5 mb-2.5 flex-row-reverse">
         <UserAvatar avatar={userProfile.avatar} size={35} />
         <div className="flex flex-col justify-between h-[35px] items-end">
@@ -1114,7 +1110,7 @@ function UserInputMessage({ message }: { message: SDKUserMessage }): React.React
           )}
         </div>
       </div>
-      <MessageContent>
+      <MessageContent className="group-[.is-user]:pr-0">
         {/* 引用文件 Chip */}
         {quotes.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-2">
@@ -1142,7 +1138,7 @@ function UserInputMessage({ message }: { message: SDKUserMessage }): React.React
         {text && <UserMessageContent>{text}</UserMessageContent>}
       </MessageContent>
       {text && (
-        <MessageActions className="pr-[46px] mt-0.5">
+        <MessageActions className="pr-0 mt-0.5">
           <CopyButton content={text} />
         </MessageActions>
       )}
@@ -1449,7 +1445,7 @@ export function MessageGroupRenderer({ group, allMessages, historicalTaskSubject
 
   if (group.type === 'user') {
     return (
-      <div data-message-id={groupId} data-message-role="user">
+      <div className="w-full" data-message-id={groupId} data-message-role="user" data-current-turn-focus-anchor={groupId}>
         <UserInputMessage message={group.message} />
       </div>
     )

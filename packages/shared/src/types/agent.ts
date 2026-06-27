@@ -6,16 +6,48 @@
 
 // ===== 记忆配置 =====
 
-/** 全局记忆配置（MemOS Cloud） */
+/** 全局记忆配置（本地 MemOS 服务） */
 export interface MemoryConfig {
   /** 是否启用记忆功能 */
   enabled: boolean
-  /** MemOS Cloud API Key */
+  /** 本地 MemOS 服务地址，默认 http://168.64.22.211:8000 */
+  serverUrl: string
+  /** 个人记忆 ID — 创建后服务端返回的 cube_id */
+  cubeId: string
+  /** 创建个人记忆时使用的 owner_id */
+  ownerId: string
+  /** 个人记忆名称 */
+  cubeName: string
+  /** (旧字段兼容) MemOS Cloud API Key */
   apiKey: string
-  /** 用户标识 */
+  /** (旧字段兼容) 用户标识 */
   userId: string
-  /** 自定义 API 地址（可选，默认 MemOS Cloud） */
+  /** (旧字段兼容) 自定义 API 地址 */
   baseUrl?: string
+}
+
+/** 创建个人记忆返回结果 */
+export interface CreateCubeResult {
+  cubeId: string
+  cubeName: string
+  ownerId: string
+}
+
+/** 查询个人记忆返回结果 */
+export interface QueryCubeResult {
+  /** 事实列表 */
+  facts: Array<{
+    id: string
+    text: string
+    createTime?: string
+    confidence?: number
+  }>
+  /** 偏好列表 */
+  preferences: Array<{
+    id: string
+    text: string
+    type?: string
+  }>
 }
 
 /**
@@ -28,6 +60,10 @@ export const MEMORY_IPC_CHANNELS = {
   SET_CONFIG: 'memory:set-config',
   /** 测试记忆连接 */
   TEST_CONNECTION: 'memory:test-connection',
+  /** 创建个人记忆 */
+  CREATE_CUBE: 'memory:create-cube',
+  /** 查询个人记忆内容（偏好和事实） */
+  QUERY_CUBE: 'memory:query-cube',
 } as const
 
 // ===== Agent 工作区 =====
@@ -815,7 +851,7 @@ export interface ConnectorsConfig {
 
 // ===== 内置连接器初始化 =====
 
-export type DefaultConnectorInitStepId = 'check-python' | 'check-runtime' | 'check-package' | 'install-package' | 'install-skill' | 'write-config' | 'self-check'
+export type DefaultConnectorInitStepId = 'check-python' | 'check-runtime' | 'check-package' | 'install-package' | 'install-skill' | 'check-auth' | 'write-config' | 'self-check'
 
 export interface DefaultConnectorInitStep {
   id: DefaultConnectorInitStepId
@@ -1952,6 +1988,14 @@ export const AGENT_IPC_CHANNELS = {
   GET_CONNECTORS_CONFIG: 'agent:get-connectors-config',
   /** 保存工作区连接器配置 */
   SAVE_CONNECTORS_CONFIG: 'agent:save-connectors-config',
+  /** 获取华泰邮箱发送能力状态 */
+  GET_HUATAI_EMAIL_SEND_ENABLED: 'agent:get-huatai-email-send-enabled',
+  /** 切换华泰邮箱发送能力 */
+  SET_HUATAI_EMAIL_SEND_ENABLED: 'agent:set-huatai-email-send-enabled',
+  /** 获取华泰邮箱草稿能力状态 */
+  GET_HUATAI_EMAIL_DRAFT_ENABLED: 'agent:get-huatai-email-draft-enabled',
+  /** 切换华泰邮箱草稿能力 */
+  SET_HUATAI_EMAIL_DRAFT_ENABLED: 'agent:set-huatai-email-draft-enabled',
   /** 注册用户创建的连接器（创建目录 + connector.json + mcp.json + connectors.json） */
   REGISTER_USER_CONNECTOR: 'agent:register-user-connector',
   /** 注销用户创建的连接器（删除目录 + connectors.json 条目 + mcp.json 条目） */

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import {
+  addAndRefreshPluginMarketplace,
   addPluginMarketplace,
   getMarketplacePluginDetail,
   installMarketplacePlugin,
@@ -86,6 +87,32 @@ describe('插件市场服务', () => {
       expect(results).toHaveLength(1)
       expect(results[0]?.name).toBe('frontend-design')
       expect(results[0]?.installed).toBe(false)
+    } finally {
+      temp.cleanup()
+    }
+  })
+
+  test('添加插件市场刷新失败时不保留失败市场', async () => {
+    const temp = tempRoot()
+    try {
+      const marketplacesPath = join(temp.root, 'plugin-marketplaces.json')
+      const servicePaths = {
+        marketplacesPath,
+        cacheDir: join(temp.root, 'cache'),
+        userPluginsDir: join(temp.root, 'user-plugins'),
+        pluginsConfigPath: join(temp.root, 'plugins.json'),
+      }
+
+      await expect(addAndRefreshPluginMarketplace({
+        id: 'broken-market',
+        name: 'Broken Market',
+        source: join(temp.root, 'missing-marketplace.json'),
+        type: 'local',
+      }, servicePaths))
+        .rejects
+        .toThrow()
+
+      expect(listPluginMarketplaces({ marketplacesPath })).toHaveLength(0)
     } finally {
       temp.cleanup()
     }
