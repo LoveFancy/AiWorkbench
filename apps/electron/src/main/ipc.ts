@@ -2908,23 +2908,75 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(
     MEMORY_IPC_CHANNELS.TEST_CONNECTION,
-    async (): Promise<{ success: boolean; message: string }> => {
+    async (): Promise<{ success: boolean; message: string; data?: import('@proma/shared').QueryCubeResult }> => {
       const config = getMemoryConfig()
-      if (!config.apiKey) {
-        return { success: false, message: '请先填写 API Key' }
+      if (!config.cubeId) {
+        return { success: false, message: '请先创建记忆立方' }
       }
       try {
-        const { searchMemory } = await import('./lib/memos-client')
-        const result = await searchMemory(
-          { apiKey: config.apiKey, userId: config.userId?.trim() || 'proma-user', baseUrl: config.baseUrl },
-          'test connection',
-          1,
-        )
-        return { success: true, message: `连接成功，已检索到 ${result.facts.length} 条事实、${result.preferences.length} 条偏好` }
+        const { queryCube } = await import('./lib/memos-client')
+        const result = await queryCube({
+          cubeId: config.cubeId,
+          ownerId: config.ownerId,
+        })
+        const factsCount = result.facts.length
+        const prefsCount = result.preferences.length
+        console.log(`[记忆服务] 🔌 查询记忆立方 → 成功: ${factsCount}条事实, ${prefsCount}条偏好`)
+        const summary = `查询成功 — ${factsCount} 条事实, ${prefsCount} 条偏好`
+        return { success: true, message: summary, data: result }
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error)
-        return { success: false, message: `连接失败: ${msg}` }
+        console.error('[记忆服务] 🔌 查询记忆立方失败:', error)
+        return { success: false, message: `查询失败: ${msg}` }
       }
+    }
+  )
+
+  ipcMain.handle(
+    MEMORY_IPC_CHANNELS.CREATE_CUBE,
+    async (): Promise<import('@proma/shared').CreateCubeResult> => {
+      const config = getMemoryConfig()
+      const { createCube } = await import('./lib/memos-client')
+
+      // 使用登录名作为立方名称，owner_id 固定为 root
+      const { getAuthInfo } = await import('../auth/auth-service')
+      const authInfo = getAuthInfo()
+      let cubeName = '记忆立方'
+      if (authInfo?.displayName) {
+        cubeName = authInfo.displayName
+      } else if (authInfo?.jobId) {
+        cubeName = authInfo.jobId
+      } else {
+        const userProfile = getUserProfile()
+        cubeName = userProfile.userName || '记忆立方'
+      }
+      const ownerId = 'root'
+
+      const result = await createCube({ cubeName, ownerId })
+      // 自动保存 cubeId
+      setMemoryConfig({
+        ...config,
+        cubeId: result.cubeId,
+        ownerId: 'root',
+        cubeName: result.cubeName,
+      })
+      console.log(`[记忆服务] IPC: 记忆立方创建并保存成功 cubeId=${result.cubeId}, cubeName=${result.cubeName}`)
+      return result
+    }
+  )
+
+  ipcMain.handle(
+    MEMORY_IPC_CHANNELS.QUERY_CUBE,
+    async (): Promise<import('@proma/shared').QueryCubeResult> => {
+      const config = getMemoryConfig()
+      if (!config.cubeId) {
+        throw new Error('请先创建记忆立方')
+      }
+      const { queryCube } = await import('./lib/memos-client')
+      return queryCube({
+        cubeId: config.cubeId,
+        ownerId: config.ownerId,
+      })
     }
   )
 
@@ -2985,20 +3037,20 @@ export function registerIpcHandlers(): void {
       // 记忆工具复用现有测试逻辑
       if (toolId === 'memory') {
         const config = getMemoryConfig()
-        if (!config.apiKey) {
-          return { success: false, message: '请先填写 API Key' }
+        if (!config.cubeId) {
+          return { success: false, message: '请先创建记忆立方' }
         }
         try {
           const { searchMemory } = await import('./lib/memos-client')
           const result = await searchMemory(
-            { apiKey: config.apiKey, userId: config.userId?.trim() || 'proma-user', baseUrl: config.baseUrl },
-            'test connection',
+            { cubeId: config.cubeId, ownerId: config.ownerId || 'root' },
+            'test',
             1,
           )
-          return { success: true, message: `连接成功，已检索到 ${result.facts.length} 条事实、${result.preferences.length} 条偏好` }
+          return { success: true, message: `查询成功 — ${result.facts.length} 条事实, ${result.preferences.length} 条偏好` }
         } catch (error) {
           const msg = error instanceof Error ? error.message : String(error)
-          return { success: false, message: `连接失败: ${msg}` }
+          return { success: false, message: `查询失败: ${msg}` }
         }
       }
       // 联网搜索工具测试

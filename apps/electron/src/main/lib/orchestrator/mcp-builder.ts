@@ -203,8 +203,8 @@ export async function injectMemoryTools(
   mcpServers: Record<string, Record<string, unknown>>,
 ): Promise<void> {
   const memoryConfig = getMemoryConfig()
-  const memUserId = memoryConfig.userId?.trim() || 'proma-user'
-  if (!memoryConfig.enabled || !memoryConfig.apiKey) return
+  const memOwnerId = memoryConfig.ownerId?.trim() || 'root'
+  if (!memoryConfig.enabled || !memoryConfig.cubeId) return
 
   try {
     const { z } = await import('zod')
@@ -214,11 +214,11 @@ export async function injectMemoryTools(
       tools: [
         sdk.tool(
           'recall_memory',
-          'Search user memories (facts and preferences) from MemOS Cloud. Use this to recall relevant context about the user.',
+          'Search user memories (facts and preferences). Use this to recall relevant context about the user.',
           { query: z.string().describe('Search query for memory retrieval'), limit: z.number().optional().describe('Max results (default 6)') },
           async (args) => {
             const result = await searchMemory(
-              { apiKey: memoryConfig.apiKey, userId: memUserId, baseUrl: memoryConfig.baseUrl },
+              { cubeId: memoryConfig.cubeId, ownerId: memOwnerId },
               args.query,
               args.limit,
             )
@@ -228,7 +228,7 @@ export async function injectMemoryTools(
         ),
         sdk.tool(
           'add_memory',
-          'Store a conversation message pair into MemOS Cloud for long-term memory. Call this after meaningful exchanges worth remembering.',
+          'Store a conversation message pair for long-term memory. Call this after meaningful exchanges worth remembering.',
           {
             userMessage: z.string().describe('The user message to store'),
             assistantMessage: z.string().optional().describe('The assistant response to store'),
@@ -237,7 +237,7 @@ export async function injectMemoryTools(
           },
           async (args) => {
             await addMemory(
-              { apiKey: memoryConfig.apiKey, userId: memUserId, baseUrl: memoryConfig.baseUrl },
+              { cubeId: memoryConfig.cubeId, ownerId: memOwnerId },
               args,
             )
             return { content: [{ type: 'text' as const, text: 'Memory stored successfully.' }] }
