@@ -130,15 +130,35 @@ export function downloadAndInstallRemoteExpert(
         broadcastProgress({ groupId, status: 'downloading', progress, downloadedBytes: downloaded, totalBytes: total })
       }, controller.signal)
 
-      // 3. 广播安装中
-      broadcastProgress({ groupId, status: 'installing', progress: 100, downloadedBytes: 0, totalBytes: 0 })
+      // 3. 广播安装开始（解压前）
+      broadcastProgress({
+        groupId, status: 'installing', installStage: 'extracting',
+        progress: 0, processedFiles: 0, totalFiles: 0, downloadedBytes: 0, totalBytes: 0,
+      })
 
-      // 4. 异步分片安装（不阻塞主进程；安装期也可取消）
+      // 4. 异步分片安装（不阻塞主进程；安装期可取消 + 解压真实进度）
       const plugin = await installUserPluginZipAsync(tempPath, {
         marketplaceId: 'remote',
         overwrite: options.overwrite ?? false,
         signal: controller.signal,
         version: options.version,
+        onProgress: (p) => {
+          if (p.stage === 'extracting') {
+            // 解压进度映射到 0→95，给收尾留 95→100
+            const progress = p.total > 0 ? Math.round((p.processed / p.total) * 95) : 0
+            broadcastProgress({
+              groupId, status: 'installing', installStage: 'extracting',
+              progress, processedFiles: p.processed, totalFiles: p.total,
+              downloadedBytes: 0, totalBytes: 0,
+            })
+          } else {
+            // 解压完成，进入查重/写盘收尾
+            broadcastProgress({
+              groupId, status: 'installing', installStage: 'finalizing',
+              progress: 95, downloadedBytes: 0, totalBytes: 0,
+            })
+          }
+        },
       })
 
       // 5. 广播完成

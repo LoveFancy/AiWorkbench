@@ -66,7 +66,7 @@ extraResources:
     filter:
       - "**/*"
   # DPAPI prebuilds（飞书 CLI OAuth 凭据加密）
-  - from: node_modules/@primno/dpapi/prebuilds
+  - from: resources/dpapi-prebuilds
     to: dpapi-prebuilds
     filter:
       - "**/*"

@@ -17,7 +17,7 @@
 import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import type { AgentSendInput, AgentMessage, AgentProviderAdapter, AgentSessionMeta, TypedError, RetryAttempt, SDKMessage, RewindSessionResult, SdkBeta, AgentGenerateTitleInput } from '@proma/shared'
 import {
   PROMA_DEFAULT_PERMISSION_MODE,
@@ -31,7 +31,7 @@ import { injectAutomationMcpServer } from './automation-agent-tools'
 import { normalizeAnthropicBaseUrlForSdk, getPromaUserAgent } from '@proma/core'
 import pkg from '../../../package.json' with { type: 'json' }
 import { appendSDKMessages, updateAgentSessionMeta, getAgentSessionMeta, getAgentSessionMessages } from './agent-session-manager'
-import { getAgentWorkspace, ensurePluginManifest, getWorkspaceConnectorsConfig, migrateMcpJsonToConnectors, syncDefaultConnectorsToWorkspace, readSkillDirsFromConnectorJson } from './agent-workspace-manager'
+import { getAgentWorkspace, ensurePluginManifest, getWorkspaceConnectorsConfig, migrateMcpJsonToConnectors } from './agent-workspace-manager'
 import { getAgentSessionWorkspacePath, getConnectorsDir } from './config-paths'
 import { getRuntimeStatus } from './runtime-init'
 import { getSettings } from './settings-service'
@@ -67,6 +67,7 @@ import {
   logStderr,
 } from './orchestrator/error-presenter'
 import { buildSdkEnv } from './orchestrator/sdk-env'
+import { collectCliConnectorEnv } from './cli-connector-runtime'
 import { buildAgentUserContent } from './orchestrator/agent-user-content'
 import {
   buildMcpServers,
@@ -165,21 +166,7 @@ export class AgentOrchestrator {
     return stoppedByUser
   }
 
-  /**
-   * Session-not-found 恢复：清除失效的 sdkSessionId，切换到上下文回填模式
-   *
-   * 当 resume 的目标 session 已过期/被清理时，SDK 会抛出 "No conversation found" 错误。
-   * 此方法执行恢复的公共逻辑，调用方负责设置 existingSdkSessionId = undefined 和流程控制（break/continue）。
-   *
-   * @returns lastRetryableError 描述字符串
-   */
-  /**
-   * Resume 失败恢复：清除 SDK resume 关系，注入 session 自引用让 Agent 读取完整历史继续工作。
-   *
-   * 适用于 SDK session 过期、thinking signature 跨模型不兼容等场景。
-   * 使用 <session_recovery> 标签指向当前会话的 JSONL 历史文件，Agent 会自动读取并恢复上下文，
-   * 比 buildContextPrompt（仅注入 20 条摘要）提供完整得多的上下文连续性。
-   */
+
   /**
    * 发送消息并流式推送事件
    *
@@ -188,7 +175,7 @@ export class AgentOrchestrator {
    */
   async sendMessage(input: AgentSendInput, callbacks: SessionCallbacks): Promise<void> {
     const _diagStart = Date.now()
-    const _diag = (tag: string) => console.log(`[DIAG][Agent 编排] [${tag}] sessionId=${input.sessionId}, elapsed=${Date.now() - _diagStart}ms, ts=${Date.now()}`)
+    const _diag = (tag: string) => console.debug(`[DIAG][Agent 编排] [${tag}] sessionId=${input.sessionId}, elapsed=${Date.now() - _diagStart}ms, ts=${Date.now()}`)
     _diag('sendMessage 入口')
     // Event Loop 健康检查：setImmediate 回调延迟反映主线程拥堵程度
     const _elCheckStart = Date.now()
@@ -197,7 +184,7 @@ export class AgentOrchestrator {
       if (elDelay > 50) {
         console.warn(`[DIAG][Agent 编排] ⚠️ Event Loop 延迟: ${elDelay}ms (>50ms 表示主线程拥堵)`)
       } else {
-        console.log(`[DIAG][Agent 编排] Event Loop 延迟: ${elDelay}ms (正常)`)
+        console.debug(`[DIAG][Agent 编排] Event Loop 延迟: ${elDelay}ms (正常)`)
       }
     })
     const { sessionId, userMessage, channelId, modelId, workspaceId, additionalDirectories, attachments, customMcpServers, permissionModeOverride, mentionedSkills, mentionedSessionIds, automationContext, selectedMcpServers } = input
@@ -536,12 +523,11 @@ export class AgentOrchestrator {
           workspace = ws
           console.log(`[Agent 编排] 使用 session 级别 cwd: ${agentCwd} (${ws.name}/${sessionId})`)
 
-          // 连接器：迁移旧 mcp.json + 同步预置连接器
+          // 连接器：迁移旧 mcp.json（一次性的配置迁移）
           try {
             migrateMcpJsonToConnectors(ws.slug)
-            syncDefaultConnectorsToWorkspace(ws.slug)
           } catch (err) {
-            console.warn('[Agent 编排] 连接器同步失败:', err)
+            console.warn('[Agent 编排] MCP 迁移失败:', err)
           }
 
           ensurePluginManifest(ws.slug, ws.name)
@@ -561,6 +547,7 @@ export class AgentOrchestrator {
       // 9.5 确保 SDK 项目设置（plansDirectory → .context）
       _diag('开始写入 SDK 项目设置 (.claude/settings.json)')
       {
+        const t0 = Date.now()
         const claudeSettingsDir = join(agentCwd, '.claude')
         if (!existsSync(claudeSettingsDir)) mkdirSync(claudeSettingsDir, { recursive: true })
         const settingsPath = join(claudeSettingsDir, 'settings.json')
@@ -581,6 +568,12 @@ export class AgentOrchestrator {
           writeFileSync(settingsPath, JSON.stringify(sdkProjectSettings, null, 2))
           console.log(`[Agent 编排] 已设置 SDK settings (plansDirectory, skipWebFetchPreflight)`)
         }
+        const elapsed = Date.now() - t0
+        if (needsWrite) {
+          console.log(`[perf] writeFileSync SDK settings.json → ${elapsed}ms`)
+        } else {
+          console.log(`[perf] readFileSync SDK settings.json (no write needed) → ${elapsed}ms`)
+        }
       }
 
       // 9.6 直接信任已保存的 sdkSessionId，跳过 listSessions 预验证
@@ -595,6 +588,11 @@ export class AgentOrchestrator {
 // 10. 构建 MCP 服务器配置
       // 预读连接器配置一次，避免 buildMcpServers + collectConnectorDisabledTools 重复 I/O
       const connectorsConfig = workspaceSlug ? getWorkspaceConnectorsConfig(workspaceSlug) : { version: '1.0', connectors: {} }
+      const applyCliConnectorEnv = (): void => {
+        if (!workspaceSlug) return
+        Object.assign(sdkEnv, collectCliConnectorEnv(workspaceSlug, connectorsConfig))
+      }
+      applyCliConnectorEnv()
       const mcpServers = buildMcpServers(workspaceSlug, connectorsConfig, selectedMcpServers)
       await injectMemoryTools(sdk, mcpServers)
       _diag('injectMemoryTools 完成, 开始 injectNanoBananaTools (await)')
@@ -610,6 +608,11 @@ export class AgentOrchestrator {
         triggeredBy: input.triggeredBy,
       })
       _diag('injectAutomationMcpServer 完成')
+
+      _diag('开始 injectEipRequestMcpServer (await)')
+      const { injectEipRequestMcpServer } = await import('./eip-request-mcp')
+      await injectEipRequestMcpServer(sdk, mcpServers)
+      _diag('injectEipRequestMcpServer 完成')
 
       // 注入自定义 HTTP 工具（Tool Builder 创建的 customTools）
       const { injectHttpCustomMcpServer } = await import('./chat-tools/http-custom-mcp')
@@ -989,41 +992,28 @@ export class AgentOrchestrator {
         ...(rewindResumeAt && { resumeSessionAt: rewindResumeAt }),
         ...(Object.keys(mcpServers).length > 0 && { mcpServers }),
         ...(() => {
+          if (!workspaceSlug) return {}
+          const connectorsDir = getConnectorsDir(workspaceSlug)
+          const cliPluginPaths: Array<{ type: 'local'; path: string }> = []
+          try {
+            const connectorsConfig = getWorkspaceConnectorsConfig(workspaceSlug)
+            for (const [name, connector] of Object.entries(connectorsConfig.connectors)) {
+              if (!connector.enabled || connector.type !== 'cli') continue
+
+              const connectorPath = join(connectorsDir, name)
+              cliPluginPaths.push({ type: 'local' as const, path: connectorPath })
+              console.log(`[Agent 编排] CLI 连接器 plugin: ${name}, path=${connectorPath}`)
+            }
+          } catch (err) {
+            console.warn('[Agent 编排] CLI 连接器 plugin 扫描失败:', err)
+          }
+
           const plugins = [
             ...getAgentPluginPaths(workspaceSlug),
             ...(expertRuntime?.pluginPaths ?? []),
+            ...cliPluginPaths,
           ]
           return plugins.length > 0 ? { plugins } : {}
-        })(),
-        // 连接器 CLI Skill 扫描：外层 connectors.json 拿 enabled/type，
-        // 内层 connectors/{name}/connector.json 拿 skillDirs
-        ...(() => {
-          const connectorsDir = workspaceSlug ? getConnectorsDir(workspaceSlug) : ''
-          if (!connectorsDir) return {}
-
-          const skillDirs: string[] = []
-          try {
-            const config = workspaceSlug ? getWorkspaceConnectorsConfig(workspaceSlug) : { version: '1.0', connectors: {} }
-            for (const [name, connector] of Object.entries(config.connectors)) {
-              if (!connector.enabled) continue
-              if (connector.type !== 'cli') continue
-
-              // 优先从 connectors/{name}/connector.json 读取 skillDirs（新格式）
-              // 兜底从 connectors.json 的 skillDirs 字段读取（旧格式兼容）
-              const dirs = readSkillDirsFromConnectorJson(connectorsDir, name) ?? connector.skillDirs ?? []
-              for (const d of dirs) {
-                if (d === '.' || d === '..' || !/^[a-zA-Z0-9._-]+$/.test(d)) {
-                  console.warn(`[Agent 编排] 跳过非法 skill 目录: ${name}/${d}`)
-                  continue
-                }
-                skillDirs.push(join(connectorsDir, name, d))
-              }
-            }
-          } catch (err) {
-            console.warn('[Agent 编排] 读取 connector skill 目录失败:', err)
-          }
-
-          return skillDirs.length > 0 ? { additionalSkillDirs: skillDirs } : {}
         })(),
         // 合并附加目录：用户当次输入 + 会话级 + 工作区级（详见 collectAttachedDirectories）
         ...(() => {
@@ -1117,6 +1107,7 @@ export class AgentOrchestrator {
         sdkEnv = await buildSdkEnv(apiKey, chInfo.baseUrl, chInfo.provider)
         const newRouting = resolveAgentModelRouting({ modelId: newModelId, provider: chInfo.provider })
         applyAgentModelRoutingToEnv(sdkEnv, newRouting)
+        applyCliConnectorEnv()
         queryOptions.env = sdkEnv
       }
 
@@ -1386,10 +1377,13 @@ export class AgentOrchestrator {
           // malformed 响应：写入文件方便排查
           const stderrText = stderrChunks.join('').trim()
           if (fatalIsMalformed && stderrText.length > 0 && agentCwd) {
+            const t0 = Date.now()
             try {
               const stderrLogPath = join(agentCwd, 'stderr-output.txt')
               writeFileSync(stderrLogPath, `// 网关返回的原始响应 (${new Date().toISOString()})\n${stderrText}\n`, 'utf-8')
+              const elapsed = Date.now() - t0
               console.log(`[Agent 编排] 已将网关原始响应写入: ${stderrLogPath} (${stderrText.length} 字符)`)
+              console.log(`[perf] writeFileSync stderr-output.txt (${stderrText.length} chars) → ${elapsed}ms`)
             } catch { /* 忽略 */ }
           }
 

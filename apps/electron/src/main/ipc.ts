@@ -5,6 +5,7 @@
  */
 
 import { ipcMain, nativeTheme, shell, dialog, BrowserWindow, app } from 'electron'
+import { randomUUID } from 'node:crypto'
 import { join, resolve, sep, dirname, extname, relative } from 'node:path'
 import { existsSync, realpathSync, rmSync, readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
@@ -60,6 +61,7 @@ import type {
   GetTaskOutputResult,
   StopTaskInput,
   WorkspaceMcpConfig,
+  ConnectorInitProgressEvent,
   InitializeDefaultConnectorInput,
   InitializeDefaultConnectorResult,
   AgentSlashCommand,
@@ -292,13 +294,14 @@ import {
   getFeishuMultiBotConfig,
   saveFeishuBotConfig,
   removeFeishuBot,
+  setFeishuBotEnabled,
   getDecryptedBotAppSecret,
 } from './lib/feishu-config'
 import { configureFeishuDefaultHttpInstance } from './lib/feishu-http-client'
 import { feishuBridgeManager } from './lib/feishu-bridge-manager'
 import { syncFeishuSyncSleepBlocker } from './lib/feishu-sleep-blocker'
 import { presenceService } from './lib/feishu-presence'
-import { getDingTalkConfig, saveDingTalkConfig, getDecryptedClientSecret, getDingTalkMultiBotConfig, saveDingTalkBotConfig, removeDingTalkBot, getDecryptedBotClientSecret } from './lib/dingtalk-config'
+import { getDingTalkConfig, saveDingTalkConfig, getDecryptedClientSecret, getDingTalkMultiBotConfig, saveDingTalkBotConfig, removeDingTalkBot, setDingTalkBotEnabled, getDecryptedBotClientSecret } from './lib/dingtalk-config'
 import { dingtalkBridgeManager } from './lib/dingtalk-bridge-manager'
 import { getWeChatConfig } from './lib/wechat-config'
 import { wechatBridge } from './lib/wechat-bridge'
@@ -1265,7 +1268,29 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     CHAT_IPC_CHANNELS.SEND_MESSAGE,
     async (event, input: ChatSendInput): Promise<void> => {
-      await sendMessage(input, event.sender)
+      const startedAt = Date.now()
+      console.log('[性能诊断][IPC][chat:send-message] 入口', {
+        conversationId: input.conversationId,
+        channelId: input.channelId,
+        modelId: input.modelId,
+        userMessageLength: input.userMessage.length,
+        attachmentCount: input.attachments?.length ?? 0,
+        enabledToolCount: input.enabledToolIds?.length ?? 0,
+      })
+      try {
+        await sendMessage(input, event.sender)
+        console.log('[性能诊断][IPC][chat:send-message] 完成', {
+          conversationId: input.conversationId,
+          durationMs: Date.now() - startedAt,
+        })
+      } catch (error) {
+        console.error('[性能诊断][IPC][chat:send-message] 失败', {
+          conversationId: input.conversationId,
+          durationMs: Date.now() - startedAt,
+          error: error instanceof Error ? error.message : String(error),
+        })
+        throw error
+      }
     }
   )
 
@@ -2121,9 +2146,15 @@ export function registerIpcHandlers(): void {
   // 初始化内置连接器
   ipcMain.handle(
     AGENT_IPC_CHANNELS.INITIALIZE_DEFAULT_CONNECTOR,
-    async (_, workspaceSlug: string, input: InitializeDefaultConnectorInput): Promise<InitializeDefaultConnectorResult> => {
+    async (event, workspaceSlug: string, input: InitializeDefaultConnectorInput): Promise<InitializeDefaultConnectorResult> => {
       const { initializeDefaultConnector } = await import('./lib/default-connector-initializer')
-      return initializeDefaultConnector(workspaceSlug, input)
+      const runId = input.runId ?? randomUUID()
+      return initializeDefaultConnector(workspaceSlug, { ...input, runId }, {
+        reportProgress: (payload: ConnectorInitProgressEvent) => {
+          if (event.sender.isDestroyed()) return
+          event.sender.send(AGENT_IPC_CHANNELS.CONNECTOR_INIT_PROGRESS, payload)
+        },
+      })
     }
   )
 
@@ -2433,7 +2464,7 @@ export function registerIpcHandlers(): void {
       if (!canDownloadSkill(detail.type, detail.permission)) {
         throw new Error(`该 Skill 需要审批授权才能下载，请通过 ${SKILLHUB_APPLY_URL} 进行申请。`)
       }
-      const skill: HtSkillHubSkill = { name: detail.skillName, description: detail.description, files: [] }
+      const skill: HtSkillHubSkill = { name: detail.skillName, description: detail.description, files: [], installed: false }
       return installHtSkillHubSkill({ workspaceSlug, skill, overwrite })
     }
   )
@@ -2697,13 +2728,42 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     AGENT_IPC_CHANNELS.SEND_MESSAGE,
     async (event, input: AgentSendInput): Promise<void> => {
+      const startedAt = Date.now()
+      console.log('[性能诊断][IPC][agent:send-message] 入口', {
+        sessionId: input.sessionId,
+        channelId: input.channelId,
+        modelId: input.modelId,
+        workspaceId: input.workspaceId,
+        userMessageLength: input.userMessage.length,
+        attachmentCount: input.attachments?.length ?? 0,
+        additionalDirectoryCount: input.additionalDirectories?.length ?? 0,
+        selectedMcpServerCount: input.selectedMcpServers?.length ?? 0,
+      })
       const session = getAgentSessionMeta(input.sessionId)
       if (session) {
+        const mirrorStartedAt = Date.now()
         await feishuBridgeManager.startSessionMirrorRun(session).catch((error) => {
           console.error('[飞书 Session 镜像] 流式卡片初始化失败:', error)
         })
+        console.log('[性能诊断][IPC][agent:send-message] 飞书镜像初始化完成', {
+          sessionId: input.sessionId,
+          durationMs: Date.now() - mirrorStartedAt,
+        })
       }
-      await runAgent(input, event.sender)
+      try {
+        await runAgent(input, event.sender)
+        console.log('[性能诊断][IPC][agent:send-message] 完成', {
+          sessionId: input.sessionId,
+          durationMs: Date.now() - startedAt,
+        })
+      } catch (error) {
+        console.error('[性能诊断][IPC][agent:send-message] 失败', {
+          sessionId: input.sessionId,
+          durationMs: Date.now() - startedAt,
+          error: error instanceof Error ? error.message : String(error),
+        })
+        throw error
+      }
     }
   )
 
@@ -2722,7 +2782,28 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     AGENT_IPC_CHANNELS.QUEUE_MESSAGE,
     async (event, input: import('@proma/shared').AgentQueueMessageInput): Promise<string> => {
-      return queueAgentMessage(input, event.sender)
+      const startedAt = Date.now()
+      console.log('[性能诊断][IPC][agent:queue-message] 入口', {
+        sessionId: input.sessionId,
+        userMessageLength: input.userMessage.length,
+        interrupt: input.interrupt === true,
+      })
+      try {
+        const messageId = await queueAgentMessage(input, event.sender)
+        console.log('[性能诊断][IPC][agent:queue-message] 完成', {
+          sessionId: input.sessionId,
+          durationMs: Date.now() - startedAt,
+          messageId,
+        })
+        return messageId
+      } catch (error) {
+        console.error('[性能诊断][IPC][agent:queue-message] 失败', {
+          sessionId: input.sessionId,
+          durationMs: Date.now() - startedAt,
+          error: error instanceof Error ? error.message : String(error),
+        })
+        throw error
+      }
     }
   )
 
@@ -4381,6 +4462,8 @@ ${validPaths.map((p) => `  <string>file://${escapeXml(p)}</string>`).join('\n')}
   ipcMain.handle(
     FEISHU_IPC_CHANNELS.START_BOT,
     async (_, botId: string) => {
+      // 持久化启用状态，确保下次应用启动时会自动连接
+      setFeishuBotEnabled(botId, true)
       await feishuBridgeManager.startBot(botId)
     }
   )
@@ -4390,6 +4473,8 @@ ${validPaths.map((p) => `  <string>file://${escapeXml(p)}</string>`).join('\n')}
     FEISHU_IPC_CHANNELS.STOP_BOT,
     async (_, botId: string) => {
       feishuBridgeManager.stopBot(botId)
+      // 持久化停用状态，避免下次应用启动时自动重连飞书
+      setFeishuBotEnabled(botId, false)
     }
   )
 
@@ -4626,6 +4711,8 @@ ${validPaths.map((p) => `  <string>file://${escapeXml(p)}</string>`).join('\n')}
   ipcMain.handle(
     DINGTALK_IPC_CHANNELS.START_BOT,
     async (_, botId: string) => {
+      // 持久化启用状态，确保下次应用启动时会自动连接
+      setDingTalkBotEnabled(botId, true)
       await dingtalkBridgeManager.startBot(botId)
     }
   )
@@ -4635,6 +4722,8 @@ ${validPaths.map((p) => `  <string>file://${escapeXml(p)}</string>`).join('\n')}
     DINGTALK_IPC_CHANNELS.STOP_BOT,
     async (_, botId: string) => {
       dingtalkBridgeManager.stopBot(botId)
+      // 持久化停用状态，避免下次应用启动时自动重连钉钉
+      setDingTalkBotEnabled(botId, false)
     }
   )
 

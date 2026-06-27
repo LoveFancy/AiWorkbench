@@ -6,5 +6,5 @@
   "status": "available",
   "version": "1.0.1",
   "sortOrder": 2,
-  "skillDirs": ["skill"]
+  "skillDirs": ["skills"]
 }

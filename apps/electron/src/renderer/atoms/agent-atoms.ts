@@ -8,7 +8,7 @@
 import { atom } from 'jotai'
 import { atomFamily, atomWithStorage } from 'jotai/utils'
 import type { AgentSessionMeta, AgentEvent, AgentWorkspace, AgentPendingFile, RetryAttempt, PromaPermissionMode, PermissionRequest, AskUserRequest, ExitPlanModeRequest, ThinkingConfig, AgentEffort, SDKMessage, UnstagedChangesResult, AgentExpertGroupInfo, ServerExpertGroupSummary } from '@proma/shared'
-import { PROMA_DEFAULT_PERMISSION_MODE } from '@proma/shared'
+import { PROMA_DEFAULT_PERMISSION_MODE, isExpertGroupFaulted } from '@proma/shared'
 import { calculateDockBadgeCount, countPendingRequests } from '@/lib/dock-badge-count'
 import { serverExpertGroupsAtom } from '@/experts/atoms/expert-remote'
 
@@ -261,9 +261,13 @@ function mergeExpertGroups(
       categories: server?.categories ?? local.categories ?? [],
       // 展示用接口版本（本地文件版本可能不准）；无服务端匹配时回退本地
       serverVersion: server?.version,
-      status: server && server.version !== local.sourcePluginVersion
-        ? ('remote_update_available' as const)
-        : local.status,
+      // 故障状态（缺技能/子专家/配置错误等）优先级最高，不应被「可更新」提示覆盖，
+      // 否则不可用专家团会被误标成 remote_update_available 而无法被「不可用」筛选识别
+      status: isExpertGroupFaulted(local.status)
+        ? local.status
+        : server && server.version !== local.sourcePluginVersion
+          ? ('remote_update_available' as const)
+          : local.status,
     })
   }
 
@@ -276,7 +280,7 @@ function mergeExpertGroups(
       description: server.description,
       introduction: server.introduction,
       mainRole: { name: server.mainRoleName, prompt: '' },
-      subagents: undefined,
+      subagents: server.subagents ?? [],
       subagentLabels: server.subagentLabels,
       builtinTools: server.builtinTools,
       skills: server.skills,
@@ -319,7 +323,7 @@ export const createExpertSessionAtom = atom(null, async (get, set, group: AgentE
     currentSession?.workspaceId ?? get(currentAgentWorkspaceIdAtom) ?? undefined,
     group.id,
     group.sourcePluginId,
-    group.introduction,
+    group.description || group.introduction,
   )
   set(agentSessionsAtom, (prev) => [session, ...prev.filter((item) => item.id !== session.id)])
   return session
@@ -358,6 +362,13 @@ export const agentPendingPromptAtom = atom<AgentPendingPrompt | null>(null)
  * 切换会话时保留各 session 自己的 pending files，与文字草稿语义一致
  */
 export const agentSessionPendingFilesAtom = atom<Map<string, AgentPendingFile[]>>(new Map())
+
+/**
+ * 每会话的 Sample Prompts（“试试这样问”）— sessionId → string[]
+ * 召唤专家团后写入，AgentView 在输入框上方渲染可点击条目，
+ * 点击后将对应 prompt 填入输入框（不自动发送）。
+ */
+export const agentSessionSamplePromptsAtom = atom<Map<string, string[]>>(new Map())
 
 /** 当前会话选择注入的 MCP 连接器 Map — sessionId → MCP server name 集合 */
 export const agentSelectedMcpServersAtom = atom<Map<string, string[]>>(new Map())

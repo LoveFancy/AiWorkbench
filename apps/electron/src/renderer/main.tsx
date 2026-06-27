@@ -76,8 +76,11 @@ import { GlobalShortcuts } from './components/shortcuts/GlobalShortcuts'
 import { TabSwitcher } from './components/tabs/TabSwitcher'
 import { htmlToMarkdown, markdownToHtml } from './lib/markdown-rich-text'
 import { getAgentAvailableChannelIds, resolveAgentSelectedModel, resolveSelectedModel } from './lib/model-selection'
+import { installRendererLongTaskDiagnostics } from './lib/performance-diagnostics'
 import './styles/globals.css'
 import 'katex/dist/katex.min.css'
+
+installRendererLongTaskDiagnostics()
 
 // ===== 窗口类型检测 =====
 const isQuickTaskWindow = new URLSearchParams(window.location.search).get('window') === 'quick-task'

@@ -452,9 +452,11 @@ export function AutomationFormView(): React.ReactElement | null {
 
       {/* 右栏：配置 sidebar */}
       <div className="w-[340px] flex-shrink-0 border-l border-border/50 flex flex-col bg-content-area">
-        <div className="flex items-center justify-between gap-2 px-4 py-4 flex-shrink-0">
+        {/* 顶栏留出拖拽区高度，避免操作按钮紧贴窗口控件 */}
+        <div className="h-6 flex-shrink-0 titlebar-drag-region" />
+        <div className="flex items-center justify-between gap-2 px-4 py-3 flex-shrink-0">
           <span className="text-sm font-semibold text-foreground">配置</span>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5 pr-4">
             <button
               type="button"
               onClick={() => { void handleRunNow() }}

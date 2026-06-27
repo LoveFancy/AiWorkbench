@@ -8,11 +8,13 @@ import type { AgentPluginInfo, WorkspaceMcpConfig } from '@proma/shared'
 import {
   activateDefaultEnabledSkillsForWorkspace,
   deleteWorkspaceSkill,
+  mergePresetConnectorEntries,
   getDefaultSkillInitialEnabled,
   getAllWorkspaceSkills,
   getWorkspaceCapabilitiesFromSources,
   installSkillZipToWorkspace,
 } from './agent-workspace-manager.ts'
+import type { ConnectorsConfig } from '@proma/shared'
 
 function pluginWithSkill(id: string, skillName: string, enabled = true, category: AgentPluginInfo['category'] = 'general'): AgentPluginInfo {
   return {
@@ -160,6 +162,86 @@ describe('Agent 工作区索引迁移', () => {
     } finally {
       rmSync(fixture.root, { recursive: true, force: true })
     }
+  })
+})
+
+describe('Agent 工作区预设连接器同步', () => {
+  test('已有连接器保留启用状态，同时更新预设元数据', () => {
+    const config: ConnectorsConfig = {
+      version: '1.0',
+      connectors: {
+        'feishu-cli': {
+          type: 'cli',
+          enabled: true,
+          source: 'preset',
+          displayName: '飞书 CLI',
+          description: '旧描述',
+          category: '办公协同',
+          status: 'coming-soon',
+          version: '1.0.0',
+          sortOrder: 9,
+        },
+        'hi-agent': {
+          type: 'cli',
+          enabled: false,
+          source: 'preset',
+          displayName: 'taiwei智能体',
+          description: '旧描述',
+          category: '办公协同',
+          status: 'coming-soon',
+          version: '1.0.1',
+          sortOrder: 3,
+        },
+      },
+    }
+
+    const changed = mergePresetConnectorEntries(config, {
+      'feishu-cli': {
+        type: 'cli',
+        enabled: false,
+        source: 'preset',
+        displayName: '飞书 CLI',
+        description: '飞书命令行工具',
+        category: '办公协同',
+        status: 'available',
+        version: '1.0.1',
+        sortOrder: 2,
+      },
+      'hi-agent': {
+        type: 'cli',
+        enabled: false,
+        source: 'preset',
+        displayName: '泰为 hiagent',
+        description: '泰为 hiagent 大模型应用平台，支持工作区查询、知识库召回和智能体对话',
+        category: '办公协同',
+        status: 'available',
+        version: '1.0.2',
+        sortOrder: 3,
+      },
+    })
+
+    expect(changed).toBe(true)
+    expect(config.connectors['feishu-cli']).toMatchObject({
+      enabled: true,
+      status: 'available',
+      description: '飞书命令行工具',
+      version: '1.0.1',
+      sortOrder: 2,
+    })
+    expect(config.connectors['hi-agent']).toMatchObject({
+      enabled: false,
+      displayName: '泰为 hiagent',
+      description: '泰为 hiagent 大模型应用平台，支持工作区查询、知识库召回和智能体对话',
+      status: 'available',
+      version: '1.0.2',
+    })
+  })
+
+  test('启动同步不会跳过已有 connectors 目录的工作区', () => {
+    const source = readFileSync(join(import.meta.dir, 'agent-workspace-manager.ts'), 'utf-8')
+
+    expect(source).toContain('syncDefaultConnectorsToWorkspace(workspace.slug)')
+    expect(source).not.toContain('if (!existsSync(connectorsDir))')
   })
 })
 

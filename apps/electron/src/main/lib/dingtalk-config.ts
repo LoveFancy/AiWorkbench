@@ -167,6 +167,17 @@ export function removeDingTalkBot(botId: string): boolean {
   return true
 }
 
+/** 设置某个 Bot 的启用状态（持久化），返回更新后的 Bot 配置 */
+export function setDingTalkBotEnabled(botId: string, enabled: boolean): DingTalkBotConfig {
+  const config = readRawConfig()
+  const bot = config.bots.find((b) => b.id === botId)
+  if (!bot) throw new Error(`Bot ${botId} 不存在`)
+  bot.enabled = enabled
+  writeMultiConfig(config)
+  console.log(`[钉钉配置] Bot "${bot.name}" enabled=${enabled}`)
+  return bot
+}
+
 /** 获取某个 Bot 解密后的 Client Secret */
 export function getDecryptedBotClientSecret(botId: string): string {
   const bot = getDingTalkBotById(botId)

@@ -64,6 +64,7 @@ import type {
   GetTaskOutputResult,
   StopTaskInput,
   WorkspaceMcpConfig,
+  ConnectorInitProgressEvent,
   InitializeDefaultConnectorInput,
   InitializeDefaultConnectorResult,
   FeishuCliAuthState,
@@ -174,8 +175,8 @@ import type {
 import type { LocalApiPublicSettings, LocalApiSettings, LocalApiTokenResetResult } from '../main/lib/local-api-types'
 import { QUICK_TASK_IPC_CHANNELS, TRAY_IPC_CHANNELS, VOICE_DICTATION_IPC_CHANNELS } from '../types'
 import { createAuthPreloadApi } from '../auth'
-import { createPlatformModelsPreloadApi } from '../platform-models/preload-bridge'
-import type { PlatformModelsElectronAPI } from '../platform-models/preload-bridge'
+import { createPlatformModelsPreloadApi } from './platform-models'
+import type { PlatformModelsElectronAPI } from './platform-models'
 
 /**
  * 暴露给渲染进程的 API 接口定义
@@ -197,6 +198,13 @@ export interface ElectronAPI {
    * @returns 运行时状态，包含 Bun、Git 等信息
    */
   getRuntimeStatus: () => Promise<RuntimeStatus | null>
+
+  /**
+   * 订阅后台运行时检测完成的推送
+   * @param callback 收到最新运行时状态时回调
+   * @returns 取消订阅函数
+   */
+  onRuntimeStatusUpdated: (callback: (status: RuntimeStatus) => void) => () => void
 
   /**
    * 重新初始化运行时状态（重新跑 Node / Bun / Git / Shell 检测）
@@ -698,6 +706,8 @@ export interface ElectronAPI {
 
   /** 初始化内置连接器 */
   initializeDefaultConnector: (workspaceSlug: string, input: InitializeDefaultConnectorInput) => Promise<InitializeDefaultConnectorResult>
+  /** 订阅内置连接器初始化进度 */
+  onConnectorInitProgress: (callback: (event: ConnectorInitProgressEvent) => void) => () => void
   /** 获取飞书 CLI 授权状态 */
   getFeishuCliAuthStatus: () => Promise<FeishuCliAuthState>
   /** 注册飞书 CLI 应用（SDK registerApp，阻塞直至用户扫码完成） */
@@ -723,6 +733,9 @@ export interface ElectronAPI {
   registerUserConnector: (workspaceSlug: string, name: string, entry: import('@proma/shared').McpServerEntry, displayName?: string) => Promise<void>
   /** 注销用户创建的连接器（删除目录 + connectors.json 条目 + mcp.json 条目） */
   unregisterUserConnector: (workspaceSlug: string, name: string) => Promise<void>
+
+  /** 同步预置连接器到指定工作区（补齐缺失的 skill 文件等） */
+  syncDefaultConnectors: (workspaceSlug: string) => Promise<void>
 
   /** 获取工作区 Skill 列表（含活跃和不活跃） */
   getWorkspaceSkills: (workspaceSlug: string) => Promise<SkillMeta[]>
@@ -1331,6 +1344,12 @@ const electronAPI: ElectronAPI = {
 
   reinitRuntime: () => {
     return ipcRenderer.invoke(IPC_CHANNELS.REINIT_RUNTIME)
+  },
+
+  onRuntimeStatusUpdated: (callback: (status: RuntimeStatus) => void) => {
+    const listener = (_: unknown, status: RuntimeStatus): void => callback(status)
+    ipcRenderer.on(IPC_CHANNELS.RUNTIME_STATUS_UPDATED, listener)
+    return () => { ipcRenderer.removeListener(IPC_CHANNELS.RUNTIME_STATUS_UPDATED, listener) }
   },
 
   getGitRepoStatus: (dirPath: string) => {
@@ -2017,6 +2036,12 @@ const electronAPI: ElectronAPI = {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.INITIALIZE_DEFAULT_CONNECTOR, workspaceSlug, input)
   },
 
+  onConnectorInitProgress: (callback: (event: ConnectorInitProgressEvent) => void) => {
+    const listener = (_: unknown, event: ConnectorInitProgressEvent): void => callback(event)
+    ipcRenderer.on(AGENT_IPC_CHANNELS.CONNECTOR_INIT_PROGRESS, listener)
+    return () => { ipcRenderer.removeListener(AGENT_IPC_CHANNELS.CONNECTOR_INIT_PROGRESS, listener) }
+  },
+
   getFeishuCliAuthStatus: () => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_FEISHU_CLI_AUTH_STATUS)
   },
@@ -2062,6 +2087,10 @@ const electronAPI: ElectronAPI = {
 
   unregisterUserConnector: (workspaceSlug: string, name: string) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.UNREGISTER_USER_CONNECTOR, workspaceSlug, name)
+  },
+
+  syncDefaultConnectors: (workspaceSlug: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.SYNC_DEFAULT_CONNECTORS, workspaceSlug)
   },
 
   getWorkspaceSkills: (workspaceSlug: string) => {

@@ -179,7 +179,7 @@ export async function sdkRunSingleAttempt(
   queryStartedAt: number,
 ): Promise<SingleRunResult> {
   const _diagLoopStart = Date.now()
-  const _diagL = (tag: string) => console.log(`[DIAG][SDK Runner] [${tag}] sessionId=${ctx.sessionId}, attempt=${attempt}, elapsed=${Date.now() - _diagLoopStart}ms, ts=${Date.now()}`)
+  const _diagL = (tag: string) => console.debug(`[DIAG][SDK Runner] [${tag}] sessionId=${ctx.sessionId}, attempt=${attempt}, elapsed=${Date.now() - _diagLoopStart}ms, ts=${Date.now()}`)
   _diagL('sdkRunSingleAttempt 入口')
 
   _diagL('调用 deps.query() 获取 queryIterable')

@@ -553,6 +553,27 @@ export function ensurePluginManifest(workspaceSlug: string, workspaceName: strin
   console.log(`[Agent 工作区] 已创建 plugin manifest: ${workspaceSlug}`)
 }
 
+/** 确保 CLI 连接器目录包含 .claude-plugin/plugin.json，SDK plugin 机制需要此文件发现 skills/ 子目录 */
+export function ensureConnectorPluginManifest(connectorDir: string, connectorId: string): void {
+  const pluginDir = join(connectorDir, '.claude-plugin')
+  const manifestPath = join(pluginDir, 'plugin.json')
+
+  if (existsSync(manifestPath)) return
+
+  if (!existsSync(pluginDir)) {
+    mkdirSync(pluginDir, { recursive: true })
+  }
+
+  const manifest = {
+    name: `connector-${connectorId}`,
+    version: '1.0.0',
+    description: `WorkMate 预置连接器: ${connectorId}`,
+  }
+
+  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf-8')
+  console.log(`[Agent 工作区] 已创建连接器 plugin manifest: ${connectorId}`)
+}
+
 // ===== MCP 配置管理 =====
 
 export function getWorkspaceMcpConfig(workspaceSlug: string): WorkspaceMcpConfig {
@@ -807,22 +828,14 @@ export function migrateMcpJsonToConnectors(workspaceSlug: string): void {
  * 2. 更新 connectors.json（添加新预置连接器，默认 disabled）
  */
 export function syncDefaultConnectorsToWorkspace(workspaceSlug: string): void {
+  console.log(`[Agent 工作区] 🔄 开始同步预置连接器到工作区: ${workspaceSlug}`)
   const defaultDir = getDefaultConnectorsDir()
   const workspaceConnectorsDir = getConnectorsDir(workspaceSlug)
-
-  // 如果工作区连接器目录已存在，跳过重复同步
-  if (existsSync(workspaceConnectorsDir)) {
-    try {
-      const entries = readdirSync(workspaceConnectorsDir, { withFileTypes: true })
-      if (entries.some((e) => e.isDirectory())) return
-    } catch {
-      // 目录可能尚不存在，继续执行
-    }
-  }
 
   // 1. 复制预置连接器文件
   try {
     if (!existsSync(defaultDir)) return
+    if (!existsSync(workspaceConnectorsDir)) mkdirSync(workspaceConnectorsDir, { recursive: true })
 
     const entries = readdirSync(defaultDir, { withFileTypes: true })
     for (const entry of entries) {
@@ -839,7 +852,8 @@ export function syncDefaultConnectorsToWorkspace(workspaceSlug: string): void {
         })
         console.log(`[Agent 工作区] 已同步预置连接器: ${entry.name}`)
       } else {
-        // 目录已存在：仅补齐缺失文件，不覆盖用户已自定义的 connector.json
+        // 目录已存在：补齐缺失文件，不覆盖用户已自定义的 connector.json
+        copyMissingConnectorFiles(source, target)
         const srcMeta = join(source, 'connector.json')
         const dstMeta = join(target, 'connector.json')
         if (!existsSync(dstMeta) && existsSync(srcMeta)) {
@@ -854,50 +868,66 @@ export function syncDefaultConnectorsToWorkspace(workspaceSlug: string): void {
   // 2. 更新 connectors.json
   const config = getWorkspaceConnectorsConfig(workspaceSlug)
   const presetConnectors = getDefaultConnectorEntries()
-  let changed = false
-  for (const [name, entry] of Object.entries(presetConnectors)) {
-    const existing = config.connectors[name]
-    if (existing) {
-      // 已存在：补齐元数据字段（保留用户的 enabled 状态）
-      const preservedEnabled = existing.enabled
-      // 只更新非状态字段，不覆盖 enabled
-      existing.type = entry.type
-      if (entry.displayName) existing.displayName = entry.displayName
-      if (entry.description) existing.description = entry.description
-      if (entry.category) existing.category = entry.category
-      if (entry.status) existing.status = entry.status
-      if (entry.serverName) existing.serverName = entry.serverName
-      if (entry.version) existing.version = entry.version
-      if (entry.sortOrder !== undefined) existing.sortOrder = entry.sortOrder
-      existing.enabled = preservedEnabled
-      changed = true
-      continue
-    }
-    config.connectors[name] = entry
-    changed = true
-    console.log(`[Agent 工作区] 添加预置连接器: ${name}`)
-  }
+  const changed = mergePresetConnectorEntries(config, presetConnectors)
 
   if (changed) {
     saveWorkspaceConnectorsConfig(workspaceSlug, config)
   }
+
+  // 3. 为 CLI 连接器生成 .claude-plugin/plugin.json（SDK plugin 机制需要此文件发现 skills）
+  for (const [name, connector] of Object.entries(config.connectors)) {
+    if (connector.type !== 'cli') continue
+    ensureConnectorPluginManifest(join(workspaceConnectorsDir, name), name)
+  }
+}
+
+export function mergePresetConnectorEntries(
+  config: ConnectorsConfig,
+  presetConnectors: Record<string, ConnectorEntry>,
+): boolean {
+  let changed = false
+
+  for (const [name, entry] of Object.entries(presetConnectors)) {
+    const existing = config.connectors[name]
+    if (!existing) {
+      config.connectors[name] = entry
+      changed = true
+      console.log(`[Agent 工作区] 添加预置连接器: ${name}`)
+      continue
+    }
+
+    // 已存在：补齐元数据字段，保留用户的 enabled 状态。
+    const preservedEnabled = existing.enabled
+    const before = JSON.stringify(existing)
+
+    existing.type = entry.type
+    if (entry.displayName) existing.displayName = entry.displayName
+    if (entry.description) existing.description = entry.description
+    if (entry.category) existing.category = entry.category
+    if (entry.status) existing.status = entry.status
+    if (entry.serverName) existing.serverName = entry.serverName
+    if (entry.version) existing.version = entry.version
+    if (entry.sortOrder !== undefined) existing.sortOrder = entry.sortOrder
+    if (entry.skillDirs) existing.skillDirs = entry.skillDirs
+    existing.enabled = preservedEnabled
+
+    if (JSON.stringify(existing) !== before) changed = true
+  }
+
+  return changed
 }
 
 /**
  * 启动时将预置连接器同步到所有已有工作区。
  *
- * 只同步不存在 connectors/ 目录的工作区（新建工作区已在 createAgentWorkspace 中同步）。
+ * 只补齐缺失的连接器文件，并刷新 connectors.json 中的预设元数据；保留用户启用状态。
  */
 export function syncDefaultConnectorsToAllWorkspaces(): void {
   const index = readIndex()
   for (const workspace of index.workspaces) {
     try {
-      const connectorsDir = getConnectorsDir(workspace.slug)
-      // 如果 connectors 目录不存在或为空，执行初始同步
-      if (!existsSync(connectorsDir)) {
-        syncDefaultConnectorsToWorkspace(workspace.slug)
-        console.log(`[Agent 工作区] 为已有工作区同步预置连接器: ${workspace.slug}`)
-      }
+      syncDefaultConnectorsToWorkspace(workspace.slug)
+      console.log(`[Agent 工作区] 已同步预置连接器到工作区: ${workspace.slug}`)
     } catch (err) {
       console.warn(`[Agent 工作区] 同步预置连接器到 ${workspace.slug} 失败:`, err)
     }
@@ -942,7 +972,8 @@ function getDefaultConnectorEntries(): Record<string, ConnectorEntry> {
       if (raw.serverName) entry.serverName = raw.serverName
       if (raw.version) entry.version = raw.version
       if (raw.sortOrder !== undefined) entry.sortOrder = raw.sortOrder
-      // skillDirs / disabledTools 不写入 connectors.json，
+      if (raw.type === 'cli' && Array.isArray(raw.skillDirs)) entry.skillDirs = raw.skillDirs
+      // disabledTools 不写入 connectors.json，
       // 由运行时从 connectors/{name}/connector.json 读取
 
       // 以 connector.json 中的 serverName 为连接器 ID（兜底用目录名）
@@ -954,6 +985,24 @@ function getDefaultConnectorEntries(): Record<string, ConnectorEntry> {
   }
 
   return entries
+}
+
+function copyMissingConnectorFiles(source: string, target: string): void {
+  const blocklist = new Set(['.git', 'node_modules', '__pycache__', '.DS_Store'])
+  for (const entry of readdirSync(source, { withFileTypes: true })) {
+    if (blocklist.has(entry.name)) continue
+    if (entry.name === 'connector.json') continue
+    const srcPath = join(source, entry.name)
+    const dstPath = join(target, entry.name)
+    if (existsSync(dstPath)) {
+      if (entry.isDirectory()) copyMissingConnectorFiles(srcPath, dstPath)
+      continue
+    }
+    cpSync(srcPath, dstPath, {
+      recursive: entry.isDirectory(),
+      filter: (src) => !blocklist.has(basename(src)),
+    })
+  }
 }
 
 // ===== Skill 目录扫描 =====

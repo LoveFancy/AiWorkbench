@@ -30,13 +30,13 @@ import {
 } from '@/components/ui/popover'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Switch } from '@/components/ui/switch'
-import { agentExpertGroupsAtom, loadAgentExpertGroupsAtom, workspaceCapabilitiesVersionAtom } from '@/atoms/agent-atoms'
+import { agentExpertGroupsAtom, loadAgentExpertGroupsAtom, workspaceCapabilitiesVersionAtom, agentSelectedMcpServersAtom } from '@/atoms/agent-atoms'
 import { loadRemoteExpertDataAtom } from '@/experts/atoms/expert-remote'
 import { useProjectActions } from '@/hooks/useProjectActions'
 import { ExpertPageView } from '@/experts/views/ExpertPageView'
 import { ExpertImportButton } from '@/experts/shared/ExpertImportDropdown'
 import { ExpertFilterPills, type FilterTag } from '@/experts/shared/ExpertFilterPills'
-import type { AgentPluginInfo, DefaultConnectorInitStep, McpServerEntry, SkillMeta } from '@proma/shared'
+import type { AgentPluginInfo, ConnectorInitProgressEvent, DefaultConnectorInitStep, McpServerEntry, SkillMeta } from '@proma/shared'
 import { isVisibleInSkillsView } from '@proma/shared'
 import { getCapabilityTabs, type CapabilityTab } from './capability-tabs'
 import { useAgentSkillsData } from './useAgentSkillsData'
@@ -56,6 +56,7 @@ import {
 } from './default-connectors'
 
 const HUATAI_EMAIL_DOMAIN = 'htsc.com'
+const MCP_TRANSPORT_LABELS: Record<string, string> = { stdio: 'STDIO', http: 'HTTP', sse: 'SSE' }
 
 function getHuataiEmailLocalPart(emailAddress: string): string {
   const trimmed = emailAddress.trim()
@@ -63,6 +64,16 @@ function getHuataiEmailLocalPart(emailAddress: string): string {
     ? trimmed.slice(0, -(`@${HUATAI_EMAIL_DOMAIN}`.length))
     : trimmed
   return withoutDomain.split('@')[0] ?? ''
+}
+
+function getMcpTransportLabel(type: string | undefined): string {
+  return type ? MCP_TRANSPORT_LABELS[type] ?? type : '未知'
+}
+
+function getConnectorKindLabel(connector: PresetConnectorDefinition, server: McpServerEntry | null): string {
+  if (connector.connectorType === 'cli') return 'CLI'
+  if (server) return `MCP · ${getMcpTransportLabel(server.type)}`
+  return 'MCP'
 }
 
 interface AgentSkillsViewProps {
@@ -75,7 +86,21 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
   const loadExpertGroups = useSetAtom(loadAgentExpertGroupsAtom)
   const loadRemoteExpertData = useSetAtom(loadRemoteExpertDataAtom)
   const bumpCapabilities = useSetAtom(workspaceCapabilitiesVersionAtom)
+  const setSelectedMcpServersMap = useSetAtom(agentSelectedMcpServersAtom)
   const { workspaces, currentWorkspaceId, selectProject } = useProjectActions()
+
+  /** 将连接器 ID 加入到所有会话的 MCP 白名单中 */
+  const addConnectorToSelectedMcpServers = React.useCallback((connectorId: string): void => {
+    setSelectedMcpServersMap((prev) => {
+      const map = new Map(prev)
+      for (const [sid, names] of map) {
+        if (!names.includes(connectorId)) {
+          map.set(sid, [...names, connectorId])
+        }
+      }
+      return map
+    })
+  }, [setSelectedMcpServersMap])
 
   const [tab, setTab] = React.useState<CapabilityTab>(initialTab)
   const [skillView, setSkillView] = React.useState<'market' | 'installed'>('market')
@@ -373,11 +398,11 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background">
+      {/* 可拖拽区域：绝对定位 drag strip 置于交互层后方，避免与 Popover/DropdownMenu 的 pointerdown 冲突 */}
+      <div className="absolute top-0 left-0 right-0 h-[50px] titlebar-drag-region z-0" />
+
       {/* 标题栏 + 工作区切换 */}
-      {/* 不加 titlebar-drag-region：与 DropdownMenu 嵌套时 drag/no-drag 会让 Radix 拿不到
-          pointerdown，下拉打不开。窗口拖拽由 AppShell 顶部 0–50px 的全局 drag 层兜底。
-          pt-14 让按钮整体位于全局 drag 层（0–50px, z-50）下方，避免被吃掉点击。 */}
-      <div className="titlebar-no-drag mx-auto flex w-full max-w-6xl shrink-0 items-center justify-between px-8 pt-14 pb-4">
+      <div className="titlebar-no-drag relative z-10 mx-auto flex w-full max-w-6xl shrink-0 items-center justify-between px-8 pt-14 pb-4">
         <div className="flex items-center gap-2.5">
           <Blocks className="size-6 text-foreground/70" />
           <h1 className="text-2xl font-semibold text-foreground">Agent 技能</h1>
@@ -603,8 +628,8 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
                       onUnbindFeishu={handleUnbindFeishu}
                       unbindingFeishu={unbindingFeishu}
                       onRequestDelete={() => !isPreset && connector.serverName && setPendingDeleteMcpName(connector.serverName)}
-                      isBuiltin={(connector as any).isBuiltin}
-                      lastTestResult={(connector as any).lastTestResult}
+                      isBuiltin={connector.isBuiltin}
+                      lastTestResult={connector.lastTestResult}
                     />
                   )
                 })}
@@ -682,7 +707,11 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
         server={editingMcp}
         workspaceSlug={data.workspaceSlug}
         onOpenChange={(open) => { setMcpSheetOpen(open); if (!open) bumpCapabilities((v) => v + 1) }}
-        onSaved={() => setMcpSheetOpen(false)}
+        onSaved={(serverName) => {
+          setMcpSheetOpen(false)
+          bumpCapabilities((v) => v + 1)
+          addConnectorToSelectedMcpServers(serverName)
+        }}
         onChanged={() => bumpCapabilities((v) => v + 1)}
       />
 
@@ -743,6 +772,7 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
           setActiveDefaultConnector(null)
           void loadConnectorEnabledMap()
           bumpCapabilities((v) => v + 1)
+          addConnectorToSelectedMcpServers('huatai-email')
         }}
       />
 
@@ -752,6 +782,18 @@ export function AgentSkillsView({ initialTab = 'experts' }: AgentSkillsViewProps
         onSaved={() => {
           setActiveDefaultConnector(null)
           setFeishuCliConnected(true)
+          void loadConnectorEnabledMap()
+          bumpCapabilities((v) => v + 1)
+        }}
+      />
+
+      <HiAgentConnectorDialog
+        open={activeDefaultConnector === 'hi-agent'}
+        workspaceSlug={data.workspaceSlug}
+        isEnabled={connectorEnabledMap['hi-agent'] ?? false}
+        onOpenChange={(open) => setActiveDefaultConnector(open ? 'hi-agent' : null)}
+        onSaved={() => {
+          setActiveDefaultConnector(null)
           void loadConnectorEnabledMap()
           bumpCapabilities((v) => v + 1)
         }}
@@ -1044,7 +1086,7 @@ function ConnectorCard({
   const isComingSoon = connector.status === 'coming-soon'
   const isInitialized = Boolean(server)
   // MCP 类型：MCP server 存在才算已配置；CLI 类型：凭据连接才算已配置
-  const isConfigured = isCli ? isFeishuConnected : isMcp ? isInitialized : false
+  const isConfigured = isCli ? (connector.id === 'feishu-cli' ? isFeishuConnected : enabled) : isMcp ? isInitialized : false
   const isUserConnector = connector.source === 'user'
   const isPresetConnector = connector.source === 'preset'
 
@@ -1078,7 +1120,7 @@ function ConnectorCard({
       className={cn(
         'group relative flex h-full flex-col gap-3 rounded-xl border border-border/60 bg-content-area p-4 text-left transition-all cursor-pointer',
         'hover:border-border hover:shadow-sm focus:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-        isComingSoon ? 'cursor-not-allowed opacity-55' : !enabled && 'opacity-55',
+        isComingSoon ? 'cursor-not-allowed opacity-55' : isConfigured && !enabled && 'opacity-55',
       )}
     >
       <div className="flex items-start gap-3">
@@ -1094,7 +1136,7 @@ function ConnectorCard({
             <span className={cn(
               'shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium',
               isComingSoon ? 'bg-muted text-muted-foreground'
-                : isConfigured ? 'bg-green-500/10 text-green-600 dark:text-green-400'
+                : isConfigured ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
                   : 'bg-muted text-muted-foreground',
             )}>
               {isComingSoon ? '敬请期待' : isConfigured ? '已连接' : '待配置'}
@@ -1104,22 +1146,18 @@ function ConnectorCard({
             {connector.category}
           </div>
         </div>
-        {!isComingSoon && (
-          <Switch
-            checked={enabled}
-            onCheckedChange={onToggle}
-            onClick={(e) => e.stopPropagation()}
-            className="shrink-0"
-          />
-        )}
       </div>
-      <p className="line-clamp-2 min-h-[40px] text-[13px] leading-6 text-muted-foreground">
-        {isInitialized && server
-          ? `${server.type.toUpperCase()}: ${server.type === 'stdio' ? server.command : server.url}`
-          : connector.description ?? '暂无描述'}
+      <p className="line-clamp-3 text-[12px] leading-relaxed text-muted-foreground">
+        {connector.description}
       </p>
 
       <div className="mt-auto flex items-center gap-2">
+        <span className={cn(
+          'shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium',
+          isCli ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+        )}>
+          {getConnectorKindLabel(connector, server)}
+        </span>
         {connectorSourceLabel()}
 
         {isConfigured && lastTestResult && (
@@ -1137,6 +1175,14 @@ function ConnectorCard({
         )}
 
         <div className="ml-auto flex items-center gap-1">
+          {isConfigured && !isComingSoon && (
+            <Switch
+              checked={enabled}
+              onCheckedChange={onToggle}
+              onClick={(e) => e.stopPropagation()}
+              className="shrink-0 scale-75"
+            />
+          )}
           {connector.id === 'feishu-cli' && isCli && isConfigured && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -1178,6 +1224,28 @@ function ConnectorCard({
   )
 }
 
+function createConnectorInitRunId(connectorId: string): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `${connectorId}-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+function useConnectorInitProgress(
+  workspaceSlug: string,
+  connectorId: string,
+  setInitSteps: React.Dispatch<React.SetStateAction<DefaultConnectorInitStep[]>>,
+): () => { runId: string; unsubscribe: () => void } {
+  return React.useCallback(() => {
+    const runId = createConnectorInitRunId(connectorId)
+    const unsubscribe = window.electronAPI.onConnectorInitProgress((event: ConnectorInitProgressEvent) => {
+      if (event.workspaceSlug !== workspaceSlug || event.connectorId !== connectorId || event.runId !== runId) return
+      setInitSteps(event.steps)
+    })
+    return { runId, unsubscribe }
+  }, [connectorId, setInitSteps, workspaceSlug])
+}
+
 function HuataiEmailConnectorDialog({
   open,
   workspaceSlug,
@@ -1198,6 +1266,7 @@ function HuataiEmailConnectorDialog({
   const [initSteps, setInitSteps] = React.useState<DefaultConnectorInitStep[]>([])
   const isInitialized = Boolean(server)
   const currentEmail = server?.env?.MCP_EMAIL_SERVER_EMAIL_ADDRESS ?? ''
+  const beginConnectorInitProgress = useConnectorInitProgress(workspaceSlug, 'huatai-email', setInitSteps)
 
   React.useEffect(() => {
     if (!open) {
@@ -1216,17 +1285,19 @@ function HuataiEmailConnectorDialog({
 
   const handleSave = async (): Promise<void> => {
     if (!canSave || saving) return
+    const { runId, unsubscribe } = beginConnectorInitProgress()
     setSaving(true)
     setInitSteps([
-      { id: 'check-python', label: '检查环境', status: 'running' },
-      { id: 'check-package', label: '检查 mcp-email-server', status: 'pending' },
-      { id: 'install-package', label: '安装 mcp-email-server', status: 'pending' },
-      { id: 'write-config', label: '写入 MCP 配置', status: 'pending' },
-      { id: 'self-check', label: '自检连接器', status: 'pending' },
+      { id: 'check-python', label: '检查 Python 环境', status: 'running' },
+      { id: 'check-package', label: '检查邮箱连接环境', status: 'pending' },
+      { id: 'install-package', label: '准备邮箱连接能力', status: 'pending' },
+      { id: 'write-config', label: '启用邮箱能力', status: 'pending' },
+      { id: 'self-check', label: '自检邮箱连接', status: 'pending' },
     ])
     try {
       const result = await window.electronAPI.initializeDefaultConnector(workspaceSlug, {
         connectorId: 'huatai-email',
+        runId,
         emailAddress: fullEmailAddress,
         password,
       })
@@ -1242,6 +1313,7 @@ function HuataiEmailConnectorDialog({
       console.error('[连接器] 初始化华泰邮箱失败:', error)
       toast.error('初始化华泰邮箱失败')
     } finally {
+      unsubscribe()
       setSaving(false)
     }
   }
@@ -1250,7 +1322,7 @@ function HuataiEmailConnectorDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[min(calc(100vw-48px),560px)] max-w-none overflow-hidden rounded-2xl border-0 p-8 shadow-2xl">
         <DialogTitle className="text-2xl font-semibold tracking-normal">邮箱绑定</DialogTitle>
-        <DialogDescription className="sr-only">绑定华泰邮箱并写入当前工作区 MCP 配置。</DialogDescription>
+        <DialogDescription className="sr-only">绑定华泰邮箱，启用华泰邮箱邮件读取能力。</DialogDescription>
 
         <div className="mt-2 flex items-start gap-4">
           <div className="flex size-16 shrink-0 items-center justify-center rounded-2xl bg-amber-500/12 text-amber-500">
@@ -1259,7 +1331,7 @@ function HuataiEmailConnectorDialog({
           <div className="min-w-0 space-y-2">
             <div className="text-[15px] font-medium text-foreground">绑定华泰邮箱</div>
             <p className="text-[13px] leading-relaxed text-muted-foreground">
-              绑定时会检查环境、安装 <span className="font-mono text-foreground/70">mcp-email-server</span>，并写入当前工作区的 <span className="font-mono text-foreground/70">email</span> MCP 配置。默认只启用 IMAP 读取能力。
+              绑定后 WorkMate 可以读取你的华泰邮箱邮件，帮助你检索邮件内容、整理信息和处理办公协同任务。
             </p>
           </div>
         </div>
@@ -1268,23 +1340,23 @@ function HuataiEmailConnectorDialog({
           <div className="mt-6 space-y-3 rounded-xl bg-muted/45 p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-sm font-medium text-foreground">当前 MCP 配置</div>
-                <div className="mt-1 text-xs text-muted-foreground">已挂载为 <span className="font-mono text-foreground/70">email</span>，不会在连接器列表中重复展示。</div>
+                <div className="text-sm font-medium text-foreground">当前邮箱能力</div>
+                <div className="mt-1 text-xs text-muted-foreground">已为当前工作区启用华泰邮箱读取能力，不会在连接器列表中重复展示。</div>
               </div>
               <Button type="button" variant="outline" size="sm" onClick={() => setEditing(true)}>
                 重新绑定
               </Button>
             </div>
-            <div className="grid gap-2 text-xs text-muted-foreground">
+            <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
               <ConnectorDetailRow label="状态" value={server.enabled ? '已启用' : '未启用'} />
               <ConnectorDetailRow label="类型" value={server.type} />
-              <ConnectorDetailRow label="命令" value={server.type === 'stdio' ? server.command : server.url} mono />
               <ConnectorDetailRow label="账号" value={currentEmail || '未配置'} mono />
               <ConnectorDetailRow label="IMAP" value={`${server.env?.MCP_EMAIL_SERVER_IMAP_HOST ?? '未配置'}:${server.env?.MCP_EMAIL_SERVER_IMAP_PORT ?? ''}`} mono />
               {server.lastTestResult && (
                 <ConnectorDetailRow
                   label="最近自检"
                   value={`${server.lastTestResult.success ? '成功' : '失败'} · ${server.lastTestResult.message}`}
+                  wide
                 />
               )}
             </div>
@@ -1312,11 +1384,17 @@ function HuataiEmailConnectorDialog({
               <input
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && canSave && !saving) {
+                    event.preventDefault()
+                    void handleSave()
+                  }
+                }}
                 placeholder="请输入华泰邮箱密码"
                 type="password"
                 className="h-11 w-full rounded-lg border border-border/80 bg-content-area px-3 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary/60 focus:ring-2 focus:ring-primary/15"
               />
-              <p className="text-xs text-muted-foreground">密码只保存在本地 MCP 配置中，不会上传到云端。</p>
+              <p className="text-xs text-muted-foreground">密码只保存在本机，用于连接华泰邮箱，不会上传到云端。</p>
             </div>
             <Button
               type="button"
@@ -1325,41 +1403,250 @@ function HuataiEmailConnectorDialog({
               disabled={!canSave || saving}
               onClick={() => void handleSave()}
             >
-              {saving ? '保存中...' : isInitialized ? '保存并覆盖配置' : '完成连接'}
+              {saving ? '保存中...' : isInitialized ? '保存并覆盖配置' : '开始连接'}
             </Button>
           </div>
         )}
 
-        {initSteps.length > 0 && (
-          <div className="mt-5 min-w-0 max-h-[240px] overflow-y-auto space-y-2 rounded-xl bg-muted/45 p-3">
-            {initSteps.map((step) => (
-              <div key={step.id} className="flex min-w-0 items-start gap-2 text-xs text-muted-foreground">
-                {step.status === 'running' ? (
-                  <Loader2 size={14} className="shrink-0 animate-spin text-primary mt-0.5" />
-                ) : step.status === 'success' || step.status === 'skipped' ? (
-                  <Check size={14} className="shrink-0 text-emerald-500 mt-0.5" />
-                ) : step.status === 'error' ? (
-                  <XCircle size={14} className="shrink-0 text-destructive mt-0.5" />
-                ) : (
-                  <span className="size-3.5 shrink-0 rounded-full border border-border mt-0.5" />
-                )}
-                <span className="shrink-0 font-medium text-foreground/80">{step.label}</span>
-                {step.message && <span className="min-w-0 break-all">{step.message}</span>}
-              </div>
-            ))}
-          </div>
-        )}
+        {initSteps.length > 0 && <ConnectorInitStepList steps={initSteps} />}
 
       </DialogContent>
     </Dialog>
   )
 }
 
-function ConnectorDetailRow({ label, value, mono = false }: { label: string; value: string | undefined; mono?: boolean }): React.ReactElement {
+function HiAgentConnectorDialog({
+  open,
+  workspaceSlug,
+  isEnabled,
+  onOpenChange,
+  onSaved,
+}: {
+  open: boolean
+  workspaceSlug: string
+  isEnabled: boolean
+  onOpenChange: (open: boolean) => void
+  onSaved: () => void
+}): React.ReactElement {
+  const [token, setToken] = React.useState('')
+  const [env, setEnv] = React.useState('uat')
+  const [saving, setSaving] = React.useState(false)
+  const [editing, setEditing] = React.useState(false)
+  const [initSteps, setInitSteps] = React.useState<DefaultConnectorInitStep[]>([])
+  const canSave = token.trim().length > 0 && env.trim().length > 0
+  const beginConnectorInitProgress = useConnectorInitProgress(workspaceSlug, 'hi-agent', setInitSteps)
+
+  React.useEffect(() => {
+    if (!open) {
+      setToken('')
+      setEnv('uat')
+      setSaving(false)
+      setEditing(false)
+      setInitSteps([])
+    }
+  }, [open])
+
+  const handleSave = async (): Promise<void> => {
+    if (!canSave || saving) return
+    const { runId, unsubscribe } = beginConnectorInitProgress()
+    setSaving(true)
+    setInitSteps([
+      { id: 'check-runtime', label: '检查 Node/npm 环境', status: 'running' },
+      { id: 'check-package', label: '检查 talents CLI', status: 'pending' },
+      { id: 'install-package', label: '安装 talents CLI', status: 'pending' },
+      { id: 'install-skill', label: '启用 talents Skill', status: 'pending' },
+      { id: 'write-config', label: '保存认证配置', status: 'pending' },
+      { id: 'self-check', label: '自检连接', status: 'pending' },
+    ])
+    try {
+      const result = await window.electronAPI.initializeDefaultConnector(workspaceSlug, {
+        connectorId: 'hi-agent',
+        runId,
+        userProvidedData: {
+          HTSKILL_TOKEN: token,
+          AGENTOS_ENV: env,
+        },
+      })
+      setInitSteps(result.steps)
+      if (!result.success) {
+        toast.error('泰为 hiagent 连接器初始化失败', { description: result.message })
+        return
+      }
+      toast.success('泰为 hiagent 连接器已初始化')
+      setEditing(false)
+      onSaved()
+    } catch (error) {
+      console.error('[连接器] 初始化泰为 hiagent 失败:', error)
+      toast.error('初始化泰为 hiagent 失败')
+    } finally {
+      unsubscribe()
+      setSaving(false)
+    }
+  }
+
   return (
-    <div className="flex items-start justify-between gap-3 rounded-lg bg-background/70 px-3 py-2">
-      <span className="shrink-0 text-muted-foreground">{label}</span>
-      <span className={cn('min-w-0 break-all text-right text-foreground/80', mono && 'font-mono')}>{value || '未配置'}</span>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="w-[min(calc(100vw-48px),560px)] max-w-none overflow-hidden rounded-2xl border-0 p-8 shadow-2xl">
+        <DialogTitle className="text-2xl font-semibold tracking-normal">连接泰为 hiagent</DialogTitle>
+        <DialogDescription className="sr-only">配置 Talents Token，启用泰为 hiagent CLI 能力。</DialogDescription>
+
+        <div className="mt-2 flex items-start gap-4">
+          <div className="flex size-16 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/12 text-emerald-600">
+            <Package size={28} />
+          </div>
+          <div className="min-w-0 space-y-2">
+            <div className="text-[15px] font-medium text-foreground">泰为 hiagent</div>
+            <p className="text-[13px] leading-relaxed text-muted-foreground">
+              连接后 WorkMate 可以通过 talents CLI 查询工作区、检索知识库，并与 hiagent 智能体对话。
+            </p>
+          </div>
+        </div>
+
+        {isEnabled && !editing && (
+          <div className="mt-6 space-y-3 rounded-xl bg-muted/45 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-medium text-foreground">当前 hiagent 能力</div>
+                <div className="mt-1 text-xs text-muted-foreground">已为当前工作区启用，Token 保存在本机并加密存储。</div>
+              </div>
+              <Button type="button" variant="outline" size="sm" onClick={() => setEditing(true)}>
+                重新绑定
+              </Button>
+            </div>
+            <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+              <ConnectorDetailRow label="状态" value="已启用" />
+              <ConnectorDetailRow label="类型" value="CLI" />
+              <ConnectorDetailRow label="认证" value="已配置" />
+            </div>
+          </div>
+        )}
+
+        {(!isEnabled || editing) && (
+          <div className="mx-auto mt-6 w-full max-w-[420px] space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">运行环境 *</label>
+              <select
+                value={env}
+                onChange={(event) => setEnv(event.target.value)}
+                className="h-11 w-full rounded-lg border border-border/80 bg-content-area px-3 text-sm shadow-sm outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/15"
+              >
+                <option value="uat">UAT</option>
+                <option value="sit">SIT</option>
+                <option value="dev">DEV</option>
+                <option value="prd">PRD</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Talents Token *</label>
+              <input
+                value={token}
+                onChange={(event) => setToken(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && canSave && !saving) {
+                    event.preventDefault()
+                    void handleSave()
+                  }
+                }}
+                placeholder="请输入 Talents Token"
+                type="password"
+                className="h-11 w-full rounded-lg border border-border/80 bg-content-area px-3 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary/60 focus:ring-2 focus:ring-primary/15"
+              />
+              <p className="text-xs text-muted-foreground">Token 只保存在本机，用于运行 talents CLI，不会写入对话内容。</p>
+            </div>
+            <Button
+              type="button"
+              size="lg"
+              className="h-11 w-full rounded-full"
+              disabled={!canSave || saving}
+              onClick={() => void handleSave()}
+            >
+              {saving ? '连接中...' : isEnabled ? '保存并覆盖配置' : '开始连接'}
+            </Button>
+          </div>
+        )}
+
+        {initSteps.length > 0 && <ConnectorInitStepList steps={initSteps} />}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function getConnectorInitStepSummary(step: DefaultConnectorInitStep): string | undefined {
+  if (!step.message) return undefined
+  const firstLine = step.message.split('\n')[0]?.trim() ?? ''
+  if (!firstLine) return undefined
+  return firstLine.length > 96 ? `${firstLine.slice(0, 96)}...` : firstLine
+}
+
+function ConnectorInitStepList({ steps }: { steps: DefaultConnectorInitStep[] }): React.ReactElement | null {
+  const [expandedInitStepId, setExpandedInitStepId] = React.useState<string | null>(null)
+  if (steps.length === 0) return null
+
+  return (
+    <div className="mt-5 min-w-0 overflow-hidden space-y-2 rounded-xl bg-muted/45 p-3">
+      {steps.map((step) => {
+        const summary = getConnectorInitStepSummary(step)
+        const canExpand = step.status === 'error' && Boolean(step.message)
+        const expanded = expandedInitStepId === step.id
+
+        return (
+          <div key={step.id} className="min-w-0 rounded-lg">
+            <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+              {step.status === 'running' ? (
+                <Loader2 size={14} className="shrink-0 animate-spin text-primary" />
+              ) : step.status === 'success' || step.status === 'skipped' ? (
+                <Check size={14} className="shrink-0 text-emerald-500" />
+              ) : step.status === 'error' ? (
+                <XCircle size={14} className="shrink-0 text-destructive" />
+              ) : (
+                <span className="size-3.5 shrink-0 rounded-full border border-border" />
+              )}
+              <span className="shrink-0 font-medium text-foreground/80">{step.label}</span>
+              {summary && (
+                <span className="min-w-0 flex-1 truncate">
+                  <span className={cn(step.status === 'error' && 'text-destructive')}>{summary}</span>
+                </span>
+              )}
+              {canExpand && (
+                <button
+                  type="button"
+                  aria-expanded={expanded}
+                  onClick={() => setExpandedInitStepId(expanded ? null : step.id)}
+                  className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10"
+                >
+                  {expanded ? '收起详情' : '展开详情'}
+                </button>
+              )}
+            </div>
+            {canExpand && expanded && step.message && (
+              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-background/75 p-2 text-[11px] leading-relaxed text-foreground/75">
+                {step.message}
+              </pre>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function ConnectorDetailRow({
+  label,
+  value,
+  mono = false,
+  wide = false,
+}: {
+  label: string
+  value: string | undefined
+  mono?: boolean
+  wide?: boolean
+}): React.ReactElement {
+  return (
+    <div className={cn('flex flex-col gap-1.5 rounded-lg bg-background/70 px-3.5 py-3 text-left', wide && 'sm:col-span-2')}>
+      <span className="text-[11px] font-medium text-muted-foreground">{label}</span>
+      <span className={cn('min-w-0 break-words text-[13px] leading-relaxed text-foreground/85', mono && 'font-mono')}>
+        {value || '未配置'}
+      </span>
     </div>
   )
 }

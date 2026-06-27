@@ -4,34 +4,41 @@
  * 负责检测系统中 Node.js 的可用性和版本信息
  */
 
-import { execSync, spawnSync } from 'child_process'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import type { NodeRuntimeStatus } from '@proma/shared'
 import { getNodeInstallPathFromRegistry } from './windows-env'
+
+const execFileAsync = promisify(execFile)
 
 /**
  * 从系统 PATH 查找 Node.js
  *
  * @returns Node.js 可执行路径，如果未找到返回 null
  */
-function findNodePath(): string | null {
+async function findNodePath(): Promise<string | null> {
+  const t0 = Date.now()
   try {
-    const command = process.platform === 'win32' ? 'where node' : 'which node'
+    const command = process.platform === 'win32' ? 'where' : 'which'
 
-    const result = execSync(command, {
+    const { stdout } = await execFileAsync(command, ['node'], {
       encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
       timeout: 5000,
+      windowsHide: true,
     })
+    const elapsed = Date.now() - t0
+    console.log(`[perf] execFile ${command} node → ${elapsed}ms`)
 
-    const nodePath = result.trim().split('\n')[0]
+    const nodePath = stdout.trim().split('\n')[0]
 
     if (nodePath && existsSync(nodePath)) {
       return nodePath
     }
   } catch {
-    // Node.js 未安装
+    const elapsed = Date.now() - t0
+    console.log(`[perf] execFile ${process.platform === 'win32' ? 'where' : 'which'} node → FAIL after ${elapsed}ms`)
   }
 
   // Windows 上额外检查其他安装位置
@@ -90,21 +97,24 @@ function findNodePath(): string | null {
  * @param nodePath - Node.js 可执行路径
  * @returns 版本号，如果无法获取返回 null
  */
-function getNodeVersion(nodePath: string): string | null {
+async function getNodeVersion(nodePath: string): Promise<string | null> {
+  const t0 = Date.now()
   try {
-    const result = spawnSync(nodePath, ['--version'], {
+    const { stdout } = await execFileAsync(nodePath, ['--version'], {
       encoding: 'utf-8',
       timeout: 5000,
-      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
     })
+    const elapsed = Date.now() - t0
+    console.log(`[perf] execFile node --version → ${elapsed}ms`)
 
-    if (result.status === 0 && result.stdout) {
+    if (stdout) {
       // v22.13.1 -> 22.13.1
-      const version = result.stdout.trim().replace(/^v/, '')
-      return version
+      return stdout.trim().replace(/^v/, '')
     }
   } catch {
-    // 执行失败
+    const elapsed = Date.now() - t0
+    console.log(`[perf] execFile node --version → FAIL after ${elapsed}ms`)
   }
 
   return null
@@ -148,7 +158,7 @@ function meetsVersion(version: string, target: string): boolean {
  * @returns Node.js 运行时状态
  */
 export async function detectNodeRuntime(): Promise<NodeRuntimeStatus> {
-  const nodePath = findNodePath()
+  const nodePath = await findNodePath()
 
   if (!nodePath) {
     console.warn('[Node.js 检测] 未找到 Node.js')
@@ -160,7 +170,7 @@ export async function detectNodeRuntime(): Promise<NodeRuntimeStatus> {
     }
   }
 
-  const version = getNodeVersion(nodePath)
+  const version = await getNodeVersion(nodePath)
 
   if (!version) {
     console.warn(`[Node.js 检测] Node.js 无法执行: ${nodePath}`)

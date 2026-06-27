@@ -2,6 +2,7 @@ import * as React from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { toast } from 'sonner'
 import { RefreshCw } from 'lucide-react'
+import { isExpertGroupFaulted } from '@proma/shared'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { agentExpertGroupsAtom, loadAgentExpertGroupsAtom } from '@/atoms/agent-atoms'
@@ -124,6 +125,7 @@ export function ExpertPageView({ embedded = false, query: externalQuery, filterT
                   expert: allGroups.filter((g) => g.expertType !== 'team').length,
                   team: allGroups.filter((g) => g.expertType === 'team' || (g.subagents && g.subagents.length > 0)).length,
                   not_downloaded: allGroups.filter((g) => g.sourcePluginKind === 'remote' && g.status !== 'available').length,
+                  unavailable: allGroups.filter((g) => isExpertGroupFaulted(g.status)).length,
                 }}
               />
             </div>
@@ -160,7 +162,7 @@ export function ExpertPageView({ embedded = false, query: externalQuery, filterT
           {/* 卡片网格 */}
           <ExpertCardGrid
             groups={displayGroups}
-            onSummon={(group) => void summon(group)}
+            onSummon={(group, samplePrompt) => void summon(group, samplePrompt)}
             emptyState={
               <ExpertEmptyState
                 type={emptyType}

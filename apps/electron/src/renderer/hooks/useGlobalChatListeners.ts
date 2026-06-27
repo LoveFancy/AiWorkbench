@@ -18,6 +18,7 @@ import {
   chatRetryingAtom,
 } from '@/atoms/chat-atoms'
 import { tabsAtom, updateTabTitle } from '@/atoms/tab-atoms'
+import { logIfSlow } from '@/lib/performance-diagnostics'
 import type { ConversationStreamState, ChatRetryingState } from '@/atoms/chat-atoms'
 import type {
   StreamChunkEvent,
@@ -81,26 +82,40 @@ export function useGlobalChatListeners(): void {
     // ===== 1. 流式内容块 =====
     const cleanupChunk = window.electronAPI.onStreamChunk(
       (event: StreamChunkEvent) => {
+        const startedAt = performance.now()
         updateState(event.conversationId, (s) => ({
           ...s,
           content: s.content + event.delta,
         }))
+        logIfSlow('GlobalChatListeners', 'stream chunk 状态更新', startedAt, {
+          conversationId: event.conversationId,
+          deltaLength: event.delta.length,
+        })
       }
     )
 
     // ===== 2. 流式推理内容 =====
     const cleanupReasoning = window.electronAPI.onStreamReasoning(
       (event: StreamReasoningEvent) => {
+        const startedAt = performance.now()
         updateState(event.conversationId, (s) => ({
           ...s,
           reasoning: s.reasoning + event.delta,
         }))
+        logIfSlow('GlobalChatListeners', 'reasoning chunk 状态更新', startedAt, {
+          conversationId: event.conversationId,
+          deltaLength: event.delta.length,
+        })
       }
     )
 
     // ===== 3. 流式完成 =====
     const cleanupComplete = window.electronAPI.onStreamComplete(
       (event: StreamCompleteEvent) => {
+        const startedAt = performance.now()
+        console.log('[性能诊断][GlobalChatListeners] stream complete 入口', {
+          conversationId: event.conversationId,
+        })
         // 标记 streaming=false，但保留 content/reasoning 作为过渡气泡
         // 流式状态的完全清除由 ChatView 在消息加载完成后执行（见 chatMessageRefreshAtom 的 useEffect），
         // 确保不会出现「气泡消失 → 持久化消息尚未加载」的空档闪烁
@@ -142,12 +157,16 @@ export function useGlobalChatListeners(): void {
             console.error('[GlobalChatListeners] 标题生成失败:', error)
           })
         }
+        logIfSlow('GlobalChatListeners', 'stream complete 处理', startedAt, {
+          conversationId: event.conversationId,
+        }, 0)
       }
     )
 
     // ===== 4. 流式错误 =====
     const cleanupError = window.electronAPI.onStreamError(
       (event: StreamErrorEvent) => {
+        const startedAt = performance.now()
         console.error('[GlobalChatListeners] 流式错误:', event.error)
 
         // 标记 streaming=false，保留内容作为过渡（与完成逻辑一致）
@@ -167,12 +186,16 @@ export function useGlobalChatListeners(): void {
           map.set(event.conversationId, (prev.get(event.conversationId) ?? 0) + 1)
           return map
         })
+        logIfSlow('GlobalChatListeners', 'stream error 处理', startedAt, {
+          conversationId: event.conversationId,
+        }, 0)
       }
     )
 
     // ===== 5. 工具活动 =====
     const cleanupToolActivity = window.electronAPI.onStreamToolActivity(
       (event: StreamToolActivityEvent) => {
+        const startedAt = performance.now()
         updateState(event.conversationId, (s) => ({
           ...s,
           toolActivities: [...s.toolActivities, event.activity],
@@ -202,6 +225,11 @@ export function useGlobalChatListeners(): void {
             // JSON 解析失败，忽略
           }
         }
+        logIfSlow('GlobalChatListeners', 'tool activity 处理', startedAt, {
+          conversationId: event.conversationId,
+          activityType: event.activity.type,
+          toolName: event.activity.toolName,
+        })
       }
     )
 

@@ -1,17 +1,19 @@
 import * as React from 'react'
 import type { AgentExpertGroupInfo } from '@proma/shared'
+import { isExpertGroupFaulted, EXPERT_GROUP_STATUS_REASONS } from '@proma/shared'
 import { ArrowLeft, Bot, Plug, Sparkles } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet'
 import { ExpertStatusBadge } from '@/experts/card/ExpertStatusBadge'
 import { getExpertSubagentLabel } from '@/experts/card/subagents'
+import { isCardSummonActionable } from '@/experts/utils/summon'
 
 interface ExpertDetailDialogProps {
   group: AgentExpertGroupInfo | null
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSummon?: (group: AgentExpertGroupInfo) => void
+  onSummon?: (group: AgentExpertGroupInfo, samplePrompt?: string) => void
 }
 
 export function ExpertDetailDialog({ group, open, onOpenChange, onSummon }: ExpertDetailDialogProps): React.ReactElement {
@@ -93,26 +95,37 @@ export function ExpertDetailDialog({ group, open, onOpenChange, onSummon }: Expe
 
               {(group.samplePrompts ?? []).length > 0 && (
                 <section>
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">试试这样问</h4>
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">试试这样问 · {group.samplePrompts!.length}个问题</h4>
                   <div className="mt-2 space-y-2">
-                    {group.samplePrompts?.map((prompt) => (
-                      <div key={prompt} className="rounded-md bg-muted/60 px-3 py-2 text-sm text-muted-foreground">
+                    {group.samplePrompts!.map((prompt) => (
+                      <button
+                        key={prompt}
+                        type="button"
+                        className="w-full rounded-md bg-muted/60 px-3 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
+                        onClick={() => onSummon?.(group, prompt)}
+                      >
                         {prompt}
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </section>
               )}
 
-              {group.issues.length > 0 && (
+              {(group.issues.length > 0 || isExpertGroupFaulted(group.status)) && (
                 <section>
                   <h4 className="text-xs font-semibold uppercase tracking-wider text-destructive">配置问题</h4>
                   <div className="mt-2 space-y-2">
-                    {group.issues.map((issue, index) => (
-                      <div key={`${issue.message}-${index}`} className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                        {issue.message}
-                      </div>
-                    ))}
+                    {group.issues.length > 0
+                      ? group.issues.map((issue, index) => (
+                          <div key={`${issue.message}-${index}`} className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                            {issue.message}
+                          </div>
+                        ))
+                      : (
+                          <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                            {EXPERT_GROUP_STATUS_REASONS[group.status] ?? '当前专家团不可用'}
+                          </div>
+                        )}
                   </div>
                 </section>
               )}

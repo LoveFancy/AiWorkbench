@@ -33,8 +33,13 @@ export function useProjectActions(): UseProjectActionsResult {
       if (workspaceId === currentWorkspaceId) return
       setCurrentWorkspaceId(workspaceId)
       window.electronAPI.updateSettings({ agentWorkspaceId: workspaceId }).catch(console.error)
+      // 切换工作区时同步预置连接器（补齐缺失的 skill 文件等）
+      const ws = workspaces.find((w) => w.id === workspaceId)
+      if (ws) {
+        window.electronAPI.syncDefaultConnectors(ws.slug).catch(console.error)
+      }
     },
-    [currentWorkspaceId, setCurrentWorkspaceId],
+    [currentWorkspaceId, setCurrentWorkspaceId, workspaces],
   )
 
   const createProject = React.useCallback(

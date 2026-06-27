@@ -95,6 +95,7 @@ import {
   finalizeStreamingActivities,
   agentProcessGroupsKeepExpandedAtom,
   agentSelectedMcpServersAtom,
+  agentSessionSamplePromptsAtom,
 } from '@/atoms/agent-atoms'
 import type { AgentContextStatus } from '@/atoms/agent-atoms'
 import { settingsOpenAtom } from '@/atoms/settings-tab'
@@ -109,6 +110,7 @@ import { activeTabIdAtom, getPreviewTabTitle, openTab, tabsAtom } from '@/atoms/
 import type { AgentSendInput, AgentPendingFile, FileDialogLargeFile, ModelOption, SDKMessage, SkillMeta } from '@proma/shared'
 import { MAX_ATTACHMENT_SIZE } from '@proma/shared'
 import { fileToBase64, formatFileNames, getFileParentPath } from '@/lib/file-utils'
+import { createPerfTrace } from '@/lib/performance-diagnostics'
 import { isHtmlPreviewPath } from '@/components/diff/html-preview-utils'
 import { createClipboardPendingFile, createClipboardTextDraft, makeUniqueAttachmentName } from '@/lib/clipboard-text-attachment'
 import {
@@ -582,6 +584,12 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       return map
     })
   }, [sessionId, setSelectedMcpServersMap])
+
+  // 专家团 sample prompts（“试试这样问”）
+  const sessionSamplePromptsMap = useAtomValue(agentSessionSamplePromptsAtom)
+  const setSessionSamplePromptsMap = useSetAtom(agentSessionSamplePromptsAtom)
+  const sessionSamplePrompts = sessionSamplePromptsMap.get(sessionId) ?? []
+
   React.useEffect(() => {
     if (!workspaceSlug) {
       setWorkspaceSkills([])
@@ -1320,10 +1328,26 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
     const effectiveText = text || suggestion || ''
     const pendingFilesSnapshot = pendingFilesRef.current
     if (!messagesLoaded || (!effectiveText && pendingFilesSnapshot.length === 0) || !agentChannelId || !hasAvailableModel) return
+    const trace = createPerfTrace('AgentView.handleSend', {
+      sessionId,
+      contentLength: effectiveText.length,
+      pendingFileCount: pendingFilesSnapshot.length,
+      attachedDirCount: attachedDirs.length,
+      attachedFileDirectoryCount: attachedFileDirectories.length,
+      channelId: agentChannelId,
+      modelId: agentModelId || undefined,
+      streaming,
+      backgroundWaiting,
+    })
+    trace('入口')
 
     const blockedPendingPngFiles = findBlockedPngFiles(pendingFilesSnapshot, currentAgentModelSupportsMultimodal)
     const blockedMentionPngFiles = currentAgentModelSupportsMultimodal ? [] : extractPngFileMentions(effectiveText)
     if (blockedPendingPngFiles.length > 0 || blockedMentionPngFiles.length > 0) {
+      trace('PNG 多模态校验拦截', {
+        blockedPendingPngFileCount: blockedPendingPngFiles.length,
+        blockedMentionPngFileCount: blockedMentionPngFiles.length,
+      })
       showBlockedPngToast([...blockedPendingPngFiles, ...blockedMentionPngFiles])
       return
     }
@@ -1338,8 +1362,10 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
     // - streaming：本轮真正进行中，注入时需先软中断当前 turn
     // - backgroundWaiting：软空闲、无活跃 turn，直接注入即可，无需中断
     if (streaming || backgroundWaiting) {
+      trace('进入运行中追加消息路径')
       // 流式追加时不处理附件（仅支持纯文本）
       if (pendingFilesSnapshot.length > 0) {
+        trace('追加消息因附件被拦截')
         toast.info('Agent 运行中暂不支持追加发送附件', {
           description: '请等待完成后再发送附件，或先撤除附件仅发送文本',
         })
@@ -1365,6 +1391,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
         map.set(sessionId, [...current, syntheticMsg])
         return map
       })
+      trace('追加消息乐观写入完成')
 
       // 2. 清空输入框
       setInputContent('')
@@ -1379,24 +1406,28 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       // 3. 异步发送到后端，注入消息作为新一轮输入。
       //    - streaming（本轮真正进行中）：先软中断当前 turn 再注入
       //    - backgroundWaiting（软空闲，无活跃 turn）：直接注入，无需中断
+      trace('调用主进程 queueAgentMessage')
       window.electronAPI.queueAgentMessage({
         sessionId,
         userMessage: effectiveText,
         uuid: localUuid,
         interrupt: streaming,
-      }).catch((error) => {
-        console.error('[AgentView] 追加消息失败:', error)
-        toast.error('追加消息失败', { description: String(error) })
-        // 回滚：从 liveMessages 移除
-        store.set(liveMessagesMapAtom, (prev) => {
-          const map = new Map(prev)
-          const current = (map.get(sessionId) ?? []).filter(
-            (m) => (m as unknown as { uuid?: string }).uuid !== localUuid
-          )
-          map.set(sessionId, current)
-          return map
-        })
       })
+        .then((messageId) => trace('主进程 queueAgentMessage Promise resolved', { messageId }))
+        .catch((error) => {
+          trace('主进程 queueAgentMessage Promise rejected', { error: error instanceof Error ? error.message : String(error) })
+          console.error('[AgentView] 追加消息失败:', error)
+          toast.error('追加消息失败', { description: String(error) })
+          // 回滚：从 liveMessages 移除
+          store.set(liveMessagesMapAtom, (prev) => {
+            const map = new Map(prev)
+            const current = (map.get(sessionId) ?? []).filter(
+              (m) => (m as unknown as { uuid?: string }).uuid !== localUuid
+            )
+            map.set(sessionId, current)
+            return map
+          })
+        })
       return
     }
 
@@ -1420,8 +1451,10 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
     let fileReferences = ''
     let attachmentMetadata: AgentSendInput['attachments'] | undefined
     if (pendingFilesSnapshot.length > 0) {
+      trace('开始处理附件', { pendingFileCount: pendingFilesSnapshot.length })
       const workspace = workspaces.find((w) => w.id === currentWorkspaceId)
       if (!workspace) {
+        trace('附件处理因工作区缺失被拦截')
         toast.warning('暂时无法发送附件', {
           description: '当前 Agent 会话没有绑定有效工作区。请在顶部选择工作区，或新建 Agent 会话后重新上传。',
         })
@@ -1436,6 +1469,11 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       const existingFiles = pendingFilesSnapshot.filter((f) => f.sourcePath && !f.isClipboardDraft)
       const clipboardDrafts = pendingFilesSnapshot.filter((f) => f.sourcePath && f.isClipboardDraft)
       const newFiles = pendingFilesSnapshot.filter((f) => !f.sourcePath)
+      trace('附件分类完成', {
+        existingFileCount: existingFiles.length,
+        clipboardDraftCount: clipboardDrafts.length,
+        newFileCount: newFiles.length,
+      })
 
       const allRefs: Array<{ filename: string; targetPath: string }> = []
 
@@ -1470,6 +1508,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
         }
       }
       if (staleDraftFiles.length > 0) {
+        trace('剪贴板草稿读取失败', { staleDraftFileCount: staleDraftFiles.length })
         toast.error('附件数据已失效', {
           description: `请移除后重新粘贴：${staleDraftFiles.join('、')}`,
         })
@@ -1483,6 +1522,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       }))
       const missingDataFiles = inMemoryFilesToSave.filter((f) => !f.data).map((f) => f.filename)
       if (missingDataFiles.length > 0) {
+        trace('内存附件数据缺失', { missingDataFileCount: missingDataFiles.length })
         toast.error('附件数据已失效', {
           description: `请移除后重新添加文件：${missingDataFiles.join('、')}`,
         })
@@ -1492,13 +1532,16 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       const filesToSave = [...inMemoryFilesToSave, ...draftFilesToSave]
       if (filesToSave.length > 0) {
         try {
+          trace('开始保存附件到 session', { fileCount: filesToSave.length })
           const saved = await window.electronAPI.saveFilesToAgentSession({
             workspaceSlug: workspace.slug,
             sessionId,
             files: filesToSave,
           })
           allRefs.push(...saved)
+          trace('保存附件到 session 完成', { savedFileCount: saved.length })
         } catch (error) {
+          trace('保存附件到 session 失败', { error: error instanceof Error ? error.message : String(error) })
           console.error('[AgentView] 保存附件到 session 失败:', error)
           toast.error('附件保存失败', {
             description: '请确认当前工作区可用，或新建 Agent 会话后重新上传。',
@@ -1508,6 +1551,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       }
 
       if (allRefs.length === 0) {
+        trace('附件引用为空，发送中止')
         toast.error('附件没有成功加入消息', {
           description: '请重新上传文件，或切换到有效工作区后再试。',
         })
@@ -1531,11 +1575,19 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
         window.__pendingAgentFileData?.delete(f.id)
       }
       setPendingFiles([])
+      trace('附件处理完成', {
+        allRefCount: allRefs.length,
+        additionalDirectoryCount: additionalDirectoriesForRun.size,
+      })
     }
 
     // 构建引用选中文本：内联 XML 拼入 prompt，对话框不展示（parseAttachedFiles 剥离）
     const quotedSelection = store.get(quotedSelectionMapAtom).get(sessionId)
     if (quotedSelection) {
+      trace('处理选中文本引用', {
+        quotedTextLength: quotedSelection.text.length,
+        quotedFilePath: quotedSelection.filePath,
+      })
       const capturedAt = quotedSelection.capturedAt
       // XML 转义：path 走完整实体编码（&, <, >, "），text 仅需防误闭合外层标签
       const safePath = quotedSelection.filePath
@@ -1557,6 +1609,10 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
 
     // 2. 构建最终消息
     const finalMessage = fileReferences + effectiveText
+    trace('最终消息构建完成', {
+      finalMessageLength: finalMessage.length,
+      fileReferencesLength: fileReferences.length,
+    })
 
     // 清除打断状态（上一轮的打断标记不再显示）
     store.set(stoppedByUserSessionsAtom, (prev: Set<string>) => {
@@ -1590,6 +1646,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       })
       return map
     })
+    trace('流式状态初始化完成')
 
     // 乐观更新：SDKMessage 格式的用户消息（Phase 4）
     const tempUserSDKMsg: SDKMessage = {
@@ -1601,6 +1658,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       _createdAt: Date.now(),
     } as unknown as SDKMessage
     appendOptimisticPersistedMessage(tempUserSDKMsg)
+    trace('乐观消息写入完成')
 
     const input: AgentSendInput = {
       sessionId,
@@ -1621,22 +1679,27 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
           ...(sessionIds.length > 0 && { mentionedSessionIds: sessionIds }),
         }
       })(),
-      selectedMcpServers,
+      ...(selectedMcpServers.length > 0 && { selectedMcpServers }),
     }
 
     setInputContent('')
     setInputHtmlContent('')
+    trace('输入框清空完成')
 
-    window.electronAPI.sendAgentMessage(input).catch((error) => {
-      console.error('[AgentView] 发送消息失败:', error)
-      setStreamingStates((prev) => {
-        const current = prev.get(sessionId)
-        if (!current) return prev
-        const map = new Map(prev)
-        map.set(sessionId, { ...current, running: false })
-        return map
+    trace('调用主进程 sendAgentMessage')
+    window.electronAPI.sendAgentMessage(input)
+      .then(() => trace('主进程 sendAgentMessage Promise resolved'))
+      .catch((error) => {
+        trace('主进程 sendAgentMessage Promise rejected', { error: error instanceof Error ? error.message : String(error) })
+        console.error('[AgentView] 发送消息失败:', error)
+        setStreamingStates((prev) => {
+          const current = prev.get(sessionId)
+          if (!current) return prev
+          const map = new Map(prev)
+          map.set(sessionId, { ...current, running: false })
+          return map
+        })
       })
-    })
   }, [inputContent, attachedDirs, attachedFileDirectories, sessionId, agentChannelId, agentModelId, autoMode.enabled, currentWorkspaceId, workspaces, streaming, backgroundWaiting, suggestion, hasAvailableModel, currentAgentModelSupportsMultimodal, showBlockedPngToast, store, setStreamingStates, setPendingFiles, setAgentStreamErrors, setPromptSuggestions, setInputContent, setLiveMessagesMap, permissionMode, messagesLoaded, selectedMcpServers])
 
   /** 停止生成 */
@@ -1703,7 +1766,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       workspaceId: currentWorkspaceId || undefined,
       startedAt: streamStartedAt,
       permissionModeOverride: permissionMode,
-      selectedMcpServers,
+      ...(selectedMcpServers.length > 0 && { selectedMcpServers }),
     }).catch((error) => {
       console.error('[AgentView] /compact 发送失败:', error)
       // 回滚：移除合成用户消息 + 清除 isCompacting flag
@@ -1782,7 +1845,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
       workspaceId: currentWorkspaceId || undefined,
       startedAt: streamStartedAt,
       permissionModeOverride: permissionMode,
-      selectedMcpServers,
+      ...(selectedMcpServers.length > 0 && { selectedMcpServers }),
     }).catch(console.error)
   }, [persistedSDKMessages, sessionId, agentChannelId, agentModelId, autoMode.enabled, currentWorkspaceId, streaming, setAgentStreamErrors, setStreamingStates, permissionMode, selectedMcpServers])
 
@@ -1825,7 +1888,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
         mentionedSessionIds: [sessionId],
         startedAt: streamStartedAt,
         permissionModeOverride: permissionMode,
-        selectedMcpServers,
+        ...(selectedMcpServers.length > 0 && { selectedMcpServers }),
       }).catch(console.error)
     } catch (error) {
       console.error('[AgentView] 在新会话中重试失败:', error)
@@ -1998,7 +2061,7 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
           capabilitiesVersion={capabilitiesVersion}
           onSelectedNamesChange={setSelectedMcpServers}
           onOpenConnectorManager={() => {
-            setAgentSkillsInitialTab('mcp')
+            setAgentSkillsInitialTab('connectors')
             setActiveView('agent-skills')
           }}
         />
@@ -2271,6 +2334,29 @@ export function AgentView({ sessionId }: { sessionId: string }): React.ReactElem
                     }}
                   />
                 </button>
+              </div>
+            )}
+
+            {/* 专家团 Sample Prompts — “试试这样问” */}
+            {!streaming && sessionSamplePrompts.length > 0 && (
+              <div className="px-3 pt-2.5 pb-1.5">
+                <p className="mb-2 text-xs font-medium text-muted-foreground">试试这样问：</p>
+                <div className="flex flex-col gap-1.5">
+                  {sessionSamplePrompts.map((prompt) => (
+                    <button
+                      key={prompt}
+                      type="button"
+                      className="text-left rounded-md bg-muted/50 px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
+                      onClick={() => {
+                        setInputContent(prompt)
+                        // 同时清除 HTML 草稿，确保 TipTap 编辑器用新的纯文本来渲染
+                        setInputHtmlContent('')
+                      }}
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 

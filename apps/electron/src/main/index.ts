@@ -39,9 +39,13 @@ installFileLogger(app.getPath('logs'))
 // second-instance 事件，由主实例负责显示窗口。
 elapsed('单实例锁检查开始')
 if (!app.requestSingleInstanceLock()) {
+  const killHint =
+    process.platform === 'win32'
+      ? '请在任务管理器结束 WorkMate.exe（旧版可能名为 Proma.exe / HtAiWorkBench.exe），或执行 `taskkill /F /IM WorkMate.exe` 后重试。'
+      : '请运行 `killall WorkMate`（旧版可能是 `killall Proma`）后重试。'
   console.warn(
-    '[启动] 已有 Proma 进程持有单实例锁，本次启动将退出。\n' +
-      '  如果窗口未出现，可能旧进程已卡死。请运行 `killall Proma` 后重试。',
+    '[启动] 已有 WorkMate 进程持有单实例锁，本次启动将退出（已通知主实例显示窗口）。\n' +
+      `  如果窗口仍未出现，可能旧进程已卡死。${killHint}`,
   )
   app.quit()
 } else {
@@ -109,7 +113,8 @@ for (const key of Object.keys(process.env)) {
 import { createApplicationMenu } from './menu'
 import { registerIpcHandlers } from './ipc'
 import { createTray, destroyTray, getTray } from './tray'
-import { initializeRuntime } from './lib/runtime-init'
+import { initializeRuntime, loadRuntimeCacheSync, getRuntimeStatus } from './lib/runtime-init'
+import { IPC_CHANNELS } from '@proma/shared'
 import { getConfigDirPath, seedDefaultPlugins, seedDefaultSkills, seedDefaultConnectors } from './lib/config-paths'
 import { upgradeDefaultSkillsInWorkspaces, syncDefaultConnectorsToAllWorkspaces } from './lib/agent-workspace-manager'
 import { stopAllAgents, killOrphanedClaudeSubprocesses } from './lib/agent-service'
@@ -120,8 +125,8 @@ import { startWorkspaceWatcher, stopWorkspaceWatcher } from './lib/workspace-wat
 import { registerAuthIpcHandlers } from '../auth'
 import { registerLogUploadIpc } from './lib/log-upload-ipc'
 import './lib/issue-report'
-import { loadCacheFromDisk, initModelRefresh } from '../platform-models/model-service'
-import { registerPlatformModelsIpcHandlers } from '../platform-models'
+import { loadCacheFromDisk, initModelRefresh } from './lib/platform-models-service'
+import { registerPlatformModelsIpcHandlers } from './lib/platform-models-ipc'
 import { startChatToolsWatcher, stopChatToolsWatcher } from './lib/chat-tools-watcher'
 import { getIsQuitting, setQuitting } from './lib/app-lifecycle'
 import {
@@ -140,6 +145,7 @@ import { initWorkmateServices, shutdownWorkmateServices } from './lib/workmate-i
 import { getDingTalkMultiBotConfig } from './lib/dingtalk-config'
 import { wechatBridge } from './lib/wechat-bridge'
 import { getWeChatConfig } from './lib/wechat-config'
+import { scheduleAfterFirstWindowLoad } from './lib/startup-bridge-scheduler'
 import { createQuickTaskWindow, toggleQuickTaskWindow, destroyQuickTaskWindow } from './lib/quick-task-window'
 import {
   createVoiceDictationWindow,
@@ -318,6 +324,14 @@ function showAndFocusMainWindow(): void {
   }
   mainWindow.show()
   mainWindow.focus()
+
+  // Windows: show()/focus() 不保证能从其他前台应用抢回焦点（second-instance / 托盘唤起常遇到）。
+  // 用 alwaysOnTop 抖动一次强制置顶到前台，再立即还原，避免长期置顶遮挡其他窗口。
+  if (process.platform === 'win32') {
+    mainWindow.setAlwaysOnTop(true)
+    mainWindow.setAlwaysOnTop(false)
+    mainWindow.focus()
+  }
 }
 
 /**
@@ -417,6 +431,9 @@ function createWindow(): void {
     }
     mainWindow?.show()
     elapsed('createWindow: 窗口已显示（首屏可见）')
+
+    // 首屏已呈现，启动后台重活（运行时检测等阻塞操作延后到此刻，避免卡住首帧）
+    scheduleBackgroundInit()
   })
 
   // 持久化窗口大小和位置（防抖 500ms，避免频繁写入）
@@ -515,16 +532,41 @@ function sendToMainWindow(channel: string, data?: unknown): void {
   }
 }
 
+/**
+ * 向主窗口安静发送消息：与 sendToMainWindow 不同，**不**显示/聚焦窗口。
+ * 用于后台事件（如运行时检测完成）推送，避免每次都把窗口抢到前台。
+ */
+function sendToMainWindowQuiet(channel: string, data?: unknown): void {
+  const win = mainWindow
+  if (!win || win.isDestroyed()) return
+
+  const send = (): void => {
+    if (!win.isDestroyed()) {
+      win.webContents.send(channel, data)
+    }
+  }
+
+  if (win.webContents.isLoading()) {
+    win.webContents.once('did-finish-load', send)
+  } else {
+    send()
+  }
+}
+
 elapsed('模块加载完成，等待 app.whenReady()')
 app.whenReady().then(() => {
   elapsed('app.whenReady() 回调触发，开始 bootstrap')
   return bootstrap()
+}).then(() => {
+  elapsed('bootstrap 完成，等待渲染进程加载（主进程空闲，无后台任务）')
 }).catch(handleBootstrapFailure)
 
 /**
  * 启动主流程。所有非关键步骤用 safeRun / safeAwait 隔离，
  * 单点失败不应阻止窗口和托盘的创建（用户至少要能看到界面）。
  */
+// 看门狗：后台重活超过此时间未完成则打印告警（不阻断）
+const BACKGROUND_INIT_WATCHDOG_MS = 20000
 async function bootstrap(): Promise<void> {
   // 初始化 Proma 版本号（供 User-Agent 等全局标识使用）
   setPromaVersion(app.getVersion())
@@ -533,27 +575,21 @@ async function bootstrap(): Promise<void> {
   // 注册自定义协议 proma-file:// 用于内联预览本地文件。
   // 协议只接受主进程签发的 opaque token，不解析 renderer 提供的绝对路径。
   protocol.handle('proma-file', handlePromaFileRequest)
-  elapsed('bootstrap: 版本号 & 协议注册完成，开始 initializeRuntime')
+  elapsed('bootstrap: 版本号 & 协议注册完成')
 
-  // 初始化运行时环境（Shell 环境 + Bun + Git 检测）
-  // 必须在其他初始化之前执行，确保环境变量正确加载
-  await safeAwait('initializeRuntime', () => initializeRuntime())
-  elapsed('bootstrap: initializeRuntime 完成')
+  // ── 关键段：首屏可见前必须就绪的最小集合（保持轻量，不做阻塞式检测） ──
 
   // 同步默认 Skills 模板到 ~/.workmate/default-skills/
   safeRun('seedDefaultSkills', seedDefaultSkills)
 
   // 同步默认插件到 ~/.workmate/default-plugins/
-  seedDefaultPlugins()
+  safeRun('seedDefaultPlugins', seedDefaultPlugins)
 
   // 同步默认连接器到 ~/.workmate/default-connectors/
   safeRun('seedDefaultConnectors', seedDefaultConnectors)
 
-  // 为已有工作区补全缺失的连接器（只在 connectors 目录不存在时同步）
-  safeRun('syncDefaultConnectorsToAllWorkspaces', syncDefaultConnectorsToAllWorkspaces)
-
-  // 升级所有工作区中版本过旧的默认 Skills
-  safeRun('upgradeDefaultSkillsInWorkspaces', upgradeDefaultSkillsInWorkspaces)
+  // 工作区连接器同步和 Skills 升级已移至后台初始化（runBackgroundInit），
+  // 避免其同步文件 I/O（cpSync/readFileSync/writeFileSync）阻塞首屏关键路径。
   elapsed('bootstrap: Skills/Plugins 初始化完成')
 
   // Create application menu
@@ -561,6 +597,7 @@ async function bootstrap(): Promise<void> {
   Menu.setApplicationMenu(menu)
   elapsed('bootstrap: 菜单创建完成')
 
+  // IPC 处理器必须先于渲染层首个调用（auth.checkSession / getSettings）注册，否则首屏 IPC 会失败
   // Register IPC handlers
   registerIpcHandlers()
   registerLogUploadIpc()
@@ -568,14 +605,16 @@ async function bootstrap(): Promise<void> {
   registerPlatformModelsIpcHandlers()
   elapsed('bootstrap: IPC handlers 注册完成')
 
-  // WorkMate 观测上报服务初始化（传入启动耗时用于 app_startup 上报）
-  safeRun('initWorkmateServices', () => initWorkmateServices(Date.now() - STARTUP_TIME))
-  elapsed('bootstrap: WorkMate 服务初始化完成')
+  // 应用菜单（同步、廉价）。保留在关键段，确保 macOS 首屏即可用 Cmd+C/V/Q 等标准快捷键
+  safeRun('createApplicationMenu', () => Menu.setApplicationMenu(createApplicationMenu()))
 
-  // 从磁盘加载模型缓存
+  // 从磁盘加载模型缓存（同步快读）——必须在窗口创建前，避免渲染层请求 channels 时拿到空列表
   loadCacheFromDisk()
-  // 启动定期模型刷新
   initModelRefresh()
+
+  // 预热运行时检测缓存：使后台真实检测完成前，getRuntimeStatus() 即可返回上次结果，
+  // 避免 sdk-env / agent-orchestrator 在启动初期读到 null。后台会重测并覆盖。
+  safeRun('loadRuntimeCacheSync', () => loadRuntimeCacheSync())
   elapsed('bootstrap: 模型缓存加载完成')
 
   // Set dock icon on macOS
@@ -625,8 +664,8 @@ async function bootstrap(): Promise<void> {
     safeRun('initAutoUpdater', () => initAutoUpdater(mainWindow!))
   }
 
-  // 预创建快速任务窗口（隐藏状态，首次唤起秒开）
-  safeRun('createQuickTaskWindow', createQuickTaskWindow)
+  // 预创建快速任务窗口已移至后台初始化（ready-to-show 之后），
+  // 避免其 loadFile 与主窗口渲染进程并发从 asar 加载，在受管机上触发 AV 串行化。
   if (getSettings().voiceDictation?.enabled === true) {
     safeRun('createVoiceDictationWindow', createVoiceDictationWindow)
   }
@@ -649,10 +688,16 @@ async function bootstrap(): Promise<void> {
   )
 
   // 启动所有已注册的 Bridge（飞书/钉钉/微信等）
-  elapsed('bootstrap: 准备启动 Bridges')
-  await safeAwait('startAllBridges', () => startAllBridges())
-  safeRun('startBridgeSelfHealing', startBridgeSelfHealing)
-  elapsed('bootstrap: Bridges 启动完成')
+  // Windows 上飞书 SDK import/connect 曾与首屏加载竞争资源，导致 loadFile 到 preload 延迟约 90s。
+  // 这里延后到主窗口首轮加载完成后启动，保证用户先看到界面。
+  elapsed('bootstrap: 安排 Bridges 在首屏加载后启动')
+  scheduleAfterFirstWindowLoad(mainWindow, (reason) => {
+    elapsed(`bootstrap: ${reason}，准备启动 Bridges`)
+    void safeAwait('startAllBridges', () => startAllBridges()).then(() => {
+      safeRun('startBridgeSelfHealing', startBridgeSelfHealing)
+      elapsed('bootstrap: Bridges 启动完成')
+    })
+  })
 
   // 启动本地 API 服务（默认关闭，仅在用户设置启用后启动）
   await safeAwait('startLocalApiServer', startLocalApiServer)
@@ -660,7 +705,7 @@ async function bootstrap(): Promise<void> {
   // 启动定时任务调度器（恢复持久化的 active 任务）
   safeRun('startScheduler', startScheduler)
 
-  elapsed('bootstrap: 全部初始化完成')
+  elapsed('bootstrap: 核心初始化完成（Bridges 已按首屏加载调度）')
 
   app.on('activate', () => {
     if (shouldSuppressVoiceDictationActivate()) {
@@ -675,6 +720,122 @@ async function bootstrap(): Promise<void> {
       showAndFocusMainWindow()
     }
   })
+
+  // 后台初始化由 createWindow 的 ready-to-show 回调触发。
+  // 兜底：极端情况下渲染进程被 AV/EDR 拦截，ready-to-show 永远不触发，
+  // 120s 后强制启动后台初始化。正常情况 ~10s 内就会触发，不会走到这里。
+  const BACKGROUND_INIT_FALLBACK_MS = 120_000
+  setTimeout(() => {
+    if (!backgroundInitStarted) {
+      console.warn('[启动耗时] ⚠️ ready-to-show 超时未触发，走兜底强制启动后台初始化')
+      scheduleBackgroundInit()
+    }
+  }, BACKGROUND_INIT_FALLBACK_MS)
+}
+
+/**
+ * 调度后台重活：仅执行一次，由 createWindow 的 ready-to-show 回调触发。
+ * 让出一帧给合成器，确保渲染层的 loading 画面已呈现，
+ * 之后才开始 initializeRuntime——后者内部用 execSync 会阻塞主进程事件循环。
+ */
+let backgroundInitStarted = false
+function scheduleBackgroundInit(): void {
+  if (backgroundInitStarted) return
+  backgroundInitStarted = true
+  setTimeout(() => {
+    void runBackgroundInit()
+  }, 0)
+}
+
+/**
+ * 后台初始化：运行时检测、默认资源同步、Bridge、定时任务等全部重活。
+ * 与首屏解耦——窗口和托盘在 bootstrap 关键段已创建，这里失败/卡死都不影响窗口可见与唤起。
+ */
+async function runBackgroundInit(): Promise<void> {
+  elapsed('background: 开始后台初始化')
+
+  // 看门狗：后台初始化超时只告警、不阻断，便于定位卡死步骤（通常是运行时检测或 Bridge）
+  const watchdog = setTimeout(() => {
+    console.warn(
+      `[启动] 后台初始化超过 ${BACKGROUND_INIT_WATCHDOG_MS / 1000}s 仍未完成，` +
+        '可能卡在运行时检测（Node/Git）或 Bridge 启动。窗口已可用，相关功能将在完成后逐步生效。',
+    )
+  }, BACKGROUND_INIT_WATCHDOG_MS)
+
+  try {
+    // 初始化运行时环境（Shell 环境 + Node/Bun/Git 检测）。内部为同步检测，故必须延后到首屏之后
+    await safeAwait('initializeRuntime', () => initializeRuntime())
+    elapsed('background: initializeRuntime 完成')
+
+    // 后台真实检测完成，安静推送最新运行时状态给渲染层（不抢焦点），刷新环境检测 UI
+    safeRun('pushRuntimeStatus', () => {
+      const status = getRuntimeStatus()
+      if (status) sendToMainWindowQuiet(IPC_CHANNELS.RUNTIME_STATUS_UPDATED, status)
+    })
+
+    // 同步默认 Skills / 插件 / 连接器
+    safeRun('seedDefaultSkills', seedDefaultSkills)
+    seedDefaultPlugins()
+    safeRun('seedDefaultConnectors', seedDefaultConnectors)
+    safeRun('syncDefaultConnectorsToAllWorkspaces', syncDefaultConnectorsToAllWorkspaces)
+    safeRun('upgradeDefaultSkillsInWorkspaces', upgradeDefaultSkillsInWorkspaces)
+    elapsed('background: Skills/Plugins 初始化完成')
+
+    // WorkMate 观测上报服务初始化（传入启动耗时用于 app_startup 上报）
+    safeRun('initWorkmateServices', () => initWorkmateServices(Date.now() - STARTUP_TIME))
+
+    // 启动工作区文件监听（Agent MCP/Skills + 文件浏览器自动刷新）
+    if (mainWindow) {
+      safeRun('startWorkspaceWatcher', () => startWorkspaceWatcher(mainWindow!))
+    }
+
+    // 启动 Chat 工具配置文件监听（Agent 创建工具后自动通知渲染进程）
+    safeRun('startChatToolsWatcher', startChatToolsWatcher)
+
+    // 初始化自动更新
+    if (mainWindow) {
+      safeRun('initAutoUpdater', () => initAutoUpdater(mainWindow!))
+    }
+
+    // 预创建快速任务窗口（隐藏状态，首次唤起秒开）
+    safeRun('createQuickTaskWindow', createQuickTaskWindow)
+    if (getSettings().voiceDictation?.enabled === true) {
+      safeRun('createVoiceDictationWindow', createVoiceDictationWindow)
+    }
+    elapsed('background: 快捷窗口 & 更新器初始化完成')
+
+    // 飞书实时同步开启时，默认阻止系统自动休眠，保证远程群内继续可用。
+    safeRun('syncFeishuSyncSleepBlocker', () => syncFeishuSyncSleepBlocker(getSettings()))
+
+    // 注册全局快捷键
+    safeRun('registerGlobalShortcut:quick-task', () =>
+      registerGlobalShortcut('quick-task', toggleQuickTaskWindow),
+    )
+    safeRun('registerGlobalShortcut:show-main-window', () =>
+      registerGlobalShortcut('show-main-window', showAndFocusMainWindow),
+    )
+    safeRun('registerGlobalShortcut:voice-dictation', () =>
+      registerGlobalShortcut('voice-dictation', () => {
+        toggleVoiceDictationWindow({ targetIsProma: mainWindow?.isFocused() === true })
+      }),
+    )
+
+    // 启动所有已注册的 Bridge（飞书/钉钉/微信等）
+    elapsed('background: 准备启动 Bridges')
+    await safeAwait('startAllBridges', () => startAllBridges())
+    safeRun('startBridgeSelfHealing', startBridgeSelfHealing)
+    elapsed('background: Bridges 启动完成')
+
+    // 启动本地 API 服务（默认关闭，仅在用户设置启用后启动）
+    await safeAwait('startLocalApiServer', startLocalApiServer)
+
+    // 启动定时任务调度器（恢复持久化的 active 任务）
+    safeRun('startScheduler', startScheduler)
+
+    elapsed('background: 全部后台初始化完成')
+  } finally {
+    clearTimeout(watchdog)
+  }
 }
 
 /** 同步启动钩子隔离：单点失败仅记录日志，不阻断启动链。 */
@@ -711,12 +872,16 @@ function handleBootstrapFailure(err: unknown): void {
     } catch {
       // 启动降级路径中不能因为数据目录解析失败而阻止错误弹窗。
     }
+    const processKillHint =
+      process.platform === 'win32'
+        ? '在任务管理器结束 WorkMate.exe（旧版可能名为 Proma.exe / HtAiWorkBench.exe）后重试'
+        : '终端运行 `killall WorkMate`（旧版可能是 `killall Proma`）后重试'
     dialog.showErrorBox(
-      'Proma 启动遇到错误',
+      'WorkMate 启动遇到错误',
       `部分功能可能不可用：\n\n${message}\n\n` +
         `日志位置：${app.getPath('logs')}\n\n` +
         `常见原因与排查：\n` +
-        `1. 旧版 Proma 进程未退出（终端运行 killall Proma 后重试）\n` +
+        `1. 旧版进程未退出（${processKillHint}）\n` +
         `2. 数据目录配置损坏（重命名 ${configDirPath} 后重启）\n` +
         `3. 系统 Keychain 无法解密保存的凭证（删除 ${configDirPath}/feishu.json 等后重新登录）\n\n` +
         `如需协助请到 GitHub Issues 反馈。`,

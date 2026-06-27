@@ -6,7 +6,7 @@ import { ExpertDetailDialog } from '@/experts/detail/ExpertDetailDialog'
 interface ExpertCardGridProps {
   groups: AgentExpertGroupInfo[]
   emptyState?: React.ReactNode
-  onSummon?: (group: AgentExpertGroupInfo) => void
+  onSummon?: (group: AgentExpertGroupInfo, samplePrompt?: string) => void
 }
 
 export function ExpertCardGrid({ groups, emptyState, onSummon }: ExpertCardGridProps): React.ReactElement {

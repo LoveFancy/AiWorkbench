@@ -14,7 +14,7 @@ interface McpDetailSheetProps {
   server: { name: string; entry: McpServerEntry } | null
   workspaceSlug: string
   onOpenChange: (open: boolean) => void
-  onSaved: () => void
+  onSaved: (serverName: string) => void
   onChanged?: () => void
 }
 
@@ -28,7 +28,7 @@ export function McpDetailSheet({ open, server, workspaceSlug, onOpenChange, onSa
             key={server?.name ?? '__new__'}
             server={server}
             workspaceSlug={workspaceSlug}
-            onSaved={onSaved}
+            onSaved={(name) => onSaved(name)}
             onCancel={() => onOpenChange(false)}
           />
         )}

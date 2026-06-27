@@ -1,6 +1,6 @@
-# Proma 项目构建指南
+# WorkMate 项目构建指南
 
-本文档介绍 Proma 项目的开发环境配置、编译构建流程和发布打包。
+本文档介绍 WorkMate 项目的开发环境配置、编译构建流程和发布打包。
 
 ---
 
@@ -25,16 +25,20 @@ bun run build
 ### 第 3 步：打包
 
 ```bash
-# 必须在项目根目录执行！不要进入子目录！
-bun run electron:build && cd apps/electron && bun run dist
-```
+# 方式 1：从根目录执行（推荐）
+bun run build && cd apps/electron && bun run dist:win
 
-或者先 cd 到 apps/electron 再打包也行：
-
-```bash
-# 方式 2：分步执行
+# Windows 打包为 .exe
 cd apps/electron
-bun run dist
+bun run dist:win
+
+# macOS 打包为 .dmg
+cd apps/electron
+bun run dist:mac
+
+# Linux 打包为 .AppImage
+cd apps/electron
+bun run dist:linux
 ```
 
 ✅ **完成！** 打包好的文件在 `apps/electron/out/` 目录下。
@@ -62,7 +66,7 @@ bun run dev
 ## 项目结构
 
 ```
-Proma/
+WorkMate/
 ├── package.json          # 根项目配置 (Bun Workspace)
 ├── tsconfig.json         # 根 TypeScript 配置
 ├── apps/
@@ -102,6 +106,21 @@ powershell -c "irm bun.sh/install.ps1 | iex"
 bun --version
 ```
 
+> **国内用户：配置 Bun 镜像源**
+>
+> 默认从 `npmjs.org` 下载依赖较慢，可通过修改 `bunfig.toml` 配置淘宝镜像：
+>
+> ```toml
+> # 项目根目录下的 bunfig.toml
+> [install]
+> registry = "https://registry.npmmirror.com"
+> ignore-scripts = false
+> ```
+>
+> > `install.registry` 用于下载 npm 包；`bun install` 本身无需额外配置。如果已存在 `bunfig.toml`，只需追加 `registry` 行。
+>
+> 对应 Maven：修改 `~/.m2/settings.xml` 的 `<mirror>` 指向阿里云 Maven 仓库。
+
 2. **Node.js** (Electron 构建需要)
 
 ```bash
@@ -127,8 +146,8 @@ python --version
 
 ```bash
 # 克隆项目
-git clone https://github.com/ErlichLiu/Proma.git
-cd Proma
+git clone https://github.com/LoveFancy/AiWorkbench.git
+cd AiWorkbench
 
 # 安装所有依赖 (Bun Workspace)
 bun install
@@ -272,13 +291,10 @@ cd apps/electron
 # 仅打包不发布（生成 unpacked 目录）
 bun pack
 
-# 打包为当前平台的可分发格式
-bun dist
-
 # 分平台打包
-bun dist:mac    # macOS
-bun dist:win    # Windows
-bun dist:linux  # Linux
+bun dist:mac    # macOS → .dmg / .zip
+bun dist:win    # Windows → .exe (NSIS)
+bun dist:linux  # Linux → .AppImage / .deb / .rpm
 ```
 
 ### 发布相关脚本
@@ -306,16 +322,25 @@ bun dist:debug
 
 ## 常用命令速查
 
-| 命令 | 说明 |
-|------|------|
-| `bun install` | 安装依赖 |
-| `bun dev` | 开发模式 |
-| `bun build` | 构建所有包 |
-| `bun typecheck` | TypeScript 类型检查 |
-| `bun test` | 运行测试 |
-| `cd apps/electron && bun build` | 构建 Electron App |
-| `cd apps/electron && bun pack` | 打包 unpacked 目录 |
-| `cd apps/electron && bun dist` | 完整发布打包 |
+| 命令 | 执行目录 | 说明 |
+|------|---------|------|
+| `bun install` | 根目录 | 安装所有依赖 |
+| `bun run dev` | 根目录 | 启动完整开发环境（Vite + Electron） |
+| `bun run build` | 根目录 | 构建所有 workspace 包 |
+| `bun run typecheck` | 根目录 | 全量 TypeScript 类型检查 |
+| `bun test` | 根目录 | 运行所有测试 |
+| `cd apps/electron && bun run dev` | `apps/electron` | 直接启动 Electron 开发模式 |
+| `cd apps/electron && bun run build` | `apps/electron` | 构建 Electron App（main + preload + renderer） |
+| `cd apps/electron && bun run build:main` | `apps/electron` | 仅构建主进程 |
+| `cd apps/electron && bun run build:preload` | `apps/electron` | 仅构建 preload 脚本 |
+| `cd apps/electron && bun run build:renderer` | `apps/electron` | 仅构建渲染进程（Vite） |
+| `cd apps/electron && bun run pack` | `apps/electron` | 打包到 unpacked 目录（不生成安装包） |
+| `cd apps/electron && bun run dist:win` | `apps/electron` | 打包 Windows 安装包（`.exe`） |
+| `cd apps/electron && bun run dist:mac` | `apps/electron` | 打包 macOS 安装包（`.dmg`） |
+| `cd apps/electron && bun run dist:linux` | `apps/electron` | 打包 Linux 安装包（`.AppImage`） |
+| `cd apps/electron && bun run dist:visual` | `apps/electron` | 可视化发布流程 |
+| `cd apps/electron && bun run dist:fast` | `apps/electron` | 快速发布（当前架构 + DMG） |
+| `cd apps/electron && bun run dist:debug` | `apps/electron` | 调试发布（详细日志） |
 
 ---
 
