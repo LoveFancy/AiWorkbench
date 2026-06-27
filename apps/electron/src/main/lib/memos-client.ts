@@ -7,8 +7,8 @@
 
 import { getMemoryConfig } from './memory-service'
 
-/** MemOS 服务地址（硬编码，不读用户配置） */
-export const MEMOS_SERVER_URL = 'http://168.64.22.211:8000'
+/** MemOS 默认服务地址（可由记忆配置中的 serverUrl 覆盖） */
+export const DEFAULT_MEMOS_SERVER_URL = 'http://168.64.22.211:8000'
 
 const API_PREFIX = '/product'
 /** MemOS 请求超时（毫秒）：Agent 模式下 MemOS 可能需要更长时间处理 */
@@ -41,7 +41,9 @@ export interface MemorySearchResult {
 // ===== 内部工具函数 =====
 
 function getBaseUrl(): string {
-  return MEMOS_SERVER_URL.replace(/\/+$/, '')
+  const config = getMemoryConfig()
+  const url = config.serverUrl || DEFAULT_MEMOS_SERVER_URL
+  return url.replace(/\/+$/, '')
 }
 
 async function callApi(

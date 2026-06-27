@@ -272,6 +272,9 @@ function MemoryCubeSettings(): React.ReactElement {
       setHasCube(true)
       setCubeId(result.cubeId)
       setCubeName(result.cubeName)
+      // 同步更新 memory.json 和聊天工具状态
+      const memoryConfig = await window.electronAPI.getMemoryConfig()
+      await window.electronAPI.setMemoryConfig({ ...memoryConfig, enabled: true })
       await window.electronAPI.updateChatToolState('memory', { enabled: true })
       await refreshTools()
       toast.success('记忆立方创建成功')
