@@ -84,6 +84,7 @@ interface AnthropicSSEEvent {
     text?: string
     /** 思考内容增量 (thinking_delta) */
     thinking?: string
+
     /** 思考签名增量 (signature_delta) */
     signature?: string
     /** 工具参数 JSON 增量 (input_json_delta) */

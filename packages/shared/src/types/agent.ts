@@ -6,16 +6,48 @@
 
 // ===== 记忆配置 =====
 
-/** 全局记忆配置（MemOS Cloud） */
+/** 全局记忆配置（本地 MemOS 服务） */
 export interface MemoryConfig {
   /** 是否启用记忆功能 */
   enabled: boolean
-  /** MemOS Cloud API Key */
+  /** 本地 MemOS 服务地址，默认 http://168.64.22.211:8000 */
+  serverUrl: string
+  /** 记忆立方 ID — 创建立方后服务端返回的 cube_id */
+  cubeId: string
+  /** 创建立方时使用的 owner_id */
+  ownerId: string
+  /** 记忆立方名称 */
+  cubeName: string
+  /** (旧字段兼容) MemOS Cloud API Key */
   apiKey: string
-  /** 用户标识 */
+  /** (旧字段兼容) 用户标识 */
   userId: string
-  /** 自定义 API 地址（可选，默认 MemOS Cloud） */
+  /** (旧字段兼容) 自定义 API 地址 */
   baseUrl?: string
+}
+
+/** 创建立方返回结果 */
+export interface CreateCubeResult {
+  cubeId: string
+  cubeName: string
+  ownerId: string
+}
+
+/** 查询记忆立方返回结果 */
+export interface QueryCubeResult {
+  /** 事实列表 */
+  facts: Array<{
+    id: string
+    text: string
+    createTime?: string
+    confidence?: number
+  }>
+  /** 偏好列表 */
+  preferences: Array<{
+    id: string
+    text: string
+    type?: string
+  }>
 }
 
 /**
@@ -28,6 +60,10 @@ export const MEMORY_IPC_CHANNELS = {
   SET_CONFIG: 'memory:set-config',
   /** 测试记忆连接 */
   TEST_CONNECTION: 'memory:test-connection',
+  /** 创建记忆立方 */
+  CREATE_CUBE: 'memory:create-cube',
+  /** 查询记忆立方内容（偏好和事实） */
+  QUERY_CUBE: 'memory:query-cube',
 } as const
 
 // ===== Agent 工作区 =====

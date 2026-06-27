@@ -147,6 +147,8 @@ import type {
   UpdateAutomationInput,
   SystemLogReadInput,
   SystemLogReadResult,
+  CreateCubeResult,
+  QueryCubeResult,
 } from '@proma/shared'
 import type {
   UserProfile,
@@ -826,8 +828,14 @@ export interface ElectronAPI {
   /** 保存全局记忆配置 */
   setMemoryConfig: (config: MemoryConfig) => Promise<void>
 
-  /** 测试记忆连接 */
-  testMemoryConnection: () => Promise<{ success: boolean; message: string }>
+  /** 测试记忆连接（查询当前立方偏好和事实） */
+  testMemoryConnection: () => Promise<{ success: boolean; message: string; data?: QueryCubeResult }>
+
+  /** 创建记忆立方 */
+  createMemoryCube: () => Promise<CreateCubeResult>
+
+  /** 查询记忆立方内容（偏好和事实） */
+  queryMemoryCube: () => Promise<QueryCubeResult>
 
   // ===== Chat 工具管理 =====
 
@@ -2222,6 +2230,14 @@ const electronAPI: ElectronAPI = {
 
   testMemoryConnection: () => {
     return ipcRenderer.invoke(MEMORY_IPC_CHANNELS.TEST_CONNECTION)
+  },
+
+  createMemoryCube: () => {
+    return ipcRenderer.invoke(MEMORY_IPC_CHANNELS.CREATE_CUBE)
+  },
+
+  queryMemoryCube: () => {
+    return ipcRenderer.invoke(MEMORY_IPC_CHANNELS.QUERY_CUBE)
   },
 
   // Chat 工具管理

@@ -1,19 +1,26 @@
 /**
- * MemOS Cloud HTTP 客户端
+ * MemOS 本地服务 HTTP 客户端
  *
- * 主进程内直接调用 MemOS Cloud API，替代外部 MCP 进程。
- * 提供 searchMemory（搜索记忆）和 addMemory（存储记忆）两个核心方法。
+ * 主进程内直接调用本地 MemOS 服务 API。
+ * 提供 createCube（创建记忆立方）、searchMemory（搜索记忆）、queryCube（查询立方内容）和 addMemory（存储记忆）四个核心方法。
  */
 
-const DEFAULT_BASE_URL = 'https://memos.memtensor.cn/api/openmem/v1'
-const TIMEOUT_MS = 8000
+import { getMemoryConfig } from './memory-service'
+
+/** MemOS 服务地址（硬编码，不读用户配置） */
+export const MEMOS_SERVER_URL = 'http://168.64.22.211:8000'
+
+const API_PREFIX = '/product'
+/** MemOS 请求超时（毫秒）：Agent 模式下 MemOS 可能需要更长时间处理 */
+const TIMEOUT_MS = 30000
 const RETRIES = 1
 
 /** 记忆凭据 */
 export interface MemosCredentials {
-  apiKey: string
-  userId: string
-  baseUrl?: string
+  /** 记忆立方 ID（由 createCube 创建后返回） */
+  cubeId: string
+  /** 立方所属用户 ID */
+  ownerId: string
 }
 
 /** 搜索记忆的结果 */
@@ -33,87 +40,159 @@ export interface MemorySearchResult {
 
 // ===== 内部工具函数 =====
 
+function getBaseUrl(): string {
+  return MEMOS_SERVER_URL.replace(/\/+$/, '')
+}
+
 async function callApi(
-  credentials: MemosCredentials,
+  _credentials: MemosCredentials,
   path: string,
   body: Record<string, unknown>,
 ): Promise<unknown> {
-  if (!credentials.apiKey) throw new Error('MEMOS_API_KEY not set')
-
-  const baseUrl = credentials.baseUrl || DEFAULT_BASE_URL
+  const baseUrl = getBaseUrl()
   let lastError: Error | undefined
 
   for (let attempt = 0; attempt <= RETRIES; attempt++) {
     try {
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
-      const res = await fetch(`${baseUrl}${path}`, {
+      const res = await fetch(`${baseUrl}${API_PREFIX}${path}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Token ${credentials.apiKey}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
         signal: controller.signal,
       })
       clearTimeout(timer)
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)
+      if (!res.ok) {
+        const text = await res.text()
+        console.error(`[记忆服务] API 请求失败 HTTP ${res.status}: ${text}`)
+        throw new Error(`HTTP ${res.status}: ${text}`)
+      }
       return await res.json()
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err))
-      if (attempt < RETRIES) await new Promise((r) => setTimeout(r, 100 * (attempt + 1)))
+      if (attempt < RETRIES) {
+        console.log(`[记忆服务] 请求重试 (${attempt + 1}/${RETRIES}): ${path}`)
+        await new Promise((r) => setTimeout(r, 100 * (attempt + 1)))
+      }
     }
   }
-  throw lastError
+  throw lastError!
 }
 
-function extractData(result: unknown): Record<string, unknown> | null {
-  if (!result || typeof result !== 'object') return null
+// ===== 创建立方 =====
+
+/**
+ * 创建记忆立方
+ */
+export async function createCube(
+  params: { cubeName: string; ownerId: string },
+): Promise<{ cubeId: string; cubeName: string; ownerId: string }> {
+  console.log(`[记忆服务] ⏳ 正在创建记忆立方 name="${params.cubeName}" owner="${params.ownerId}"`)
+
+  const result = await callApi({ cubeId: '', ownerId: '' }, '/create_cube', {
+    cube_name: params.cubeName,
+    owner_id: params.ownerId,
+  })
+
   const r = result as Record<string, unknown>
-  const data = r.data as Record<string, unknown> | undefined
-  return data ?? null
+  if (r.code !== 200) {
+    throw new Error(`创建立方失败: ${String(r.message ?? '未知错误')}`)
+  }
+
+  const data = r.data as Record<string, string> | undefined
+  if (!data?.cube_id) {
+    throw new Error('创建立方失败: 响应中缺少 cube_id')
+  }
+
+  console.log(`[记忆服务] ✅ 记忆立方创建成功 cubeId=${data.cube_id}`)
+  return {
+    cubeId: data.cube_id,
+    cubeName: data.cube_name ?? params.cubeName,
+    ownerId: data.owner_id ?? params.ownerId,
+  }
 }
 
-// ===== 公开 API =====
+// ===== 搜索记忆 =====
+
+function extractMemoriesFromBuckets(
+  buckets: Array<Record<string, unknown>> | undefined,
+): Array<{ id: string; text: string; createTime?: string; confidence?: number }> {
+  if (!buckets || !Array.isArray(buckets)) return []
+  const items: Array<{ id: string; text: string; createTime?: string; confidence?: number }> = []
+  for (const bucket of buckets) {
+    const memories = bucket.memories as Array<Record<string, unknown>> | undefined
+    if (!memories || !Array.isArray(memories)) continue
+    for (const mem of memories) {
+      const metadata = (mem.metadata as Record<string, unknown>) ?? {}
+      items.push({
+        id: String(mem.id ?? ''),
+        text: String(mem.memory ?? ''),
+        createTime: metadata.create_time ? String(metadata.create_time) : undefined,
+        confidence: typeof metadata.score === 'number' ? metadata.score : undefined,
+      })
+    }
+  }
+  return items.filter((f) => f.text)
+}
+
+function extractPreferencesFromBuckets(
+  buckets: Array<Record<string, unknown>> | undefined,
+): Array<{ id: string; text: string; type?: string }> {
+  if (!buckets || !Array.isArray(buckets)) return []
+  const items: Array<{ id: string; text: string; type?: string }> = []
+  for (const bucket of buckets) {
+    const memories = bucket.memories as Array<Record<string, unknown>> | undefined
+    if (!memories || !Array.isArray(memories)) continue
+    for (const mem of memories) {
+      const metadata = (mem.metadata as Record<string, unknown>) ?? {}
+      items.push({
+        id: String(mem.id ?? ''),
+        text: String(mem.memory ?? ''),
+        type: metadata.preference_type ? String(metadata.preference_type) : undefined,
+      })
+    }
+  }
+  return items.filter((p) => p.text)
+}
 
 /**
  * 搜索记忆
- *
- * 根据查询文本搜索相关的事实记忆和偏好记忆。
  */
 export async function searchMemory(
   credentials: MemosCredentials,
   query: string,
   limit = 6,
 ): Promise<MemorySearchResult> {
-  const result = await callApi(credentials, '/search/memory', {
-    user_id: credentials.userId,
+  console.log(`[记忆服务] 🔍 搜索记忆 query="${query}", cubeId=${credentials.cubeId}`)
+
+  const result = await callApi(credentials, '/search', {
     query,
-    source: 'proma',
-    memory_limit_number: limit,
+    user_id: credentials.ownerId,
+    readable_cube_ids: [credentials.cubeId],
+    top_k: limit,
     include_preference: true,
-    preference_limit_number: limit,
+    pref_top_k: limit,
+    relativity: 0,
+    mode: 'fast',
   })
 
-  const data = extractData(result)
-  if (!data) return { facts: [], preferences: [] }
+  const r = result as Record<string, unknown>
+  const data = r.data as Record<string, unknown> | undefined
 
-  const memories = (data.memory_detail_list as Array<Record<string, unknown>>) ?? []
-  const prefs = (data.preference_detail_list as Array<Record<string, unknown>>) ?? []
-
-  return {
-    facts: memories.map((item) => ({
-      id: String(item.id ?? ''),
-      text: String(item.memory_value || item.memory_key || ''),
-      createTime: item.create_time ? String(item.create_time) : undefined,
-      confidence: typeof item.confidence === 'number' ? item.confidence : undefined,
-    })).filter((f) => f.text),
-    preferences: prefs.map((item) => ({
-      id: String(item.id ?? ''),
-      text: String(item.preference || ''),
-      type: item.preference_type ? String(item.preference_type) : undefined,
-    })).filter((p) => p.text),
+  if (!data) {
+    console.log('[记忆服务] 📊 搜索未返回数据')
+    return { facts: [], preferences: [] }
   }
+
+  const textBuckets = data.text_mem as Array<Record<string, unknown>> | undefined
+  const prefBuckets = data.pref_mem as Array<Record<string, unknown>> | undefined
+
+  const facts = extractMemoriesFromBuckets(textBuckets)
+  const preferences = extractPreferencesFromBuckets(prefBuckets)
+
+  console.log(`[记忆服务] 📊 搜索命中 ${facts.length} 条事实, ${preferences.length} 条偏好`)
+  return { facts, preferences }
 }
 
 /**
@@ -121,7 +200,6 @@ export async function searchMemory(
  */
 export function formatSearchResult(result: MemorySearchResult): string {
   const lines: string[] = []
-
   if (result.facts.length > 0) {
     lines.push('## Facts')
     for (const item of result.facts) {
@@ -129,21 +207,19 @@ export function formatSearchResult(result: MemorySearchResult): string {
       lines.push(time ? `- [${time}] ${item.text}` : `- ${item.text}`)
     }
   }
-
   if (result.preferences.length > 0) {
     lines.push('\n## Preferences')
     for (const item of result.preferences) {
       lines.push(item.type ? `- (${item.type}) ${item.text}` : `- ${item.text}`)
     }
   }
-
   return lines.length > 0 ? lines.join('\n') : 'No memories found.'
 }
 
+// ===== 添加记忆 =====
+
 /**
  * 存储记忆
- *
- * 将对话消息存入 MemOS Cloud，由后端异步提取记忆。
  */
 export async function addMemory(
   credentials: MemosCredentials,
@@ -161,13 +237,56 @@ export async function addMemory(
     messages.push({ role: 'assistant', content: params.assistantMessage })
   }
 
-  await callApi(credentials, '/add/message', {
-    user_id: credentials.userId,
-    conversation_id: params.conversationId || `proma-${Date.now()}`,
+  const conversationId = params.conversationId || `proma-${Date.now()}`
+  console.log(`[记忆服务] 💾 添加记忆 conversationId=${conversationId}`)
+
+  await callApi(credentials, '/add', {
+    user_id: credentials.ownerId,
+    writable_cube_ids: [credentials.cubeId],
     messages,
-    source: 'proma',
-    tags: params.tags ?? ['proma'],
-    async_mode: true,
-    info: { source: 'proma-builtin' },
+    async_mode: 'sync',
+    custom_tags: params.tags ?? ['proma'],
+    info: { source: 'proma-builtin', conversation_id: conversationId },
   })
+
+  console.log(`[记忆服务] ✅ 添加记忆完成 conversationId=${conversationId}`)
+}
+
+// ===== 查询立方内容 =====
+
+/**
+ * 查询记忆立方的偏好和事实
+ */
+export async function queryCube(
+  credentials: MemosCredentials,
+): Promise<import('@proma/shared').QueryCubeResult> {
+  console.log(`[记忆服务] 🔍 查询记忆立方 cubeId=${credentials.cubeId}`)
+
+  // 用一个通用查询来获取偏好和事实
+  const result = await callApi(credentials, '/search', {
+    query: '.',
+    user_id: credentials.ownerId,
+    readable_cube_ids: [credentials.cubeId],
+    top_k: 20,
+    include_preference: true,
+    pref_top_k: 20,
+    relativity: 0,
+  })
+
+  const r = result as Record<string, unknown>
+  const data = r.data as Record<string, unknown> | undefined
+
+  if (!data) {
+    console.log('[记忆服务] 📊 查询未返回数据')
+    return { facts: [], preferences: [] }
+  }
+
+  const textBuckets = data.text_mem as Array<Record<string, unknown>> | undefined
+  const prefBuckets = data.pref_mem as Array<Record<string, unknown>> | undefined
+
+  const facts = extractMemoriesFromBuckets(textBuckets)
+  const preferences = extractPreferencesFromBuckets(prefBuckets)
+
+  console.log(`[记忆服务] 📊 查询结果: ${facts.length} 条事实, ${preferences.length} 条偏好`)
+  return { facts, preferences }
 }

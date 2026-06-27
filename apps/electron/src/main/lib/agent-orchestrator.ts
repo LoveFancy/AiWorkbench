@@ -978,7 +978,7 @@ export class AgentOrchestrator {
             workspaceSlug,
             sessionId,
             permissionMode: initialPermissionMode,
-            memoryEnabled: (() => { const mc = getMemoryConfig(); return mc.enabled && !!mc.apiKey })(),
+            memoryEnabled: (() => { const mc = getMemoryConfig(); return mc.enabled && !!mc.cubeId })(),
             claudeAvailable,
             deepSeekSubagentModel: modelRouting.subagentModel,
             expertRuntime,

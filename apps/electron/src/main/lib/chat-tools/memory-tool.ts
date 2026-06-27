@@ -32,7 +32,8 @@ export const MEMORY_TOOL_META: ChatToolMeta = {
 - 当前任务可能和过去做过的事情有关
 
 **add_memory — 记住：**
-当对话中发生值得记住的事时调用：
+用户说“请记住”，必须调用add_memory
+或者当对话中发生值得记住的事时调用：
 - 用户分享了工作方式或偏好
 - 一起做了重要决定
 - 解决了棘手问题
@@ -76,7 +77,7 @@ export const MEMORY_TOOL_DEFINITIONS: ToolDefinition[] = [
  */
 export function isMemoryAvailable(): boolean {
   const config = getMemoryConfig()
-  return !!config.apiKey
+  return config.enabled && !!config.cubeId
 }
 
 // ===== 工具执行 =====
@@ -97,9 +98,8 @@ export function isMemoryToolCall(toolName: string): boolean {
 export async function executeMemoryTool(toolCall: ToolCall): Promise<ToolResult> {
   const memoryConfig = getMemoryConfig()
   const credentials = {
-    apiKey: memoryConfig.apiKey,
-    userId: memoryConfig.userId?.trim() || 'proma-user',
-    baseUrl: memoryConfig.baseUrl,
+    cubeId: memoryConfig.cubeId,
+    ownerId: memoryConfig.ownerId || 'proma-user',
   }
 
   try {
