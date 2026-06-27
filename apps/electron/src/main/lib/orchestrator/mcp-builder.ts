@@ -203,7 +203,7 @@ export async function injectMemoryTools(
   mcpServers: Record<string, Record<string, unknown>>,
 ): Promise<void> {
   const memoryConfig = getMemoryConfig()
-  const memOwnerId = memoryConfig.ownerId?.trim() || 'proma-user'
+  const memOwnerId = memoryConfig.ownerId?.trim() || 'root'
   if (!memoryConfig.enabled || !memoryConfig.cubeId) return
 
   try {

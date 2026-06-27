@@ -2938,13 +2938,18 @@ export function registerIpcHandlers(): void {
       const config = getMemoryConfig()
       const { createCube } = await import('./lib/memos-client')
 
-      // 使用用户档案中的名称，未设置则用时间戳生成
-      const userProfile = getUserProfile()
-      const isDefaultName = userProfile.userName === (await import('../types')).DEFAULT_USER_NAME
-      const cubeName = isDefaultName
-        ? `记忆立方-${new Date().toISOString().replace(/[TZ]/g, ' ').trim().replace(/:/g, '-').replace(' ', '_')}`
-        : userProfile.userName
-
+      // 使用登录名作为立方名称，owner_id 固定为 root
+      const { getAuthInfo } = await import('../auth/auth-service')
+      const authInfo = getAuthInfo()
+      let cubeName = '记忆立方'
+      if (authInfo?.displayName) {
+        cubeName = authInfo.displayName
+      } else if (authInfo?.jobId) {
+        cubeName = authInfo.jobId
+      } else {
+        const userProfile = getUserProfile()
+        cubeName = userProfile.userName || '记忆立方'
+      }
       const ownerId = 'root'
 
       const result = await createCube({ cubeName, ownerId })
@@ -2952,7 +2957,7 @@ export function registerIpcHandlers(): void {
       setMemoryConfig({
         ...config,
         cubeId: result.cubeId,
-        ownerId: result.ownerId,
+        ownerId: 'root',
         cubeName: result.cubeName,
       })
       console.log(`[记忆服务] IPC: 记忆立方创建并保存成功 cubeId=${result.cubeId}, cubeName=${result.cubeName}`)

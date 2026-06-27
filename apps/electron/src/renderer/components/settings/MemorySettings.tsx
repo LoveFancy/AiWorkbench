@@ -6,14 +6,16 @@
  */
 
 import * as React from 'react'
-import { useSetAtom } from 'jotai'
+import { useSetAtom, useAtomValue } from 'jotai'
 import { toast } from 'sonner'
-import { Box, CheckCircle2, XCircle, Loader2, Lightbulb, Info } from 'lucide-react'
+import { Box, CheckCircle2, XCircle, Loader2, Lightbulb } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import type { MemoryConfig, QueryCubeResult } from '@proma/shared'
 import { SettingsSection, SettingsCard } from './primitives'
 import { chatToolsAtom } from '@/atoms/chat-tool-atoms'
+import { isLoggedInAtom, authStateAtom } from '@/auth/renderer'
+import { userProfileAtom } from '@/atoms/user-profile'
 
 /** 刷新全局工具列表 atom */
 async function refreshChatTools(setter: (tools: Awaited<ReturnType<typeof window.electronAPI.getChatTools>>) => void): Promise<void> {
@@ -59,6 +61,10 @@ export function MemorySettings(): React.ReactElement {
   const [loading, setLoading] = React.useState(true)
   const [creatingCube, setCreatingCube] = React.useState(false)
   const setChatTools = useSetAtom(chatToolsAtom)
+  const isLoggedIn = useAtomValue(isLoggedInAtom)
+  const authState = useAtomValue(authStateAtom)
+  const userProfile = useAtomValue(userProfileAtom)
+  const displayName = authState.jobId?.trim() || userProfile.userName
 
   // 连接测试状态
   const [testing, setTesting] = React.useState(false)
@@ -140,29 +146,18 @@ export function MemorySettings(): React.ReactElement {
           <Switch
             checked={config.enabled}
             onCheckedChange={(checked) => handleSave({ ...config, enabled: checked })}
-            disabled={saving || !hasCube}
+            disabled={saving || !hasCube || !isLoggedIn}
           />
         }
       >
         <SettingsCard divided={false}>
           <div className="space-y-4 p-4">
-            {/* 引导说明 */}
-            <div className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground space-y-1">
-              <p>记忆功能由本地的 <span className="font-medium text-foreground">MemOS 服务</span> 提供。创建记忆立方后即可使用本功能，如有问题，可联系鲍亮(015562)。</p>
-            </div>
-
-            {/* 服务地址（只读展示） */}
-            <div className="rounded-lg bg-muted/30 p-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <Info size={15} className="text-muted-foreground" />
-                  服务地址
-                </div>
-                <code className="text-xs text-muted-foreground bg-muted/50 px-2 py-0.5 rounded">
-                  {config.serverUrl || 'http://168.64.22.211:8000'}
-                </code>
+            {/* 未登录提示 */}
+            {!isLoggedIn && (
+              <div className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground">
+                登录后可使用本功能
               </div>
-            </div>
+            )}
 
             {/* 立方状态 */}
             <div className="rounded-lg bg-muted/30 p-3 space-y-3">
@@ -182,19 +177,19 @@ export function MemorySettings(): React.ReactElement {
               </div>
 
               {hasCube && (
-                <div className="text-xs text-muted-foreground space-y-0.5">
-                  <div>ID: <code className="text-foreground/80">{config.cubeId}</code></div>
+                <div className="text-xs text-muted-foreground">
+                  用户：{displayName}
                 </div>
               )}
 
               <div className="flex items-center gap-2">
                 {!hasCube && (
-                  <Button size="sm" onClick={handleCreateCube} disabled={creatingCube}>
+                  <Button size="sm" onClick={handleCreateCube} disabled={creatingCube || !isLoggedIn}>
                     {creatingCube ? <><Loader2 size={14} className="animate-spin mr-1.5" />创建中...</> : '创建记忆立方'}
                   </Button>
                 )}
                 {hasCube && (
-                  <Button size="sm" variant="outline" disabled={testing} onClick={handleQueryCube}>
+                  <Button size="sm" variant="outline" disabled={testing || !isLoggedIn} onClick={handleQueryCube}>
                     {testing ? <><Loader2 size={14} className="animate-spin mr-1.5" />查询中...</> : '测试连接'}
                   </Button>
                 )}

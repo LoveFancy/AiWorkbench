@@ -99,7 +99,7 @@ export async function executeMemoryTool(toolCall: ToolCall): Promise<ToolResult>
   const memoryConfig = getMemoryConfig()
   const credentials = {
     cubeId: memoryConfig.cubeId,
-    ownerId: memoryConfig.ownerId || 'proma-user',
+    ownerId: memoryConfig.ownerId || 'root',
   }
 
   try {

@@ -6,15 +6,17 @@
  */
 
 import * as React from 'react'
-import { useAtom } from 'jotai'
+import { useAtom, useAtomValue } from 'jotai'
 import { toast } from 'sonner'
-import { Loader2, CheckCircle2, XCircle, Search, Box, Info, Lightbulb } from 'lucide-react'
+import { Loader2, CheckCircle2, XCircle, Search, Box, Lightbulb } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { SettingsSection, SettingsCard } from './primitives'
 import { chatToolsAtom } from '@/atoms/chat-tool-atoms'
+import { isLoggedInAtom, authStateAtom } from '@/auth/renderer'
+import { userProfileAtom } from '@/atoms/user-profile'
 import type { QueryCubeResult } from '@proma/shared'
 
 /** 格式化偏好和事实的展示文本 */
@@ -225,11 +227,17 @@ function MemoryCubeSettings(): React.ReactElement {
 
   const [hasCube, setHasCube] = React.useState(false)
   const [cubeId, setCubeId] = React.useState('')
+  const [cubeName, setCubeName] = React.useState('')
+  const isLoggedIn = useAtomValue(isLoggedInAtom)
+  const authState = useAtomValue(authStateAtom)
+  const userProfile = useAtomValue(userProfileAtom)
+  const displayName = authState.jobId?.trim() || userProfile.userName
   React.useEffect(() => {
     window.electronAPI.getMemoryConfig()
       .then((c) => {
         setHasCube(!!c.cubeId)
         setCubeId(c.cubeId)
+        setCubeName(c.cubeName)
       })
       .catch((err) => console.error('[MemoryCube] 加载配置失败:', err))
       .finally(() => setLoading(false))
@@ -263,6 +271,7 @@ function MemoryCubeSettings(): React.ReactElement {
       const result = await window.electronAPI.createMemoryCube()
       setHasCube(true)
       setCubeId(result.cubeId)
+      setCubeName(result.cubeName)
       await window.electronAPI.updateChatToolState('memory', { enabled: true })
       await refreshTools()
       toast.success('记忆立方创建成功')
@@ -294,34 +303,23 @@ function MemoryCubeSettings(): React.ReactElement {
   return (
     <SettingsSection
       title="记忆立方"
-      description="连接到本地 MemOS 服务，创建专属记忆空间实现跨会话记忆"
+      description="创建专属记忆空间实现跨会话记忆"
       action={
         <Switch
           checked={enabled}
-          disabled={!hasCube}
+          disabled={!hasCube || !isLoggedIn}
           onCheckedChange={handleToggle}
         />
       }
     >
       <SettingsCard divided={false}>
         <div className="space-y-4 p-4">
-          {/* 引导说明 */}
-          <div className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground space-y-1">
-            <p>记忆功能由本地的 <span className="font-medium text-foreground">MemOS 服务</span> 提供。创建记忆立方后即可使用本功能，如有问题，可联系鲍亮(015562)。</p>
-          </div>
-
-          {/* 服务地址（只读展示） */}
-          <div className="rounded-lg bg-muted/30 p-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <Info size={15} className="text-muted-foreground" />
-                服务地址
-              </div>
-              <code className="text-xs text-muted-foreground bg-muted/50 px-2 py-0.5 rounded">
-                http://168.64.22.211:8000
-              </code>
+          {/* 未登录提示 */}
+          {!isLoggedIn && (
+            <div className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground">
+              登录后可使用本功能
             </div>
-          </div>
+          )}
 
           {/* 立方状态 */}
           <div className="rounded-lg bg-muted/30 p-3 space-y-3">
@@ -341,19 +339,19 @@ function MemoryCubeSettings(): React.ReactElement {
             </div>
 
             {hasCube && (
-              <div className="text-xs text-muted-foreground space-y-0.5">
-                <div>ID: <code className="text-foreground/80">{cubeId}</code></div>
+              <div className="text-xs text-muted-foreground">
+                用户：{displayName}
               </div>
             )}
 
             <div className="flex items-center gap-2">
               {!hasCube && (
-                <Button size="sm" onClick={handleCreateCube} disabled={creatingCube}>
+                <Button size="sm" onClick={handleCreateCube} disabled={creatingCube || !isLoggedIn}>
                   {creatingCube ? <><Loader2 size={14} className="animate-spin mr-1.5" />创建中...</> : '创建记忆立方'}
                 </Button>
               )}
               {hasCube && (
-                <Button size="sm" variant="outline" disabled={testing} onClick={handleQueryCube}>
+                <Button size="sm" variant="outline" disabled={testing || !isLoggedIn} onClick={handleQueryCube}>
                   {testing ? <><Loader2 size={14} className="animate-spin mr-1.5" />查询中...</> : '测试连接'}
                 </Button>
               )}
