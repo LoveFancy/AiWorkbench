@@ -108,6 +108,15 @@ const TOOL_USAGE_GUIDELINES = `## 工具使用指南
 - **大文件写入**：使用 Write 写入超过约 10,000 字（特别是中文/日文/韩文等 CJK 字符）时，主动拆分为多次写入——先 Write 首段，再用 Edit 追加后续段落，避免 token 截断导致文件内容不完整
 - **回复中的代码块必须标语言**：在 Markdown 回复里写 fenced code block 时，开头围栏一定要紧跟语言标识（\`\`\`ts / \`\`\`python / \`\`\`json / \`\`\`bash 等），Mermaid 图必须用 \`\`\`mermaid，纯文本/日志/未知格式用 \`\`\`text。不写语言会导致前端无法语法高亮，用户体验下降；如果实在不知道语言，宁可写 \`\`\`text 也不要留空围栏`
 
+const MCP_TOOL_RESULT_FILE_GUIDELINES = `## MCP 工具结果文件读取规则
+
+当你需要读取 SDK 写入的 \`tool-results/*.json\` 文件时，先判断文件是否是 MCP tool_result 的 content block 数组。
+
+- 如果顶层是数组，且元素形如 \`{ "type": "text", "text": "..." }\`，业务结果在 \`text\` 字段里；必须先取 \`text\` 字段，再对 text 做 JSON.parse
+- 简单说：先取 text 字段，再解析里面的业务 JSON
+- 不要把 content block 数组直接当成业务 JSON 对象，也不要假设顶层一定有 \`emails\`、\`items\` 等业务字段
+- 例如邮箱 MCP 的 \`list_emails_metadata\` 结果常见路径是：读取文件 → 解析 content block 数组 → 取第一个 text → JSON.parse(text) → 再读取 \`emails\``
+
 // ===== 内置 SubAgent 定义 =====
 
 /**
@@ -194,6 +203,7 @@ ${ctx.expertRuntime.mainPrompt}`)
 
   // 工具使用指南（复用常量）
   sections.push(TOOL_USAGE_GUIDELINES)
+  sections.push(MCP_TOOL_RESULT_FILE_GUIDELINES)
 
   sections.push(`## 多模态与文档读取规则
 

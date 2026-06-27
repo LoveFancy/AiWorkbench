@@ -1,4 +1,6 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import AdmZip from 'adm-zip'
+import { createHash } from 'node:crypto'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
@@ -71,10 +73,6 @@ describe('initializeDefaultConnector', () => {
         linux: 'npm install -g @ht/talents-cli',
         win32: 'npm install -g @ht/talents-cli',
       },
-      userProvidedData: [
-        { name: 'HTSKILL_TOKEN', label: 'Talents Token', type: 'password', required: true },
-        { name: 'AGENTOS_ENV', label: '环境', type: 'select', default: 'uat', options: ['dev', 'sit', 'uat', 'prd'], required: true },
-      ],
       status: {
         darwin: 'talents workspace --json',
         linux: 'talents workspace --json',
@@ -82,7 +80,7 @@ describe('initializeDefaultConnector', () => {
       },
       env: {
         HTSKILL_TOKEN: '{{HTSKILL_TOKEN}}',
-        AGENTOS_ENV: '{{AGENTOS_ENV}}',
+        AGENTOS_ENV: 'uat',
       },
     }, null, 2), 'utf-8')
   })
@@ -93,8 +91,16 @@ describe('initializeDefaultConnector', () => {
     rmSync(root, { recursive: true, force: true })
   })
 
-  test('华泰邮箱初始化使用内置邮箱 MCP runtime 并写入 IMAP-only 配置', async () => {
+  test('华泰邮箱初始化使用内置邮箱 MCP runtime 并写入读取和草稿配置', async () => {
     const runtimePath = createHuataiEmailRuntime()
+    writeFileSync(join(getConnectorsDir('default'), 'huatai-email', 'connector.json'), JSON.stringify({
+      disabledTools: [
+        'add_email_account',
+        'send_email',
+        'save_to_mailbox',
+        'delete_emails',
+      ],
+    }, null, 2), 'utf-8')
     const calls: string[] = []
 
     const result = await initializeDefaultConnector('default', {
@@ -113,6 +119,10 @@ describe('initializeDefaultConnector', () => {
         expect(entry.command).toBe(process.execPath)
         expect(entry.args).toEqual([runtimePath, 'stdio'])
         expect(entry.env?.ELECTRON_RUN_AS_NODE).toBe('1')
+        expect(entry.env?.MCP_EMAIL_SERVER_SMTP_HOST).toBe('htemail.htsc.com.cn')
+        expect(entry.env?.MCP_EMAIL_SERVER_SMTP_PORT).toBe('25')
+        expect(entry.env?.MCP_EMAIL_SERVER_SMTP_SSL).toBe('false')
+        expect(entry.env?.MCP_EMAIL_SERVER_SMTP_START_SSL).toBe('true')
         return { success: true, message: '连接成功' }
       },
     })
@@ -150,13 +160,23 @@ describe('initializeDefaultConnector', () => {
         MCP_EMAIL_SERVER_IMAP_HOST: 'htemail.htsc.com.cn',
         MCP_EMAIL_SERVER_IMAP_PORT: '993',
         MCP_EMAIL_SERVER_IMAP_SSL: 'true',
+        MCP_EMAIL_SERVER_SMTP_HOST: 'htemail.htsc.com.cn',
+        MCP_EMAIL_SERVER_SMTP_PORT: '25',
+        MCP_EMAIL_SERVER_SMTP_SSL: 'false',
+        MCP_EMAIL_SERVER_SMTP_START_SSL: 'true',
+        MCP_EMAIL_SERVER_SAVE_TO_SENT: 'true',
       },
       enabled: true,
     })
-    expect(Object.keys(config.servers.email?.env ?? {}).some((key) => key.includes('SMTP'))).toBe(false)
 
     const connectorsCfg = readConnectorsConfig('default')
     expect(connectorsCfg.connectors['huatai-email']?.enabled).toBe(true)
+
+    const connectorMeta = JSON.parse(
+      readFileSync(join(getConnectorsDir('default'), 'huatai-email', 'connector.json'), 'utf-8'),
+    ) as { disabledTools?: string[] }
+    expect(connectorMeta.disabledTools).toContain('send_email')
+    expect(connectorMeta.disabledTools).not.toContain('save_to_mailbox')
   })
 
   test('华泰邮箱缺少内置 runtime 时失败且不尝试 pip 安装', async () => {
@@ -215,16 +235,13 @@ describe('initializeDefaultConnector', () => {
     expect(progressEvents[0]?.steps).not.toBe(progressEvents.at(-1)?.steps)
   })
 
-  test('hi-agent 初始化会写入 CLI runtime、secrets 并启用连接器', async () => {
+  test('hi-agent 初始化使用 SkillHub Token 写入 CLI runtime 且不保存 connector secrets', async () => {
     const calls: string[] = []
     const probe = process.platform === 'win32' ? 'where' : 'which'
     const result = await initializeDefaultConnector('default', {
       connectorId: 'hi-agent',
-      userProvidedData: {
-        HTSKILL_TOKEN: 'talents-token',
-        AGENTOS_ENV: 'uat',
-      },
     }, {
+      getSkillHubToken: async () => 'skillhub-token',
       commandExists: async (command) => command === 'node' || command === 'npm',
       runCommand: async (command, args, options) => {
         calls.push([command, ...args].join(' '))
@@ -238,7 +255,7 @@ describe('initializeDefaultConnector', () => {
           return { ok: true, stdout: '1.0.2\n', stderr: '' }
         }
         if (command === mockTalentsPath && args.join(' ') === 'workspace --json') {
-          expect(options?.env?.HTSKILL_TOKEN).toBe('talents-token')
+          expect(options?.env?.HTSKILL_TOKEN).toBe('skillhub-token')
           expect(options?.env?.AGENTOS_ENV).toBe('uat')
           return { ok: true, stdout: '{"ok":true}', stderr: '' }
         }
@@ -253,6 +270,7 @@ describe('initializeDefaultConnector', () => {
       ['check-package', 'success'],
       ['install-package', 'skipped'],
       ['install-skill', 'success'],
+      ['check-auth', 'success'],
       ['write-config', 'success'],
       ['self-check', 'success'],
     ])
@@ -263,10 +281,7 @@ describe('initializeDefaultConnector', () => {
     expect(runtime.binDir).toBe(root)
     expect(runtime.packageName).toBe('@ht/talents-cli')
 
-    const secrets = JSON.parse(readFileSync(join(connectorDir, 'secrets.json'), 'utf-8')) as { version?: number; data?: Record<string, { value: string }> }
-    expect(secrets.version).toBe(1)
-    expect(secrets.data?.HTSKILL_TOKEN?.value).toBe('talents-token')
-    expect(secrets.data?.AGENTOS_ENV?.value).toBe('uat')
+    expect(existsSync(join(connectorDir, 'secrets.json'))).toBe(false)
 
     const connectorsCfg = readConnectorsConfig('default')
     expect(connectorsCfg.connectors['hi-agent']?.enabled).toBe(true)
@@ -279,11 +294,8 @@ describe('initializeDefaultConnector', () => {
     const result = await initializeDefaultConnector('default', {
       connectorId: 'hi-agent',
       runId: 'run-hi-agent-progress-1',
-      userProvidedData: {
-        HTSKILL_TOKEN: 'talents-token',
-        AGENTOS_ENV: 'uat',
-      },
     }, {
+      getSkillHubToken: async () => 'skillhub-token',
       commandExists: async (command) => command === 'node' || command === 'npm',
       runCommand: async (command, args, options) => {
         if (command === 'node' && args[0] === '-v') {
@@ -296,7 +308,7 @@ describe('initializeDefaultConnector', () => {
           return { ok: true, stdout: '1.0.2\n', stderr: '' }
         }
         if (command === mockTalentsPath && args.join(' ') === 'workspace --json') {
-          expect(options?.env?.HTSKILL_TOKEN).toBe('talents-token')
+          expect(options?.env?.HTSKILL_TOKEN).toBe('skillhub-token')
           return { ok: true, stdout: '{"ok":true}', stderr: '' }
         }
         return { ok: true, stdout: '', stderr: '' }
@@ -317,10 +329,11 @@ describe('initializeDefaultConnector', () => {
       ['check-package', 'success'],
       ['install-package', 'skipped'],
       ['install-skill', 'success'],
+      ['check-auth', 'success'],
       ['write-config', 'success'],
       ['self-check', 'success'],
     ])
-    expect(JSON.stringify(progressEvents)).not.toContain('talents-token')
+    expect(JSON.stringify(progressEvents)).not.toContain('skillhub-token')
     expect(progressEvents[0]?.steps).not.toBe(progressEvents.at(-1)?.steps)
   })
 
@@ -334,11 +347,8 @@ describe('initializeDefaultConnector', () => {
     try {
       const result = await initializeDefaultConnector('default', {
         connectorId: 'hi-agent',
-        userProvidedData: {
-          HTSKILL_TOKEN: 'talents-secret-token',
-          AGENTOS_ENV: 'uat',
-        },
       }, {
+        getSkillHubToken: async () => 'talents-secret-token',
         commandExists: async (command) => command === 'node' || command === 'npm',
         runCommand: async (command, args) => {
           if (command === 'node' && args[0] === '-v') {
@@ -369,5 +379,170 @@ describe('initializeDefaultConnector', () => {
     } finally {
       console.info = originalInfo
     }
+  })
+
+  test('通用 CLI 初始化支持从 archive 安装华泰 GitLab 连接器', async () => {
+    const commandName = process.platform === 'win32' ? 'glab.exe' : 'glab'
+    const archive = new AdmZip()
+    archive.addFile(`bin/${commandName}`, Buffer.from('#!/bin/sh\n'))
+    const archiveBytes = archive.toBuffer()
+    const archiveSha256 = createHash('sha256').update(archiveBytes).digest('hex')
+    const probe = process.platform === 'win32' ? 'where' : 'which'
+    const calls: string[] = []
+
+    const connectorsCfg = readConnectorsConfig('default')
+    connectorsCfg.connectors['huatai-gitlab'] = {
+      type: 'cli',
+      enabled: false,
+      source: 'preset',
+      displayName: '华泰 GitLab',
+      status: 'available',
+      skillDirs: ['skills/gitlab-cli'],
+    }
+    writeFileSync(getConnectorsConfigPath('default'), JSON.stringify(connectorsCfg, null, 2), 'utf-8')
+
+    const connectorDir = join(getConnectorsDir('default'), 'huatai-gitlab')
+    mkdirSync(connectorDir, { recursive: true })
+    writeFileSync(join(connectorDir, 'cli.json'), JSON.stringify({
+      runtime: { type: 'binary', version: '>=1.100.0' },
+      command: {
+        darwin: 'glab',
+        linux: 'glab',
+        win32: 'glab.exe',
+      },
+      install: {
+        mode: 'download-archive',
+        version: '1.105.0',
+        [process.platform]: {
+          url: 'mock://glab.zip',
+          sha256: archiveSha256,
+          binaryPath: `bin/${commandName}`,
+        },
+      },
+      userProvidedData: [
+        { name: 'GITLAB_TOKEN', label: 'GitLab Token', type: 'password', required: true },
+      ],
+      status: {
+        darwin: 'glab api user',
+        linux: 'glab api user',
+        win32: 'glab.exe api user',
+      },
+      env: {
+        GITLAB_HOST: 'gitlab.htzq.htsc.com.cn',
+        GITLAB_TOKEN: '{{GITLAB_TOKEN}}',
+        GLAB_NO_PROMPT: 'true',
+        NO_COLOR: '1',
+      },
+    }, null, 2), 'utf-8')
+
+    const result = await initializeDefaultConnector('default', {
+      connectorId: 'huatai-gitlab',
+      userProvidedData: {
+        GITLAB_TOKEN: 'gitlab-secret-token',
+      },
+    }, {
+      downloadFile: async (url: string) => {
+        expect(url).toBe('mock://glab.zip')
+        return archiveBytes
+      },
+      commandExists: async () => {
+        throw new Error('binary archive 连接器不应检查 Node/npm')
+      },
+      runCommand: async (command, args, options) => {
+        calls.push([command, ...args].join(' '))
+        if (command === probe && args[0] === commandName) {
+          return { ok: false, stdout: '', stderr: '' }
+        }
+        if (command.endsWith(commandName) && args.join(' ') === '--version') {
+          return { ok: true, stdout: 'glab 1.105.0\n', stderr: '' }
+        }
+        if (command.endsWith(commandName) && args.join(' ') === 'api user') {
+          expect(options?.env?.GITLAB_HOST).toBe('gitlab.htzq.htsc.com.cn')
+          expect(options?.env?.GITLAB_TOKEN).toBe('gitlab-secret-token')
+          expect(options?.env?.GLAB_NO_PROMPT).toBe('true')
+          return { ok: true, stdout: '{"username":"qinxiao"}', stderr: '' }
+        }
+        return { ok: false, stdout: '', stderr: `unexpected command ${command} ${args.join(' ')}` }
+      },
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.message).toBe('华泰 GitLab 连接器初始化完成。')
+    expect(calls.some((call) => call.endsWith(`${commandName} api user`))).toBe(true)
+    const runtime = JSON.parse(readFileSync(join(connectorDir, 'runtime.json'), 'utf-8')) as { commandPath?: string; binDir?: string; packageName?: string; packageVersion?: string }
+    expect(runtime.commandPath).toContain(join('runtime', 'bin', commandName))
+    expect(runtime.binDir).toContain(join('runtime', 'bin'))
+    expect(runtime.packageName).toBe('glab')
+    expect(runtime.packageVersion).toBe('1.105.0')
+    expect(existsSync(runtime.commandPath ?? '')).toBe(true)
+
+    const secrets = JSON.parse(readFileSync(join(connectorDir, 'secrets.json'), 'utf-8')) as { data?: Record<string, { value: string }> }
+    expect(secrets.data?.GITLAB_TOKEN?.value).toBe('gitlab-secret-token')
+    expect(readConnectorsConfig('default').connectors['huatai-gitlab']?.enabled).toBe(true)
+  })
+
+  test('archive 安装拒绝不安全的 binaryPath', async () => {
+    const commandName = process.platform === 'win32' ? 'glab.exe' : 'glab'
+    const archive = new AdmZip()
+    archive.addFile(`bin/${commandName}`, Buffer.from('#!/bin/sh\n'))
+    const archiveBytes = archive.toBuffer()
+    const archiveSha256 = createHash('sha256').update(archiveBytes).digest('hex')
+
+    const connectorsCfg = readConnectorsConfig('default')
+    connectorsCfg.connectors['huatai-gitlab'] = {
+      type: 'cli',
+      enabled: false,
+      source: 'preset',
+      displayName: '华泰 GitLab',
+      status: 'available',
+      skillDirs: ['skills/gitlab-cli'],
+    }
+    writeFileSync(getConnectorsConfigPath('default'), JSON.stringify(connectorsCfg, null, 2), 'utf-8')
+
+    const connectorDir = join(getConnectorsDir('default'), 'huatai-gitlab')
+    mkdirSync(connectorDir, { recursive: true })
+    writeFileSync(join(connectorDir, 'cli.json'), JSON.stringify({
+      runtime: { type: 'binary', version: '>=1.100.0' },
+      command: {
+        darwin: 'glab',
+        linux: 'glab',
+        win32: 'glab.exe',
+      },
+      install: {
+        mode: 'download-archive',
+        version: '1.105.0',
+        [process.platform]: {
+          url: 'mock://glab.zip',
+          sha256: archiveSha256,
+          binaryPath: `..\\${commandName}`,
+        },
+      },
+      userProvidedData: [
+        { name: 'GITLAB_TOKEN', label: 'GitLab Token', type: 'password', required: true },
+      ],
+      env: {
+        GITLAB_HOST: 'gitlab.htzq.htsc.com.cn',
+        GITLAB_TOKEN: '{{GITLAB_TOKEN}}',
+      },
+    }, null, 2), 'utf-8')
+
+    const result = await initializeDefaultConnector('default', {
+      connectorId: 'huatai-gitlab',
+      userProvidedData: {
+        GITLAB_TOKEN: 'gitlab-secret-token',
+      },
+    }, {
+      downloadFile: async () => archiveBytes,
+      commandExists: async () => {
+        throw new Error('binary archive 连接器不应检查 Node/npm')
+      },
+      runCommand: async () => ({ ok: false, stdout: '', stderr: '' }),
+    })
+
+    const installStepMessage = result.steps.find((step) => step.id === 'install-package')?.message ?? ''
+    expect(result.success).toBe(false)
+    expect(installStepMessage).toContain('安装包路径不安全')
+    expect(readConnectorsConfig('default').connectors['huatai-gitlab']?.enabled).toBe(false)
+    expect(existsSync(join(connectorDir, 'runtime', 'bin', commandName))).toBe(false)
   })
 })

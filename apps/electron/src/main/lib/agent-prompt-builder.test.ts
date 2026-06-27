@@ -59,6 +59,21 @@ describe('系统根提示词', () => {
     expect(prompt).toContain('不要直接写未加引号的 C:\\Users\\...')
   })
 
+  test('Agent 根提示词说明读取 MCP 工具结果文件时先解析 content blocks', () => {
+    const prompt = buildSystemPrompt({
+      sessionId: 'test-session',
+      permissionMode: 'bypassPermissions',
+      memoryEnabled: false,
+      claudeAvailable: true,
+    })
+
+    expect(prompt).toContain('## MCP 工具结果文件读取规则')
+    expect(prompt).toContain('tool-results')
+    expect(prompt).toContain('content block 数组')
+    expect(prompt).toContain('先取 text 字段')
+    expect(prompt).toContain('再对 text 做 JSON.parse')
+  })
+
   test('Agent 根提示词要求需要外部实时信息时主动使用 WorkMate 联网检索能力', () => {
     const prompt = buildSystemPrompt({
       sessionId: 'test-session',

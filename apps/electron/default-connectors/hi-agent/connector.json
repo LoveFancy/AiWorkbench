@@ -1,10 +1,10 @@
 {
   "type": "cli",
-  "displayName": "泰为 hiagent",
-  "description": "泰为 hiagent 大模型应用平台，支持工作区查询、知识库召回和智能体对话",
+  "displayName": "泰为 HiAgent",
+  "description": "泰为 HiAgent 大模型应用平台，支持工作区查询、知识库召回和智能体对话",
   "category": "办公协同",
   "status": "available",
-  "version": "1.0.2",
+  "version": "1.0.4",
   "sortOrder": 3,
   "skillDirs": ["skills/talents-cli"]
 }

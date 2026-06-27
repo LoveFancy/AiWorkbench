@@ -1,0 +1,40 @@
+{
+  "displayName": "华泰 GitLab",
+  "packageName": "glab",
+  "runtime": {
+    "type": "binary",
+    "version": ">=1.100.0"
+  },
+  "command": {
+    "darwin": "glab",
+    "linux": "glab",
+    "win32": "glab.exe"
+  },
+  "install": {
+    "version": "1.105.0",
+    "win32": {
+      "url": "https://gitlab.com/gitlab-org/cli/-/releases/v1.105.0/downloads/glab_1.105.0_windows_amd64.zip",
+      "sha256": "0f2df88d582f697d748f85e382ad378e3c6bfe28e7e45151eb333776132919f1",
+      "binaryPath": "bin/glab.exe"
+    }
+  },
+  "userProvidedData": [
+    {
+      "name": "GITLAB_TOKEN",
+      "label": "GitLab Token",
+      "type": "password",
+      "required": true
+    }
+  ],
+  "status": {
+    "darwin": "glab api user",
+    "linux": "glab api user",
+    "win32": "glab.exe api user"
+  },
+  "env": {
+    "GITLAB_HOST": "gitlab.htzq.htsc.com.cn",
+    "GITLAB_TOKEN": "{{GITLAB_TOKEN}}",
+    "GLAB_NO_PROMPT": "true",
+    "NO_COLOR": "1"
+  }
+}

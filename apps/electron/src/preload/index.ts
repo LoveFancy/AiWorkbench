@@ -729,6 +729,14 @@ export interface ElectronAPI {
   getConnectorsConfig: (workspaceSlug: string) => Promise<ConnectorsConfig>
   /** 保存工作区连接器配置 */
   saveConnectorsConfig: (workspaceSlug: string, config: ConnectorsConfig) => Promise<void>
+  /** 获取华泰邮箱发送能力状态 */
+  getHuataiEmailSendEnabled: (workspaceSlug: string) => Promise<boolean>
+  /** 切换华泰邮箱发送能力 */
+  setHuataiEmailSendEnabled: (workspaceSlug: string, enabled: boolean) => Promise<{ enabled: boolean }>
+  /** 获取华泰邮箱草稿能力状态 */
+  getHuataiEmailDraftEnabled: (workspaceSlug: string) => Promise<boolean>
+  /** 切换华泰邮箱草稿能力 */
+  setHuataiEmailDraftEnabled: (workspaceSlug: string, enabled: boolean) => Promise<{ enabled: boolean }>
   /** 注册用户创建的连接器（创建目录 + connector.json + mcp.json + connectors.json） */
   registerUserConnector: (workspaceSlug: string, name: string, entry: import('@proma/shared').McpServerEntry, displayName?: string) => Promise<void>
   /** 注销用户创建的连接器（删除目录 + connectors.json 条目 + mcp.json 条目） */
@@ -2079,6 +2087,22 @@ const electronAPI: ElectronAPI = {
 
   saveConnectorsConfig: (workspaceSlug: string, config: ConnectorsConfig) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.SAVE_CONNECTORS_CONFIG, workspaceSlug, config)
+  },
+
+  getHuataiEmailSendEnabled: (workspaceSlug: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_HUATAI_EMAIL_SEND_ENABLED, workspaceSlug)
+  },
+
+  setHuataiEmailSendEnabled: (workspaceSlug: string, enabled: boolean) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.SET_HUATAI_EMAIL_SEND_ENABLED, workspaceSlug, enabled)
+  },
+
+  getHuataiEmailDraftEnabled: (workspaceSlug: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.GET_HUATAI_EMAIL_DRAFT_ENABLED, workspaceSlug)
+  },
+
+  setHuataiEmailDraftEnabled: (workspaceSlug: string, enabled: boolean) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.SET_HUATAI_EMAIL_DRAFT_ENABLED, workspaceSlug, enabled)
   },
 
   registerUserConnector: (workspaceSlug: string, name: string, entry: import('@proma/shared').McpServerEntry, displayName?: string) => {

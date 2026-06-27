@@ -151,7 +151,7 @@ describe('buildMcpServers', () => {
     expect(servers.email).toBeDefined()
   })
 
-  test('华泰邮箱从 connector.json 收集写操作禁用工具', () => {
+  test('华泰邮箱默认允许保存草稿但从 connector.json 禁用直接发送等高风险工具', () => {
     writeConnectorsConfig('default', {
       'huatai-email': {
         type: 'mcp', enabled: true, source: 'preset',
@@ -164,7 +164,6 @@ describe('buildMcpServers', () => {
       disabledTools: [
         'add_email_account',
         'send_email',
-        'save_to_mailbox',
         'delete_emails',
         'mark_emails_as_read',
         'move_emails',
@@ -176,7 +175,6 @@ describe('buildMcpServers', () => {
     expect(collectConnectorDisabledTools('default')).toEqual([
       'mcp__huatai-email__add_email_account',
       'mcp__huatai-email__send_email',
-      'mcp__huatai-email__save_to_mailbox',
       'mcp__huatai-email__delete_emails',
       'mcp__huatai-email__mark_emails_as_read',
       'mcp__huatai-email__move_emails',

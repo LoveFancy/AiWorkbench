@@ -9,8 +9,8 @@ export interface HuataiEmailInput {
 }
 
 /**
- * 构建华泰邮箱 MCP 配置条目（IMAP 只读模式）
- * 不包含 SMTP 环境变量，仅暴露读信能力
+ * 构建华泰邮箱 MCP 配置条目（读取 + 草稿保存模式）
+ * SMTP 仅用于保存草稿；直接发送由连接器 disabledTools 默认禁用。
  */
 export function buildHuataiEmailMcpEntry(input: HuataiEmailInput): McpServerEntry {
   if (!input) throw new Error('邮箱配置不能为空')
@@ -29,6 +29,11 @@ export function buildHuataiEmailMcpEntry(input: HuataiEmailInput): McpServerEntr
       MCP_EMAIL_SERVER_IMAP_HOST: 'htemail.htsc.com.cn',
       MCP_EMAIL_SERVER_IMAP_PORT: '993',
       MCP_EMAIL_SERVER_IMAP_SSL: 'true',
+      MCP_EMAIL_SERVER_SMTP_HOST: 'htemail.htsc.com.cn',
+      MCP_EMAIL_SERVER_SMTP_PORT: '25',
+      MCP_EMAIL_SERVER_SMTP_SSL: 'false',
+      MCP_EMAIL_SERVER_SMTP_START_SSL: 'true',
+      MCP_EMAIL_SERVER_SAVE_TO_SENT: 'true',
     },
     enabled: true,
   }

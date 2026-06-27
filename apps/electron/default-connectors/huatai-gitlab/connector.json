@@ -1,0 +1,10 @@
+{
+  "type": "cli",
+  "displayName": "华泰 GitLab",
+  "description": "华泰内部 GitLab 代码仓库连接器，支持查询项目、Issue、MR、Pipeline 和仓库内容",
+  "category": "研发协同",
+  "status": "available",
+  "version": "1.0.0",
+  "sortOrder": 4,
+  "skillDirs": ["skills/gitlab-cli"]
+}

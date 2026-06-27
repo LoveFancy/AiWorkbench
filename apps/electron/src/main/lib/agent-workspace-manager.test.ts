@@ -4,6 +4,8 @@ import { join } from 'node:path'
 import AdmZip from 'adm-zip'
 import { describe, expect, test } from 'bun:test'
 import type { AgentPluginInfo, WorkspaceMcpConfig } from '@proma/shared'
+import { clearConfigDirNameForTest, getConnectorsDir } from './config-paths'
+import { clearConfigRootOverride, setConfigRoot } from './config-root-service'
 
 import {
   activateDefaultEnabledSkillsForWorkspace,
@@ -13,6 +15,11 @@ import {
   getAllWorkspaceSkills,
   getWorkspaceCapabilitiesFromSources,
   installSkillZipToWorkspace,
+  getHuataiEmailDraftEnabled,
+  setHuataiEmailDraftEnabled,
+  getHuataiEmailSendEnabled,
+  setHuataiEmailSendEnabled,
+  readDisabledToolsFromConnectorJson,
 } from './agent-workspace-manager.ts'
 import type { ConnectorsConfig } from '@proma/shared'
 
@@ -166,6 +173,129 @@ describe('Agent 工作区索引迁移', () => {
 })
 
 describe('Agent 工作区预设连接器同步', () => {
+  test('华泰邮箱草稿能力通过 disabledTools 手工开启和关闭', () => {
+    const root = mkdtempSync(join(tmpdir(), 'proma-huatai-email-draft-test-'))
+    clearConfigRootOverride()
+    clearConfigDirNameForTest()
+    setConfigRoot(join(root, 'custom-next-run'), { homeDir: root, configDirName: '.workmate-dev' })
+    const connectorDir = join(getConnectorsDir('default'), 'huatai-email')
+    const connectorPath = join(connectorDir, 'connector.json')
+
+    try {
+      mkdirSync(connectorDir, { recursive: true })
+      writeFileSync(connectorPath, JSON.stringify({
+        type: 'mcp',
+        source: 'preset',
+        serverName: 'email',
+        disabledTools: ['send_email', 'delete_email'],
+      }, null, 2), 'utf-8')
+
+      expect(getHuataiEmailDraftEnabled('default')).toBe(true)
+
+      setHuataiEmailDraftEnabled('default', false)
+      expect(getHuataiEmailDraftEnabled('default')).toBe(false)
+      expect(getHuataiEmailSendEnabled('default')).toBe(false)
+      expect(JSON.parse(readFileSync(connectorPath, 'utf-8')).disabledTools).toEqual(['delete_email', 'send_email', 'save_to_mailbox'])
+
+      setHuataiEmailDraftEnabled('default', true)
+      expect(getHuataiEmailDraftEnabled('default')).toBe(true)
+      expect(JSON.parse(readFileSync(connectorPath, 'utf-8')).disabledTools).toEqual(['delete_email', 'send_email'])
+    } finally {
+      clearConfigRootOverride()
+      clearConfigDirNameForTest()
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test('华泰邮箱发送能力通过 disabledTools 手工开启和关闭', () => {
+    const root = mkdtempSync(join(tmpdir(), 'proma-huatai-email-send-test-'))
+    clearConfigRootOverride()
+    clearConfigDirNameForTest()
+    setConfigRoot(join(root, 'custom-next-run'), { homeDir: root, configDirName: '.workmate-dev' })
+    const connectorDir = join(getConnectorsDir('default'), 'huatai-email')
+    const connectorPath = join(connectorDir, 'connector.json')
+
+    try {
+      mkdirSync(connectorDir, { recursive: true })
+      writeFileSync(connectorPath, JSON.stringify({
+        type: 'mcp',
+        source: 'preset',
+        serverName: 'email',
+        disabledTools: ['send_email', 'delete_email'],
+      }, null, 2), 'utf-8')
+
+      expect(getHuataiEmailSendEnabled('default')).toBe(false)
+
+      setHuataiEmailSendEnabled('default', true)
+      expect(getHuataiEmailSendEnabled('default')).toBe(true)
+      expect(JSON.parse(readFileSync(connectorPath, 'utf-8')).disabledTools).toEqual(['delete_email'])
+
+      setHuataiEmailSendEnabled('default', false)
+      expect(getHuataiEmailSendEnabled('default')).toBe(false)
+      expect(JSON.parse(readFileSync(connectorPath, 'utf-8')).disabledTools).toEqual(['delete_email', 'send_email'])
+    } finally {
+      clearConfigRootOverride()
+      clearConfigDirNameForTest()
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test('华泰邮箱草稿关闭时不能单独开启发送能力', () => {
+    const root = mkdtempSync(join(tmpdir(), 'proma-huatai-email-send-guard-test-'))
+    clearConfigRootOverride()
+    clearConfigDirNameForTest()
+    setConfigRoot(join(root, 'custom-next-run'), { homeDir: root, configDirName: '.workmate-dev' })
+    const connectorDir = join(getConnectorsDir('default'), 'huatai-email')
+    const connectorPath = join(connectorDir, 'connector.json')
+
+    try {
+      mkdirSync(connectorDir, { recursive: true })
+      writeFileSync(connectorPath, JSON.stringify({
+        type: 'mcp',
+        source: 'preset',
+        serverName: 'email',
+        disabledTools: ['send_email', 'save_to_mailbox'],
+      }, null, 2), 'utf-8')
+
+      const result = setHuataiEmailSendEnabled('default', true)
+
+      expect(result.enabled).toBe(false)
+      expect(getHuataiEmailSendEnabled('default')).toBe(false)
+      expect(JSON.parse(readFileSync(connectorPath, 'utf-8')).disabledTools).toEqual(['save_to_mailbox', 'send_email'])
+    } finally {
+      clearConfigRootOverride()
+      clearConfigDirNameForTest()
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test('华泰邮箱开启发送后空 disabledTools 不会回退到旧配置', () => {
+    const root = mkdtempSync(join(tmpdir(), 'proma-huatai-email-send-test-'))
+    clearConfigRootOverride()
+    clearConfigDirNameForTest()
+    setConfigRoot(join(root, 'custom-next-run'), { homeDir: root, configDirName: '.workmate-dev' })
+    const connectorDir = join(getConnectorsDir('default'), 'huatai-email')
+    const connectorPath = join(connectorDir, 'connector.json')
+
+    try {
+      mkdirSync(connectorDir, { recursive: true })
+      writeFileSync(connectorPath, JSON.stringify({
+        type: 'mcp',
+        source: 'preset',
+        serverName: 'email',
+        disabledTools: ['send_email'],
+      }, null, 2), 'utf-8')
+
+      setHuataiEmailSendEnabled('default', true)
+      expect(JSON.parse(readFileSync(connectorPath, 'utf-8')).disabledTools).toEqual([])
+      expect(readDisabledToolsFromConnectorJson(getConnectorsDir('default'), 'huatai-email')).toEqual([])
+    } finally {
+      clearConfigRootOverride()
+      clearConfigDirNameForTest()
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test('已有连接器保留启用状态，同时更新预设元数据', () => {
     const config: ConnectorsConfig = {
       version: '1.0',
@@ -200,22 +330,22 @@ describe('Agent 工作区预设连接器同步', () => {
         type: 'cli',
         enabled: false,
         source: 'preset',
-        displayName: '飞书 CLI',
+        displayName: '飞书',
         description: '飞书命令行工具',
         category: '办公协同',
         status: 'available',
-        version: '1.0.1',
+        version: '1.0.2',
         sortOrder: 2,
       },
       'hi-agent': {
         type: 'cli',
         enabled: false,
         source: 'preset',
-        displayName: '泰为 hiagent',
-        description: '泰为 hiagent 大模型应用平台，支持工作区查询、知识库召回和智能体对话',
+        displayName: '泰为 HiAgent',
+        description: '泰为 HiAgent 大模型应用平台，支持工作区查询、知识库召回和智能体对话',
         category: '办公协同',
         status: 'available',
-        version: '1.0.2',
+        version: '1.0.3',
         sortOrder: 3,
       },
     })
@@ -225,15 +355,16 @@ describe('Agent 工作区预设连接器同步', () => {
       enabled: true,
       status: 'available',
       description: '飞书命令行工具',
-      version: '1.0.1',
+      displayName: '飞书',
+      version: '1.0.2',
       sortOrder: 2,
     })
     expect(config.connectors['hi-agent']).toMatchObject({
       enabled: false,
-      displayName: '泰为 hiagent',
-      description: '泰为 hiagent 大模型应用平台，支持工作区查询、知识库召回和智能体对话',
+      displayName: '泰为 HiAgent',
+      description: '泰为 HiAgent 大模型应用平台，支持工作区查询、知识库召回和智能体对话',
       status: 'available',
-      version: '1.0.2',
+      version: '1.0.3',
     })
   })
 

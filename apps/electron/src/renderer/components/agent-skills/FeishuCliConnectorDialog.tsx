@@ -1,5 +1,5 @@
 /**
- * FeishuCliConnectorDialog — 飞书 CLI 连接器弹窗
+ * FeishuCliConnectorDialog — 飞书连接器弹窗
  *
  * QClaw 兼容流程：
  *  1. registerFeishuCliApp() → SDK registerApp → 扫码创建应用 → 拿到 appId + appSecret
@@ -124,7 +124,7 @@ export function FeishuCliConnectorDialog({
           setStep('done')
           setUserName(r.userName ?? null)
           setLoading(false)
-          toast.success('飞书 CLI 已连接')
+          toast.success('飞书已连接')
           onSaved()
           return
         }
@@ -179,7 +179,7 @@ export function FeishuCliConnectorDialog({
         setStep('done')
         setUserName(status.userName ?? null)
         setLoading(false)
-        toast.success('飞书 CLI 已连接')
+        toast.success('飞书已连接')
         onSaved()
         return
       }
@@ -243,14 +243,14 @@ export function FeishuCliConnectorDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[520px] rounded-2xl border-0 p-8 shadow-2xl">
         <DialogTitle className="text-2xl font-semibold tracking-normal">连接飞书</DialogTitle>
-        <DialogDescription className="sr-only">一键连接飞书 CLI，Agent 将获得飞书办公协同能力。</DialogDescription>
+        <DialogDescription className="sr-only">一键连接飞书，Agent 将获得飞书办公协同能力。</DialogDescription>
 
         <div className="mt-2 flex items-start gap-4">
           <div className="flex size-16 shrink-0 items-center justify-center rounded-2xl bg-blue-500/12 text-blue-500">
             <Bird size={28} />
           </div>
           <div className="space-y-2">
-            <div className="text-[15px] font-medium text-foreground">飞书 CLI 连接器</div>
+            <div className="text-[15px] font-medium text-foreground">飞书连接器</div>
             <p className="text-[13px] leading-relaxed text-muted-foreground">
               自动创建飞书自建应用并获取授权，无需手动填写凭证。Agent 将以您的身份操作飞书数据。
             </p>

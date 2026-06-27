@@ -989,12 +989,22 @@ function getDefaultConnectorEntries(): Record<string, ConnectorEntry> {
 
 function copyMissingConnectorFiles(source: string, target: string): void {
   const blocklist = new Set(['.git', 'node_modules', '__pycache__', '.DS_Store'])
+  const syncableFiles = new Set(['cli.json'])
   for (const entry of readdirSync(source, { withFileTypes: true })) {
     if (blocklist.has(entry.name)) continue
     if (entry.name === 'connector.json') continue
     const srcPath = join(source, entry.name)
     const dstPath = join(target, entry.name)
     if (existsSync(dstPath)) {
+      if (!entry.isDirectory() && syncableFiles.has(entry.name)) {
+        try {
+          if (readFileSync(srcPath, 'utf-8') !== readFileSync(dstPath, 'utf-8')) {
+            copyFileSync(srcPath, dstPath)
+          }
+        } catch (error) {
+          console.warn(`[Agent 工作区] 同步预置连接器文件失败 (${entry.name}):`, error)
+        }
+      }
       if (entry.isDirectory()) copyMissingConnectorFiles(srcPath, dstPath)
       continue
     }
@@ -1046,13 +1056,93 @@ export function readDisabledToolsFromConnectorJson(connectorsDir: string, name: 
 
   try {
     const raw = JSON.parse(readFileSync(metaPath, 'utf-8'))
-    if (Array.isArray(raw.disabledTools) && raw.disabledTools.length > 0) {
-      return raw.disabledTools
+    if (Array.isArray(raw.disabledTools)) {
+      return raw.disabledTools.filter((tool: unknown): tool is string => typeof tool === 'string')
     }
     return null
   } catch {
     return null
   }
+}
+
+function getConnectorJsonPath(workspaceSlug: string, connectorId: string): string {
+  const safeName = assertValidSlug(connectorId)
+  return join(getConnectorsDir(workspaceSlug), safeName, 'connector.json')
+}
+
+function readConnectorMetadata(workspaceSlug: string, connectorId: string): Record<string, unknown> {
+  const metaPath = getConnectorJsonPath(workspaceSlug, connectorId)
+  if (!existsSync(metaPath)) {
+    throw new Error(`连接器配置不存在: ${connectorId}`)
+  }
+
+  try {
+    return JSON.parse(readFileSync(metaPath, 'utf-8')) as Record<string, unknown>
+  } catch (error) {
+    console.error(`[Agent 工作区] 读取连接器元数据失败 (${connectorId}):`, error)
+    throw new Error('读取连接器配置失败')
+  }
+}
+
+function saveConnectorMetadata(workspaceSlug: string, connectorId: string, metadata: Record<string, unknown>): void {
+  const metaPath = getConnectorJsonPath(workspaceSlug, connectorId)
+  try {
+    writeFileSync(metaPath, JSON.stringify(metadata, null, 2), 'utf-8')
+  } catch (error) {
+    console.error(`[Agent 工作区] 保存连接器元数据失败 (${connectorId}):`, error)
+    throw new Error('保存连接器配置失败')
+  }
+}
+
+export function getHuataiEmailSendEnabled(workspaceSlug: string): boolean {
+  const metadata = readConnectorMetadata(workspaceSlug, 'huatai-email')
+  const disabledTools = Array.isArray(metadata.disabledTools)
+    ? metadata.disabledTools.filter((tool): tool is string => typeof tool === 'string')
+    : []
+  return !disabledTools.includes('send_email')
+}
+
+export function setHuataiEmailSendEnabled(workspaceSlug: string, enabled: boolean): { enabled: boolean } {
+  const metadata = readConnectorMetadata(workspaceSlug, 'huatai-email')
+  const disabledTools = Array.isArray(metadata.disabledTools)
+    ? metadata.disabledTools.filter((tool): tool is string => typeof tool === 'string')
+    : []
+  if (enabled && disabledTools.includes('save_to_mailbox')) {
+    const nextTools = [...disabledTools.filter((tool) => tool !== 'send_email'), 'send_email']
+    metadata.disabledTools = nextTools
+    saveConnectorMetadata(workspaceSlug, 'huatai-email', metadata)
+    return { enabled: false }
+  }
+  const nextTools = enabled
+    ? disabledTools.filter((tool) => tool !== 'send_email')
+    : [...disabledTools.filter((tool) => tool !== 'send_email'), 'send_email']
+
+  metadata.disabledTools = nextTools
+  saveConnectorMetadata(workspaceSlug, 'huatai-email', metadata)
+  return { enabled }
+}
+
+export function getHuataiEmailDraftEnabled(workspaceSlug: string): boolean {
+  const metadata = readConnectorMetadata(workspaceSlug, 'huatai-email')
+  const disabledTools = Array.isArray(metadata.disabledTools)
+    ? metadata.disabledTools.filter((tool): tool is string => typeof tool === 'string')
+    : []
+  return !disabledTools.includes('save_to_mailbox')
+}
+
+export function setHuataiEmailDraftEnabled(workspaceSlug: string, enabled: boolean): { enabled: boolean } {
+  const metadata = readConnectorMetadata(workspaceSlug, 'huatai-email')
+  const disabledTools = Array.isArray(metadata.disabledTools)
+    ? metadata.disabledTools.filter((tool): tool is string => typeof tool === 'string')
+    : []
+  const withoutEmailWriteTools = disabledTools.filter((tool) => tool !== 'save_to_mailbox' && tool !== 'send_email')
+  const nextTools = enabled
+    ? [...withoutEmailWriteTools, 'send_email']
+    : [...withoutEmailWriteTools, 'send_email', 'save_to_mailbox']
+
+  metadata.disabledTools = nextTools
+  saveConnectorMetadata(workspaceSlug, 'huatai-email', metadata)
+  return { enabled }
 }
 
 /** 扫描工作区活跃 Skills，仅返回 skills/ 下的 Skill */

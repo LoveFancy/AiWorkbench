@@ -1,7 +1,7 @@
 ---
 name: talents-cli
 description: Talents/泰为 hiagent CLI 工具。用于查询工作区、检索知识库 RAG、列出智能体、创建会话和向智能体发送问题。触发关键词包括 talents、hiagent、泰为、工作区、知识库、RAG、智能体对话、大模型应用平台。
-version: 1.0.2
+version: 1.0.3
 ---
 
 # Talents CLI

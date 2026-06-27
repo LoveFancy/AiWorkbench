@@ -9,7 +9,7 @@
 若命令返回认证失败：
 
 1. 不要要求用户在对话中发送 Token
-2. 提示用户在连接器配置页重新输入 Talents Token
+2. 提示用户重新登录 SkillHub/EIP 后，在连接器配置页重新初始化泰为 hiagent 连接器
 3. 不要输出 `HTSKILL_TOKEN` 的值
 
 ## Environment Mismatch

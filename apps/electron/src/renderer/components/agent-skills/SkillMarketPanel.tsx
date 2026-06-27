@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { ChevronDown, ExternalLink, Info, Loader2, LogIn, MoreHorizontal, Package, Plus, RefreshCw } from 'lucide-react'
+import { ChevronDown, ExternalLink, GitBranch, Info, Loader2, LogIn, MoreHorizontal, Package, Plus, RefreshCw, ShieldCheck } from 'lucide-react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { toast } from 'sonner'
 import type { AgentPluginMarketplace, AgentPluginMarketplaceDetail, AgentPluginMarketplacePlugin } from '@proma/shared'
@@ -85,6 +85,7 @@ export function SkillMarketPanel({ workspaceSlug, query, installedSkillNames, on
   const [loadingMore, setLoadingMore] = React.useState(false)
   const loadMoreRef = React.useRef<HTMLDivElement | null>(null)
   const requestSeqRef = React.useRef(0)
+  const skillHubAuthRequestRef = React.useRef<Promise<void> | null>(null)
   const debouncedQuery = useDebouncedValue(query, SKILLHUB_SEARCH_DEBOUNCE_MS)
 
   const checkAuth = React.useCallback(async (): Promise<boolean> => {
@@ -126,12 +127,44 @@ export function SkillMarketPanel({ workspaceSlug, query, installedSkillNames, on
   }, [debouncedQuery, installedSkillNames, workspaceSlug])
 
   React.useEffect(() => {
+    if (!authState.isLoggedIn) setAuthenticated(false)
+  }, [authState.isLoggedIn])
+
+  const autoAuthenticateSkillHub = React.useCallback(async (): Promise<void> => {
+    if (skillHubAuthRequestRef.current) {
+      await skillHubAuthRequestRef.current
+      return
+    }
+    setAuthLoading(true)
+    skillHubAuthRequestRef.current = (async () => {
+      try {
+        await window.electronAPI.skillHubAuthenticate()
+        const ok = await checkAuth()
+        if (ok) void loadSkills(1)
+      } catch (error) {
+        toast.error('SkillHub 认证失败', { description: error instanceof Error ? error.message : '未知错误' })
+      } finally {
+        skillHubAuthRequestRef.current = null
+        setAuthLoading(false)
+      }
+    })()
+    await skillHubAuthRequestRef.current
+  }, [checkAuth, loadSkills])
+
+  React.useEffect(() => {
     if (source !== 'skillhub') return
+    if (!authState.isLoggedIn) {
+      return
+    }
     void (async () => {
       const ok = await checkAuth()
-      if (ok) void loadSkills(1)
+      if (ok) {
+        void loadSkills(1)
+        return
+      }
+      await autoAuthenticateSkillHub()
     })()
-  }, [checkAuth, loadSkills, source])
+  }, [authState.isLoggedIn, autoAuthenticateSkillHub, checkAuth, loadSkills, source])
 
   React.useEffect(() => {
     if (source !== 'skillhub' || !authenticated || !hasMore || loading || loadingMore) return
@@ -148,29 +181,17 @@ export function SkillMarketPanel({ workspaceSlug, query, installedSkillNames, on
     return () => observer.disconnect()
   }, [authenticated, hasMore, loadSkills, loading, loadingMore, page, source])
 
-  const handleAuthenticate = React.useCallback(async (): Promise<void> => {
-    setAuthLoading(true)
-    try {
-      await window.electronAPI.skillHubAuthenticate()
-      const ok = await checkAuth()
-      if (ok) void loadSkills(1)
-    } catch (error) {
-      toast.error('SkillHub 认证失败', { description: error instanceof Error ? error.message : '未知错误' })
-    } finally {
-      setAuthLoading(false)
-    }
-  }, [checkAuth, loadSkills])
-
   const handleRefreshSkillHub = React.useCallback(async (): Promise<void> => {
     if (skillHubRefreshing || loading || loadingMore) return
     setSkillHubRefreshing(true)
     try {
       const ok = await checkAuth()
       if (ok) await loadSkills(1)
+      else await autoAuthenticateSkillHub()
     } finally {
       setSkillHubRefreshing(false)
     }
-  }, [checkAuth, loadSkills, loading, loadingMore, skillHubRefreshing])
+  }, [autoAuthenticateSkillHub, checkAuth, loadSkills, loading, loadingMore, skillHubRefreshing])
 
   const handleLogin = React.useCallback((): void => {
     setSettingsOpen(false)
@@ -261,7 +282,7 @@ export function SkillMarketPanel({ workspaceSlug, query, installedSkillNames, on
             skills={skills}
             installing={installing}
             onLogin={handleLogin}
-            onAuthenticate={() => void handleAuthenticate()}
+            onAuthenticate={() => void autoAuthenticateSkillHub()}
             onOpenDetail={openDetail}
             onInstall={(skill) => void handleInstall(skill)}
           />
@@ -303,7 +324,7 @@ function SkillHubMarketContent({ authStateLoggedIn, authenticated, authLoading, 
     return (
       <div className="rounded-lg border border-dashed border-border/70 bg-content-area px-4 py-8 text-center">
         <div className="text-sm font-medium text-foreground">登录后访问华泰 SkillHub</div>
-        <div className="mt-1 text-xs text-muted-foreground">华泰 SkillHub 需要 OA 登录和 SkillHub 认证。</div>
+        <div className="mt-1 text-xs text-muted-foreground">华泰 SkillHub 需要先登录 OA。</div>
         <Button size="sm" className="mt-4" onClick={onLogin}>
           <LogIn size={14} />
           登录 OA
@@ -315,8 +336,12 @@ function SkillHubMarketContent({ authStateLoggedIn, authenticated, authLoading, 
   if (authenticated === false) {
     return (
       <div className="rounded-lg border border-dashed border-border/70 bg-content-area px-4 py-8 text-center">
-        <div className="text-sm font-medium text-foreground">需要认证 SkillHub</div>
-        <div className="mt-1 text-xs text-muted-foreground">认证后可以浏览和安装公司技能。</div>
+        <div className="text-sm font-medium text-foreground">
+          {authLoading ? '正在认证 SkillHub...' : '需要认证 SkillHub'}
+        </div>
+        <div className="mt-1 text-xs text-muted-foreground">
+          {authLoading ? '正在使用 OA 登录态连接公司技能市场。' : '自动认证失败后，可以手动重试。'}
+        </div>
         <Button size="sm" className="mt-4" onClick={onAuthenticate} disabled={authLoading}>
           <RefreshCw size={14} className={authLoading ? 'animate-spin' : undefined} />
           {authLoading ? '认证中' : '认证 SkillHub'}
@@ -364,7 +389,7 @@ function PluginMarketContent({ query, onInstalled }: { query: string; onInstalle
   const [addOpen, setAddOpen] = React.useState(false)
   const [sourceInput, setSourceInput] = React.useState('')
   const [marketplaceAdvancedOpen, setMarketplaceAdvancedOpen] = React.useState(false)
-  const [marketplaceBranchInput, setMarketplaceBranchInput] = React.useState('main')
+  const [marketplaceBranchInput, setMarketplaceBranchInput] = React.useState('master')
   const [marketplaceAuthMode, setMarketplaceAuthMode] = React.useState<'none' | 'token'>('none')
   const [marketplaceTokenInput, setMarketplaceTokenInput] = React.useState('')
   const [adding, setAdding] = React.useState(false)
@@ -412,7 +437,7 @@ function PluginMarketContent({ query, onInstalled }: { query: string; onInstalle
   const handleSourceInputChange = React.useCallback((value: string): void => {
     setSourceInput(value)
     if (!value.trim()) {
-      setMarketplaceBranchInput('main')
+      setMarketplaceBranchInput('master')
       return
     }
     try {
@@ -524,18 +549,17 @@ function PluginMarketContent({ query, onInstalled }: { query: string; onInstalle
         source: inferred.source,
         type: inferred.type,
         ...(supportsMarketplaceBranch(inferred.type) && {
-          branch: marketplaceBranchInput.trim() || inferred.branch || 'main',
+          branch: marketplaceBranchInput.trim() || inferred.branch || 'master',
         }),
         auth: marketplaceAuthMode === 'token'
           ? { type: 'token', token: marketplaceTokenInput.trim() }
           : { type: 'none' },
       })
-      await window.electronAPI.refreshAgentPluginMarketplace(inferred.id)
       toast.success('插件市场已添加')
       setSelectedMarketplaceId(inferred.id)
       setSourceInput('')
       setMarketplaceAdvancedOpen(false)
-      setMarketplaceBranchInput('main')
+      setMarketplaceBranchInput('master')
       setMarketplaceAuthMode('none')
       setMarketplaceTokenInput('')
       setAddOpen(false)
@@ -672,7 +696,7 @@ function PluginMarketContent({ query, onInstalled }: { query: string; onInstalle
           if (!open) {
             setSourceInput('')
             setMarketplaceAdvancedOpen(false)
-            setMarketplaceBranchInput('main')
+            setMarketplaceBranchInput('master')
             setMarketplaceAuthMode('none')
             setMarketplaceTokenInput('')
           }
@@ -705,39 +729,62 @@ function PluginMarketContent({ query, onInstalled }: { query: string; onInstalle
               <div className="text-xs leading-5 text-muted-foreground">
                 <div>示例：owner/repo（GitHub）、git@gitlab.example.com:owner/repo.git、https://example.com/marketplace.json、./path/to/marketplace</div>
               </div>
-              <div className="rounded-lg border border-dashed border-border/60 bg-muted/20">
+              <div className="rounded-xl bg-muted/30 ring-1 ring-border/50">
                 <button
                   type="button"
-                  className="flex h-8 w-full items-center justify-between px-3 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                  className="flex h-10 w-full items-center justify-between px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted/40"
                   onClick={() => setMarketplaceAdvancedOpen((open) => !open)}
                 >
-                  <span>高级选项</span>
-                  <ChevronDown size={14} className={cn('transition-transform', marketplaceAdvancedOpen && 'rotate-180')} />
+                  <span className="flex items-center gap-2">
+                    <span>高级选项</span>
+                    <span className="text-xs font-normal text-muted-foreground">分支与私有访问</span>
+                  </span>
+                  <ChevronDown size={15} className={cn('text-muted-foreground transition-transform', marketplaceAdvancedOpen && 'rotate-180')} />
                 </button>
                 {marketplaceAdvancedOpen && (
-                  <div className="space-y-4 border-t border-border/50 px-3 pb-3 pt-3">
-                    {branchSupported ? (
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium text-foreground/80">读取分支</label>
-                        <Input
-                          value={marketplaceBranchInput}
-                          onChange={(event) => setMarketplaceBranchInput(event.target.value)}
-                          placeholder="main"
-                          className="h-8 text-sm"
-                        />
-                        <div className="text-[11px] leading-5 text-muted-foreground">仓库型市场读取 .claude-plugin/marketplace.json 的分支，默认 main。</div>
-                      </div>
-                    ) : (
-                      <div className="text-xs leading-5 text-muted-foreground">当前市场源不需要配置读取分支。</div>
-                    )}
-                    <div className="rounded-lg bg-background/70 px-3 py-2.5 shadow-sm">
-                      <div className="flex items-center justify-between gap-3">
+                  <div className="space-y-3 border-t border-border/50 px-3 pb-3 pt-3">
+                    <div className="rounded-lg bg-background/70 p-3 shadow-sm">
+                      <div className="mb-3 flex items-start gap-2.5">
+                        <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                          <GitBranch size={15} />
+                        </div>
                         <div className="min-w-0">
-                          <label htmlFor="private-marketplace-switch" className="text-xs font-medium text-foreground/80">
-                            私有市场
-                          </label>
+                          <div className="text-xs font-medium text-foreground">读取位置</div>
                           <div className="mt-1 text-[11px] leading-5 text-muted-foreground">
-                            默认关闭，按公开市场读取；打开后需要填写访问 Token。
+                            仅读取仓库中的 .claude-plugin/marketplace.json，未指定时默认 master。
+                          </div>
+                        </div>
+                      </div>
+                      {branchSupported ? (
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-medium text-foreground/80">读取分支</label>
+                          <Input
+                            value={marketplaceBranchInput}
+                            onChange={(event) => setMarketplaceBranchInput(event.target.value)}
+                            placeholder="master"
+                            className="h-8 text-sm"
+                          />
+                        </div>
+                      ) : (
+                        <div className="rounded-md bg-muted/50 px-3 py-2 text-xs leading-5 text-muted-foreground">
+                          当前市场源不需要配置读取分支。
+                        </div>
+                      )}
+                    </div>
+                    <div className="rounded-lg bg-background/70 p-3 shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 gap-2.5">
+                          <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                            <ShieldCheck size={15} />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-xs font-medium text-foreground">访问权限</div>
+                            <label htmlFor="private-marketplace-switch" className="mt-1 block text-[11px] font-medium text-foreground/80">
+                              私有市场
+                            </label>
+                            <div className="mt-1 text-[11px] leading-5 text-muted-foreground">
+                              公开市场无需 Token；私有仓库打开后填写访问 Token。
+                            </div>
                           </div>
                         </div>
                         <Switch
@@ -750,30 +797,30 @@ function PluginMarketContent({ query, onInstalled }: { query: string; onInstalle
                           aria-label="访问私有市场"
                         />
                       </div>
-                    </div>
-                    {marketplaceAuthMode === 'token' && (
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium text-foreground/80">访问 Token *</label>
-                        <Input
-                          type="password"
-                          value={marketplaceTokenInput}
-                          onChange={(event) => setMarketplaceTokenInput(event.target.value)}
-                          placeholder="用于读取私有插件市场"
-                          className="h-8 text-sm"
-                        />
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-5 text-muted-foreground">
-                          <span>可在 GitLab 个人访问令牌页面申请，建议授予读取仓库所需权限。</span>
-                          <button
-                            type="button"
-                            className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
-                            onClick={() => void window.electronAPI.openExternal('http://gitlab.htzq.htsc.com.cn/-/profile/personal_access_tokens')}
-                          >
-                            申请个人访问 Token
-                            <ExternalLink size={12} />
-                          </button>
+                      {marketplaceAuthMode === 'token' && (
+                        <div className="mt-3 space-y-2 rounded-md bg-muted/40 p-3">
+                          <label className="text-xs font-medium text-foreground/80">访问 Token *</label>
+                          <Input
+                            type="password"
+                            value={marketplaceTokenInput}
+                            onChange={(event) => setMarketplaceTokenInput(event.target.value)}
+                            placeholder="用于读取私有插件市场"
+                            className="h-8 text-sm"
+                          />
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-5 text-muted-foreground">
+                            <span>可在 GitLab 个人访问令牌页面申请，建议授予读取仓库所需权限。</span>
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
+                              onClick={() => void window.electronAPI.openExternal('http://gitlab.htzq.htsc.com.cn/-/profile/personal_access_tokens')}
+                            >
+                              申请个人访问 Token
+                              <ExternalLink size={12} />
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

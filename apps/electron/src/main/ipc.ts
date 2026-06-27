@@ -237,6 +237,10 @@ import {
   saveWorkspaceMcpConfig,
   getWorkspaceConnectorsConfig,
   saveWorkspaceConnectorsConfig,
+  getHuataiEmailDraftEnabled,
+  setHuataiEmailDraftEnabled,
+  getHuataiEmailSendEnabled,
+  setHuataiEmailSendEnabled,
   registerUserConnector,
   unregisterUserConnector,
   migrateMcpJsonToConnectors,
@@ -2268,6 +2272,38 @@ export function registerIpcHandlers(): void {
     }
   )
 
+  // 获取华泰邮箱发送能力状态
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.GET_HUATAI_EMAIL_SEND_ENABLED,
+    async (_, workspaceSlug: string): Promise<boolean> => {
+      return getHuataiEmailSendEnabled(workspaceSlug)
+    }
+  )
+
+  // 切换华泰邮箱发送能力
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.SET_HUATAI_EMAIL_SEND_ENABLED,
+    async (_, workspaceSlug: string, enabled: boolean): Promise<{ enabled: boolean }> => {
+      return setHuataiEmailSendEnabled(workspaceSlug, enabled)
+    }
+  )
+
+  // 获取华泰邮箱草稿能力状态
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.GET_HUATAI_EMAIL_DRAFT_ENABLED,
+    async (_, workspaceSlug: string): Promise<boolean> => {
+      return getHuataiEmailDraftEnabled(workspaceSlug)
+    }
+  )
+
+  // 切换华泰邮箱草稿能力
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.SET_HUATAI_EMAIL_DRAFT_ENABLED,
+    async (_, workspaceSlug: string, enabled: boolean): Promise<{ enabled: boolean }> => {
+      return setHuataiEmailDraftEnabled(workspaceSlug, enabled)
+    }
+  )
+
   // 注册用户创建的连接器
   ipcMain.handle(
     AGENT_IPC_CHANNELS.REGISTER_USER_CONNECTOR,
@@ -2580,8 +2616,8 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     AGENT_IPC_CHANNELS.ADD_PLUGIN_MARKETPLACE,
     async (_, input: { id: string; name: string; source: string; type: AgentPluginMarketplaceType; branch?: string; auth?: { type: 'none' | 'token'; token?: string } }): Promise<AgentPluginMarketplace> => {
-      const { addPluginMarketplace } = await import('./lib/plugin-marketplace-service')
-      return addPluginMarketplace(input)
+      const { addAndRefreshPluginMarketplace } = await import('./lib/plugin-marketplace-service')
+      return addAndRefreshPluginMarketplace(input)
     }
   )
 
